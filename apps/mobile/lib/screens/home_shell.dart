@@ -53,7 +53,7 @@ class _RoomsHome extends StatelessWidget {
 
   Future<void> _createRoom(BuildContext context) async {
     final controller = TextEditingController();
-    final created = await showDialog<RoomSummary>(
+    final name = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Create room'),
@@ -71,17 +71,16 @@ class _RoomsHome extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              state.createRoom(controller.text),
-            ),
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
             child: const Text('Create'),
           ),
         ],
       ),
     );
     controller.dispose();
-    if (created == null || !context.mounted) return;
+    if (name == null || !context.mounted) return;
+    final created = await state.createRoom(name);
+    if (!context.mounted) return;
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => RoomScreen(state: state, room: created)),
