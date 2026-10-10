@@ -15,5 +15,11 @@
   // Existing Cloudflare resources must use these binding names:
   //   DB    -> darkvibex-db
   //   FILES -> darkvibex-files
-  // OWNER_ADMIN_TOKEN must be stored as a Worker secret, never committed.
+  //
+  // Store these only as Cloudflare Worker secrets/vars, never in Git:
+  //   OWNER_ADMIN_TOKEN
+  //   SESSION_SECRET
+  //   LIVEKIT_URL
+  //   LIVEKIT_API_KEY
+  //   LIVEKIT_API_SECRET
 }
