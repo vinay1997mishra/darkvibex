@@ -30,7 +30,10 @@ jobs:
           node-version: "22"
       - run: npm install
       - name: Worker syntax
-        run: node --check src/index.js
+        run: |
+          node --check src/index.js
+          node --check src/owner_api.js
+          node --check ../owner_panel/app.js
       - name: Safe hierarchy policy
         working-directory: .
         run: node tools/check-no-legacy-hierarchy.mjs
