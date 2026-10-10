@@ -7,6 +7,7 @@ class RoomSummary {
     required this.id,
     required this.name,
     required this.ownerName,
+    required this.ownerUserId,
     required this.online,
     this.seatCount = 12,
   });
@@ -14,6 +15,7 @@ class RoomSummary {
   final String id;
   final String name;
   final String ownerName;
+  final String ownerUserId;
   final int online;
   final int seatCount;
 }
@@ -46,9 +48,9 @@ class AppState extends ChangeNotifier {
   int vipLevel = 1;
 
   final List<RoomSummary> rooms = <RoomSummary>[
-    const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', online: 18, seatCount: 12),
-    const RoomSummary(id: '100002', name: 'Music Night', ownerName: 'Mika', online: 9, seatCount: 10),
-    const RoomSummary(id: '100003', name: 'Chill Zone', ownerName: 'Sara', online: 24, seatCount: 15),
+    const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
+    const RoomSummary(id: '100002', name: 'Music Night', ownerName: 'Mika', ownerUserId: '92000002', online: 9, seatCount: 10),
+    const RoomSummary(id: '100003', name: 'Chill Zone', ownerName: 'Sara', ownerUserId: '92000003', online: 24, seatCount: 15),
   ];
 
   final List<DirectMessage> messages = <DirectMessage>[
@@ -85,6 +87,7 @@ class AppState extends ChangeNotifier {
                 id: row['id']?.toString() ?? '',
                 name: row['name']?.toString() ?? 'Room',
                 ownerName: row['owner_name']?.toString() ?? '',
+                ownerUserId: row['owner_user_id']?.toString() ?? '',
                 online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
                 seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               )));
@@ -114,6 +117,7 @@ class AppState extends ChangeNotifier {
       id: roomId,
       name: cleanName,
       ownerName: displayName,
+      ownerUserId: userId,
       online: 1,
       seatCount: seatCount,
     );
