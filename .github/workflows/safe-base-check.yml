@@ -7,6 +7,10 @@ on:
       - "bootstrap/**"
   pull_request:
 
+concurrency:
+  group: darkvibex-policy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   policy:
     runs-on: ubuntu-latest
