@@ -41,13 +41,15 @@ jobs:
         working-directory: apps/mobile
         run: |
           cp -R lib /tmp/dvx-lib
+          cp -R test /tmp/dvx-test
           cp pubspec.yaml /tmp/dvx-pubspec.yaml
           cp android/app/build.gradle.kts /tmp/dvx-build.gradle.kts
           cp android/app/src/main/AndroidManifest.xml /tmp/dvx-manifest.xml
           cp android/app/src/main/kotlin/com/darkvibex/app/MainActivity.kt /tmp/dvx-main-activity.kt
           flutter create --platforms=android --org com.darkvibex --project-name app .
-          rm -rf lib
+          rm -rf lib test
           cp -R /tmp/dvx-lib lib
+          cp -R /tmp/dvx-test test
           cp /tmp/dvx-pubspec.yaml pubspec.yaml
           cp /tmp/dvx-build.gradle.kts android/app/build.gradle.kts
           cp /tmp/dvx-manifest.xml android/app/src/main/AndroidManifest.xml
