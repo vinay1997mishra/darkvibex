@@ -10,12 +10,21 @@
     "directory": "../owner_panel",
     "binding": "ASSETS",
     "run_worker_first": true
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "darkvibex-db",
+      "database_id": "008b5aec-c32e-4264-b8da-0c84a7ab3366"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "darkvibex-files"
+    }
+  ]
 
-  // Existing Cloudflare resources must use these binding names:
-  //   DB    -> darkvibex-db
-  //   FILES -> darkvibex-files
-  //
   // Store these only as Cloudflare Worker secrets/vars, never in Git:
   //   OWNER_ADMIN_TOKEN
   //   SESSION_SECRET
