@@ -19,9 +19,39 @@ class _GamesScreenState extends State<GamesScreen> {
   String result = '🎮';
   int lastWin = 0;
 
-  void play() {
+  Future<void> play() async {
     const bet = 5000;
+
+    if (widget.state.backendConnected) {
+      final remote = await widget.state.backend.fruitPartyBet(
+        userId: widget.state.userId,
+        stake: bet,
+      );
+      if (remote != null) {
+        const symbols = <String, String>{
+          'apple': '🍎',
+          'orange': '🍊',
+          'watermelon': '🍉',
+          'grape': '🍇',
+          'kiwi': '🥝',
+          'strawberry': '🍓',
+          'cherry': '🍒',
+          'lemon': '🍋',
+        };
+        final payout = int.tryParse(remote['payout']?.toString() ?? '') ?? 0;
+        final balance = int.tryParse(remote['coin_balance']?.toString() ?? '');
+        if (balance != null) widget.state.setCoinBalance(balance);
+        if (!mounted) return;
+        setState(() {
+          result = symbols[remote['result']?.toString()] ?? '🎮';
+          lastWin = payout;
+        });
+        return;
+      }
+    }
+
     if (!widget.state.spendCoins(bet)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Not enough coins')),
       );
@@ -32,6 +62,7 @@ class _GamesScreenState extends State<GamesScreen> {
     final won = random.nextInt(100) < 28;
     final reward = won ? bet * 5 : 0;
     if (reward > 0) widget.state.addCoins(reward);
+    if (!mounted) return;
     setState(() {
       result = fruit;
       lastWin = reward;
