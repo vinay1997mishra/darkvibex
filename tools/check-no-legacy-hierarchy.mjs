@@ -1,7 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
-import { extname, join, relative } from "node:path";
+import { extname, join, relative, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const roots = ["apps/mobile/lib", "apps/worker/src"];
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const roots = [
+  join(repoRoot, "apps/mobile/lib"),
+  join(repoRoot, "apps/worker/src"),
+];
 const allowedPolicyFiles = new Set([
   "apps/mobile/lib/core/role_policy.dart",
   "apps/worker/src/role_policy.js",
@@ -24,13 +29,13 @@ const violations = [];
 
 for (const root of roots) {
   for (const file of await walk(root)) {
-    const normalized = file.replaceAll("\\", "/");
+    const normalized = relative(repoRoot, file).replaceAll("\\", "/");
     if (allowedPolicyFiles.has(normalized)) continue;
     if (!extensions.has(extname(file))) continue;
 
-    const content = await readFile(file, "utf8");
-    if (forbidden.test(content)) {
-      violations.push(relative(".", file));
+    const source = await readFile(file, "utf8");
+    if (forbidden.test(source)) {
+      violations.push(normalized);
     }
   }
 }
