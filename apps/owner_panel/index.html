@@ -3,57 +3,148 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#090a0d" />
   <title>DarkVibeX Owner Panel</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main class="shell">
-    <header>
-      <div>
-        <p class="eyebrow">DARKVIBEX</p>
-        <h1>Owner Panel</h1>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" hidden>
+      <div class="brand"><span class="brand-dot"></span><div><b>DARKVIBEX</b><small>Master Owner Panel</small></div></div>
+      <nav id="nav">
+        <button class="nav-btn active" data-view="overview">Overview</button>
+        <button class="nav-btn" data-view="users">Users</button>
+        <button class="nav-btn" data-view="rooms">Rooms</button>
+        <button class="nav-btn" data-view="catalog">Content</button>
+        <button class="nav-btn" data-view="settings">Settings</button>
+        <button class="nav-btn" data-view="announcements">Announcements</button>
+        <button class="nav-btn" data-view="staff">Staff</button>
+        <button class="nav-btn" data-view="audit">Audit log</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="actorCard" class="actor-card"></div>
+        <button id="logout" class="secondary full">Lock panel</button>
       </div>
-      <button id="logout" class="ghost">Lock panel</button>
-    </header>
+    </aside>
 
-    <section id="loginCard" class="card login">
-      <h2>Owner access</h2>
-      <p>Enter the owner token stored as a Cloudflare Worker secret. It is kept only in this browser session.</p>
-      <div class="row">
-        <input id="token" type="password" autocomplete="off" placeholder="Owner token" />
-        <button id="connect">Connect</button>
-      </div>
-      <p id="loginStatus" class="muted"></p>
-    </section>
-
-    <section id="dashboard" hidden>
-      <div class="stats">
-        <article class="card"><span>Users</span><strong id="users">—</strong></article>
-        <article class="card"><span>Rooms</span><strong id="rooms">—</strong></article>
-        <article class="card"><span>Online</span><strong id="online">—</strong></article>
-        <article class="card"><span>Coins</span><strong id="coins">—</strong></article>
-      </div>
-
-      <section class="card">
-        <div class="section-head">
-          <div><h2>Live rooms</h2><p>Room ID, owner, seats and lock status.</p></div>
-          <button id="refresh" class="ghost">Refresh</button>
+    <main class="main">
+      <section id="loginCard" class="login-wrap">
+        <div class="login-card">
+          <p class="eyebrow">DARKVIBEX CONTROL</p>
+          <h1>Owner Panel</h1>
+          <p class="muted">Use the private owner or staff access token. The token stays only in this browser session and is never displayed after login.</p>
+          <label>Access token<input id="token" type="password" autocomplete="off" placeholder="Enter private access token" /></label>
+          <button id="connect" class="primary full">Unlock panel</button>
+          <p id="loginStatus" class="status-line"></p>
         </div>
-        <div id="roomList" class="list"></div>
       </section>
 
-      <section class="card">
-        <div class="section-head">
-          <div><h2>User lookup</h2><p>Search by exact user ID.</p></div>
-        </div>
-        <div class="row">
-          <input id="userId" placeholder="User ID" />
-          <button id="searchUser">Search</button>
-        </div>
-        <pre id="userResult">No user selected.</pre>
+      <section id="workspace" hidden>
+        <header class="topbar">
+          <div><p class="eyebrow">DARKVIBEX</p><h1 id="viewTitle">Overview</h1></div>
+          <div class="top-actions"><span id="connectionBadge" class="badge ok">Protected</span><button id="refreshCurrent" class="secondary">Refresh</button></div>
+        </header>
+
+        <div id="toast" class="toast" hidden></div>
+
+        <section class="view active" data-view-panel="overview">
+          <div id="stats" class="stats-grid"></div>
+          <div class="two-col">
+            <article class="panel"><div class="panel-head"><div><h2>Live rooms</h2><p>Current room activity and lock state.</p></div></div><div id="overviewRooms" class="stack"></div></article>
+            <article class="panel"><div class="panel-head"><div><h2>Recent owner activity</h2><p>Latest protected changes.</p></div></div><div id="overviewAudit" class="stack"></div></article>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="users">
+          <article class="panel">
+            <div class="panel-head"><div><h2>User management</h2><p>Search by user ID or display name.</p></div></div>
+            <div class="search-row"><input id="userSearch" placeholder="User ID or name" /><button id="searchUsers" class="primary">Search</button></div>
+            <div id="userList" class="stack"></div>
+          </article>
+          <article id="userEditor" class="panel" hidden>
+            <div class="panel-head"><div><h2 id="userEditorTitle">Manage user</h2><p id="userMeta" class="muted"></p></div><button id="closeUser" class="secondary">Close</button></div>
+            <div class="form-grid">
+              <label>Display name<input id="editUserName" /></label>
+              <label>Role<select id="editUserRole"><option value="user">User</option><option value="room_owner">Room owner</option><option value="room_admin">Room admin</option><option value="moderator">Moderator</option><option value="coin_seller">Coin seller</option><option value="merchant">Merchant</option><option value="platform_owner">Platform owner</option></select></label>
+              <label>VIP level<input id="editVip" type="number" min="0" max="999" /></label>
+              <label>Account status<select id="editStatus"><option value="active">Active</option><option value="suspended">Suspended</option><option value="banned">Banned</option></select></label>
+              <label class="span-2">Moderation note<textarea id="editNote" rows="3" placeholder="Internal owner note"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveUserProfile" class="primary">Save profile</button><button id="saveModeration" class="secondary">Save moderation</button></div>
+            <hr />
+            <h3>Wallet adjustment</h3>
+            <p class="muted" id="walletBalance"></p>
+            <div class="form-grid compact"><label>Coin change<input id="coinDelta" type="number" placeholder="e.g. 50000 or -50000" /></label><label>Diamond change<input id="diamondDelta" type="number" placeholder="e.g. 100 or -100" /></label></div>
+            <button id="applyWallet" class="primary">Apply adjustment</button>
+            <div id="walletLedger" class="stack compact-stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="rooms">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Room control</h2><p>Rename rooms, change seats, lock or remove a room.</p></div></div>
+            <div class="search-row"><input id="roomSearch" placeholder="Room ID, name or owner" /><button id="searchRooms" class="primary">Search</button></div>
+            <div id="roomList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="catalog">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Content catalog</h2><p>Manage gifts, VIPs, tags, themes, frames, rings, bubbles, profile backgrounds, vehicles and future modules.</p></div></div>
+            <div class="form-grid">
+              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="vip">VIP</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
+              <label>Item ID<input id="catalogId" placeholder="Optional; generated if blank" /></label>
+              <label>Display name<input id="catalogName" /></label>
+              <label>Price in coins<input id="catalogPrice" type="number" min="0" value="0" /></label>
+              <label>Sort order<input id="catalogOrder" type="number" value="0" /></label>
+              <label>Country target<input id="catalogCountry" placeholder="Blank = all" /></label>
+              <label>Asset / file key<input id="catalogAsset" placeholder="R2 key or asset reference" /></label>
+              <label>Level / duration<input id="catalogLevel" placeholder="e.g. VIP 3 / 7 days" /></label>
+              <label class="check"><input id="catalogEnabled" type="checkbox" checked /> Enabled</label>
+              <label class="span-2">Description / effect details<textarea id="catalogDescription" rows="3"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveCatalog" class="primary">Save item</button><button id="clearCatalog" class="secondary">Clear form</button></div>
+          </article>
+          <article class="panel"><div class="panel-head"><div><h2>Saved items</h2><p>Changes are data-driven; backend code edits are not required.</p></div><button id="reloadCatalog" class="secondary">Reload</button></div><div id="catalogList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="settings">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Feature switches</h2><p>Turn major app systems on or off.</p></div></div>
+            <div id="featureSettings" class="toggle-grid"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Maintenance mode</h2><p>Temporarily pause normal app access with a clear message.</p></div></div>
+            <div class="form-grid"><label class="check"><input id="maintenanceEnabled" type="checkbox" /> Maintenance enabled</label><label class="span-2">Message<input id="maintenanceMessage" placeholder="Maintenance message shown to users" /></label></div>
+            <button id="saveMaintenance" class="primary">Save maintenance setting</button>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="announcements">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Announcements</h2><p>Create in-app notices with optional country and time window.</p></div></div>
+            <div class="form-grid"><label>Title<input id="announcementTitle" /></label><label>Country target<input id="announcementCountry" placeholder="Blank = all" /></label><label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label></div>
+            <button id="saveAnnouncement" class="primary">Publish announcement</button>
+          </article>
+          <article class="panel"><div id="announcementList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="staff">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Staff access</h2><p>Create protected panel access for trusted team members. Generated access tokens are shown only once.</p></div></div>
+            <div class="form-grid"><label>Staff name<input id="staffName" /></label><label>Role<select id="staffRole"><option value="super_admin">Super admin</option><option value="admin">Admin</option><option value="manager" selected>Manager</option><option value="moderator">Moderator</option></select></label></div>
+            <button id="createStaff" class="primary">Create staff access</button>
+            <div id="newStaffToken" class="secret-once" hidden></div>
+          </article>
+          <article class="panel"><div id="staffList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="audit">
+          <article class="panel"><div class="panel-head"><div><h2>Audit history</h2><p>Permanent record of owner and staff changes.</p></div><button id="reloadAudit" class="secondary">Reload</button></div><div id="auditList" class="stack"></div></article>
+        </section>
       </section>
-    </section>
-  </main>
+    </main>
+  </div>
   <script src="/app.js" defer></script>
 </body>
 </html>
