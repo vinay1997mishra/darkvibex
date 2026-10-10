@@ -20,7 +20,6 @@ class LiveKitRtcAdapter implements RtcAdapter {
   Room? _room;
   RtcConnectionState _state = RtcConnectionState.idle;
   bool _publishing = false;
-  bool _remoteAudioEnabled = true;
   Timer? _speakingTimer;
   final Set<String> _disabledRemoteTrackSids = <String>{};
   final ValueNotifier<Map<String, double>> _speakingLevels =
@@ -132,7 +131,6 @@ class LiveKitRtcAdapter implements RtcAdapter {
 
   @override
   Future<void> setRemoteAudioEnabled(bool enabled) async {
-    _remoteAudioEnabled = enabled;
     final room = _room;
     if (room == null) return;
     for (final participant in room.remoteParticipants.values) {
