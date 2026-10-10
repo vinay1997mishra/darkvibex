@@ -190,6 +190,11 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> wallet({
+    required String userId,
+  }) =>
+      _json('GET', '/api/wallet/$userId');
+
   Future<Map<String, dynamic>?> sendGift({
     required String roomId,
     required String senderUserId,
