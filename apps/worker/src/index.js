@@ -19,6 +19,65 @@ const json = (data, init = {}) =>
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function base64UrlBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlText(value) {
+  return base64UrlBytes(encoder.encode(value));
+}
+
+function decodeBase64UrlText(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  return decoder.decode(bytes);
+}
+
+async function hmacSignature(secret, input) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(input));
+  return base64UrlBytes(new Uint8Array(signature));
+}
+
+async function signJwt(secret, header, payload) {
+  const head = base64UrlText(JSON.stringify(header));
+  const body = base64UrlText(JSON.stringify(payload));
+  const input = head + "." + body;
+  return input + "." + await hmacSignature(secret, input);
+}
+
+async function verifySessionToken(token, secret) {
+  const parts = String(token ?? "").split(".");
+  if (parts.length !== 3) throw new Error("invalid_session");
+  const input = parts[0] + "." + parts[1];
+  const expected = await hmacSignature(secret, input);
+  if (expected !== parts[2]) throw new Error("invalid_session");
+  const payload = JSON.parse(decodeBase64UrlText(parts[1]));
+  const seconds = Math.floor(Date.now() / 1000);
+  if (!payload?.sub || Number(payload.exp ?? 0) <= seconds) {
+    throw new Error("session_expired");
+  }
+  return payload;
+}
+
+function bearerToken(request) {
+  const value = String(request.headers.get("authorization") ?? "");
+  return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
+}
+
 async function bodyJson(request) {
   const value = await request.json();
   if (!value || typeof value !== "object") throw new Error("invalid_json");
@@ -138,6 +197,29 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
     const body = await bodyJson(request);
     return json({ ok: true, role: normalizeRole(body.role) });
+  }
+
+  if (url.pathname === "/api/session/guest" && request.method === "POST") {
+    if (!env.SESSION_SECRET) {
+      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
+    }
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim() ||
+      String(Math.floor(10000000 + Math.random() * 90000000));
+    const displayName = String(body.display_name ?? "DarkVibeX User").trim().slice(0, 60);
+    const user = await ensureUser(db, userId, displayName);
+    const seconds = Math.floor(Date.now() / 1000);
+    const token = await signJwt(
+      String(env.SESSION_SECRET),
+      { alg: "HS256", typ: "JWT" },
+      {
+        sub: userId,
+        name: user.display_name,
+        iat: seconds,
+        exp: seconds + 60 * 60 * 24 * 7,
+      },
+    );
+    return json({ ok: true, token, user });
   }
 
   if (url.pathname === "/api/users/upsert" && request.method === "POST") {
@@ -300,6 +382,51 @@ async function handleApi(request, env, url) {
   return json({ ok: false, error: "not_found" }, { status: 404 });
 }
 
+async function handleLiveKitToken(request, env) {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+  if (!env.SESSION_SECRET || !env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
+    return json({ ok: false, error: "voice_not_configured" }, { status: 503 });
+  }
+
+  const session = await verifySessionToken(
+    bearerToken(request),
+    String(env.SESSION_SECRET),
+  );
+  const body = await bodyJson(request);
+  const roomId = String(body.room_id ?? "").trim().slice(0, 100);
+  if (!roomId) {
+    return json({ ok: false, error: "room_id_required" }, { status: 400 });
+  }
+
+  const seconds = Math.floor(Date.now() / 1000);
+  const token = await signJwt(
+    String(env.LIVEKIT_API_SECRET),
+    { alg: "HS256", typ: "JWT" },
+    {
+      iss: String(env.LIVEKIT_API_KEY),
+      sub: String(session.sub),
+      name: String(session.name ?? session.sub),
+      nbf: seconds - 5,
+      exp: seconds + 60 * 60,
+      video: {
+        room: roomId,
+        roomJoin: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+      },
+    },
+  );
+
+  return json({
+    ok: true,
+    server_url: String(env.LIVEKIT_URL),
+    token,
+  });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -315,6 +442,9 @@ export default {
     }
 
     try {
+      if (url.pathname === "/livekit/token") {
+        return await handleLiveKitToken(request, env);
+      }
       if (url.pathname.startsWith("/api/owner/")) {
         return await handleOwnerApi(request, env, url);
       }
