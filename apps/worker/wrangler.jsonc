@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "darkvibex-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-11",
+  "observability": {
+    "enabled": true
+  }
+
+  // D1 and R2 IDs are intentionally not committed here yet.
+  // Existing Cloudflare bindings should be mapped as:
+  //   DB    -> darkvibex-db
+  //   FILES -> darkvibex-files
+}
