@@ -140,7 +140,7 @@ class _RoomsHome extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             sliver: SliverList.separated(
               itemCount: state.rooms.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
               itemBuilder: (context, roomIndex) {
                 final room = state.rooms[roomIndex];
                 return Card(
