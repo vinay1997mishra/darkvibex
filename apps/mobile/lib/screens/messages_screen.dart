@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'conversation_screen.dart';
 
 class MessagesScreen extends StatelessWidget {
   const MessagesScreen({super.key, required this.state});
@@ -26,8 +27,15 @@ class MessagesScreen extends StatelessWidget {
               trailing: item.unread > 0
                   ? Badge(label: Text(item.unread.toString()))
                   : const Icon(Icons.chevron_right_rounded),
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Chat with ${item.name}')),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConversationScreen(
+                    state: state,
+                    otherUserId: item.id,
+                    otherName: item.name,
+                  ),
+                ),
               ),
             ),
           ),
