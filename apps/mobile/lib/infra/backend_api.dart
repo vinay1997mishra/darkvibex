@@ -6,7 +6,7 @@ class BackendApi {
 
   static const String origin = String.fromEnvironment(
     'DARKVIBEX_API_ORIGIN',
-    defaultValue: '',
+    defaultValue: 'https://darkvibex-api.mishrajii7991.workers.dev',
   );
 
   bool get configured => origin.trim().isNotEmpty;
