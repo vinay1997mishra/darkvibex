@@ -46,6 +46,7 @@ class AppState extends ChangeNotifier {
   int coins = 2500000;
   int diamonds = 120;
   int vipLevel = 1;
+  final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
 
   final List<RoomSummary> rooms = <RoomSummary>[
     const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
@@ -79,6 +80,8 @@ class AppState extends ChangeNotifier {
         vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
       }
 
+      await refreshWallet(notify: false);
+
       final remoteRooms = await backend.listRooms();
       if (remoteRooms.isNotEmpty) {
         rooms
@@ -97,6 +100,28 @@ class AppState extends ChangeNotifier {
       sessionToken = null;
     }
     notifyListeners();
+  }
+
+  Future<void> refreshWallet({bool notify = true}) async {
+    if (!backendConnected) return;
+    final value = await backend.wallet(userId: userId);
+    final wallet = value?['wallet'];
+    if (wallet is Map) {
+      coins = int.tryParse(wallet['coins']?.toString() ?? '') ?? coins;
+      diamonds = int.tryParse(wallet['diamonds']?.toString() ?? '') ?? diamonds;
+      vipLevel = int.tryParse(wallet['vip_level']?.toString() ?? '') ?? vipLevel;
+    }
+    final rows = value?['ledger'];
+    if (rows is List) {
+      walletLedger
+        ..clear()
+        ..addAll(
+          rows
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row)),
+        );
+    }
+    if (notify) notifyListeners();
   }
 
   Future<RoomSummary> createRoom(String name, {int seatCount = 12}) async {
