@@ -1,0 +1,77 @@
+name: DarkVibeX Build
+
+on:
+  push:
+    branches:
+      - main
+      - "bootstrap/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  worker-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - name: Worker syntax
+        run: node --check src/index.js
+      - name: Safe hierarchy policy
+        working-directory: .
+        run: node tools/check-no-legacy-hierarchy.mjs
+      - name: Wrangler dry run
+        run: npx wrangler deploy --dry-run --outdir /tmp/darkvibex-worker
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate missing Android scaffold
+        working-directory: apps/mobile
+        run: |
+          cp -R lib /tmp/dvx-lib
+          cp pubspec.yaml /tmp/dvx-pubspec.yaml
+          cp android/app/build.gradle.kts /tmp/dvx-build.gradle.kts
+          cp android/app/src/main/AndroidManifest.xml /tmp/dvx-manifest.xml
+          cp android/app/src/main/kotlin/com/darkvibex/app/MainActivity.kt /tmp/dvx-main-activity.kt
+          flutter create --platforms=android --org com.darkvibex --project-name app .
+          rm -rf lib
+          cp -R /tmp/dvx-lib lib
+          cp /tmp/dvx-pubspec.yaml pubspec.yaml
+          cp /tmp/dvx-build.gradle.kts android/app/build.gradle.kts
+          cp /tmp/dvx-manifest.xml android/app/src/main/AndroidManifest.xml
+          mkdir -p android/app/src/main/kotlin/com/darkvibex/app
+          cp /tmp/dvx-main-activity.kt android/app/src/main/kotlin/com/darkvibex/app/MainActivity.kt
+
+      - name: Dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: apps/mobile
+        run: flutter analyze
+
+      - name: Tests
+        working-directory: apps/mobile
+        run: flutter test
+
+      - name: Build debug APK
+        working-directory: apps/mobile
+        run: flutter build apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DarkVibeX-debug-apk
+          path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
