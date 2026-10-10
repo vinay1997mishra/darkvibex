@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DarkVibeX Owner Panel</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">DARKVIBEX</p>
+        <h1>Owner Panel</h1>
+      </div>
+      <button id="logout" class="ghost">Lock panel</button>
+    </header>
+
+    <section id="loginCard" class="card login">
+      <h2>Owner access</h2>
+      <p>Enter the owner token stored as a Cloudflare Worker secret. It is kept only in this browser session.</p>
+      <div class="row">
+        <input id="token" type="password" autocomplete="off" placeholder="Owner token" />
+        <button id="connect">Connect</button>
+      </div>
+      <p id="loginStatus" class="muted"></p>
+    </section>
+
+    <section id="dashboard" hidden>
+      <div class="stats">
+        <article class="card"><span>Users</span><strong id="users">—</strong></article>
+        <article class="card"><span>Rooms</span><strong id="rooms">—</strong></article>
+        <article class="card"><span>Online</span><strong id="online">—</strong></article>
+        <article class="card"><span>Coins</span><strong id="coins">—</strong></article>
+      </div>
+
+      <section class="card">
+        <div class="section-head">
+          <div><h2>Live rooms</h2><p>Room ID, owner, seats and lock status.</p></div>
+          <button id="refresh" class="ghost">Refresh</button>
+        </div>
+        <div id="roomList" class="list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div><h2>User lookup</h2><p>Search by exact user ID.</p></div>
+        </div>
+        <div class="row">
+          <input id="userId" placeholder="User ID" />
+          <button id="searchUser">Search</button>
+        </div>
+        <pre id="userResult">No user selected.</pre>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
