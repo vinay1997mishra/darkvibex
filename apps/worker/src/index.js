@@ -90,6 +90,70 @@ function requireDb(env) {
   return env.DB;
 }
 
+async function ownerSetting(db, key, fallback = {}) {
+  try {
+    const row = await db.prepare("SELECT value_json FROM owner_settings WHERE key = ?").bind(key).first();
+    if (!row?.value_json) return fallback;
+    const parsed = JSON.parse(String(row.value_json));
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch (error) {
+    if (String(error?.message ?? error).includes("no such table")) return fallback;
+    throw error;
+  }
+}
+
+async function ensureUserAllowed(db, userId, { checkMute = false } = {}) {
+  try {
+    const control = await db.prepare(
+      "SELECT status, muted_until, banned_until FROM owner_user_controls WHERE user_id = ?"
+    ).bind(userId).first();
+    if (!control) return;
+    const ts = now();
+    const bannedActive = control.status === "banned" &&
+      (control.banned_until == null || Number(control.banned_until) <= 0 || Number(control.banned_until) > ts);
+    if (bannedActive) throw new Error("user_banned");
+    if (control.status === "suspended") throw new Error("user_suspended");
+    if (checkMute && Number(control.muted_until ?? 0) > ts) throw new Error("user_muted");
+  } catch (error) {
+    if (String(error?.message ?? error).includes("no such table")) return;
+    throw error;
+  }
+}
+
+async function activeAnnouncements(db) {
+  try {
+    const ts = now();
+    const rows = await db.prepare(
+      `SELECT id,title,body,country,starts_at,ends_at,updated_at
+         FROM owner_announcements
+        WHERE enabled = 1
+          AND (starts_at IS NULL OR starts_at <= ?)
+          AND (ends_at IS NULL OR ends_at >= ?)
+        ORDER BY updated_at DESC LIMIT 20`
+    ).bind(ts, ts).all();
+    return rows.results ?? [];
+  } catch (error) {
+    if (String(error?.message ?? error).includes("no such table")) return [];
+    throw error;
+  }
+}
+
+async function publicCatalog(db, kind) {
+  try {
+    const rows = await db.prepare(
+      "SELECT kind,id,name,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
+    ).bind(kind).all();
+    return (rows.results ?? []).map((row) => {
+      let data = {};
+      try { data = JSON.parse(String(row.json_data ?? "{}")); } catch (_) {}
+      return { ...row, data };
+    });
+  } catch (error) {
+    if (String(error?.message ?? error).includes("no such table")) return [];
+    throw error;
+  }
+}
+
 async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   const ts = now();
   await db.prepare(
@@ -138,6 +202,24 @@ async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
 
+  const maintenance = await ownerSetting(db, "maintenance", { enabled: false, message: "" });
+  if (maintenance.enabled === true && url.pathname !== "/api/config") {
+    return json({ ok: false, error: "maintenance", message: String(maintenance.message ?? "") }, { status: 503 });
+  }
+
+  if (url.pathname === "/api/config" && request.method === "GET") {
+    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "maintenance"];
+    const settings = {};
+    for (const key of keys) settings[key] = await ownerSetting(db, key, {});
+    return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  if (url.pathname === "/api/catalog" && request.method === "GET") {
+    const kind = String(url.searchParams.get("kind") ?? "").trim().slice(0, 60);
+    if (!kind) return json({ ok: false, error: "kind_required" }, { status: 400 });
+    return json({ ok: true, items: await publicCatalog(db, kind) });
+  }
+
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
     const body = await bodyJson(request);
     return json({ ok: true, role: normalizeRole(body.role) });
@@ -152,6 +234,7 @@ async function handleApi(request, env, url) {
       String(Math.floor(10000000 + Math.random() * 90000000));
     const displayName = String(body.display_name ?? "DarkVibeX User").trim().slice(0, 60);
     const user = await ensureUser(db, userId, displayName);
+    await ensureUserAllowed(db, userId);
     const seconds = Math.floor(Date.now() / 1000);
     const token = await signJwt(
       String(env.SESSION_SECRET),
@@ -171,6 +254,7 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const user = await ensureUser(db, userId, String(body.display_name ?? "").trim());
+    await ensureUserAllowed(db, userId);
     return json({ ok: true, user });
   }
 
@@ -186,12 +270,15 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/rooms" && request.method === "POST") {
+    const roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
+    if (roomCreation.enabled === false) return json({ ok: false, error: "room_creation_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
     const name = String(body.name ?? "").trim().slice(0, 80);
     const seatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? 12)));
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
+    await ensureUserAllowed(db, ownerId);
     const roomId = String(body.id ?? "").trim() || String(Math.floor(100000 + Math.random() * 900000));
     const ts = now();
     await db.prepare(
@@ -209,6 +296,7 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
+    await ensureUserAllowed(db, userId);
     const ts = now();
     await db.prepare(
       "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
@@ -220,6 +308,7 @@ async function handleApi(request, env, url) {
     const roomId = parts[2];
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
+    await ensureUserAllowed(db, userId);
     const seatIndex = body.seat_index == null ? null : Number(body.seat_index);
     const muted = body.mic_muted === false ? 0 : 1;
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
@@ -236,6 +325,8 @@ async function handleApi(request, env, url) {
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "messages") {
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const roomId = parts[2];
     if (request.method === "GET") {
       const rows = await db.prepare(
@@ -250,6 +341,7 @@ async function handleApi(request, env, url) {
     if (request.method === "POST") {
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
+      await ensureUserAllowed(db, userId, { checkMute: true });
       const textValue = String(body.text ?? "").trim().slice(0, 500);
       if (!userId || !textValue) return json({ ok: false, error: "message_required" }, { status: 400 });
       const messageId = id();
@@ -261,6 +353,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/messages/send" && request.method === "POST") {
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
@@ -270,6 +364,8 @@ async function handleApi(request, env, url) {
     }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
+    await ensureUserAllowed(db, sender, { checkMute: true });
+    await ensureUserAllowed(db, receiver);
     const messageId = id();
     await db.prepare(
       "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, NULL)"
@@ -278,6 +374,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/messages/thread" && request.method === "GET") {
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const otherId = String(url.searchParams.get("other_user_id") ?? "").trim();
     if (!userId || !otherId) {
@@ -298,6 +396,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/messages/inbox" && request.method === "GET") {
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     if (!userId) {
       return json({ ok: false, error: "user_id_required" }, { status: 400 });
@@ -339,6 +439,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
+    const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
+    if (giftsFeature.enabled === false) return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
@@ -349,6 +451,8 @@ async function handleApi(request, env, url) {
     }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
+    await ensureUserAllowed(db, sender);
+    await ensureUserAllowed(db, receiver);
     const eventId = id();
     const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
     await db.batch([
@@ -361,6 +465,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) return json({ ok: false, error: "games_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const stake = Number(body.stake ?? 0);
@@ -368,6 +474,7 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "invalid_bet" }, { status: 400 });
     }
     await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
     const betId = id();
     const afterStake = await walletChange(db, userId, -stake, "game_bet", betId);
     const symbols = ["apple", "orange", "watermelon", "grape", "kiwi", "strawberry", "cherry", "lemon"];
@@ -408,6 +515,12 @@ async function handleLiveKitToken(request, env) {
     bearerToken(request),
     String(env.SESSION_SECRET),
   );
+  const db = requireDb(env);
+  const voiceFeature = await ownerSetting(db, "feature.voice", { enabled: true });
+  if (voiceFeature.enabled === false) {
+    return json({ ok: false, error: "voice_disabled" }, { status: 403 });
+  }
+  await ensureUserAllowed(db, String(session.sub));
   const body = await bodyJson(request);
   const roomId = String(body.room_id ?? "").trim().slice(0, 100);
   if (!roomId) {
