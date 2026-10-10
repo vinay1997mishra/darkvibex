@@ -5,10 +5,15 @@
   "compatibility_date": "2026-10-11",
   "observability": {
     "enabled": true
+  },
+  "assets": {
+    "directory": "../owner_panel",
+    "binding": "ASSETS",
+    "run_worker_first": true
   }
 
-  // D1 and R2 IDs are intentionally not committed here yet.
-  // Existing Cloudflare bindings should be mapped as:
+  // Existing Cloudflare resources must use these binding names:
   //   DB    -> darkvibex-db
   //   FILES -> darkvibex-files
+  // OWNER_ADMIN_TOKEN must be stored as a Worker secret, never committed.
 }
