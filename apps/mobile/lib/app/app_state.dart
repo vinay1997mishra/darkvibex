@@ -96,10 +96,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  RoomSummary createRoom(String name, {int seatCount = 12}) {
+  Future<RoomSummary> createRoom(String name, {int seatCount = 12}) async {
+    final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
+    String roomId = (100000 + rooms.length + 1).toString();
+
+    if (backendConnected) {
+      final remoteId = await backend.createRoom(
+        ownerUserId: userId,
+        ownerName: displayName,
+        name: cleanName,
+        seatCount: seatCount,
+      );
+      if (remoteId != null && remoteId.isNotEmpty) roomId = remoteId;
+    }
+
     final room = RoomSummary(
-      id: (100000 + rooms.length + 1).toString(),
-      name: name.trim().isEmpty ? 'New Room' : name.trim(),
+      id: roomId,
+      name: cleanName,
       ownerName: displayName,
       online: 1,
       seatCount: seatCount,
@@ -125,6 +138,12 @@ class AppState extends ChangeNotifier {
   void addDiamonds(int amount) {
     if (amount <= 0) return;
     diamonds += amount;
+    notifyListeners();
+  }
+
+  void setCoinBalance(int value) {
+    if (value < 0) return;
+    coins = value;
     notifyListeners();
   }
 }
