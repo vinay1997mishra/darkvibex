@@ -74,6 +74,63 @@ async function walletChange(db, userId, amount, kind, referenceId = null) {
   return next;
 }
 
+function ownerAuthorized(request, env) {
+  const configured = String(env.OWNER_ADMIN_TOKEN ?? "").trim();
+  if (!configured) return false;
+  const supplied = String(request.headers.get("authorization") ?? "");
+  return supplied === "Bearer " + configured;
+}
+
+async function handleOwnerApi(request, env, url) {
+  if (!env.OWNER_ADMIN_TOKEN) {
+    return json({ ok: false, error: "owner_token_not_configured" }, { status: 503 });
+  }
+  if (!ownerAuthorized(request, env)) {
+    return json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+
+  const db = requireDb(env);
+  const parts = url.pathname.split("/").filter(Boolean);
+
+  if (url.pathname === "/api/owner/overview" && request.method === "GET") {
+    const [users, rooms, online, coins, roomRows] = await Promise.all([
+      db.prepare("SELECT COUNT(*) AS value FROM users").first(),
+      db.prepare("SELECT COUNT(*) AS value FROM rooms").first(),
+      db.prepare("SELECT COUNT(*) AS value FROM room_members").first(),
+      db.prepare("SELECT COALESCE(SUM(coins),0) AS value FROM users").first(),
+      listRooms(db),
+    ]);
+    return json({
+      ok: true,
+      stats: {
+        users: Number(users?.value ?? 0),
+        rooms: Number(rooms?.value ?? 0),
+        online: Number(online?.value ?? 0),
+        coins: Number(coins?.value ?? 0),
+      },
+      rooms: roomRows,
+    });
+  }
+
+  if (parts[0] === "api" && parts[1] === "owner" && parts[2] === "users" && parts.length === 4 && request.method === "GET") {
+    const user = await db.prepare(
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, created_at, updated_at FROM users WHERE id = ?"
+    ).bind(parts[3]).first();
+    return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+
+  if (url.pathname === "/api/owner/room-lock" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const roomId = String(body.room_id ?? "").trim();
+    if (!roomId) return json({ ok: false, error: "room_id_required" }, { status: 400 });
+    await db.prepare("UPDATE rooms SET locked = ?, updated_at = ? WHERE id = ?")
+      .bind(body.locked === true ? 1 : 0, now(), roomId).run();
+    return json({ ok: true });
+  }
+
+  return json({ ok: false, error: "not_found" }, { status: 404 });
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -258,7 +315,14 @@ export default {
     }
 
     try {
-      return await handleApi(request, env, url);
+      if (url.pathname.startsWith("/api/owner/")) {
+        return await handleOwnerApi(request, env, url);
+      }
+      if (url.pathname.startsWith("/api/")) {
+        return await handleApi(request, env, url);
+      }
+      if (env.ASSETS) return env.ASSETS.fetch(request);
+      return json({ ok: false, error: "not_found" }, { status: 404 });
     } catch (error) {
       const message = String(error?.message ?? error);
       const status = message === "database_not_bound" ? 503 : 400;
