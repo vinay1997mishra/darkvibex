@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../infra/backend_api.dart';
+import '../infra/livekit_rtc.dart';
+import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 
 class RoomScreen extends StatefulWidget {
@@ -20,11 +25,76 @@ class RoomScreen extends StatefulWidget {
 class _RoomScreenState extends State<RoomScreen> {
   int? mySeat;
   bool muted = true;
+  String voiceStatus = 'Connecting…';
+  RtcAdapter? rtc;
   final List<String> chat = <String>['Welcome to the room 👋'];
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_connectVoice());
+  }
+
+  Future<void> _connectVoice() async {
+    final token = widget.state.sessionToken;
+    RtcAdapter candidate;
+
+    if (widget.state.backendConnected &&
+        token != null &&
+        token.isNotEmpty &&
+        BackendApi.origin.isNotEmpty) {
+      candidate = LiveKitRtcAdapter(apiBase: Uri.parse(BackendApi.origin));
+    } else {
+      candidate = LocalRtcAdapter();
+    }
+
+    try {
+      await candidate.join(
+        widget.room.id,
+        widget.state.userId,
+        authToken: token,
+      );
+      rtc = candidate;
+      if (!mounted) return;
+      setState(() {
+        voiceStatus = candidate is LiveKitRtcAdapter
+            ? 'Voice connected'
+            : 'Local voice mode';
+      });
+    } catch (_) {
+      if (candidate is LiveKitRtcAdapter) candidate.dispose();
+      final fallback = LocalRtcAdapter();
+      await fallback.join(widget.room.id, widget.state.userId);
+      rtc = fallback;
+      if (!mounted) return;
+      setState(() => voiceStatus = 'Voice setup required');
+    }
+  }
+
+  @override
+  void dispose() {
+    final current = rtc;
+    if (current != null) {
+      unawaited(
+        current.leave().whenComplete(() {
+          if (current is LiveKitRtcAdapter) {
+            current.dispose();
+          } else if (current is LocalRtcAdapter) {
+            current.dispose();
+          }
+        }),
+      );
+    }
+    super.dispose();
+  }
+
   void _tapSeat(int seat) {
+    final leaving = mySeat == seat;
+    if (leaving && !muted) {
+      unawaited(rtc?.setMicPublished(false));
+    }
     setState(() {
-      if (mySeat == seat) {
+      if (leaving) {
         mySeat = null;
         muted = true;
       } else {
@@ -32,6 +102,21 @@ class _RoomScreenState extends State<RoomScreen> {
         muted = true;
       }
     });
+  }
+
+  Future<void> _toggleMic() async {
+    if (mySeat == null) return;
+    final enable = muted;
+    try {
+      await rtc?.setMicPublished(enable);
+      if (!mounted) return;
+      setState(() => muted = !enable);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Microphone unavailable: $error')),
+      );
+    }
   }
 
   void _sendGift() {
@@ -82,7 +167,7 @@ class _RoomScreenState extends State<RoomScreen> {
           children: [
             Text(widget.room.name),
             Text(
-              'ID ${widget.room.id} • ${widget.room.online} online',
+              'ID ${widget.room.id} • $voiceStatus',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -156,7 +241,7 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
               child: ListView.builder(
                 itemCount: chat.length,
-                itemBuilder: (_, index) => Padding(
+                itemBuilder: (context, index) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Text(chat[index]),
                 ),
@@ -177,7 +262,7 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(
-                onPressed: mySeat == null ? null : () => setState(() => muted = !muted),
+                onPressed: mySeat == null ? null : _toggleMic,
                 icon: Icon(muted ? Icons.mic_off_rounded : Icons.mic_rounded),
               ),
               const Spacer(),
