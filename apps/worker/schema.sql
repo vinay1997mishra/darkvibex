@@ -106,3 +106,77 @@ CREATE INDEX IF NOT EXISTS idx_dm_receiver_time ON direct_messages(receiver_user
 CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_gifts_receiver_time ON gift_events(receiver_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_game_bets_user_time ON game_bets(user_id, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS owner_user_controls (
+  user_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active','suspended','banned')),
+  muted_until INTEGER,
+  banned_until INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS owner_settings (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS owner_catalog (
+  kind TEXT NOT NULL,
+  id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  price_coins INTEGER NOT NULL DEFAULT 0 CHECK (price_coins >= 0),
+  country TEXT NOT NULL DEFAULT '',
+  json_data TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (kind, id)
+);
+
+CREATE TABLE IF NOT EXISTS owner_staff (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL
+    CHECK (role IN ('super_admin','admin','manager','moderator')),
+  token_hash TEXT NOT NULL UNIQUE,
+  permissions_json TEXT NOT NULL DEFAULT '[]',
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  last_used_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS owner_audit (
+  id TEXT PRIMARY KEY,
+  actor_type TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS owner_announcements (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  starts_at INTEGER,
+  ends_at INTEGER,
+  country TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_owner_catalog_kind
+  ON owner_catalog(kind, sort_order, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_owner_audit_time
+  ON owner_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_owner_announcements_time
+  ON owner_announcements(updated_at DESC);
