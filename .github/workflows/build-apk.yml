@@ -9,8 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       api_origin:
-        description: "DarkVibeX Worker public origin (optional)"
+        description: "DarkVibeX Worker public origin"
         required: false
+        default: "https://darkvibex-api.mishrajii7991.workers.dev"
         type: string
 
 concurrency:
@@ -42,6 +43,8 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    env:
+      DVX_API_ORIGIN: ${{ inputs.api_origin || 'https://darkvibex-api.mishrajii7991.workers.dev' }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -82,10 +85,10 @@ jobs:
 
       - name: Build debug APK
         working-directory: apps/mobile
-        run: flutter build apk --debug --dart-define=DARKVIBEX_API_ORIGIN="${{ inputs.api_origin }}"
+        run: flutter build apk --debug --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DarkVibeX-debug-apk
+          name: DarkVibeX-live-debug-apk
           path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
