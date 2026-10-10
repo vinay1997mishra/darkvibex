@@ -36,6 +36,14 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _connectVoice() async {
+    if (widget.state.backendConnected) {
+      await widget.state.backend.joinRoom(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        displayName: widget.state.displayName,
+      );
+    }
+
     final token = widget.state.sessionToken;
     RtcAdapter candidate;
 
@@ -88,11 +96,29 @@ class _RoomScreenState extends State<RoomScreen> {
     super.dispose();
   }
 
-  void _tapSeat(int seat) {
+  Future<void> _tapSeat(int seat) async {
     final leaving = mySeat == seat;
-    if (leaving && !muted) {
-      unawaited(rtc?.setMicPublished(false));
+
+    if (widget.state.backendConnected) {
+      final ok = await widget.state.backend.setSeat(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        seatIndex: leaving ? null : seat,
+        micMuted: true,
+      );
+      if (!ok) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Seat is not available')),
+        );
+        return;
+      }
     }
+
+    if (leaving && !muted) {
+      await rtc?.setMicPublished(false);
+    }
+    if (!mounted) return;
     setState(() {
       if (leaving) {
         mySeat = null;
@@ -109,6 +135,14 @@ class _RoomScreenState extends State<RoomScreen> {
     final enable = muted;
     try {
       await rtc?.setMicPublished(enable);
+      if (widget.state.backendConnected && mySeat != null) {
+        await widget.state.backend.setSeat(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+          seatIndex: mySeat,
+          micMuted: !enable,
+        );
+      }
       if (!mounted) return;
       setState(() => muted = !enable);
     } catch (error) {
@@ -119,9 +153,32 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
-  void _sendGift() {
+  Future<void> _sendGift() async {
     const giftCost = 5000;
+
+    if (widget.state.backendConnected && widget.room.ownerUserId.isNotEmpty) {
+      final result = await widget.state.backend.sendGift(
+        roomId: widget.room.id,
+        senderUserId: widget.state.userId,
+        receiverUserId: widget.room.ownerUserId,
+        giftId: 'basic-star',
+        coinCost: giftCost,
+      );
+      final remoteBalance = int.tryParse(
+        result?['sender_coin_balance']?.toString() ?? '',
+      );
+      if (remoteBalance != null) {
+        widget.state.setCoinBalance(remoteBalance);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✨ Gift sent • 5,000 coins')),
+        );
+        return;
+      }
+    }
+
     final ok = widget.state.spendCoins(giftCost);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? '✨ Gift sent • 5,000 coins' : 'Not enough coins')),
     );
@@ -153,6 +210,14 @@ class _RoomScreenState extends State<RoomScreen> {
     );
     controller.dispose();
     if (value == null || value.isEmpty) return;
+    if (widget.state.backendConnected) {
+      await widget.state.backend.sendRoomMessage(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        text: value,
+      );
+    }
+    if (!mounted) return;
     setState(() => chat.add('${widget.state.displayName}: $value'));
   }
 
@@ -195,7 +260,7 @@ class _RoomScreenState extends State<RoomScreen> {
                         width: diameter + 26,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          onTap: () => _tapSeat(seat),
+                          onTap: () => unawaited(_tapSeat(seat)),
                           child: Column(
                             children: [
                               Container(
