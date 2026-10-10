@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../infra/backend_api.dart';
+
 class RoomSummary {
   const RoomSummary({
     required this.id,
@@ -33,8 +35,12 @@ class DirectMessage {
 class AppState extends ChangeNotifier {
   AppState();
 
+  final BackendApi backend = const BackendApi();
+
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String? sessionToken;
+  bool backendConnected = false;
   int coins = 2500000;
   int diamonds = 120;
   int vipLevel = 1;
@@ -49,6 +55,46 @@ class AppState extends ChangeNotifier {
     const DirectMessage(id: '90001', name: 'Mika', preview: 'See you in the room 👋', unread: 2),
     const DirectMessage(id: '90002', name: 'Sara', preview: 'Gift received, thanks!'),
   ];
+
+  Future<void> initialize() async {
+    if (!backend.configured) return;
+    try {
+      final session = await backend.startGuestSession(
+        userId: userId,
+        displayName: displayName,
+      );
+      final token = session?['token']?.toString();
+      final user = session?['user'];
+      if (token != null && token.isNotEmpty) {
+        sessionToken = token;
+        backendConnected = true;
+      }
+      if (user is Map) {
+        userId = user['id']?.toString() ?? userId;
+        displayName = user['display_name']?.toString() ?? displayName;
+        coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
+        diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
+        vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
+      }
+
+      final remoteRooms = await backend.listRooms();
+      if (remoteRooms.isNotEmpty) {
+        rooms
+          ..clear()
+          ..addAll(remoteRooms.map((row) => RoomSummary(
+                id: row['id']?.toString() ?? '',
+                name: row['name']?.toString() ?? 'Room',
+                ownerName: row['owner_name']?.toString() ?? '',
+                online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+                seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+              )));
+      }
+    } catch (_) {
+      backendConnected = false;
+      sessionToken = null;
+    }
+    notifyListeners();
+  }
 
   RoomSummary createRoom(String name, {int seatCount = 12}) {
     final room = RoomSummary(
