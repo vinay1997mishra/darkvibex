@@ -142,6 +142,54 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> inbox({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/messages/inbox?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
+    final rows = value?['inbox'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> messageThread({
+    required String userId,
+    required String otherUserId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/messages/thread?user_id=${Uri.encodeQueryComponent(userId)}&other_user_id=${Uri.encodeQueryComponent(otherUserId)}',
+    );
+    final rows = value?['messages'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<bool> sendDirectMessage({
+    required String senderUserId,
+    required String receiverUserId,
+    required String text,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/messages/send',
+      body: <String, dynamic>{
+        'sender_user_id': senderUserId,
+        'receiver_user_id': receiverUserId,
+        'text': text,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
   Future<Map<String, dynamic>?> sendGift({
     required String roomId,
     required String senderUserId,
