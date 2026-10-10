@@ -14,7 +14,21 @@ class WalletScreen extends StatelessWidget {
       builder: (context, _) => ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Wallet', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Wallet',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+                ),
+              ),
+              IconButton(
+                onPressed: state.backendConnected ? state.refreshWallet : null,
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: 'Refresh wallet',
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -39,11 +53,30 @@ class WalletScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.receipt_long_rounded),
-                  title: const Text('Transaction history'),
-                  onTap: () {},
+                const ListTile(
+                  leading: Icon(Icons.receipt_long_rounded),
+                  title: Text('Recent transactions'),
                 ),
+                if (state.walletLedger.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('No synced transactions yet.'),
+                    ),
+                  )
+                else
+                  for (final row in state.walletLedger.take(6))
+                    ListTile(
+                      dense: true,
+                      title: Text(row['kind']?.toString() ?? 'transaction'),
+                      subtitle: Text(
+                        'Balance: ${row['balance_after'] ?? '-'}',
+                      ),
+                      trailing: Text(
+                        '${int.tryParse(row['amount']?.toString() ?? '') ?? 0}',
+                      ),
+                    ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.storefront_rounded),
