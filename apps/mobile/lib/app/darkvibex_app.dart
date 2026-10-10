@@ -15,6 +15,12 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
   final AppState state = AppState();
 
   @override
+  void initState() {
+    super.initState();
+    state.initialize();
+  }
+
+  @override
   void dispose() {
     state.dispose();
     super.dispose();
