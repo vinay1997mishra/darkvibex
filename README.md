@@ -10,3 +10,6 @@ DarkVibeX is a clean-room social voice-room app base derived from the proven Tin
 - No secrets committed to the repository.
 
 Working Android package: `com.darkvibex.app`.
+
+## Deployment
+Cloudflare Workers Builds is connected to the `main` branch. Production Worker source lives in `apps/worker`.
