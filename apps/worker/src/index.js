@@ -316,6 +316,76 @@ async function handleApi(request, env, url) {
     }
   }
 
+  if (url.pathname === "/api/messages/send" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const sender = String(body.sender_user_id ?? "").trim();
+    const receiver = String(body.receiver_user_id ?? "").trim();
+    const textValue = String(body.text ?? "").trim().slice(0, 1000);
+    if (!sender || !receiver || !textValue) {
+      return json({ ok: false, error: "invalid_message" }, { status: 400 });
+    }
+    await ensureUser(db, sender);
+    await ensureUser(db, receiver);
+    const messageId = id();
+    await db.prepare(
+      "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, NULL)"
+    ).bind(messageId, sender, receiver, textValue, now()).run();
+    return json({ ok: true, message_id: messageId }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/messages/thread" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const otherId = String(url.searchParams.get("other_user_id") ?? "").trim();
+    if (!userId || !otherId) {
+      return json({ ok: false, error: "user_ids_required" }, { status: 400 });
+    }
+    const rows = await db.prepare(
+      `SELECT id, sender_user_id, receiver_user_id, text, created_at, read_at
+         FROM direct_messages
+        WHERE (sender_user_id = ? AND receiver_user_id = ?)
+           OR (sender_user_id = ? AND receiver_user_id = ?)
+        ORDER BY created_at ASC
+        LIMIT 200`
+    ).bind(userId, otherId, otherId, userId).all();
+    await db.prepare(
+      "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
+    ).bind(now(), userId, otherId).run();
+    return json({ ok: true, messages: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/messages/inbox" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) {
+      return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    }
+    const rows = await db.prepare(
+      `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
+              s.display_name AS sender_name, r.display_name AS receiver_name
+         FROM direct_messages m
+         LEFT JOIN users s ON s.id = m.sender_user_id
+         LEFT JOIN users r ON r.id = m.receiver_user_id
+        WHERE m.sender_user_id = ? OR m.receiver_user_id = ?
+        ORDER BY m.created_at DESC
+        LIMIT 200`
+    ).bind(userId, userId).all();
+
+    const seen = new Set();
+    const inbox = [];
+    for (const row of rows.results ?? []) {
+      const otherId = row.sender_user_id === userId ? row.receiver_user_id : row.sender_user_id;
+      if (seen.has(otherId)) continue;
+      seen.add(otherId);
+      inbox.push({
+        id: otherId,
+        name: row.sender_user_id === userId ? row.receiver_name : row.sender_name,
+        preview: row.text,
+        created_at: row.created_at,
+        unread: row.receiver_user_id === userId && row.read_at == null ? 1 : 0,
+      });
+    }
+    return json({ ok: true, inbox });
+  }
+
   if (parts[0] === "api" && parts[1] === "wallet" && parts.length === 3 && request.method === "GET") {
     const user = await ensureUser(db, parts[2]);
     const ledger = await db.prepare(
