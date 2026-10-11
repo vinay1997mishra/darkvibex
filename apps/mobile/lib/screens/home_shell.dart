@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import 'games_screen.dart';
+import 'global_search_screen.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'room_screen.dart';
@@ -138,6 +139,16 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
               actions: [
+                IconButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => GlobalSearchScreen(state: widget.state),
+                    ),
+                  ),
+                  icon: const Icon(Icons.search_rounded),
+                  tooltip: 'Global search',
+                ),
                 IconButton(
                   onPressed: _createRoom,
                   icon: const Icon(Icons.add_circle_outline_rounded),
