@@ -62,23 +62,24 @@ class GiftEffectOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final event = controller.current;
-        return IgnorePointer(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            child: event == null
-                ? const SizedBox.shrink()
-                : _GiftScene(
-                    key: ValueKey('${event.id}-${controller.serial}'),
-                    event: event,
-                  ),
-          ),
-        );
-      },
-    );
+    return Positioned.fill(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          final event = controller.current;
+          return IgnorePointer(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              child: event == null
+                  ? const SizedBox.shrink()
+                  : _GiftScene(
+                      key: ValueKey('${event.id}-${controller.serial}'),
+                      event: event,
+                    ),
+            ),
+          );
+        },
+      );
   }
 }
 
@@ -91,8 +92,7 @@ class _GiftScene extends StatelessWidget {
   Widget build(BuildContext context) {
     final cinematic = event.tier == 'cinematic';
     final overlay = event.tier == 'overlay' || cinematic;
-    return Positioned.fill(
-      child: Container(
+    return Container(
         alignment: Alignment.center,
         decoration: overlay
             ? BoxDecoration(
