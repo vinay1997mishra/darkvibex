@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'vip_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
@@ -41,7 +42,18 @@ class ProfileScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                _item(Icons.workspace_premium_rounded, 'VIP', 'Level ${state.vipLevel}/18'),
+                ListTile(
+                  leading: const Icon(Icons.workspace_premium_rounded),
+                  title: const Text('VIP'),
+                  subtitle: Text('Level ${state.vipLevel}/18'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => VipScreen(state: state),
+                    ),
+                  ),
+                ),
                 _item(Icons.badge_rounded, 'Unique ID', state.userId),
                 _item(Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
                 _item(Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
