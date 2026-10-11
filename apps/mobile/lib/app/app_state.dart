@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../infra/backend_api.dart';
@@ -49,6 +50,7 @@ class AppState extends ChangeNotifier {
   bool isAuthenticated = false;
   bool signingIn = false;
   bool googleSignInReady = false;
+  bool facebookSignInReady = false;
   String? authError;
   String? _googleWebClientId;
 
@@ -80,8 +82,9 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      final config = await backend.googleAuthConfig();
+      final config = await backend.authConfig();
       _googleWebClientId = config?['google_web_client_id']?.toString().trim();
+      facebookSignInReady = config?['facebook_enabled'] == true;
 
       if (_googleWebClientId != null && _googleWebClientId!.isNotEmpty) {
         await GoogleSignIn.instance.initialize(
@@ -113,7 +116,7 @@ class AppState extends ChangeNotifier {
 
     try {
       if (!googleSignInReady) {
-        final config = await backend.googleAuthConfig();
+        final config = await backend.authConfig();
         _googleWebClientId = config?['google_web_client_id']?.toString().trim();
         if (_googleWebClientId == null || _googleWebClientId!.isEmpty) {
           authError = 'Google Login is not configured on the server yet.';
@@ -141,6 +144,51 @@ class AppState extends ChangeNotifier {
       return false;
     } catch (_) {
       authError = 'Google Login failed. Please try again.';
+      return false;
+    } finally {
+      signingIn = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> signInWithFacebook() async {
+    if (signingIn) return false;
+    signingIn = true;
+    authError = null;
+    notifyListeners();
+
+    try {
+      final config = await backend.authConfig();
+      facebookSignInReady = config?['facebook_enabled'] == true;
+      if (!facebookSignInReady) {
+        authError = 'Facebook Login is not configured on the server yet.';
+        return false;
+      }
+
+      final result = await FacebookAuth.instance.login(
+        permissions: const <String>['public_profile'],
+        loginBehavior: LoginBehavior.nativeWithFallback,
+        loginTracking: LoginTracking.enabled,
+      );
+      if (result.status == LoginStatus.cancelled) {
+        authError = null;
+        return false;
+      }
+      final accessToken = result.accessToken?.tokenString;
+      if (result.status != LoginStatus.success ||
+          accessToken == null ||
+          accessToken.isEmpty) {
+        authError = result.message?.trim().isNotEmpty == true
+            ? result.message
+            : 'Facebook Login failed. Please try again.';
+        return false;
+      }
+
+      final session =
+          await backend.startFacebookSession(accessToken: accessToken);
+      return await _applySession(session, provider: 'facebook');
+    } catch (_) {
+      authError = 'Facebook Login failed. Please try again.';
       return false;
     } finally {
       signingIn = false;
@@ -238,6 +286,11 @@ class AppState extends ChangeNotifier {
     if (authProvider == 'google') {
       try {
         await GoogleSignIn.instance.signOut();
+      } catch (_) {}
+    }
+    if (authProvider == 'facebook') {
+      try {
+        await FacebookAuth.instance.logOut();
       } catch (_) {}
     }
 
