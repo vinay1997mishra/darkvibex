@@ -74,6 +74,49 @@ async function verifySessionToken(token, secret) {
   return payload;
 }
 
+
+async function createSessionToken(env, userId, displayName) {
+  if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
+  const seconds = Math.floor(Date.now() / 1000);
+  return signJwt(
+    String(env.SESSION_SECRET),
+    { alg: "HS256", typ: "JWT" },
+    {
+      sub: String(userId),
+      name: String(displayName ?? userId),
+      iat: seconds,
+      exp: seconds + 60 * 60 * 24 * 7,
+    },
+  );
+}
+
+async function verifyGoogleIdToken(idToken, expectedAudience) {
+  const audience = String(expectedAudience ?? "").trim();
+  if (!audience) throw new Error("google_auth_not_configured");
+  const token = String(idToken ?? "").trim();
+  if (!token) throw new Error("google_id_token_required");
+
+  const response = await fetch(
+    "https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(token),
+    { headers: { accept: "application/json" } },
+  );
+  if (!response.ok) throw new Error("invalid_google_token");
+  const claims = await response.json();
+
+  if (String(claims.aud ?? "") !== audience) {
+    throw new Error("invalid_google_audience");
+  }
+  const issuer = String(claims.iss ?? "");
+  if (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") {
+    throw new Error("invalid_google_issuer");
+  }
+  if (!claims.sub) throw new Error("invalid_google_subject");
+
+  const verified = claims.email_verified === true || String(claims.email_verified ?? "") === "true";
+  if (claims.email && !verified) throw new Error("google_email_not_verified");
+  return claims;
+}
+
 function bearerToken(request) {
   const value = String(request.headers.get("authorization") ?? "");
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
@@ -225,6 +268,33 @@ async function handleApi(request, env, url) {
     return json({ ok: true, role: normalizeRole(body.role) });
   }
 
+  if (url.pathname === "/api/session/google" && request.method === "POST") {
+    if (!env.SESSION_SECRET) {
+      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
+    }
+    const body = await bodyJson(request);
+    const idToken = String(body.id_token ?? "").trim();
+    if (!idToken) return json({ ok: false, error: "google_id_token_required" }, { status: 400 });
+
+    let claims;
+    try {
+      claims = await verifyGoogleIdToken(idToken, env.GOOGLE_WEB_CLIENT_ID);
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      const status = code === "google_auth_not_configured" ? 503 : 401;
+      return json({ ok: false, error: code }, { status });
+    }
+
+    const userId = "g_" + String(claims.sub);
+    const displayName = String(
+      claims.name ?? claims.given_name ?? claims.email ?? "DarkVibeX User"
+    ).trim().slice(0, 60);
+    const user = await ensureUser(db, userId, displayName);
+    await ensureUserAllowed(db, userId);
+    const token = await createSessionToken(env, userId, user.display_name);
+    return json({ ok: true, token, user, provider: "google" });
+  }
+
   if (url.pathname === "/api/session/guest" && request.method === "POST") {
     if (!env.SESSION_SECRET) {
       return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
@@ -235,18 +305,8 @@ async function handleApi(request, env, url) {
     const displayName = String(body.display_name ?? "DarkVibeX User").trim().slice(0, 60);
     const user = await ensureUser(db, userId, displayName);
     await ensureUserAllowed(db, userId);
-    const seconds = Math.floor(Date.now() / 1000);
-    const token = await signJwt(
-      String(env.SESSION_SECRET),
-      { alg: "HS256", typ: "JWT" },
-      {
-        sub: userId,
-        name: user.display_name,
-        iat: seconds,
-        exp: seconds + 60 * 60 * 24 * 7,
-      },
-    );
-    return json({ ok: true, token, user });
+    const token = await createSessionToken(env, userId, user.display_name);
+    return json({ ok: true, token, user, provider: "guest" });
   }
 
   if (url.pathname === "/api/users/upsert" && request.method === "POST") {
