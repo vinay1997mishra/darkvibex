@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -395,7 +394,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                       await musicPlayer.play();
                                     } catch (_) {
                                       if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(this.context).showSnackBar(
                                         const SnackBar(content: Text('Song could not be played')),
                                       );
                                     }
@@ -578,6 +577,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                                           FontWeight.w900,
                                                     ),
                                                   ),
+                                            ),
+                                          ),
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
