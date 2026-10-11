@@ -55,7 +55,7 @@ class AppState extends ChangeNotifier {
 
   int coins = 2500000;
   int diamonds = 120;
-  int vipLevel = 1;
+  int vipLevel = 0;
   int vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
   DateTime? vipActiveUntil;
@@ -272,7 +272,7 @@ class AppState extends ChangeNotifier {
     displayName = 'DarkVibeX User';
     coins = 2500000;
     diamonds = 120;
-    vipLevel = 1;
+    vipLevel = 0;
     vipExpBalance = 0;
     vipTotalReceivedCoins = 0;
     vipActiveUntil = null;
