@@ -50,7 +50,7 @@ class BackendApi {
   Future<Map<String, dynamic>?> health() =>
       _json('GET', '/health');
 
-  Future<Map<String, dynamic>?> googleAuthConfig() =>
+  Future<Map<String, dynamic>?> authConfig() =>
       _json('GET', '/api/auth/config');
 
   Future<Map<String, dynamic>?> startGoogleSession({
@@ -61,6 +61,17 @@ class BackendApi {
         '/api/session/google',
         body: <String, dynamic>{
           'id_token': idToken,
+        },
+      );
+
+  Future<Map<String, dynamic>?> startFacebookSession({
+    required String accessToken,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/facebook',
+        body: <String, dynamic>{
+          'access_token': accessToken,
         },
       );
 
