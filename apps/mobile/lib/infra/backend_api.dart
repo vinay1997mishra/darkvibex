@@ -247,8 +247,14 @@ class BackendApi {
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> roomMembers(String roomId) async {
-    final value = await _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/members');
+  Future<List<Map<String, dynamic>>> roomMembers(
+    String roomId, {
+    String? viewerId,
+  }) async {
+    final query = viewerId == null || viewerId.isEmpty
+        ? ''
+        : '?viewer_id=${Uri.encodeQueryComponent(viewerId)}';
+    final value = await _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/members$query');
     final rows = value?['members'];
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
