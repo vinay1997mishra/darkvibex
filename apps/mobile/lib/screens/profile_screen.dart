@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
@@ -134,12 +135,12 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                _item(Icons.badge_rounded, 'Unique ID', state.userId),
-                _item(Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
-                _item(Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
-                _item(Icons.store_rounded, 'Store', 'Frames, effects and themes'),
-                _item(Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
-                _item(Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
+                _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
+                _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
+                _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
+                _item(context, state, Icons.store_rounded, 'Store', 'Frames, effects and themes'),
+                _item(context, state, Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
+                _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
                 ListTile(
                   leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
                   title: const Text('Sign out'),
@@ -155,13 +156,35 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _item(IconData icon, String title, String subtitle) {
+  Widget _item(BuildContext context, AppState state, IconData icon, String title, String subtitle) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () {},
+      onTap: () async {
+        if (title == 'Unique ID') {
+          await Clipboard.setData(ClipboardData(text: subtitle));
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unique ID copied')),
+          );
+          return;
+        }
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text('$subtitle is not connected to the current DarkVibeX server yet.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
