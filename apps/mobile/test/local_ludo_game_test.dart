@@ -1,9 +1,9 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/games/local_ludo_game.dart';
+import 'package:darkvibex/games/local_ludo_game.dart';
 
-class _Dice extends Random {
+class _Dice implements Random {
   _Dice(this.values);
   final List<int> values;
 
