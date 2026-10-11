@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class BackendApi {
   const BackendApi();
+
+  static String? sessionToken;
 
   static const String origin = String.fromEnvironment(
     'DARKVIBEX_API_ORIGIN',
@@ -15,6 +18,7 @@ class BackendApi {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    String? authToken,
   }) async {
     if (!configured) return null;
     final client = HttpClient();
@@ -27,6 +31,10 @@ class BackendApi {
         _ => await client.openUrl(method, uri),
       };
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      final bearer = authToken ?? sessionToken;
+      if (bearer != null && bearer.trim().isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${bearer.trim()}');
+      }
       if (body != null) {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));
@@ -45,6 +53,35 @@ class BackendApi {
     } finally {
       client.close(force: true);
     }
+  }
+
+  String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
+
+  Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
+    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > 5 * 1024 * 1024) return null;
+    final client = HttpClient();
+    try {
+      final request = await client.putUrl(Uri.parse('$origin/api/files'));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${sessionToken!.trim()}');
+      request.headers.set('x-file-key', key);
+      request.headers.contentType = ContentType.parse(contentType);
+      request.add(bytes);
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final value = jsonDecode(text);
+      return value is Map<String, dynamic> ? value['key']?.toString() : null;
+    } catch (_) { return null; } finally { client.close(force: true); }
+  }
+
+  Future<bool> setUserAvatar({required String userId, required String avatarKey}) async {
+    final value = await _json('POST', '/api/users/avatar', body: {'user_id': userId, 'avatar_key': avatarKey});
+    return value?['ok'] == true;
+  }
+
+  Future<bool> setRoomAvatar({required String roomId, required String userId, required String avatarKey}) async {
+    final value = await _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/avatar', body: {'user_id': userId, 'avatar_key': avatarKey});
+    return value?['ok'] == true;
   }
 
   Future<Map<String, dynamic>?> health() =>
@@ -76,6 +113,74 @@ class BackendApi {
           'display_name': displayName,
         },
       );
+
+  Future<Map<String, dynamic>?> roomLuckyPouch({required String roomId}) =>
+      _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch');
+
+  Future<Map<String, dynamic>?> createRoomLuckyPouch({
+    required String roomId,
+    required String userId,
+    required int totalCoins,
+    required int slots,
+    required String requestId,
+  }) =>
+      _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch', body: {
+        'user_id': userId, 'total_coins': totalCoins, 'slots': slots, 'request_id': requestId,
+      });
+
+  Future<Map<String, dynamic>?> claimRoomLuckyPouch({
+    required String roomId,
+    required String userId,
+  }) =>
+      _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch/claim', body: {
+        'user_id': userId,
+      });
+
+  Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
+      _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
+
+  Future<bool> saveRoomSettings({
+    required String roomId,
+    required String userId,
+    required String name,
+    required int seatCount,
+    required bool locked,
+    required String announcement,
+    String themeId = 'dark',
+    bool groupPkEnabled = false,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/settings',
+      body: {
+        'user_id': userId,
+        'name': name,
+        'seat_count': seatCount,
+        'locked': locked,
+        'announcement': announcement,
+        'theme_id': themeId,
+        'group_pk_enabled': groupPkEnabled,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> legalConsentAccepted({required String version}) async {
+    final value = await _json(
+      'GET',
+      '/api/legal/consent?version=${Uri.encodeQueryComponent(version)}',
+    );
+    return value?['accepted'] == true;
+  }
+
+  Future<bool> acceptLegalConsent({required String version}) async {
+    final value = await _json(
+      'POST',
+      '/api/legal/consent',
+      body: {'version': version},
+    );
+    return value?['ok'] == true;
+  }
 
   Future<List<Map<String, dynamic>>> listRooms() async {
     final value = await _json('GET', '/api/rooms');
@@ -140,6 +245,57 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> roomMessages({required String roomId}) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/messages',
+    );
+    final rows = value?['messages'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<bool> leaveRoom({required String roomId, required String userId}) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/leave',
+      body: {'user_id': userId},
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> removeRoomMember({
+    required String roomId,
+    required String ownerUserId,
+    required String targetUserId,
+    bool ban = false,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/members',
+      body: {
+        'user_id': ownerUserId,
+        'target_user_id': targetUserId,
+        'ban': ban,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> reportRoom({
+    required String roomId,
+    required String userId,
+    required String reason,
+    required String details,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/report',
+      body: {'user_id': userId, 'reason': reason, 'details': details},
+    );
+    return value?['ok'] == true;
+  }
+
   Future<bool> sendRoomMessage({
     required String roomId,
     required String userId,
@@ -191,6 +347,7 @@ class BackendApi {
     required String senderUserId,
     required String receiverUserId,
     required String text,
+    String? imageKey,
   }) async {
     final value = await _json(
       'POST',
@@ -199,6 +356,7 @@ class BackendApi {
         'sender_user_id': senderUserId,
         'receiver_user_id': receiverUserId,
         'text': text,
+        if (imageKey != null) 'image_key': imageKey,
       },
     );
     return value?['ok'] == true;

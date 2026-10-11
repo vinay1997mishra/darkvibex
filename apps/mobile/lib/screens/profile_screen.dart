@@ -1,12 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import 'vip_screen.dart';
+import 'legal_policy_screen.dart';
+import 'app_settings_screen.dart';
+import 'wallet_screen.dart';
+import 'coin_seller_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
 
   final AppState state;
+
+  Future<void> _pickAvatar(BuildContext context) async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final type = switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      _ => null,
+    };
+    if (type == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
+        );
+      }
+      return;
+    }
+    final key = await state.backend.uploadImage(
+      key: 'users/${state.userId}/avatar-${DateTime.now().microsecondsSinceEpoch}.${ext == 'jpeg' ? 'jpg' : ext}',
+      bytes: await file.readAsBytes(),
+      contentType: type,
+    );
+    if (key == null || !await state.backend.setUserAvatar(
+      userId: state.userId,
+      avatarKey: key,
+    )) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile photo could not be saved')),
+        );
+      }
+      return;
+    }
+    state.setAvatarKey(key);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +90,13 @@ class ProfileScreen extends StatelessWidget {
                         ]
                       : null,
                 ),
-                child: const CircleAvatar(
-                  child: Icon(Icons.person_rounded, size: 40),
+                child: CircleAvatar(
+                  backgroundImage: state.avatarKey == null
+                      ? null
+                      : NetworkImage(state.backend.fileUrl(state.avatarKey!)),
+                  child: state.avatarKey == null
+                      ? const Icon(Icons.person_rounded, size: 40)
+                      : null,
                 ),
               ),
               const SizedBox(width: 14),
@@ -67,13 +120,31 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(onPressed: () {}, icon: const Icon(Icons.edit_rounded)),
+              IconButton(onPressed: () => _pickAvatar(context), icon: const Icon(Icons.edit_rounded)),
             ],
           ),
           const SizedBox(height: 22),
           Card(
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_rounded),
+                  title: const Text('Wallet'),
+                  subtitle: Text('${state.coins} coins • ${state.diamonds} diamonds'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => WalletScreen(state: state),
+                  )),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.storefront_rounded),
+                  title: const Text('Coin Seller'),
+                  subtitle: const Text('Coin seller tools'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => CoinSellerScreen(state: state),
+                  )),
+                ),
                 ListTile(
                   leading: const Icon(Icons.workspace_premium_rounded),
                   title: const Text('VIP'),
@@ -86,12 +157,13 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                _item(Icons.badge_rounded, 'Unique ID', state.userId),
-                _item(Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
-                _item(Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
-                _item(Icons.store_rounded, 'Store', 'Frames, effects and themes'),
-                _item(Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
-                _item(Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
+                _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
+                _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
+                _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
+                _item(context, state, Icons.store_rounded, 'Store', 'Frames, effects and themes'),
+                _item(context, state, Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
+                _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
+                _item(context, state, Icons.description_outlined, 'Terms & Privacy', 'Room rules, terms and privacy notice'),
                 ListTile(
                   leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
                   title: const Text('Sign out'),
@@ -107,13 +179,50 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _item(IconData icon, String title, String subtitle) {
+  Widget _item(BuildContext context, AppState state, IconData icon, String title, String subtitle) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () {},
+      onTap: () async {
+        if (title == 'Settings') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const AppSettingsScreen(),
+          ));
+          return;
+        }
+        if (title == 'Terms & Privacy' || title == 'Privacy & Safety') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const LegalPolicyScreen(),
+          ));
+          return;
+        }
+        if (title == 'Unique ID') {
+          final currentId = state.customVipId?.isNotEmpty == true
+              ? state.customVipId!
+              : state.userId;
+          await Clipboard.setData(ClipboardData(text: currentId));
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unique ID copied')),
+          );
+          return;
+        }
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text('$subtitle is not connected to the current DarkVibeX server yet.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

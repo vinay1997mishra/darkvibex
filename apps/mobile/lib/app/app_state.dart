@@ -12,6 +12,7 @@ class RoomSummary {
     required this.ownerUserId,
     required this.online,
     this.seatCount = 12,
+    this.avatarKey,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class RoomSummary {
   final String ownerUserId;
   final int online;
   final int seatCount;
+  final String? avatarKey;
 }
 
 class DirectMessage {
@@ -28,12 +30,14 @@ class DirectMessage {
     required this.name,
     required this.preview,
     this.unread = 0,
+    this.avatarKey,
   });
 
   final String id;
   final String name;
   final String preview;
   final int unread;
+  final String? avatarKey;
 }
 
 class AppState extends ChangeNotifier {
@@ -43,6 +47,7 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String? avatarKey;
   String? sessionToken;
   String? authProvider;
   bool backendConnected = false;
@@ -85,10 +90,7 @@ class AppState extends ChangeNotifier {
     const RoomSummary(id: '100003', name: 'Chill Zone', ownerName: 'Sara', ownerUserId: '92000003', online: 24, seatCount: 15),
   ];
 
-  final List<DirectMessage> messages = <DirectMessage>[
-    const DirectMessage(id: '90001', name: 'Mika', preview: 'See you in the room 👋', unread: 2),
-    const DirectMessage(id: '90002', name: 'Sara', preview: 'Gift received, thanks!'),
-  ];
+  final List<DirectMessage> messages = <DirectMessage>[];
 
   Future<void> initialize() async {
     isInitializing = true;
@@ -222,12 +224,14 @@ class AppState extends ChangeNotifier {
     }
 
     sessionToken = token;
+    BackendApi.sessionToken = token;
     authProvider = provider;
     backendConnected = true;
     isAuthenticated = true;
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    avatarKey = user['avatar_key']?.toString();
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
@@ -252,8 +256,45 @@ class AppState extends ChangeNotifier {
               ownerUserId: row['owner_user_id']?.toString() ?? '',
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+              avatarKey: row['avatar_key']?.toString(),
             )));
     }
+
+    await refreshInbox(notify: false);
+  }
+
+  Future<void> refreshRooms({bool notify = true}) async {
+    if (!backendConnected) return;
+    final remoteRooms = await backend.listRooms();
+    if (remoteRooms.isNotEmpty) {
+      rooms
+        ..clear()
+        ..addAll(remoteRooms.map((row) => RoomSummary(
+              id: row['id']?.toString() ?? '',
+              name: row['name']?.toString() ?? 'Room',
+              ownerName: row['owner_name']?.toString() ?? '',
+              ownerUserId: row['owner_user_id']?.toString() ?? '',
+              online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+              seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+              avatarKey: row['avatar_key']?.toString(),
+            )));
+    }
+    if (notify) notifyListeners();
+  }
+
+  Future<void> refreshInbox({bool notify = true}) async {
+    if (!backendConnected) return;
+    final remoteInbox = await backend.inbox(userId: userId);
+    messages
+      ..clear()
+      ..addAll(remoteInbox.map((row) => DirectMessage(
+            id: row['id']?.toString() ?? '',
+            name: row['name']?.toString() ?? 'User',
+            preview: row['preview']?.toString() ?? '',
+            unread: int.tryParse(row['unread']?.toString() ?? '') ?? 0,
+            avatarKey: row['avatar_key']?.toString(),
+          )));
+    if (notify) notifyListeners();
   }
 
   Future<void> signOut() async {
@@ -264,12 +305,15 @@ class AppState extends ChangeNotifier {
     }
 
     sessionToken = null;
+    BackendApi.sessionToken = null;
     authProvider = null;
     backendConnected = false;
     isAuthenticated = false;
     authError = null;
     userId = '91000001';
     displayName = 'DarkVibeX User';
+    avatarKey = null;
+    messages.clear();
     coins = 2500000;
     diamonds = 120;
     vipLevel = 0;
@@ -389,20 +433,38 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  void setAvatarKey(String? key) {
+    avatarKey = key;
+    notifyListeners();
+  }
+
+  void setRoomAvatarKey(String roomId, String key) {
+    final index = rooms.indexWhere((room) => room.id == roomId);
+    if (index < 0) return;
+    final room = rooms[index];
+    rooms[index] = RoomSummary(
+      id: room.id, name: room.name, ownerName: room.ownerName,
+      ownerUserId: room.ownerUserId, online: room.online,
+      seatCount: room.seatCount, avatarKey: key,
+    );
+    notifyListeners();
+  }
+
   Future<RoomSummary> createRoom(String name, {int seatCount = 12}) async {
     final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
     final allowedSeats =
         seatCount.clamp(8, VipPolicy.maxRoomSeats(vipLevel)).toInt();
-    String roomId = (100000 + rooms.length + 1).toString();
-
-    if (backendConnected) {
-      final remoteId = await backend.createRoom(
-        ownerUserId: userId,
-        ownerName: displayName,
-        name: cleanName,
-        seatCount: allowedSeats,
-      );
-      if (remoteId != null && remoteId.isNotEmpty) roomId = remoteId;
+    if (!backendConnected) {
+      throw StateError('Server connection is required to create a room.');
+    }
+    final roomId = await backend.createRoom(
+      ownerUserId: userId,
+      ownerName: displayName,
+      name: cleanName,
+      seatCount: allowedSeats,
+    );
+    if (roomId == null || roomId.isEmpty) {
+      throw StateError('The server could not create this room.');
     }
 
     final room = RoomSummary(

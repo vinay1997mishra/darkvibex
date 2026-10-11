@@ -136,6 +136,21 @@ function bearerToken(request) {
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
 }
 
+async function requireSession(request, env, expectedUserId) {
+  let session;
+  try {
+    if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
+    session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+  } catch (_) {
+    return json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  const actor = String(session?.sub ?? "").trim();
+  if (!actor || (expectedUserId != null && actor !== String(expectedUserId))) {
+    return json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  return null;
+}
+
 async function bodyJson(request) {
   const value = await request.json();
   if (!value || typeof value !== "object") throw new Error("invalid_json");
@@ -225,13 +240,118 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId).first();
 }
 
+async function ensureRoomSettingsTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_settings (
+      room_id TEXT PRIMARY KEY,
+      announcement TEXT NOT NULL DEFAULT '',
+      theme_id TEXT NOT NULL DEFAULT 'dark',
+      group_pk_enabled INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN theme_id TEXT NOT NULL DEFAULT 'dark'").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN group_pk_enabled INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
+}
+
+async function ensureRoomLuckyPouchTables(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_pouches (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    total_coins INTEGER NOT NULL,
+    total_slots INTEGER NOT NULL,
+    remaining_coins INTEGER NOT NULL,
+    remaining_slots INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    request_id TEXT NOT NULL,
+    last_claim_key TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    UNIQUE (owner_user_id, request_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_pouch_claims (
+    id TEXT PRIMARY KEY,
+    claim_key TEXT NOT NULL UNIQUE,
+    pouch_id TEXT NOT NULL,
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (pouch_id, user_id),
+    FOREIGN KEY (pouch_id) REFERENCES room_lucky_pouches(id) ON DELETE CASCADE
+  )`).run();
+}
+
+async function ensureRoomSafetyTables(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_bans (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      banned_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_reports (
+      id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      reporter_user_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
+async function ensureLegalConsentTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS legal_consents (
+      user_id TEXT NOT NULL,
+      version TEXT NOT NULL,
+      accepted_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, version),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
+async function ensureImageTables(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_images (
+      room_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`
+  ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS direct_message_images (
+      message_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`
+  ).run();
+}
+
 async function listRooms(db) {
+  await ensureImageTables(db);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
+            ri.image_key AS avatar_key,
             COALESCE(u.display_name, '') AS owner_name,
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN room_images ri ON ri.room_id = r.id
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).all();
@@ -339,6 +459,20 @@ async function handleApi(request, env, url) {
     return json({ ok: true, user });
   }
 
+  if (url.pathname === "/api/users/avatar" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const imageKey = String(body.avatar_key ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!imageKey.startsWith(`users/${userId}/avatar-`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+      return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
+    }
+    await db.prepare("UPDATE users SET avatar_key = ?, updated_at = ? WHERE id = ?")
+      .bind(imageKey, now(), userId).run();
+    return json({ ok: true, avatar_key: imageKey });
+  }
+
   if (parts[0] === "api" && parts[1] === "users" && parts.length === 3 && request.method === "GET") {
     const user = await db.prepare(
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
@@ -346,8 +480,227 @@ async function handleApi(request, env, url) {
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
+  if (url.pathname === "/api/legal/consent" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const version = String(url.searchParams.get("version") ?? "").trim().slice(0, 40);
+    if (!version) return json({ ok: false, error: "version_required" }, { status: 400 });
+    await ensureLegalConsentTable(db);
+    const row = await db.prepare(
+      "SELECT 1 AS accepted FROM legal_consents WHERE user_id = ? AND version = ?"
+    ).bind(String(session.sub), version).first();
+    return json({ ok: true, accepted: Boolean(row) });
+  }
+
+  if (url.pathname === "/api/legal/consent" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const body = await bodyJson(request);
+    const version = String(body.version ?? "").trim().slice(0, 40);
+    if (!version) return json({ ok: false, error: "version_required" }, { status: 400 });
+    await ensureLegalConsentTable(db);
+    await db.prepare(
+      "INSERT OR IGNORE INTO legal_consents (user_id, version, accepted_at) VALUES (?, ?, ?)"
+    ).bind(String(session.sub), version, now()).run();
+    return json({ ok: true, accepted: true, version });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "lucky-pouch") {
+    const roomId = parts[2];
+    await ensureRoomLuckyPouchTables(db);
+    const room = await db.prepare("SELECT id, owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const userId = String(session.sub);
+    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+
+    if (request.method === "GET") {
+      const pouch = await db.prepare(
+        `SELECT p.id, p.owner_user_id, p.total_coins, p.total_slots, p.remaining_coins,
+                p.remaining_slots, p.expires_at,
+                EXISTS(SELECT 1 FROM room_lucky_pouch_claims c WHERE c.pouch_id = p.id AND c.user_id = ?) AS claimed
+           FROM room_lucky_pouches p
+          WHERE p.room_id = ? AND p.status = 'open' AND p.expires_at > ?
+          ORDER BY p.created_at DESC LIMIT 1`
+      ).bind(userId, roomId, now()).first();
+      return json({ ok: true, pouch: pouch ?? null });
+    }
+
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const actorId = String(body.user_id ?? "").trim();
+      const ownerError = await requireSession(request, env, actorId);
+      if (ownerError) return ownerError;
+      const totalCoins = Number(body.total_coins);
+      const slots = Number(body.slots);
+      const requestId = String(body.request_id ?? "").trim().slice(0, 100);
+      if (!Number.isSafeInteger(totalCoins) || totalCoins < 100 || totalCoins > 10000000 ||
+          !Number.isSafeInteger(slots) || slots < 2 || slots > 500 || !requestId) {
+        return json({ ok: false, error: "invalid_pouch" }, { status: 400 });
+      }
+      const existing = await db.prepare("SELECT id FROM room_lucky_pouches WHERE owner_user_id = ? AND request_id = ?")
+        .bind(actorId, requestId).first();
+      if (existing) return json({ ok: true, pouch_id: existing.id, duplicate: true });
+      const active = await db.prepare("SELECT id FROM room_lucky_pouches WHERE room_id = ? AND status = 'open' AND expires_at > ?")
+        .bind(roomId, now()).first();
+      if (active) return json({ ok: false, error: "pouch_already_active" }, { status: 409 });
+      const pouchId = id();
+      const ts = now();
+      const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(actorId).first();
+      if (!balance || Number(balance.coins ?? 0) < totalCoins) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
+      await db.batch([
+        db.prepare("INSERT INTO room_lucky_pouches (id, room_id, owner_user_id, total_coins, total_slots, remaining_coins, remaining_slots, status, request_id, created_at, expires_at) SELECT ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND coins >= ?)")
+          .bind(pouchId, roomId, actorId, totalCoins, slots, totalCoins, slots, requestId, ts, ts + 3600000, actorId, totalCoins),
+        db.prepare("UPDATE users SET coins = coins - ?, updated_at = ? WHERE id = ? AND coins >= ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
+          .bind(totalCoins, ts, actorId, totalCoins, pouchId),
+        db.prepare("INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) SELECT ?, ?, 'room_lucky_pouch_create', ?, coins, ?, ? FROM users WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
+          .bind(id(), actorId, -totalCoins, pouchId, ts, actorId, pouchId),
+      ]);
+      const created = await db.prepare("SELECT id FROM room_lucky_pouches WHERE id = ?").bind(pouchId).first();
+      if (!created) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
+      const updated = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(actorId).first();
+      return json({ ok: true, pouch_id: pouchId, coin_balance: Number(updated?.coins ?? 0) });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 5 &&
+      parts[3] === "lucky-pouch" && parts[4] === "claim" && request.method === "POST") {
+    const roomId = parts[2];
+    await ensureRoomLuckyPouchTables(db);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    const pouch = await db.prepare(
+      "SELECT * FROM room_lucky_pouches WHERE room_id = ? AND status = 'open' AND expires_at > ? ORDER BY created_at DESC LIMIT 1"
+    ).bind(roomId, now()).first();
+    if (!pouch) return json({ ok: false, error: "no_active_pouch" }, { status: 404 });
+    const prior = await db.prepare("SELECT amount FROM room_lucky_pouch_claims WHERE pouch_id = ? AND user_id = ?")
+      .bind(pouch.id, userId).first();
+    if (prior) return json({ ok: true, amount: Number(prior.amount), duplicate: true });
+    const remainingCoins = Number(pouch.remaining_coins);
+    const remainingSlots = Number(pouch.remaining_slots);
+    if (remainingSlots < 1 || remainingCoins < remainingSlots) return json({ ok: false, error: "pouch_empty" }, { status: 409 });
+    const amount = remainingSlots === 1 ? remainingCoins : 1 + Math.floor(Math.random() * (remainingCoins - remainingSlots + 1));
+    const claimKey = id();
+    const ts = now();
+    await db.batch([
+      db.prepare("UPDATE room_lucky_pouches SET remaining_coins = remaining_coins - ?, remaining_slots = remaining_slots - 1, status = CASE WHEN remaining_slots = 1 THEN 'claimed' ELSE status END, last_claim_key = ? WHERE id = ? AND remaining_coins = ? AND remaining_slots = ? AND status = 'open' AND expires_at > ? AND NOT EXISTS (SELECT 1 FROM room_lucky_pouch_claims WHERE pouch_id = ? AND user_id = ?)")
+        .bind(amount, claimKey, pouch.id, remainingCoins, remainingSlots, ts, pouch.id, userId),
+      db.prepare("INSERT INTO room_lucky_pouch_claims (id, claim_key, pouch_id, room_id, user_id, amount, created_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ? AND last_claim_key = ?)")
+        .bind(claimKey, claimKey, pouch.id, roomId, userId, amount, ts, pouch.id, claimKey),
+      db.prepare("UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouch_claims WHERE claim_key = ?)")
+        .bind(amount, ts, userId, claimKey),
+      db.prepare("INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) SELECT ?, ?, 'room_lucky_pouch_claim', ?, coins, ?, ? FROM users WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouch_claims WHERE claim_key = ?)")
+        .bind(id(), userId, amount, pouch.id, ts, userId, claimKey),
+    ]);
+    const claim = await db.prepare("SELECT amount FROM room_lucky_pouch_claims WHERE claim_key = ? AND user_id = ?")
+      .bind(claimKey, userId).first();
+    if (!claim) {
+      const duplicate = await db.prepare("SELECT amount FROM room_lucky_pouch_claims WHERE pouch_id = ? AND user_id = ?")
+        .bind(pouch.id, userId).first();
+      if (duplicate) return json({ ok: true, amount: Number(duplicate.amount), duplicate: true });
+      return json({ ok: false, error: "claim_race_retry" }, { status: 409 });
+    }
+    const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+    return json({ ok: true, amount: Number(claim.amount), coin_balance: Number(balance?.coins ?? 0) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
+    const roomId = parts[2];
+    await ensureRoomSettingsTable(db);
+    const room = await db.prepare(
+      `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
+              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled
+         FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
+        WHERE r.id = ?`
+    ).bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (request.method === "GET") {
+      const authError = await requireSession(request, env);
+      if (authError) return authError;
+      const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, String(session.sub)).first();
+      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      return json({ ok: true, settings: room });
+    }
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const userId = String(body.user_id ?? "").trim();
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
+      if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      const name = String(body.name ?? "").trim().slice(0, 80);
+      const requestedSeatCount = Number(body.seat_count ?? room.seat_count);
+      if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
+        return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
+      }
+      const vipStatus = await getVipStatus(db, userId);
+      const maxSeats = Math.max(8, Math.min(42, Number(vipStatus.room_seat_limit ?? 12)));
+      if (requestedSeatCount > maxSeats && requestedSeatCount > Number(room.seat_count)) {
+        return json({ ok: false, error: "room_seat_limit", max_seats: maxSeats }, { status: 403 });
+      }
+      const seatCount = requestedSeatCount;
+      const locked = body.locked === true ? 1 : 0;
+      const announcement = String(body.announcement ?? "").trim().slice(0, 500);
+      const allowedThemes = new Set(["dark", "midnight", "rose", "forest", "gold"]);
+      const themeId = String(body.theme_id ?? room.theme_id ?? "dark");
+      if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
+      const groupPkEnabled = body.group_pk_enabled === true ? 1 : 0;
+      if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
+      const overflow = await db.prepare(
+        "SELECT COUNT(*) AS total FROM room_members WHERE room_id = ? AND seat_index >= ?"
+      ).bind(roomId, seatCount).first();
+      if (Number(overflow?.total ?? 0) > 0) {
+        return json({ ok: false, error: "seats_occupied" }, { status: 409 });
+      }
+      const ts = now();
+      await db.batch([
+        db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
+          .bind(name, seatCount, locked, ts, roomId),
+        db.prepare(
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, ts),
+      ]);
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled } });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
   if (url.pathname === "/api/rooms" && request.method === "GET") {
     return json({ ok: true, rooms: await listRooms(db) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "avatar" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const imageKey = String(body.avatar_key ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+    if (!imageKey.startsWith(`rooms/${roomId}/avatar-`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+      return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
+    }
+    await ensureImageTables(db);
+    await db.prepare(
+      "INSERT INTO room_images (room_id, image_key, updated_at) VALUES (?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET image_key = excluded.image_key, updated_at = excluded.updated_at"
+    ).bind(roomId, imageKey, now()).run();
+    return json({ ok: true, avatar_key: imageKey });
   }
 
   if (url.pathname === "/api/rooms" && request.method === "POST") {
@@ -356,6 +709,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
     const name = String(body.name ?? "").trim().slice(0, 80);
+    const authError = await requireSession(request, env, ownerId);
+    if (authError) return authError;
     const requestedSeatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? 12)));
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
@@ -378,14 +733,42 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, userId);
+    const roomAccess = await db.prepare(
+      "SELECT owner_user_id, locked FROM rooms WHERE id = ?"
+    ).bind(roomId).first();
+    if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    await ensureRoomSafetyTables(db);
+    const roomBan = await db.prepare(
+      "SELECT 1 AS blocked FROM room_bans WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (roomBan && roomAccess.owner_user_id !== userId) {
+      return json({ ok: false, error: "room_blocked" }, { status: 403 });
+    }
+    if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId) {
+      return json({ ok: false, error: "room_locked" }, { status: 403 });
+    }
     const ts = now();
     await db.prepare(
       "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
     ).bind(roomId, userId, ts, ts).run();
     await recordLampRoomEntry(db, roomId, userId, ts);
     return json({ ok: true });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "leave" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const result = await db.prepare(
+      "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).run();
+    return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "seat" && request.method === "POST") {
@@ -396,6 +779,8 @@ async function handleApi(request, env, url) {
     const seatIndex = body.seat_index == null ? null : Number(body.seat_index);
     const muted = body.mic_muted === false ? 0 : 1;
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     await sampleLampMicProgress(db, roomId, now());
     if (seatIndex != null) {
       const occupied = await db.prepare(
@@ -415,6 +800,13 @@ async function handleApi(request, env, url) {
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const roomId = parts[2];
     if (request.method === "GET") {
+      const authError = await requireSession(request, env);
+      if (authError) return authError;
+      const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, String(session.sub)).first();
+      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const rows = await db.prepare(
         `SELECT m.id, m.user_id, u.display_name, m.text, m.created_at
            FROM room_messages m
@@ -427,7 +819,13 @@ async function handleApi(request, env, url) {
     if (request.method === "POST") {
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       await ensureUserAllowed(db, userId, { checkMute: true });
+      const membership = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, userId).first();
+      if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const textValue = String(body.text ?? "").trim().slice(0, 500);
       if (!userId || !textValue) return json({ ok: false, error: "message_required" }, { status: 400 });
       const messageId = id();
@@ -438,17 +836,112 @@ async function handleApi(request, env, url) {
     }
   }
 
-  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members" && request.method === "GET") {
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members") {
     const roomId = parts[2];
-    const rows = await db.prepare(
-      `SELECT m.user_id, u.display_name, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
-         FROM room_members m
-         LEFT JOIN users u ON u.id = m.user_id
-        WHERE m.room_id = ?
-        ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
-        LIMIT 200`
-    ).bind(roomId).all();
-    return json({ ok: true, members: rows.results ?? [] });
+    if (request.method === "GET") {
+      const authError = await requireSession(request, env);
+      if (authError) return authError;
+      const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, String(session.sub)).first();
+      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      const rows = await db.prepare(
+        `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
+           FROM room_members m
+           LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.room_id = ?
+          ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
+          LIMIT 200`
+      ).bind(roomId).all();
+      return json({ ok: true, members: rows.results ?? [] });
+    }
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const ownerId = String(body.user_id ?? "").trim();
+      const targetId = String(body.target_user_id ?? "").trim();
+      const authError = await requireSession(request, env, ownerId);
+      if (authError) return authError;
+      if (!targetId || targetId === ownerId) return json({ ok: false, error: "invalid_target" }, { status: 400 });
+      const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+      if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+      if (room.owner_user_id !== ownerId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      await ensureRoomSafetyTables(db);
+      const shouldBan = body.ban === true;
+      if (env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
+        const seconds = Math.floor(Date.now() / 1000);
+        const adminToken = await signJwt(
+          String(env.LIVEKIT_API_SECRET),
+          { alg: "HS256", typ: "JWT" },
+          {
+            iss: String(env.LIVEKIT_API_KEY),
+            sub: ownerId,
+            nbf: seconds - 5,
+            exp: seconds + 60,
+            video: { room: roomId, roomAdmin: true },
+          },
+        );
+        const livekitBase = String(env.LIVEKIT_URL).replace(/^ws(s?):\/\//i, "http$1://").replace(/\/$/, "");
+        let livekitResponse;
+        try {
+          livekitResponse = await fetch(
+            `${livekitBase}/twirp/livekit.RoomService/RemoveParticipant`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${adminToken}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                room: roomId,
+                identity: targetId,
+                revoke_token_ts: seconds,
+              }),
+            },
+          );
+        } catch (_) {
+          return json({ ok: false, error: "livekit_unavailable" }, { status: 503 });
+        }
+        if (!livekitResponse.ok) {
+          const detail = await livekitResponse.text();
+          if (!/participant does not exist/i.test(detail)) {
+            return json({ ok: false, error: "livekit_remove_failed" }, { status: 502 });
+          }
+        }
+      }
+      if (shouldBan) {
+        await db.prepare(
+          "INSERT INTO room_bans (room_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id, user_id) DO UPDATE SET banned_by = excluded.banned_by, created_at = excluded.created_at"
+        ).bind(roomId, targetId, ownerId, now()).run();
+      }
+      const result = await db.prepare(
+        "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, targetId).run();
+      return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "report" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const reason = String(body.reason ?? "").trim().slice(0, 80);
+    const details = String(body.details ?? "").trim().slice(0, 500);
+    const allowedReasons = new Set(["Harassment", "Inappropriate content", "Spam or scam", "Safety concern", "Other"]);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!allowedReasons.has(reason)) return json({ ok: false, error: "invalid_report_reason" }, { status: 400 });
+    const membership = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    await ensureRoomSafetyTables(db);
+    const reportId = id();
+    await db.prepare(
+      "INSERT INTO room_reports (id, room_id, reporter_user_id, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(reportId, roomId, userId, reason, details, now()).run();
+    return json({ ok: true, report_id: reportId }, { status: 201 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "follow") {
@@ -514,19 +1007,35 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, sender);
+    if (authError) return authError;
     const textValue = String(body.text ?? "").trim().slice(0, 1000);
-    if (!sender || !receiver || !textValue) {
+    const imageKey = String(body.image_key ?? "").trim();
+    if (!sender || !receiver || (!textValue && !imageKey)) {
       return json({ ok: false, error: "invalid_message" }, { status: 400 });
+    }
+    if (imageKey && (!imageKey.startsWith(`messages/${sender}/`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey))) {
+      return json({ ok: false, error: "invalid_image_key" }, { status: 400 });
     }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender, { checkMute: true });
     await ensureUserAllowed(db, receiver);
     const messageId = id();
-    await db.prepare(
-      "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, NULL)"
-    ).bind(messageId, sender, receiver, textValue, now()).run();
-    return json({ ok: true, message_id: messageId }, { status: 201 });
+    await ensureImageTables(db);
+    const createdAt = now();
+    const statements = [
+      db.prepare(
+        "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, NULL)"
+      ).bind(messageId, sender, receiver, textValue, createdAt),
+    ];
+    if (imageKey) {
+      statements.push(db.prepare(
+        "INSERT INTO direct_message_images (message_id, image_key, created_at) VALUES (?, ?, ?)"
+      ).bind(messageId, imageKey, createdAt));
+    }
+    await db.batch(statements);
+    return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
   }
 
   if (url.pathname === "/api/messages/thread" && request.method === "GET") {
@@ -537,12 +1046,17 @@ async function handleApi(request, env, url) {
     if (!userId || !otherId) {
       return json({ ok: false, error: "user_ids_required" }, { status: 400 });
     }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureImageTables(db);
     const rows = await db.prepare(
-      `SELECT id, sender_user_id, receiver_user_id, text, created_at, read_at
-         FROM direct_messages
-        WHERE (sender_user_id = ? AND receiver_user_id = ?)
-           OR (sender_user_id = ? AND receiver_user_id = ?)
-        ORDER BY created_at ASC
+      `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
+              i.image_key
+         FROM direct_messages m
+         LEFT JOIN direct_message_images i ON i.message_id = m.id
+        WHERE (m.sender_user_id = ? AND m.receiver_user_id = ?)
+           OR (m.sender_user_id = ? AND m.receiver_user_id = ?)
+        ORDER BY m.created_at ASC
         LIMIT 200`
     ).bind(userId, otherId, otherId, userId).all();
     await db.prepare(
@@ -558,16 +1072,25 @@ async function handleApi(request, env, url) {
     if (!userId) {
       return json({ ok: false, error: "user_id_required" }, { status: 400 });
     }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureImageTables(db);
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
-              s.display_name AS sender_name, r.display_name AS receiver_name
+              i.image_key,
+              (SELECT COUNT(*) FROM direct_messages unread
+                WHERE unread.sender_user_id = CASE WHEN m.sender_user_id = ? THEN m.receiver_user_id ELSE m.sender_user_id END
+                  AND unread.receiver_user_id = ? AND unread.read_at IS NULL) AS unread_count,
+              s.display_name AS sender_name, s.avatar_key AS sender_avatar_key,
+              r.display_name AS receiver_name, r.avatar_key AS receiver_avatar_key
          FROM direct_messages m
          LEFT JOIN users s ON s.id = m.sender_user_id
          LEFT JOIN users r ON r.id = m.receiver_user_id
+         LEFT JOIN direct_message_images i ON i.message_id = m.id
         WHERE m.sender_user_id = ? OR m.receiver_user_id = ?
         ORDER BY m.created_at DESC
         LIMIT 200`
-    ).bind(userId, userId).all();
+    ).bind(userId, userId, userId, userId).all();
 
     const seen = new Set();
     const inbox = [];
@@ -578,15 +1101,19 @@ async function handleApi(request, env, url) {
       inbox.push({
         id: otherId,
         name: row.sender_user_id === userId ? row.receiver_name : row.sender_name,
-        preview: row.text,
+        preview: row.text || (row.image_key ? "📷 Photo" : ""),
+        avatar_key: row.sender_user_id === userId ? row.receiver_avatar_key : row.sender_avatar_key,
+        image_key: row.image_key,
         created_at: row.created_at,
-        unread: row.receiver_user_id === userId && row.read_at == null ? 1 : 0,
+        unread: Number(row.unread_count ?? 0),
       });
     }
     return json({ ok: true, inbox });
   }
 
   if (parts[0] === "api" && parts[1] === "wallet" && parts.length === 3 && request.method === "GET") {
+    const authError = await requireSession(request, env, parts[2]);
+    if (authError) return authError;
     const user = await ensureUser(db, parts[2]);
     const ledger = await db.prepare(
       "SELECT id, kind, amount, balance_after, reference_id, created_at FROM wallet_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 100"
@@ -632,6 +1159,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sellerId = String(body.seller_user_id ?? "").trim();
     const receiverId = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, sellerId);
+    if (authError) return authError;
     const amount = Number(body.coins ?? 0);
     if (!sellerId || !receiverId || sellerId === receiverId || !Number.isSafeInteger(amount) || amount <= 0) {
       return json({ ok: false, error: "invalid_coin_seller_transfer" }, { status: 400 });
@@ -676,9 +1205,11 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, sender);
+    if (authError) return authError;
     const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
     const cost = Number(body.coin_cost ?? 0);
-    if (!sender || !receiver || !Number.isInteger(cost) || cost <= 0) {
+    if (!sender || !receiver || giftId !== "basic-star" || cost !== 5000) {
       return json({ ok: false, error: "invalid_gift" }, { status: 400 });
     }
     await ensureUser(db, sender);
@@ -703,7 +1234,9 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const stake = Number(body.stake ?? 0);
-    if (!userId || !Number.isInteger(stake) || stake <= 0) {
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId || stake !== 5000) {
       return json({ ok: false, error: "invalid_bet" }, { status: 400 });
     }
     await ensureUser(db, userId);
@@ -723,12 +1256,70 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
     if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
-    const rawKey = String(request.headers.get("x-file-key") ?? "").trim();
-    const key = rawKey.replace(/[^a-zA-Z0-9._/-]/g, "").replace(/^\/+/, "");
-    if (!key || key.includes("..")) return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
-    await env.FILES.put(key, request.body, {
-      httpMetadata: { contentType: request.headers.get("content-type") ?? "application/octet-stream" },
+    let session;
+    try {
+      session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    } catch (_) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+    const actor = String(session?.sub ?? "");
+    const key = String(request.headers.get("x-file-key") ?? "").trim();
+    const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+    const extension = key.split(".").pop()?.toLowerCase();
+    if (!actor || !extensions[type] || extension !== extensions[type] ||
+        key.includes("..") || key.startsWith("/") || !/^[a-zA-Z0-9._/-]+$/.test(key)) {
+      return json({ ok: false, error: "invalid_image_upload" }, { status: 400 });
+    }
+    const userPrefix = `users/${actor}/`;
+    const messagePrefix = `messages/${actor}/`;
+    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix);
+    const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
+    if (roomMatch) {
+      const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
+      authorizedKey = room?.owner_user_id === actor;
+    }
+    if (!authorizedKey) return json({ ok: false, error: "file_owner_required" }, { status: 403 });
+    const declaredLength = Number(request.headers.get("content-length") ?? 0);
+    if (declaredLength > 5 * 1024 * 1024) {
+      return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+    }
+    const reader = request.body?.getReader();
+    if (!reader) return json({ ok: false, error: "image_body_required" }, { status: 400 });
+    const chunks = [];
+    let size = 0;
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 5 * 1024 * 1024) {
+        await reader.cancel();
+        return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+      }
+      chunks.push(part.value);
+    }
+    if (!size) return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const isPng = bytes.length >= 8 && bytes[0] === 137 && bytes[1] === 80 &&
+      bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 &&
+      bytes[6] === 26 && bytes[7] === 10;
+    const isJpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+    const isWebp = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+    if ((type === "image/jpeg" && !isJpeg) || (type === "image/png" && !isPng) ||
+        (type === "image/webp" && !isWebp)) {
+      return json({ ok: false, error: "image_content_type_mismatch" }, { status: 400 });
+    }
+    await env.FILES.put(key, bytes, {
+      httpMetadata: { contentType: type, cacheControl: "public, max-age=3600" },
     });
     return json({ ok: true, key }, { status: 201 });
   }
@@ -759,6 +1350,10 @@ async function handleLiveKitToken(request, env) {
   if (!roomId) {
     return json({ ok: false, error: "room_id_required" }, { status: 400 });
   }
+  const membership = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? LIMIT 1"
+  ).bind(roomId, String(session.sub)).first();
+  if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
 
   const seconds = Math.floor(Date.now() / 1000);
   const token = await signJwt(
@@ -802,6 +1397,37 @@ export default {
     }
 
     try {
+      if (url.pathname === "/api/files" && request.method === "GET") {
+        if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
+        const key = String(url.searchParams.get("key") ?? "").trim();
+        if (!key || key.includes("..") || key.startsWith("/") ||
+            !/^(users|rooms|messages)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+          return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
+        }
+        if (key.startsWith("messages/")) {
+          const authError = await requireSession(request, env);
+          if (authError) return authError;
+          const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+          const db = requireDb(env);
+          await ensureImageTables(db);
+          const allowed = await db.prepare(
+            `SELECT 1 AS allowed
+               FROM direct_message_images i
+               JOIN direct_messages m ON m.id = i.message_id
+              WHERE i.image_key = ? AND (m.sender_user_id = ? OR m.receiver_user_id = ?)
+              LIMIT 1`
+          ).bind(key, String(session.sub), String(session.sub)).first();
+          if (!allowed) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+        }
+        const object = await env.FILES.get(key);
+        if (!object) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+        const headers = new Headers(corsHeaders);
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+        headers.set("cache-control", "public, max-age=3600");
+        headers.set("x-content-type-options", "nosniff");
+        return new Response(object.body, { headers });
+      }
       if (url.pathname === "/livekit/token") {
         return await handleLiveKitToken(request, env);
       }

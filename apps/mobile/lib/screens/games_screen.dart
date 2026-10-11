@@ -1,8 +1,7 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'local_ludo_screen.dart';
 
 class GamesScreen extends StatefulWidget {
   const GamesScreen({super.key, required this.state});
@@ -14,59 +13,100 @@ class GamesScreen extends StatefulWidget {
 }
 
 class _GamesScreenState extends State<GamesScreen> {
-  static const fruits = <String>['🍎', '🍊', '🍉', '🍇', '🥝', '🍓', '🍒', '🍋'];
-  final random = Random();
+  bool playing = false;
   String result = '🎮';
   int lastWin = 0;
 
   Future<void> play() async {
-    const bet = 5000;
-
-    if (widget.state.backendConnected) {
-      final remote = await widget.state.backend.fruitPartyBet(
-        userId: widget.state.userId,
-        stake: bet,
-      );
-      if (remote != null) {
-        const symbols = <String, String>{
-          'apple': '🍎',
-          'orange': '🍊',
-          'watermelon': '🍉',
-          'grape': '🍇',
-          'kiwi': '🥝',
-          'strawberry': '🍓',
-          'cherry': '🍒',
-          'lemon': '🍋',
-        };
-        final payout = int.tryParse(remote['payout']?.toString() ?? '') ?? 0;
-        final balance = int.tryParse(remote['coin_balance']?.toString() ?? '');
-        if (balance != null) widget.state.setCoinBalance(balance);
-        if (!mounted) return;
-        setState(() {
-          result = symbols[remote['result']?.toString()] ?? '🎮';
-          lastWin = payout;
-        });
-        return;
-      }
-    }
-
-    if (!widget.state.spendCoins(bet)) {
-      if (!mounted) return;
+    if (playing) return;
+    if (!widget.state.backendConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not enough coins')),
+        const SnackBar(content: Text('Connect to the server before playing.')),
       );
       return;
     }
 
-    final fruit = fruits[random.nextInt(fruits.length)];
-    final won = random.nextInt(100) < 28;
-    final reward = won ? bet * 5 : 0;
-    if (reward > 0) widget.state.addCoins(reward);
-    if (!mounted) return;
-    setState(() {
-      result = fruit;
-      lastWin = reward;
-    });
+    setState(() => playing = true);
+    try {
+      const bet = 5000;
+      final remote = await widget.state.backend.fruitPartyBet(
+        userId: widget.state.userId,
+        stake: bet,
+      );
+      if (remote == null || remote['ok'] != true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The game server did not accept this bet. No coins were changed.')),
+        );
+        return;
+      }
+
+      const symbols = <String, String>{
+        'apple': '🍎',
+        'orange': '🍊',
+        'watermelon': '🍉',
+        'grape': '🍇',
+        'kiwi': '🥝',
+        'strawberry': '🍓',
+        'cherry': '🍒',
+        'lemon': '🍋',
+      };
+      final payout = int.tryParse(remote['payout']?.toString() ?? '') ?? 0;
+      final balance = int.tryParse(remote['coin_balance']?.toString() ?? '');
+      if (balance != null) widget.state.setCoinBalance(balance);
+      if (!mounted) return;
+      setState(() {
+        result = symbols[remote['result']?.toString()] ?? '🎮';
+        lastWin = payout;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not reach the game server. No coins were changed.')),
+      );
+    } finally {
+      if (mounted) setState(() => playing = false);
+    }
+  }
+
+
+  Future<void> _openLudo() async {
+    final count = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Free Ludo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text('Choose players. No coins or wallet balance are used.'),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.people_alt_outlined),
+                title: const Text('2 players'),
+                subtitle: const Text('Local pass-and-play'),
+                onTap: () => Navigator.pop(sheetContext, 2),
+              ),
+              ListTile(
+                leading: const Icon(Icons.groups_2_outlined),
+                title: const Text('4 players'),
+                subtitle: const Text('Local pass-and-play'),
+                onTap: () => Navigator.pop(sheetContext, 4),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || count == null) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => LocalLudoScreen(playerCount: count)),
+    );
   }
 
   @override
@@ -90,9 +130,11 @@ class _GamesScreenState extends State<GamesScreen> {
                   Text(lastWin > 0 ? 'Won $lastWin coins' : 'Bet 5,000 coins'),
                   const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: play,
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Play'),
+                    onPressed: playing ? null : play,
+                    icon: playing
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.play_arrow_rounded),
+                    label: Text(playing ? 'Playing…' : 'Play'),
                   ),
                 ],
               ),
@@ -103,9 +145,9 @@ class _GamesScreenState extends State<GamesScreen> {
             child: ListTile(
               leading: const Text('🎲', style: TextStyle(fontSize: 32)),
               title: const Text('Ludo'),
-              subtitle: const Text('Board game module'),
+              subtitle: const Text('Free 2-player or 4-player local game'),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {},
+              onTap: _openLudo,
             ),
           ),
         ],

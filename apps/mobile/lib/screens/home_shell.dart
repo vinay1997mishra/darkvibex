@@ -23,7 +23,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      _RoomsHome(state: widget.state),
+      _RoomsHome(state: widget.state, onSelect: (value) => setState(() => index = value)),
       MessagesScreen(state: widget.state),
       GamesScreen(state: widget.state),
       WalletScreen(state: widget.state),
@@ -50,9 +50,56 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 class _RoomsHome extends StatelessWidget {
-  const _RoomsHome({required this.state});
+  const _RoomsHome({required this.state, required this.onSelect});
 
   final AppState state;
+  final ValueChanged<int> onSelect;
+
+  Future<void> _openFourBoxMenu(BuildContext context) async {
+    const entries = <(String, IconData, int)>[
+      ('Rooms', Icons.mic_rounded, 0),
+      ('Messages', Icons.chat_bubble_rounded, 1),
+      ('Games', Icons.sports_esports_rounded, 2),
+      ('Mine', Icons.person_rounded, 5),
+    ];
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text('Quick menu', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              ),
+              GridView.count(
+                shrinkWrap: true,
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 2.7,
+                children: [
+                  for (final entry in entries)
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        onSelect(entry.$3);
+                      },
+                      icon: Icon(entry.$2),
+                      label: Text(entry.$1),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _createRoom(BuildContext context) async {
     final controller = TextEditingController();
@@ -82,12 +129,19 @@ class _RoomsHome extends StatelessWidget {
     );
     controller.dispose();
     if (name == null || !context.mounted) return;
-    final created = await state.createRoom(name);
-    if (!context.mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => RoomScreen(state: state, room: created)),
-    );
+    try {
+      final created = await state.createRoom(name);
+      if (!context.mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => RoomScreen(state: state, room: created)),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room could not be created. Check your connection and try again.')),
+      );
+    }
   }
 
   @override
@@ -103,6 +157,11 @@ class _RoomsHome extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
             actions: [
+              IconButton(
+                onPressed: () => _openFourBoxMenu(context),
+                icon: const Icon(Icons.grid_view_rounded),
+                tooltip: 'Four box menu',
+              ),
               IconButton(
                 onPressed: () => _createRoom(context),
                 icon: const Icon(Icons.add_circle_outline_rounded),
@@ -150,7 +209,12 @@ class _RoomsHome extends StatelessWidget {
                     contentPadding: const EdgeInsets.all(14),
                     leading: CircleAvatar(
                       radius: 26,
-                      child: Text(room.name.isEmpty ? '?' : room.name.substring(0, 1).toUpperCase()),
+                      backgroundImage: room.avatarKey == null
+                          ? null
+                          : NetworkImage(state.backend.fileUrl(room.avatarKey!)),
+                      child: room.avatarKey == null
+                          ? Text(room.name.isEmpty ? '?' : room.name.substring(0, 1).toUpperCase())
+                          : null,
                     ),
                     title: Text(room.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text('ID ${room.id} • ${room.online} online • ${room.seatCount} seats'),

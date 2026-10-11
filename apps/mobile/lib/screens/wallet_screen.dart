@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'coin_seller_screen.dart';
 
 class WalletScreen extends StatelessWidget {
   const WalletScreen({super.key, required this.state});
@@ -81,15 +82,14 @@ class WalletScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.storefront_rounded),
                   title: const Text('Coin Seller'),
-                  subtitle: const Text('Seller wallet and transfers'),
-                  onTap: () {},
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.currency_exchange_rounded),
-                  title: const Text('Merchant'),
-                  subtitle: const Text('Merchant settlement wallet'),
-                  onTap: () {},
+                  subtitle: const Text('Seller wallet and coin transfers'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => CoinSellerScreen(state: state),
+                    ),
+                  ),
                 ),
               ],
             ),
