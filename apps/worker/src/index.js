@@ -509,6 +509,82 @@ async function handleApi(request, env, url) {
     return json({ ok: true, wallet: user, ledger: ledger.results ?? [] });
   }
 
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length === 3 && request.method === "GET") {
+    const userId = String(parts[2] ?? "").trim();
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json({ ok: true, vip: await getVipStatus(db, userId) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "preferences" && request.method === "POST") {
+    const userId = String(parts[2] ?? "").trim();
+    const body = await bodyJson(request);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    const vip = await setVipPreference(db, userId, body.key, body.enabled === true);
+    return json({ ok: true, vip });
+  }
+
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "unique-id" && request.method === "POST") {
+    const userId = String(parts[2] ?? "").trim();
+    const body = await bodyJson(request);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    const customId = await changeVipUniqueId(db, userId, body.custom_id);
+    return json({ ok: true, custom_id: customId, vip: await getVipStatus(db, userId) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "say-hi" && request.method === "POST") {
+    const userId = String(parts[2] ?? "").trim();
+    const body = await bodyJson(request);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId, { checkMute: true });
+    const usage = await consumeFreeSayHi(db, userId, body.message);
+    return json({ ok: true, usage });
+  }
+
+  if (url.pathname === "/api/wallet/coin-seller-transfer" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const sellerId = String(body.seller_user_id ?? "").trim();
+    const receiverId = String(body.receiver_user_id ?? "").trim();
+    const amount = Number(body.coins ?? 0);
+    if (!sellerId || !receiverId || sellerId === receiverId || !Number.isSafeInteger(amount) || amount <= 0) {
+      return json({ ok: false, error: "invalid_coin_seller_transfer" }, { status: 400 });
+    }
+    await ensureUser(db, sellerId);
+    await ensureUser(db, receiverId);
+    await ensureUserAllowed(db, sellerId);
+    await ensureUserAllowed(db, receiverId);
+    const seller = await db.prepare("SELECT role, coins FROM users WHERE id = ?").bind(sellerId).first();
+    const receiver = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(receiverId).first();
+    if (seller?.role !== "coin_seller") {
+      return json({ ok: false, error: "coin_seller_required" }, { status: 403 });
+    }
+    const sellerBefore = Number(seller.coins ?? 0);
+    const receiverBefore = Number(receiver?.coins ?? 0);
+    if (sellerBefore < amount) {
+      return json({ ok: false, error: "insufficient_coins" }, { status: 400 });
+    }
+    const transferId = id();
+    const ts = now();
+    const sellerAfter = sellerBefore - amount;
+    const receiverAfter = receiverBefore + amount;
+    await db.batch([
+      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(sellerAfter, ts, sellerId),
+      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(receiverAfter, ts, receiverId),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(id(), sellerId, "coin_seller_transfer_sent", -amount, sellerAfter, transferId, ts),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(id(), receiverId, "coin_seller_received", amount, receiverAfter, transferId, ts),
+    ]);
+    const vipAward = await awardSellerVipExp(db, receiverId, amount, ts);
+    return json({
+      ok: true,
+      transfer_id: transferId,
+      seller_coin_balance: sellerAfter,
+      receiver_coin_balance: receiverAfter,
+      vip_award: vipAward,
+    });
+  }
+
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
     const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
     if (giftsFeature.enabled === false) return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
