@@ -263,6 +263,25 @@ class AppState extends ChangeNotifier {
     await refreshInbox(notify: false);
   }
 
+  Future<void> refreshRooms({bool notify = true}) async {
+    if (!backendConnected) return;
+    final remoteRooms = await backend.listRooms();
+    if (remoteRooms.isNotEmpty) {
+      rooms
+        ..clear()
+        ..addAll(remoteRooms.map((row) => RoomSummary(
+              id: row['id']?.toString() ?? '',
+              name: row['name']?.toString() ?? 'Room',
+              ownerName: row['owner_name']?.toString() ?? '',
+              ownerUserId: row['owner_user_id']?.toString() ?? '',
+              online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+              seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+              avatarKey: row['avatar_key']?.toString(),
+            )));
+    }
+    if (notify) notifyListeners();
+  }
+
   Future<void> refreshInbox({bool notify = true}) async {
     if (!backendConnected) return;
     final remoteInbox = await backend.inbox(userId: userId);
