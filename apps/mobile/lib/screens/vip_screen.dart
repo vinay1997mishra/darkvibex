@@ -97,19 +97,98 @@ class VipScreen extends StatelessWidget {
                     );
                   },
                 ),
-                if (level >= 18) ...[
+                if (level >= 2) ...[
                   const SizedBox(height: 18),
-                  _TogglePrivilege(
-                    title: 'Anonymous Everywhere',
-                    subtitle:
-                        'Hide your name on game wins, banners, room history and public activity.',
-                    value: state.vipAnonymousEverywhere,
-                    enabled: active,
-                    onChanged: (value) => state.setVipPreference(
-                      'anonymous_everywhere',
-                      value,
+                  const Text(
+                    'VIP controls',
+                    style: TextStyle(
+                      color: Color(0xFFFFD88A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  _TogglePrivilege(
+                    title: 'Hide Last Online',
+                    subtitle: 'Hide your last-online time on the profile.',
+                    value: state.vipPreference('hide_last_online'),
+                    enabled: active && level >= 2,
+                    onChanged: (value) =>
+                        state.setVipPreference('hide_last_online', value),
+                  ),
+                  if (level >= 8)
+                    _TogglePrivilege(
+                      title: 'Hide Country',
+                      subtitle: 'Hide country information from your profile.',
+                      value: state.vipPreference('hide_country'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('hide_country', value),
+                    ),
+                  if (level >= 8)
+                    _TogglePrivilege(
+                      title: 'Disable Say Hi',
+                      subtitle: 'Stop other users from starting Say Hi with you.',
+                      value: state.vipPreference('disable_say_hi'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('disable_say_hi', value),
+                    ),
+                  if (level >= 10)
+                    _TogglePrivilege(
+                      title: 'Hide Charm Level',
+                      subtitle: 'Hide your charm level on public surfaces.',
+                      value: state.vipPreference('hide_charm'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('hide_charm', value),
+                    ),
+                  if (level >= 11)
+                    _TogglePrivilege(
+                      title: 'Hide Visitor Records',
+                      subtitle: 'Hide your visitor records.',
+                      value: state.vipPreference('hide_visitors'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('hide_visitors', value),
+                    ),
+                  if (level >= 11)
+                    _TogglePrivilege(
+                      title: 'Anonymous on Ranking List',
+                      subtitle: 'Show a mysterious identity on ranking lists.',
+                      value: state.vipPreference('anonymous_ranking'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('anonymous_ranking', value),
+                    ),
+                  if (level >= 14)
+                    _TogglePrivilege(
+                      title: 'Invisible Room Entry',
+                      subtitle: 'Enter rooms without a public join notice.',
+                      value: state.vipPreference('invisible_entry'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('invisible_entry', value),
+                    ),
+                  if (level >= 15)
+                    _TogglePrivilege(
+                      title: 'Privacy Protection',
+                      subtitle: 'Protect profile and avatar media where supported.',
+                      value: state.vipPreference('privacy_protection'),
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('privacy_protection', value),
+                    ),
+                  if (level >= 18)
+                    _TogglePrivilege(
+                      title: 'Anonymous Everywhere',
+                      subtitle:
+                          'Hide your name on game wins, banners, room history and public activity.',
+                      value: state.vipAnonymousEverywhere,
+                      enabled: active,
+                      onChanged: (value) =>
+                          state.setVipPreference('anonymous_everywhere', value),
+                    ),
                 ],
                 if (level >= 15) ...[
                   const SizedBox(height: 12),
