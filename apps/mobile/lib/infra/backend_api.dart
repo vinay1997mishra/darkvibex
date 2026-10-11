@@ -228,6 +228,52 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> vipStatus({
+    required String userId,
+  }) =>
+      _json('GET', '/api/vip/${Uri.encodeComponent(userId)}');
+
+  Future<Map<String, dynamic>?> updateVipPreference({
+    required String userId,
+    required String key,
+    required bool enabled,
+  }) =>
+      _json(
+        'POST',
+        '/api/vip/${Uri.encodeComponent(userId)}/preferences',
+        body: <String, dynamic>{
+          'key': key,
+          'enabled': enabled,
+        },
+      );
+
+  Future<Map<String, dynamic>?> changeVipUniqueId({
+    required String userId,
+    required String customId,
+  }) =>
+      _json(
+        'POST',
+        '/api/vip/${Uri.encodeComponent(userId)}/unique-id',
+        body: <String, dynamic>{
+          'custom_id': customId,
+        },
+      );
+
+  Future<Map<String, dynamic>?> coinSellerTransfer({
+    required String sellerUserId,
+    required String receiverUserId,
+    required int coins,
+  }) =>
+      _json(
+        'POST',
+        '/api/wallet/coin-seller-transfer',
+        body: <String, dynamic>{
+          'seller_user_id': sellerUserId,
+          'receiver_user_id': receiverUserId,
+          'coins': coins,
+        },
+      );
+
   Future<Map<String, dynamic>?> fruitPartyBet({
     required String userId,
     required int stake,
