@@ -711,7 +711,7 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
     const cost = Number(body.coin_cost ?? 0);
-    if (!sender || !receiver || !Number.isInteger(cost) || cost <= 0) {
+    if (!sender || !receiver || giftId !== "basic-star" || cost !== 5000) {
       return json({ ok: false, error: "invalid_gift" }, { status: 400 });
     }
     await ensureUser(db, sender);
@@ -736,7 +736,9 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const stake = Number(body.stake ?? 0);
-    if (!userId || !Number.isInteger(stake) || stake <= 0) {
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId || stake !== 5000) {
       return json({ ok: false, error: "invalid_bet" }, { status: 400 });
     }
     await ensureUser(db, userId);
