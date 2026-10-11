@@ -554,21 +554,73 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
-  Future<void> _removeRoomMember(String targetUserId) async {
+  Future<void> _removeRoomMember(String targetUserId, {bool ban = false}) async {
     if (!isRoomHost || targetUserId == widget.state.userId) return;
     final ok = await widget.state.backend.removeRoomMember(
       roomId: widget.room.id,
       ownerUserId: widget.state.userId,
       targetUserId: targetUserId,
+      ban: ban,
     );
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not remove this member')),
+        SnackBar(content: Text(ban ? 'Could not block this member' : 'Could not remove this member')),
       );
       return;
     }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ban ? 'Member blocked from this room' : 'Member removed from this room')),
+    );
     await _loadRoomMembers();
+  }
+
+  Future<void> _reportRoom() async {
+    const reasons = ['Harassment', 'Inappropriate content', 'Spam or scam', 'Safety concern', 'Other'];
+    var reason = reasons.first;
+    final details = TextEditingController();
+    final report = await showDialog<(String, String)>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Report this room'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: reason,
+                items: reasons.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+                onChanged: (value) { if (value != null) setDialogState(() => reason = value); },
+                decoration: const InputDecoration(labelText: 'Reason'),
+              ),
+              TextField(
+                controller: details,
+                maxLength: 500,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Details (optional)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, (reason, details.text.trim())), child: const Text('Submit')),
+          ],
+        ),
+      ),
+    );
+    final detailText = details.text.trim();
+    details.dispose();
+    if (report == null || !mounted) return;
+    final ok = await widget.state.backend.reportRoom(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      reason: report.$1,
+      details: report.$2.isEmpty ? detailText : report.$2,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? 'Room report submitted' : 'Could not submit report')),
+    );
   }
 
   Future<void> _openRoomMembers() async {
@@ -617,13 +669,16 @@ class _RoomScreenState extends State<RoomScreen> {
                             title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : ''}'),
                             subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
                             trailing: isRoomHost && !isSelf
-                                ? IconButton(
-                                    tooltip: 'Remove from room',
-                                    icon: const Icon(Icons.person_remove_alt_1_rounded),
-                                    onPressed: () async {
+                                ? PopupMenuButton<String>(
+                                    tooltip: 'Member actions',
+                                    onSelected: (action) async {
                                       Navigator.pop(sheetContext);
-                                      await _removeRoomMember(userId);
+                                      await _removeRoomMember(userId, ban: action == 'block');
                                     },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 'remove', child: Text('Remove from room')),
+                                      PopupMenuItem(value: 'block', child: Text('Block from room')),
+                                    ],
                                   )
                                 : null,
                           );
@@ -714,6 +769,10 @@ class _RoomScreenState extends State<RoomScreen> {
                   FilledButton.tonalIcon(
                     onPressed: () { Navigator.pop(sheetContext); _showRoomRules(); },
                     icon: const Icon(Icons.policy_rounded), label: const Text('Terms & rules'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _reportRoom(); },
+                    icon: const Icon(Icons.flag_outlined), label: const Text('Report room'),
                   ),
                 ],
               ),
