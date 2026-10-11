@@ -117,6 +117,41 @@ async function verifyGoogleIdToken(idToken, expectedAudience) {
   return claims;
 }
 
+async function verifyFacebookAccessToken(accessToken, appId, appSecret) {
+  const token = String(accessToken ?? "").trim();
+  const expectedAppId = String(appId ?? "").trim();
+  const secret = String(appSecret ?? "").trim();
+  if (!expectedAppId || !secret) throw new Error("facebook_auth_not_configured");
+  if (!token) throw new Error("facebook_access_token_required");
+
+  const appAccessToken = expectedAppId + "|" + secret;
+  const debugResponse = await fetch(
+    "https://graph.facebook.com/debug_token?input_token=" +
+      encodeURIComponent(token) +
+      "&access_token=" +
+      encodeURIComponent(appAccessToken),
+    { headers: { accept: "application/json" } },
+  );
+  if (!debugResponse.ok) throw new Error("invalid_facebook_token");
+  const debugPayload = await debugResponse.json();
+  const data = debugPayload?.data ?? {};
+  if (data.is_valid !== true || String(data.app_id ?? "") !== expectedAppId || !data.user_id) {
+    throw new Error("invalid_facebook_token");
+  }
+
+  const meResponse = await fetch(
+    "https://graph.facebook.com/me?fields=id,name&access_token=" +
+      encodeURIComponent(token),
+    { headers: { accept: "application/json" } },
+  );
+  if (!meResponse.ok) throw new Error("invalid_facebook_profile");
+  const profile = await meResponse.json();
+  if (!profile?.id || String(profile.id) !== String(data.user_id)) {
+    throw new Error("invalid_facebook_profile");
+  }
+  return profile;
+}
+
 function bearerToken(request) {
   const value = String(request.headers.get("authorization") ?? "");
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
@@ -485,6 +520,7 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       google_web_client_id: String(env.GOOGLE_WEB_CLIENT_ID ?? ""),
+      facebook_enabled: Boolean(env.FACEBOOK_APP_ID && env.FACEBOOK_APP_SECRET),
     });
   }
 
@@ -546,6 +582,37 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     const token = await createSessionToken(env, userId, user.display_name);
     return json({ ok: true, token, user, provider: "google" });
+  }
+
+  if (url.pathname === "/api/session/facebook" && request.method === "POST") {
+    if (!env.SESSION_SECRET) {
+      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
+    }
+    const body = await bodyJson(request);
+    const accessToken = String(body.access_token ?? "").trim();
+    if (!accessToken) {
+      return json({ ok: false, error: "facebook_access_token_required" }, { status: 400 });
+    }
+
+    let profile;
+    try {
+      profile = await verifyFacebookAccessToken(
+        accessToken,
+        env.FACEBOOK_APP_ID,
+        env.FACEBOOK_APP_SECRET,
+      );
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      const status = code === "facebook_auth_not_configured" ? 503 : 401;
+      return json({ ok: false, error: code }, { status });
+    }
+
+    const userId = "fb_" + String(profile.id);
+    const displayName = String(profile.name ?? "DarkVibeX User").trim().slice(0, 60);
+    const user = await ensureUser(db, userId, displayName);
+    await ensureUserAllowed(db, userId);
+    const token = await createSessionToken(env, userId, user.display_name);
+    return json({ ok: true, token, user, provider: "facebook" });
   }
 
   if (url.pathname === "/api/session/guest" && request.method === "POST") {
