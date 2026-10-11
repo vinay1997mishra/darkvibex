@@ -37,6 +37,7 @@ jobs:
           node --check src/vip_policy.js
           node --check src/vip_store.js
           node --check src/vip_actions.js
+          node --check src/aladdin_lamp.js
           node --check ../owner_panel/app.js
       - name: Safe hierarchy policy
         working-directory: .
