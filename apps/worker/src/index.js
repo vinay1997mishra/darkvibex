@@ -2,6 +2,18 @@ import { normalizeRole } from "./role_policy.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
+import {
+  acceptPendingLampMicInvite,
+  claimLampTask,
+  createLampMicInvite,
+  getLampStatus,
+  recordLampGiftActivity,
+  recordLampRoomEntry,
+  recordLampRoomFollow,
+  recordLampRoomShare,
+  roomFollowState,
+  sampleLampMicProgress,
+} from "./aladdin_lamp.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -260,7 +272,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/config" && request.method === "GET") {
-    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "maintenance"];
+    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "maintenance"];
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
@@ -372,6 +384,7 @@ async function handleApi(request, env, url) {
     await db.prepare(
       "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
     ).bind(roomId, userId, ts, ts).run();
+    await recordLampRoomEntry(db, roomId, userId, ts);
     return json({ ok: true });
   }
 
@@ -383,6 +396,7 @@ async function handleApi(request, env, url) {
     const seatIndex = body.seat_index == null ? null : Number(body.seat_index);
     const muted = body.mic_muted === false ? 0 : 1;
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    await sampleLampMicProgress(db, roomId, now());
     if (seatIndex != null) {
       const occupied = await db.prepare(
         "SELECT user_id FROM room_members WHERE room_id = ? AND seat_index = ? AND user_id <> ? LIMIT 1"
@@ -392,6 +406,7 @@ async function handleApi(request, env, url) {
     await db.prepare(
       "UPDATE room_members SET seat_index = ?, mic_muted = ?, updated_at = ? WHERE room_id = ? AND user_id = ?"
     ).bind(seatIndex, muted, now(), roomId, userId).run();
+    if (seatIndex != null) await acceptPendingLampMicInvite(db, roomId, userId, now());
     return json({ ok: true, seat_index: seatIndex, mic_muted: Boolean(muted) });
   }
 
@@ -420,6 +435,76 @@ async function handleApi(request, env, url) {
         "INSERT INTO room_messages (id, room_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)"
       ).bind(messageId, roomId, userId, textValue, now()).run();
       return json({ ok: true, message_id: messageId }, { status: 201 });
+    }
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members" && request.method === "GET") {
+    const roomId = parts[2];
+    const rows = await db.prepare(
+      `SELECT m.user_id, u.display_name, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
+         FROM room_members m
+         LEFT JOIN users u ON u.id = m.user_id
+        WHERE m.room_id = ?
+        ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
+        LIMIT 200`
+    ).bind(roomId).all();
+    return json({ ok: true, members: rows.results ?? [] });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "follow") {
+    const roomId = parts[2];
+    if (request.method === "GET") {
+      const userId = String(url.searchParams.get("user_id") ?? "").trim();
+      if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      return json({ ok: true, following: await roomFollowState(db, roomId, userId) });
+    }
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const userId = String(body.user_id ?? "").trim();
+      if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      await ensureUser(db, userId);
+      await ensureUserAllowed(db, userId);
+      const following = await recordLampRoomFollow(db, roomId, userId, body.follow !== false, now());
+      return json({ ok: true, following });
+    }
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length >= 4 && parts[3] === "lamp") {
+    const lampFeature = await ownerSetting(db, "feature.aladdin_lamp", { enabled: true });
+    if (lampFeature.enabled === false) return json({ ok: false, error: "aladdin_lamp_disabled" }, { status: 403 });
+    const roomId = parts[2];
+
+    if (parts.length === 4 && request.method === "GET") {
+      const userId = String(url.searchParams.get("user_id") ?? "").trim();
+      if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      const status = await getLampStatus(db, roomId, userId, now());
+      return json({ ok: true, ...status });
+    }
+
+    if (parts.length === 5 && parts[4] === "claim" && request.method === "POST") {
+      const body = await bodyJson(request);
+      const userId = String(body.user_id ?? "").trim();
+      const taskId = String(body.task_id ?? "").trim();
+      if (!userId || !taskId) return json({ ok: false, error: "user_and_task_required" }, { status: 400 });
+      await ensureUserAllowed(db, userId);
+      const reward = await claimLampTask(db, roomId, userId, taskId, now());
+      return json({ ok: true, ...reward });
+    }
+
+    if (parts.length === 5 && parts[4] === "share" && request.method === "POST") {
+      const body = await bodyJson(request);
+      const userId = String(body.user_id ?? "").trim();
+      const platform = String(body.platform ?? "").trim().toLowerCase();
+      await recordLampRoomShare(db, roomId, userId, platform, now());
+      return json({ ok: true });
+    }
+
+    if (parts.length === 5 && parts[4] === "invite" && request.method === "POST") {
+      const body = await bodyJson(request);
+      const hostId = String(body.host_user_id ?? "").trim();
+      const inviteeId = String(body.invitee_user_id ?? "").trim();
+      await createLampMicInvite(db, roomId, hostId, inviteeId, now());
+      return json({ ok: true });
     }
   }
 
@@ -608,6 +693,7 @@ async function handleApi(request, env, url) {
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
     ]);
+    await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
   }
 
