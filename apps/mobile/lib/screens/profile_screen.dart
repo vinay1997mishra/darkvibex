@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'vip_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
