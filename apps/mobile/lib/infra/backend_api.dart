@@ -15,6 +15,7 @@ class BackendApi {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    String? authToken,
   }) async {
     if (!configured) return null;
     final client = HttpClient();
@@ -27,6 +28,12 @@ class BackendApi {
         _ => await client.openUrl(method, uri),
       };
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      if (authToken != null && authToken.trim().isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer ${authToken.trim()}',
+        );
+      }
       if (body != null) {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));
@@ -50,7 +57,7 @@ class BackendApi {
   Future<Map<String, dynamic>?> health() =>
       _json('GET', '/health');
 
-  Future<Map<String, dynamic>?> googleAuthConfig() =>
+  Future<Map<String, dynamic>?> authConfig() =>
       _json('GET', '/api/auth/config');
 
   Future<Map<String, dynamic>?> startGoogleSession({
@@ -118,6 +125,18 @@ class BackendApi {
         'user_id': userId,
         'display_name': displayName,
       },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> leaveRoom({
+    required String roomId,
+    required String userId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/$roomId/leave',
+      body: <String, dynamic>{'user_id': userId},
     );
     return value?['ok'] == true;
   }
@@ -214,7 +233,7 @@ class BackendApi {
     required String senderUserId,
     required String receiverUserId,
     required String giftId,
-    required int coinCost,
+    int quantity = 1,
   }) =>
       _json(
         'POST',
@@ -224,12 +243,258 @@ class BackendApi {
           'sender_user_id': senderUserId,
           'receiver_user_id': receiverUserId,
           'gift_id': giftId,
-          'coin_cost': coinCost,
+          'quantity': quantity,
         },
+      );
+
+  Future<Map<String, dynamic>?> socialState({
+    required String userId,
+    required String targetUserId,
+  }) =>
+      _json(
+        'GET',
+        '/api/social/state?user_id=${Uri.encodeQueryComponent(userId)}&target_id=${Uri.encodeQueryComponent(targetUserId)}',
+      );
+
+  Future<Map<String, dynamic>?> setFollow({
+    required String authToken,
+    required String targetUserId,
+    required bool enabled,
+  }) =>
+      _json(
+        'POST',
+        '/api/social/follow',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'target_user_id': targetUserId,
+          'enabled': enabled,
+        },
+      );
+
+  Future<Map<String, dynamic>?> setBlocked({
+    required String authToken,
+    required String targetUserId,
+    required bool enabled,
+  }) =>
+      _json(
+        'POST',
+        '/api/social/block',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'target_user_id': targetUserId,
+          'enabled': enabled,
+        },
+      );
+
+  Future<Map<String, dynamic>?> reportUser({
+    required String authToken,
+    required String targetUserId,
+    String roomId = '',
+    List<String> categories = const <String>[],
+    String details = '',
+  }) =>
+      _json(
+        'POST',
+        '/api/social/report',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'target_user_id': targetUserId,
+          'room_id': roomId,
+          'categories': categories,
+          'details': details,
+        },
+      );
+
+  Future<List<Map<String, dynamic>>> dynamicPosts() async {
+    final value = await _json('GET', '/api/dynamic');
+    final rows = value?['posts'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> createDynamicPost({
+    required String authToken,
+    required String text,
+    String topic = '',
+  }) =>
+      _json(
+        'POST',
+        '/api/dynamic',
+        authToken: authToken,
+        body: <String, dynamic>{'text': text, 'topic': topic},
+      );
+
+  Future<Map<String, dynamic>?> likeDynamicPost({
+    required String authToken,
+    required String postId,
+  }) =>
+      _json(
+        'POST',
+        '/api/dynamic/${Uri.encodeComponent(postId)}/like',
+        authToken: authToken,
+      );
+
+  Future<Map<String, dynamic>?> commentDynamicPost({
+    required String authToken,
+    required String postId,
+    required String text,
+  }) =>
+      _json(
+        'POST',
+        '/api/dynamic/${Uri.encodeComponent(postId)}/comments',
+        authToken: authToken,
+        body: <String, dynamic>{'text': text},
+      );
+
+  Future<List<Map<String, dynamic>>> rank(String kind) async {
+    final value = await _json(
+      'GET',
+      '/api/community/ranks?kind=${Uri.encodeQueryComponent(kind)}',
+    );
+    final rows = value?['entries'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> roomProgress(String roomId) =>
+      _json(
+        'GET',
+        '/api/room-progress?room_id=${Uri.encodeQueryComponent(roomId)}',
+      );
+
+  Future<List<Map<String, dynamic>>> parties() async {
+    final value = await _json('GET', '/api/parties');
+    final rows = value?['parties'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> createParty({
+    required String authToken,
+    required String type,
+    required String title,
+    String dressUp = 'default',
+  }) =>
+      _json(
+        'POST',
+        '/api/parties',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'type': type,
+          'title': title,
+          'dress_up': dressUp,
+        },
+      );
+
+  Future<Map<String, dynamic>?> joinParty({
+    required String authToken,
+    required String partyId,
+  }) =>
+      _json(
+        'POST',
+        '/api/parties/${Uri.encodeComponent(partyId)}/join',
+        authToken: authToken,
+      );
+
+  Future<List<Map<String, dynamic>>> catalog(String kind) async {
+    final value = await _json('GET', '/api/catalog?kind=${Uri.encodeQueryComponent(kind)}');
+    final rows = value?['items'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> roomMembers(
+    String roomId, {
+    String? viewerId,
+  }) async {
+    final query = viewerId == null || viewerId.isEmpty
+        ? ''
+        : '?viewer_id=${Uri.encodeQueryComponent(viewerId)}';
+    final value = await _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/members$query');
+    final rows = value?['members'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> search(String query) =>
+      _json('GET', '/api/search?q=${Uri.encodeQueryComponent(query)}');
+
+  Future<Map<String, dynamic>?> relationships({
+    required String userA,
+    required String userB,
+  }) =>
+      _json(
+        'GET',
+        '/api/relationships?user_a=${Uri.encodeQueryComponent(userA)}&user_b=${Uri.encodeQueryComponent(userB)}',
+      );
+
+  Future<Map<String, dynamic>?> purchaseStoreItem({
+    required String userId,
+    required String kind,
+    required String itemId,
+  }) =>
+      _json('POST', '/api/store/purchase', body: <String, dynamic>{
+        'user_id': userId,
+        'kind': kind,
+        'item_id': itemId,
+      });
+
+  Future<List<Map<String, dynamic>>> entitlements(String userId) async {
+    final value = await _json(
+      'GET',
+      '/api/store/entitlements?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
+    final rows = value?['items'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> family(String userId) =>
+      _json('GET', '/api/family?user_id=${Uri.encodeQueryComponent(userId)}');
+
+  Future<Map<String, dynamic>?> createFamily({
+    required String userId,
+    required String name,
+  }) =>
+      _json('POST', '/api/family/create', body: <String, dynamic>{
+        'user_id': userId,
+        'name': name,
+      });
+
+  Future<Map<String, dynamic>?> joinFamily({
+    required String userId,
+    required String familyId,
+  }) =>
+      _json('POST', '/api/family/join', body: <String, dynamic>{
+        'user_id': userId,
+        'family_id': familyId,
+      });
+
+  Future<Map<String, dynamic>?> familySignIn(String userId) =>
+      _json('POST', '/api/family/signin', body: <String, dynamic>{
+        'user_id': userId,
+      });
+
+  Future<Map<String, dynamic>?> fruitPartyState({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/games/fruit-party/state?user_id=${Uri.encodeQueryComponent(userId)}',
       );
 
   Future<Map<String, dynamic>?> fruitPartyBet({
     required String userId,
+    required String fruit,
     required int stake,
   }) =>
       _json(
@@ -237,6 +502,7 @@ class BackendApi {
         '/api/games/fruit-party/bet',
         body: <String, dynamic>{
           'user_id': userId,
+          'fruit': fruit,
           'stake': stake,
         },
       );

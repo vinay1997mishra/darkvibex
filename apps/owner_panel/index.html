@@ -66,7 +66,7 @@
             <div class="form-grid">
               <label>Display name<input id="editUserName" /></label>
               <label>Role<select id="editUserRole"><option value="user">User</option><option value="room_owner">Room owner</option><option value="room_admin">Room admin</option><option value="moderator">Moderator</option><option value="coin_seller">Coin seller</option><option value="merchant">Merchant</option><option value="platform_owner">Platform owner</option></select></label>
-              <label>VIP level<input id="editVip" type="number" min="0" max="999" /></label>
+              <label>VIP level<input id="editVip" type="number" min="0" max="11" /></label>
               <label>Account status<select id="editStatus"><option value="active">Active</option><option value="suspended">Suspended</option><option value="banned">Banned</option></select></label>
               <label class="span-2">Moderation note<textarea id="editNote" rows="3" placeholder="Internal owner note"></textarea></label>
             </div>
@@ -90,16 +90,20 @@
 
         <section class="view" data-view-panel="catalog">
           <article class="panel">
-            <div class="panel-head"><div><h2>Content catalog</h2><p>Manage gifts, VIPs, tags, themes, frames, rings, bubbles, profile backgrounds, vehicles and future modules.</p></div></div>
+            <div class="panel-head"><div><h2>Content catalog</h2><p>Manage gifts, tags, themes, frames, rings, bubbles, profile backgrounds, vehicles and future modules.</p></div></div>
             <div class="form-grid">
-              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="vip">VIP</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
+              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="music">Room music</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
               <label>Item ID<input id="catalogId" placeholder="Optional; generated if blank" /></label>
               <label>Display name<input id="catalogName" /></label>
               <label>Price in coins<input id="catalogPrice" type="number" min="0" value="0" /></label>
               <label>Sort order<input id="catalogOrder" type="number" value="0" /></label>
               <label>Country target<input id="catalogCountry" placeholder="Blank = all" /></label>
               <label>Asset / file key<input id="catalogAsset" placeholder="R2 key or asset reference" /></label>
-              <label>Level / duration<input id="catalogLevel" placeholder="e.g. VIP 3 / 7 days" /></label>
+              <label>Gift subcategory<input id="catalogSubcategory" placeholder="popular / lucky / music / lucky_bag / four_box / rank_hall / moderation / custom / cp / enemy" /></label>
+              <label>Emoji / icon<input id="catalogEmoji" placeholder="e.g. ✨" /></label>
+              <label>Effect tier<select id="catalogEffect"><option value="compact">Compact</option><option value="overlay">Overlay</option><option value="cinematic">Cinematic</option></select></label>
+              <label>Duration days<input id="catalogDuration" type="number" min="0" value="0" /></label>
+              <label>Level<input id="catalogLevel" placeholder="e.g. 3" /></label>
               <label class="check"><input id="catalogEnabled" type="checkbox" checked /> Enabled</label>
               <label class="span-2">Description / effect details<textarea id="catalogDescription" rows="3"></textarea></label>
             </div>

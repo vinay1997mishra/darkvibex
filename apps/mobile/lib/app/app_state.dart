@@ -42,6 +42,7 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String userRole = 'user';
   String? sessionToken;
   String? authProvider;
   bool backendConnected = false;
@@ -56,6 +57,7 @@ class AppState extends ChangeNotifier {
   int diamonds = 120;
   int vipLevel = 1;
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
+  final List<String> recentRoomIds = <String>[];
 
   final List<RoomSummary> rooms = <RoomSummary>[
     const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
@@ -79,7 +81,7 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      final config = await backend.googleAuthConfig();
+      final config = await backend.authConfig();
       _googleWebClientId = config?['google_web_client_id']?.toString().trim();
 
       if (_googleWebClientId != null && _googleWebClientId!.isNotEmpty) {
@@ -112,7 +114,7 @@ class AppState extends ChangeNotifier {
 
     try {
       if (!googleSignInReady) {
-        final config = await backend.googleAuthConfig();
+        final config = await backend.authConfig();
         _googleWebClientId = config?['google_web_client_id']?.toString().trim();
         if (_googleWebClientId == null || _googleWebClientId!.isEmpty) {
           authError = 'Google Login is not configured on the server yet.';
@@ -206,6 +208,7 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    userRole = user['role']?.toString() ?? userRole;
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
@@ -247,10 +250,12 @@ class AppState extends ChangeNotifier {
     authError = null;
     userId = '91000001';
     displayName = 'DarkVibeX User';
+    userRole = 'user';
     coins = 2500000;
     diamonds = 120;
     vipLevel = 1;
     walletLedger.clear();
+    recentRoomIds.clear();
     notifyListeners();
   }
 
@@ -301,6 +306,16 @@ class AppState extends ChangeNotifier {
     rooms.insert(0, room);
     notifyListeners();
     return room;
+  }
+
+  void markRoomVisited(String roomId) {
+    if (roomId.isEmpty) return;
+    recentRoomIds.remove(roomId);
+    recentRoomIds.insert(0, roomId);
+    if (recentRoomIds.length > 10) {
+      recentRoomIds.removeRange(10, recentRoomIds.length);
+    }
+    notifyListeners();
   }
 
   bool spendCoins(int amount) {

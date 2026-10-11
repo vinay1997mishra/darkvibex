@@ -242,6 +242,10 @@ async function ensureOwnerSchema(db) {
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.games', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.messages', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.room_creation', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.store', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.family', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.relationships', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.music', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('maintenance', '{\"enabled\":false,\"message\":\"\"}', ?)").bind(now()),
   ]);
   schemaReady = true;
@@ -369,7 +373,7 @@ async function handleUsers(request, db, actor, url, parts) {
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 60);
     const role = body.role == null ? current.role : normalizeRole(body.role);
-    const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 999, Number(current.vip_level ?? 0));
+    const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 11, Number(current.vip_level ?? 0));
     await db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
       .bind(name || current.display_name, role, vip, now(), userId).run();
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
@@ -385,7 +389,8 @@ async function handleUsers(request, db, actor, url, parts) {
     const diamondDelta = clampInt(body.diamond_delta ?? 0, -900000000000000, 900000000000000, 0);
     const nextCoins = Number(current.coins ?? 0) + coinDelta;
     const nextDiamonds = Number(current.diamonds ?? 0) + diamondDelta;
-    if (!Number.isSafeInteger(nextCoins) || !Number.isSafeInteger(nextDiamonds) || nextCoins < 0 || nextDiamonds < 0) {
+    if (!Number.isSafeInteger(nextCoins) || !Number.isSafeInteger(nextDiamonds) ||
+        nextCoins < 0 || nextDiamonds < 0) {
       return json({ ok: false, error: "invalid_balance_change" }, { status: 400 });
     }
     const ts = now();
