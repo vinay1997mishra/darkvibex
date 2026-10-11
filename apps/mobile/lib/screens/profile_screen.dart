@@ -18,9 +18,33 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              const CircleAvatar(
-                radius: 36,
-                child: Icon(Icons.person_rounded, size: 40),
+              Container(
+                width: 76,
+                height: 76,
+                padding: EdgeInsets.all(
+                  state.hasVipPrivilege('headframe') ? 4 : 0,
+                ),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: state.hasVipPrivilege('headframe')
+                      ? Border.all(
+                          color: const Color(0xFFFFD36A),
+                          width: 3,
+                        )
+                      : null,
+                  boxShadow: state.hasVipPrivilege('exclusive_mic_effect')
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x66FFD36A),
+                            blurRadius: 18,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: const CircleAvatar(
+                  child: Icon(Icons.person_rounded, size: 40),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -28,10 +52,18 @@ class ProfileScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      state.displayName,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                      state.vipAnonymousEverywhere ? 'Anonymous' : state.displayName,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: state.hasVipPrivilege('nickname_light')
+                            ? const Color(0xFFFFD36A)
+                            : null,
+                      ),
                     ),
-                    Text('ID ${state.userId} • VIP ${state.vipLevel}'),
+                    Text(
+                      'ID ${state.customVipId?.isNotEmpty == true ? state.customVipId : state.userId} • VIP ${state.vipLevel}/18',
+                    ),
                   ],
                 ),
               ),
