@@ -240,6 +240,29 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId).first();
 }
 
+async function ensureRoomSettingsTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_settings (
+      room_id TEXT PRIMARY KEY,
+      announcement TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
+async function ensureLegalConsentTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS legal_consents (
+      user_id TEXT NOT NULL,
+      version TEXT NOT NULL,
+      accepted_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, version),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
 async function ensureImageTables(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_images (
@@ -393,6 +416,77 @@ async function handleApi(request, env, url) {
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
     ).bind(parts[2]).first();
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+
+  if (url.pathname === "/api/legal/consent" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const version = String(url.searchParams.get("version") ?? "").trim().slice(0, 40);
+    if (!version) return json({ ok: false, error: "version_required" }, { status: 400 });
+    await ensureLegalConsentTable(db);
+    const row = await db.prepare(
+      "SELECT 1 AS accepted FROM legal_consents WHERE user_id = ? AND version = ?"
+    ).bind(String(session.sub), version).first();
+    return json({ ok: true, accepted: Boolean(row) });
+  }
+
+  if (url.pathname === "/api/legal/consent" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const body = await bodyJson(request);
+    const version = String(body.version ?? "").trim().slice(0, 40);
+    if (!version) return json({ ok: false, error: "version_required" }, { status: 400 });
+    await ensureLegalConsentTable(db);
+    await db.prepare(
+      "INSERT OR IGNORE INTO legal_consents (user_id, version, accepted_at) VALUES (?, ?, ?)"
+    ).bind(String(session.sub), version, now()).run();
+    return json({ ok: true, accepted: true, version });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
+    const roomId = parts[2];
+    await ensureRoomSettingsTable(db);
+    const room = await db.prepare(
+      `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
+              COALESCE(s.announcement, '') AS announcement
+         FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
+        WHERE r.id = ?`
+    ).bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (request.method === "GET") {
+      const authError = await requireSession(request, env);
+      if (authError) return authError;
+      const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, String(session.sub)).first();
+      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      return json({ ok: true, settings: room });
+    }
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const userId = String(body.user_id ?? "").trim();
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
+      if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      const name = String(body.name ?? "").trim().slice(0, 80);
+      const seatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? room.seat_count)));
+      const locked = body.locked === true ? 1 : 0;
+      const announcement = String(body.announcement ?? "").trim().slice(0, 500);
+      if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
+      const ts = now();
+      await db.batch([
+        db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
+          .bind(name, seatCount, locked, ts, roomId),
+        db.prepare(
+          "INSERT INTO room_settings (room_id, announcement, updated_at) VALUES (?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, ts),
+      ]);
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement } });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
   if (url.pathname === "/api/rooms" && request.method === "GET") {
