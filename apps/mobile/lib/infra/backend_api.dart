@@ -55,7 +55,7 @@ class BackendApi {
     }
   }
 
-  static String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
+  String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
 
   Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
     if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > 5 * 1024 * 1024) return null;
