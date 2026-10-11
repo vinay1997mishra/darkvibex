@@ -422,7 +422,17 @@ async function ensureParityTables(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS family_signins (family_id TEXT NOT NULL,user_id TEXT NOT NULL,day_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id,day_key))"),
     db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallets (user_id TEXT PRIMARY KEY,balance_cents INTEGER NOT NULL DEFAULT 0 CHECK(balance_cents>=0),updated_at INTEGER NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,kind TEXT NOT NULL,amount_cents INTEGER NOT NULL,balance_after_cents INTEGER NOT NULL,destination_type TEXT NOT NULL DEFAULT '',destination_ref TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time ON dollar_wallet_ledger(user_id,created_at DESC)")
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time ON dollar_wallet_ledger(user_id,created_at DESC)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS social_follows (follower_user_id TEXT NOT NULL,target_user_id TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(follower_user_id,target_user_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS user_blocks (user_id TEXT NOT NULL,target_user_id TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(user_id,target_user_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS user_reports (id TEXT PRIMARY KEY,reporter_user_id TEXT NOT NULL,target_user_id TEXT NOT NULL,room_id TEXT NOT NULL DEFAULT '',categories_json TEXT NOT NULL DEFAULT '[]',details TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'open',created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_reports_target_time ON user_reports(target_user_id,created_at DESC)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS dynamic_posts (id TEXT PRIMARY KEY,author_user_id TEXT NOT NULL,text TEXT NOT NULL,topic TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'published',created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS dynamic_likes (post_id TEXT NOT NULL,user_id TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(post_id,user_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS dynamic_comments (id TEXT PRIMARY KEY,post_id TEXT NOT NULL,user_id TEXT NOT NULL,text TEXT NOT NULL,created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS parties (id TEXT PRIMARY KEY,type TEXT NOT NULL,owner_user_id TEXT NOT NULL,title TEXT NOT NULL,dress_up TEXT NOT NULL DEFAULT 'default',active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)),created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS party_members (party_id TEXT NOT NULL,user_id TEXT NOT NULL,joined_at INTEGER NOT NULL,PRIMARY KEY(party_id,user_id))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS room_progress (room_id TEXT PRIMARY KEY,experience INTEGER NOT NULL DEFAULT 0,level INTEGER NOT NULL DEFAULT 1,active_exp INTEGER NOT NULL DEFAULT 0,sending_exp INTEGER NOT NULL DEFAULT 0,receiving_exp INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)")
   ]);
 }
 
@@ -447,6 +457,35 @@ async function dollarWalletState(db, userId) {
     "SELECT id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at FROM dollar_wallet_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
   ).bind(userId).all();
   return {balance_cents:Number(wallet?.balance_cents??0),updated_at:wallet?.updated_at??null,ledger:ledger.results??[]};
+}
+
+function roomLevelFromExp(exp) {
+  const value=Math.max(0,Number(exp??0));
+  return Math.max(1,Math.min(100,1+Math.floor(Math.sqrt(value/25000))));
+}
+
+async function addRoomExperience(db, roomId, {active=0,sending=0,receiving=0}={}) {
+  const rid=String(roomId??"").trim();
+  if(!rid)return;
+  await ensureParityTables(db);
+  const add=Math.max(0,Number(active??0))+Math.max(0,Number(sending??0))+Math.max(0,Number(receiving??0));
+  await db.prepare(
+    "INSERT OR IGNORE INTO room_progress (room_id,experience,level,active_exp,sending_exp,receiving_exp,updated_at) VALUES (?,0,1,0,0,0,?)"
+  ).bind(rid,now()).run();
+  if(add<=0)return;
+  await db.prepare(
+    "UPDATE room_progress SET experience=experience+?,active_exp=active_exp+?,sending_exp=sending_exp+?,receiving_exp=receiving_exp+?,updated_at=? WHERE room_id=?"
+  ).bind(add,Math.max(0,active),Math.max(0,sending),Math.max(0,receiving),now(),rid).run();
+  const row=await db.prepare("SELECT experience FROM room_progress WHERE room_id=?").bind(rid).first();
+  await db.prepare("UPDATE room_progress SET level=? WHERE room_id=?").bind(roomLevelFromExp(row?.experience),rid).run();
+}
+
+async function sessionUser(request, env) {
+  if(!env.SESSION_SECRET)throw new Error("session_secret_not_configured");
+  const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
+  const userId=String(session?.sub??"").trim();
+  if(!userId)throw new Error("invalid_session");
+  return userId;
 }
 
 function mixRound(value) {
@@ -744,6 +783,7 @@ async function handleApi(request, env, url) {
     const viewerId=String(url.searchParams.get("viewer_id")??"").trim();
     if(viewerId){
       await db.prepare("UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?").bind(now(),parts[2],viewerId).run();
+      await addRoomExperience(db,parts[2],{active:1});
     }
     const rows=await db.prepare(
       "SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,u.display_name,u.avatar_key,u.vip_level FROM room_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.room_id=? AND m.updated_at>? ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END,m.seat_index ASC,m.joined_at ASC LIMIT 200"
@@ -891,6 +931,10 @@ async function handleApi(request, env, url) {
       db.prepare("UPDATE users SET diamonds=diamonds+?,updated_at=? WHERE id=?").bind(cost,now(),receiver),
       db.prepare("INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,created_at) VALUES (?,?,?,?,?,?,?)").bind(eventId,body.room_id??null,sender,receiver,giftId,cost,now())
     ]);
+    if(body.room_id){
+      const exp=Math.max(1,Math.floor(cost/1000));
+      await addRoomExperience(db,body.room_id,{sending:exp,receiving:exp});
+    }
     const relation=giftId.startsWith("cp-")?await relationshipProgress(db,sender,receiver,"cp"):
       giftId.startsWith("enemy-")?await relationshipProgress(db,sender,receiver,"enemy"):null;
     return json({ok:true,event_id:eventId,sender_coin_balance:balance,receiver_diamonds_added:cost,gift,quantity,unit_cost:unitCost,relation,
@@ -1039,6 +1083,154 @@ async function handleApi(request, env, url) {
       "INSERT INTO dollar_wallet_ledger (id,user_id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at) VALUES (?,?,'settlement',?,?,?,?,?)"
     ).bind(ledgerId,userId,-amountCents,balance,destinationType,destinationRef,now()).run();
     return json({ok:true,ledger_id:ledgerId,balance_cents:balance});
+  }
+
+  if (url.pathname === "/api/social/state" && request.method === "GET") {
+    await ensureParityTables(db);
+    const userId=String(url.searchParams.get("user_id")??"").trim();
+    const targetId=String(url.searchParams.get("target_id")??"").trim();
+    if(!userId||!targetId)return json({ok:false,error:"user_ids_required"},{status:400});
+    const [follow,block,followers,following]=await Promise.all([
+      db.prepare("SELECT 1 AS yes FROM social_follows WHERE follower_user_id=? AND target_user_id=?").bind(userId,targetId).first(),
+      db.prepare("SELECT 1 AS yes FROM user_blocks WHERE user_id=? AND target_user_id=?").bind(userId,targetId).first(),
+      db.prepare("SELECT COUNT(*) AS value FROM social_follows WHERE target_user_id=?").bind(targetId).first(),
+      db.prepare("SELECT COUNT(*) AS value FROM social_follows WHERE follower_user_id=?").bind(targetId).first()
+    ]);
+    return json({ok:true,following:!!follow,blocked:!!block,followers:Number(followers?.value??0),following_count:Number(following?.value??0)});
+  }
+
+  if (url.pathname === "/api/social/follow" && request.method === "POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const body=await bodyJson(request),target=String(body.target_user_id??"").trim(),enabled=body.enabled!==false;
+    if(!target||target===actor)return json({ok:false,error:"invalid_target"},{status:400});
+    await ensureUser(db,target);
+    if(enabled)await db.prepare("INSERT OR REPLACE INTO social_follows (follower_user_id,target_user_id,created_at) VALUES (?,?,?)").bind(actor,target,now()).run();
+    else await db.prepare("DELETE FROM social_follows WHERE follower_user_id=? AND target_user_id=?").bind(actor,target).run();
+    return json({ok:true,following:enabled});
+  }
+
+  if (url.pathname === "/api/social/block" && request.method === "POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const body=await bodyJson(request),target=String(body.target_user_id??"").trim(),enabled=body.enabled!==false;
+    if(!target||target===actor)return json({ok:false,error:"invalid_target"},{status:400});
+    await ensureUser(db,target);
+    if(enabled){
+      await db.batch([
+        db.prepare("INSERT OR REPLACE INTO user_blocks (user_id,target_user_id,created_at) VALUES (?,?,?)").bind(actor,target,now()),
+        db.prepare("DELETE FROM social_follows WHERE follower_user_id=? AND target_user_id=?").bind(actor,target),
+        db.prepare("DELETE FROM social_follows WHERE follower_user_id=? AND target_user_id=?").bind(target,actor)
+      ]);
+    }else await db.prepare("DELETE FROM user_blocks WHERE user_id=? AND target_user_id=?").bind(actor,target).run();
+    return json({ok:true,blocked:enabled});
+  }
+
+  if (url.pathname === "/api/social/report" && request.method === "POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const body=await bodyJson(request),target=String(body.target_user_id??"").trim();
+    const categories=Array.isArray(body.categories)?body.categories.map(v=>String(v).slice(0,40)).slice(0,8):[];
+    const details=String(body.details??"").trim().slice(0,1000);
+    if(!target||target===actor||(!categories.length&&!details))return json({ok:false,error:"invalid_report"},{status:400});
+    const reportId=id();
+    await db.prepare("INSERT INTO user_reports (id,reporter_user_id,target_user_id,room_id,categories_json,details,status,created_at) VALUES (?,?,?,?,?,?,'open',?)")
+      .bind(reportId,actor,target,String(body.room_id??"").slice(0,80),JSON.stringify(categories),details,now()).run();
+    return json({ok:true,report_id:reportId},{status:201});
+  }
+
+  if (url.pathname === "/api/dynamic" && request.method === "GET") {
+    await ensureParityTables(db);
+    const rows=await db.prepare(
+      "SELECT p.id,p.author_user_id,u.display_name,p.text,p.topic,p.created_at,(SELECT COUNT(*) FROM dynamic_likes l WHERE l.post_id=p.id) AS likes,(SELECT COUNT(*) FROM dynamic_comments c WHERE c.post_id=p.id) AS comments FROM dynamic_posts p LEFT JOIN users u ON u.id=p.author_user_id WHERE p.state='published' ORDER BY p.created_at DESC LIMIT 100"
+    ).all();
+    return json({ok:true,posts:rows.results??[]});
+  }
+
+  if (url.pathname === "/api/dynamic" && request.method === "POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const body=await bodyJson(request),text=String(body.text??"").trim().slice(0,1000),topic=String(body.topic??"").trim().slice(0,80);
+    if(text.length<1)return json({ok:false,error:"text_required"},{status:400});
+    const postId=id();
+    await db.prepare("INSERT INTO dynamic_posts (id,author_user_id,text,topic,state,created_at) VALUES (?,?,?,?,'published',?)").bind(postId,actor,text,topic,now()).run();
+    return json({ok:true,post_id:postId},{status:201});
+  }
+
+  if (parts[0]==="api" && parts[1]==="dynamic" && parts.length===4 && parts[3]==="like" && request.method==="POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const postId=parts[2];
+    const existing=await db.prepare("SELECT 1 AS yes FROM dynamic_likes WHERE post_id=? AND user_id=?").bind(postId,actor).first();
+    if(existing)await db.prepare("DELETE FROM dynamic_likes WHERE post_id=? AND user_id=?").bind(postId,actor).run();
+    else await db.prepare("INSERT INTO dynamic_likes (post_id,user_id,created_at) VALUES (?,?,?)").bind(postId,actor,now()).run();
+    return json({ok:true,liked:!existing});
+  }
+
+  if (parts[0]==="api" && parts[1]==="dynamic" && parts.length===4 && parts[3]==="comments" && request.method==="POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const body=await bodyJson(request),text=String(body.text??"").trim().slice(0,500);
+    if(!text)return json({ok:false,error:"text_required"},{status:400});
+    await db.prepare("INSERT INTO dynamic_comments (id,post_id,user_id,text,created_at) VALUES (?,?,?,?,?)").bind(id(),parts[2],actor,text,now()).run();
+    return json({ok:true});
+  }
+
+  if (url.pathname === "/api/community/ranks" && request.method === "GET") {
+    await ensureParityTables(db);
+    const kind=String(url.searchParams.get("kind")??"gift");
+    let query;
+    if(kind==="charm") query="SELECT g.receiver_user_id AS id,u.display_name,SUM(g.coin_cost) AS score FROM gift_events g LEFT JOIN users u ON u.id=g.receiver_user_id GROUP BY g.receiver_user_id ORDER BY score DESC LIMIT 50";
+    else if(kind==="room") query="SELECT rp.room_id AS id,r.name AS display_name,rp.experience AS score FROM room_progress rp LEFT JOIN rooms r ON r.id=rp.room_id ORDER BY score DESC LIMIT 50";
+    else if(kind==="family") query="SELECT f.id AS id,f.name AS display_name,f.experience AS score FROM families f ORDER BY score DESC LIMIT 50";
+    else if(kind==="cp") query="SELECT g.sender_user_id AS id,u.display_name,SUM(g.coin_cost) AS score FROM gift_events g LEFT JOIN users u ON u.id=g.sender_user_id WHERE g.gift_id LIKE 'cp-%' GROUP BY g.sender_user_id ORDER BY score DESC LIMIT 50";
+    else if(kind==="signin") query="SELECT fs.user_id AS id,u.display_name,COUNT(*)*100 AS score FROM family_signins fs LEFT JOIN users u ON u.id=fs.user_id GROUP BY fs.user_id ORDER BY score DESC LIMIT 50";
+    else query="SELECT g.sender_user_id AS id,u.display_name,SUM(g.coin_cost) AS score FROM gift_events g LEFT JOIN users u ON u.id=g.sender_user_id GROUP BY g.sender_user_id ORDER BY score DESC LIMIT 50";
+    const rows=await db.prepare(query).all();
+    return json({ok:true,kind,entries:rows.results??[]});
+  }
+
+  if (url.pathname === "/api/room-progress" && request.method === "GET") {
+    await ensureParityTables(db);
+    const roomId=String(url.searchParams.get("room_id")??"").trim();
+    if(!roomId)return json({ok:false,error:"room_id_required"},{status:400});
+    await addRoomExperience(db,roomId);
+    const row=await db.prepare("SELECT * FROM room_progress WHERE room_id=?").bind(roomId).first();
+    return json({ok:true,progress:row??{room_id:roomId,experience:0,level:1,active_exp:0,sending_exp:0,receiving_exp:0}});
+  }
+
+  if (url.pathname === "/api/parties" && request.method === "GET") {
+    await ensureParityTables(db);
+    const rows=await db.prepare("SELECT p.*,(SELECT COUNT(*) FROM party_members m WHERE m.party_id=p.id) AS online FROM parties p WHERE p.active=1 ORDER BY p.updated_at DESC LIMIT 100").all();
+    return json({ok:true,parties:rows.results??[]});
+  }
+
+  if (url.pathname === "/api/parties" && request.method === "POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    const body=await bodyJson(request),type=String(body.type??"birthday").trim(),title=String(body.title??"").trim().slice(0,80),dress=String(body.dress_up??"default").trim().slice(0,80);
+    if(!["birthday","exclusive_birthday","dating","memorial"].includes(type)||!title)return json({ok:false,error:"invalid_party"},{status:400});
+    const partyId=id(),ts=now();
+    await db.batch([
+      db.prepare("INSERT INTO parties (id,type,owner_user_id,title,dress_up,active,created_at,updated_at) VALUES (?,?,?,?,?,1,?,?)").bind(partyId,type,actor,title,dress,ts,ts),
+      db.prepare("INSERT INTO party_members (party_id,user_id,joined_at) VALUES (?,?,?)").bind(partyId,actor,ts)
+    ]);
+    return json({ok:true,party_id:partyId},{status:201});
+  }
+
+  if (parts[0]==="api" && parts[1]==="parties" && parts.length===4 && parts[3]==="join" && request.method==="POST") {
+    await ensureParityTables(db);
+    let actor;
+    try{actor=await sessionUser(request,env);}catch(error){return json({ok:false,error:String(error?.message??error)},{status:401});}
+    await db.prepare("INSERT OR REPLACE INTO party_members (party_id,user_id,joined_at) VALUES (?,?,?)").bind(parts[2],actor,now()).run();
+    return json({ok:true});
   }
 
   if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
