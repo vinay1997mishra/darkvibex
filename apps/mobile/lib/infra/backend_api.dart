@@ -124,6 +124,7 @@ class BackendApi {
     required int seatCount,
     required bool locked,
     required String announcement,
+    String themeId = 'dark',
   }) async {
     final value = await _json(
       'POST',
@@ -134,6 +135,7 @@ class BackendApi {
         'seat_count': seatCount,
         'locked': locked,
         'announcement': announcement,
+        'theme_id': themeId,
       },
     );
     return value?['ok'] == true;
@@ -228,6 +230,28 @@ class BackendApi {
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
+
+  Future<Map<String, dynamic>?> roomLuckyPouch({required String roomId}) =>
+      _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch');
+
+  Future<Map<String, dynamic>?> openRoomLuckyPouch({
+    required String roomId,
+    required String requestId,
+    required int users,
+    required int coins,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch',
+        body: {'request_id': requestId, 'users': users, 'coins': coins},
+      );
+
+  Future<Map<String, dynamic>?> claimRoomLuckyPouch({required String roomId}) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch/claim',
+        body: const <String, dynamic>{},
+      );
 
   Future<bool> leaveRoom({required String roomId, required String userId}) async {
     final value = await _json(
