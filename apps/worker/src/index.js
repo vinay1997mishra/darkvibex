@@ -136,6 +136,21 @@ function bearerToken(request) {
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
 }
 
+async function requireSession(request, env, expectedUserId) {
+  let session;
+  try {
+    if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
+    session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+  } catch (_) {
+    return json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  const actor = String(session?.sub ?? "").trim();
+  if (!actor || (expectedUserId != null && actor !== String(expectedUserId))) {
+    return json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  return null;
+}
+
 async function bodyJson(request) {
   const value = await request.json();
   if (!value || typeof value !== "object") throw new Error("invalid_json");
@@ -356,6 +371,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
     const name = String(body.name ?? "").trim().slice(0, 80);
+    const authError = await requireSession(request, env, ownerId);
+    if (authError) return authError;
     const requestedSeatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? 12)));
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
@@ -378,6 +395,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, userId);
     const ts = now();
@@ -396,6 +415,8 @@ async function handleApi(request, env, url) {
     const seatIndex = body.seat_index == null ? null : Number(body.seat_index);
     const muted = body.mic_muted === false ? 0 : 1;
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     await sampleLampMicProgress(db, roomId, now());
     if (seatIndex != null) {
       const occupied = await db.prepare(
@@ -427,6 +448,8 @@ async function handleApi(request, env, url) {
     if (request.method === "POST") {
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       await ensureUserAllowed(db, userId, { checkMute: true });
       const textValue = String(body.text ?? "").trim().slice(0, 500);
       if (!userId || !textValue) return json({ ok: false, error: "message_required" }, { status: 400 });
@@ -514,6 +537,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, sender);
+    if (authError) return authError;
     const textValue = String(body.text ?? "").trim().slice(0, 1000);
     if (!sender || !receiver || !textValue) {
       return json({ ok: false, error: "invalid_message" }, { status: 400 });
@@ -537,6 +562,8 @@ async function handleApi(request, env, url) {
     if (!userId || !otherId) {
       return json({ ok: false, error: "user_ids_required" }, { status: 400 });
     }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     const rows = await db.prepare(
       `SELECT id, sender_user_id, receiver_user_id, text, created_at, read_at
          FROM direct_messages
@@ -558,6 +585,8 @@ async function handleApi(request, env, url) {
     if (!userId) {
       return json({ ok: false, error: "user_id_required" }, { status: 400 });
     }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
               s.display_name AS sender_name, r.display_name AS receiver_name
@@ -587,6 +616,8 @@ async function handleApi(request, env, url) {
   }
 
   if (parts[0] === "api" && parts[1] === "wallet" && parts.length === 3 && request.method === "GET") {
+    const authError = await requireSession(request, env, parts[2]);
+    if (authError) return authError;
     const user = await ensureUser(db, parts[2]);
     const ledger = await db.prepare(
       "SELECT id, kind, amount, balance_after, reference_id, created_at FROM wallet_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 100"
@@ -676,6 +707,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, sender);
+    if (authError) return authError;
     const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
     const cost = Number(body.coin_cost ?? 0);
     if (!sender || !receiver || !Number.isInteger(cost) || cost <= 0) {
@@ -723,6 +756,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
     if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
     const rawKey = String(request.headers.get("x-file-key") ?? "").trim();
     const key = rawKey.replace(/[^a-zA-Z0-9._/-]/g, "").replace(/^\/+/, "");

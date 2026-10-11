@@ -222,6 +222,7 @@ class AppState extends ChangeNotifier {
     }
 
     sessionToken = token;
+    BackendApi.sessionToken = token;
     authProvider = provider;
     backendConnected = true;
     isAuthenticated = true;
@@ -264,6 +265,7 @@ class AppState extends ChangeNotifier {
     }
 
     sessionToken = null;
+    BackendApi.sessionToken = null;
     authProvider = null;
     backendConnected = false;
     isAuthenticated = false;

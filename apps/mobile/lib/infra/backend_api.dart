@@ -4,6 +4,8 @@ import 'dart:io';
 class BackendApi {
   const BackendApi();
 
+  static String? sessionToken;
+
   static const String origin = String.fromEnvironment(
     'DARKVIBEX_API_ORIGIN',
     defaultValue: 'https://darkvibex-api.mishrajii7991.workers.dev',
@@ -15,6 +17,7 @@ class BackendApi {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    String? authToken,
   }) async {
     if (!configured) return null;
     final client = HttpClient();
@@ -27,6 +30,10 @@ class BackendApi {
         _ => await client.openUrl(method, uri),
       };
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      final bearer = authToken ?? sessionToken;
+      if (bearer != null && bearer.trim().isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${bearer.trim()}');
+      }
       if (body != null) {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));
