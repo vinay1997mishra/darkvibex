@@ -20,6 +20,7 @@ class LiveKitRtcAdapter implements RtcAdapter {
   Room? _room;
   RtcConnectionState _state = RtcConnectionState.idle;
   bool _publishing = false;
+  bool _publishingCamera = false;
   Timer? _speakingTimer;
   final Set<String> _disabledRemoteTrackSids = <String>{};
   final ValueNotifier<Map<String, double>> _speakingLevels =
@@ -47,6 +48,10 @@ class LiveKitRtcAdapter implements RtcAdapter {
   @override
   ValueListenable<Map<String, double>> get speakingLevelsListenable =>
       _speakingLevels;
+
+  bool get publishingCamera => _publishingCamera;
+
+  Room? get room => _room;
 
   @override
   Future<void> join(
@@ -83,6 +88,7 @@ class LiveKitRtcAdapter implements RtcAdapter {
       _room = room;
       _state = RtcConnectionState.joined;
       _publishing = false;
+      _publishingCamera = false;
       _startSpeakingMonitor();
     } catch (_) {
       _state = RtcConnectionState.failed;
@@ -103,6 +109,7 @@ class LiveKitRtcAdapter implements RtcAdapter {
     final old = _room;
     _room = null;
     _publishing = false;
+    _publishingCamera = false;
     _disabledRemoteTrackSids.clear();
     if (old != null) {
       try {
@@ -127,6 +134,15 @@ class LiveKitRtcAdapter implements RtcAdapter {
     }
     await participant.setMicrophoneEnabled(enabled);
     _publishing = enabled;
+  }
+
+  Future<void> setCameraPublished(bool enabled) async {
+    final participant = _room?.localParticipant;
+    if (state != RtcConnectionState.joined || participant == null) {
+      throw StateError('RTC room is not joined');
+    }
+    await participant.setCameraEnabled(enabled);
+    _publishingCamera = enabled;
   }
 
   @override
