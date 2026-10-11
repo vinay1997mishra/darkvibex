@@ -204,14 +204,14 @@ class _BoardPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final side = size.shortestSide;
     final cell = side / 15;
-    final rect = Rect.fromLTWH(0, 0, side, side);
+    final rect = Rect.fromLTWH(0.0, 0.0, side, side);
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(18)),
       Paint()..color = const Color(0xFFF7F0DF),
     );
 
     final homes = <LocalLudoPlayer, Rect>{
-      LocalLudoPlayer.red: Rect.fromLTWH(0, 0, 6 * cell, 6 * cell),
+      LocalLudoPlayer.red: Rect.fromLTWH(0.0, 0.0, 6 * cell, 6 * cell),
       LocalLudoPlayer.green: Rect.fromLTWH(9 * cell, 0, 6 * cell, 6 * cell),
       LocalLudoPlayer.yellow: Rect.fromLTWH(9 * cell, 9 * cell, 6 * cell, 6 * cell),
       LocalLudoPlayer.blue: Rect.fromLTWH(0, 9 * cell, 6 * cell, 6 * cell),
