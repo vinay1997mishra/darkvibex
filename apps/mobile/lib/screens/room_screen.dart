@@ -815,9 +815,9 @@ class _RoomScreenState extends State<RoomScreen> {
                     children: [
                       Expanded(child: OutlinedButton.icon(
                         onPressed: roomMusic.canAddLocalSong ? () async {
-                          final result = await FilePicker.platform.pickFiles(type: FileType.audio, allowMultiple: true);
-                          if (result == null) return;
-                          for (final file in result.files) {
+                          final files = await FilePicker.pickFiles(type: FileType.audio);
+                          if (files.isEmpty) return;
+                          for (final file in files) {
                             final path = file.path;
                             if (path == null) continue;
                             try { await roomMusic.importLocalSong(fileName: file.name, sourcePath: path); }
