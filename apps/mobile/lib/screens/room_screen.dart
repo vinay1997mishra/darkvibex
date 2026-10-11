@@ -72,6 +72,7 @@ class _RoomScreenState extends State<RoomScreen> {
     memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       unawaited(_loadRoomMembers());
       unawaited(_loadRoomMessages());
+      unawaited(_loadRoomSettings());
     });
     unawaited(_loadRoomMessages());
   }
