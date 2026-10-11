@@ -13,6 +13,7 @@ import '../room/seat_layout.dart';
 import '../vip/vip_policy.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
+import 'games_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -62,7 +63,9 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(_loadRoomMembers());
     memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       unawaited(_loadRoomMembers());
+      unawaited(_loadRoomMessages());
     });
+    unawaited(_loadRoomMessages());
   }
 
   Future<void> _loadRoomMembers() async {
@@ -82,6 +85,23 @@ class _RoomScreenState extends State<RoomScreen> {
       if (own.isNotEmpty) {
         mySeat = int.tryParse(own.first['seat_index']?.toString() ?? '');
       }
+    });
+  }
+
+  Future<void> _loadRoomMessages() async {
+    if (!widget.state.backendConnected) return;
+    final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
+    if (!mounted || rows.isEmpty && chat.length == 1 && chat.first == 'Welcome to the room 👋') return;
+    final next = rows.map((message) {
+      final name = message['display_name']?.toString().trim();
+      final text = message['text']?.toString() ?? '';
+      return '${name == null || name.isEmpty ? 'User' : name}: $text';
+    }).where((message) => !message.endsWith(': ')).toList();
+    if (!mounted || next.join('\n') == chat.join('\n')) return;
+    setState(() {
+      chat
+        ..clear()
+        ..addAll(next);
     });
   }
 
@@ -351,7 +371,6 @@ class _RoomScreenState extends State<RoomScreen> {
   void _bindVideoTracks(LiveKitRtcAdapter adapter) {
     final room = adapter.room;
     if (room == null) return;
-    memberRefreshTimer?.cancel();
     rtcEvents?.dispose();
     rtcEvents = room.createListener()
       ..on<TrackSubscribedEvent>((_) => _refreshVideoTracks(adapter))
@@ -535,6 +554,176 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _removeRoomMember(String targetUserId) async {
+    if (!isRoomHost || targetUserId == widget.state.userId) return;
+    final ok = await widget.state.backend.removeRoomMember(
+      roomId: widget.room.id,
+      ownerUserId: widget.state.userId,
+      targetUserId: targetUserId,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not remove this member')),
+      );
+      return;
+    }
+    await _loadRoomMembers();
+  }
+
+  Future<void> _openRoomMembers() async {
+    final members = await widget.state.backend.roomMembers(roomId: widget.room.id);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .72,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Row(
+                  children: [
+                    const Expanded(child: Text('Room members', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+                    Text('${members.length} online'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: members.isEmpty
+                    ? const Center(child: Text('No members are online'))
+                    : ListView.builder(
+                        itemCount: members.length,
+                        itemBuilder: (context, index) {
+                          final member = members[index];
+                          final userId = member['user_id']?.toString() ?? '';
+                          final name = member['display_name']?.toString().trim();
+                          final avatar = member['avatar_key']?.toString();
+                          final seat = int.tryParse(member['seat_index']?.toString() ?? '');
+                          final isSelf = userId == widget.state.userId;
+                          final isOwner = userId == widget.room.ownerUserId;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundImage: avatar != null && avatar.isNotEmpty
+                                  ? NetworkImage(widget.state.backend.fileUrl(avatar))
+                                  : null,
+                              child: avatar == null || avatar.isEmpty
+                                  ? const Icon(Icons.person_rounded)
+                                  : null,
+                            ),
+                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : ''}'),
+                            subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
+                            trailing: isRoomHost && !isSelf
+                                ? IconButton(
+                                    tooltip: 'Remove from room',
+                                    icon: const Icon(Icons.person_remove_alt_1_rounded),
+                                    onPressed: () async {
+                                      Navigator.pop(sheetContext);
+                                      await _removeRoomMember(userId);
+                                    },
+                                  )
+                                : null,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _leaveRoom() async {
+    if (widget.state.backendConnected) {
+      final ok = await widget.state.backend.leaveRoom(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+      );
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not leave the room on the server')),
+        );
+        return;
+      }
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _openGames() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => GamesScreen(state: widget.state)),
+    );
+  }
+
+  Future<void> _shareRoomId() async {
+    await Clipboard.setData(ClipboardData(text: widget.room.id));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Room ID copied. Share it with friends to invite them.')),
+    );
+  }
+
+  Future<void> _showRoomTools() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(6, 0, 6, 12),
+                child: Text('Room tools', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              ),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 2.5,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _openRoomMembers(); },
+                    icon: const Icon(Icons.groups_rounded), label: const Text('Members'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _openGames(); },
+                    icon: const Icon(Icons.sports_esports_rounded), label: const Text('Games'),
+                  ),
+                  if (isRoomHost)
+                    FilledButton.tonalIcon(
+                      onPressed: () { Navigator.pop(sheetContext); _openRoomSettings(); },
+                      icon: const Icon(Icons.settings_rounded), label: const Text('Settings'),
+                    ),
+                  if (isRoomHost)
+                    FilledButton.tonalIcon(
+                      onPressed: () { Navigator.pop(sheetContext); _pickRoomAvatar(); },
+                      icon: const Icon(Icons.image_rounded), label: const Text('Room photo'),
+                    ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _shareRoomId(); },
+                    icon: const Icon(Icons.share_rounded), label: const Text('Share room ID'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _showRoomRules(); },
+                    icon: const Icon(Icons.policy_rounded), label: const Text('Terms & rules'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openRoomMenu() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -588,7 +777,7 @@ class _RoomScreenState extends State<RoomScreen> {
               title: const Text('Leave room'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                Navigator.of(context).pop();
+                _leaveRoom();
               },
             ),
           ],
@@ -737,11 +926,19 @@ class _RoomScreenState extends State<RoomScreen> {
     controller.dispose();
     if (value == null || value.isEmpty) return;
     if (widget.state.backendConnected) {
-      await widget.state.backend.sendRoomMessage(
+      final sent = await widget.state.backend.sendRoomMessage(
         roomId: widget.room.id,
         userId: widget.state.userId,
         text: value,
       );
+      if (!sent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message was not sent. Check your connection.')),
+        );
+        return;
+      }
+      await _loadRoomMessages();
+      return;
     }
     if (!mounted) return;
     setState(() => chat.add('${widget.state.displayName}: $value'));
@@ -839,6 +1036,11 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           if (isRoomHost)
             IconButton(onPressed: _openRoomSettings, tooltip: 'Room settings', icon: const Icon(Icons.settings_rounded)),
+          IconButton(
+            onPressed: _showRoomTools,
+            tooltip: 'Room tools',
+            icon: const Icon(Icons.grid_view_rounded),
+          ),
           IconButton(
             onPressed: _openRoomMenu,
             tooltip: 'Room options',
