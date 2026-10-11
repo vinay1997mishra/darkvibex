@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +12,7 @@ import '../infra/backend_api.dart';
 import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
+import '../room/ktv_service.dart';
 import '../vip/vip_policy.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
@@ -49,6 +52,10 @@ class _RoomScreenState extends State<RoomScreen> {
   late String roomName;
   late int roomSeatCount;
   bool roomLocked = false;
+  String roomThemeId = 'dark';
+  bool groupPkEnabled = false;
+  bool effectsEnabled = true;
+  final KtvService roomMusic = KtvService();
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
 
@@ -58,6 +65,7 @@ class _RoomScreenState extends State<RoomScreen> {
     roomAvatarKey = widget.room.avatarKey;
     roomName = widget.room.name;
     roomSeatCount = widget.room.seatCount;
+    unawaited(roomMusic.loadLocalSongs());
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
@@ -176,6 +184,8 @@ class _RoomScreenState extends State<RoomScreen> {
       roomName = settings['name']?.toString() ?? roomName;
       roomSeatCount = int.tryParse(settings['seat_count']?.toString() ?? '') ?? roomSeatCount;
       roomLocked = settings['locked'] == true || settings['locked']?.toString() == '1';
+      roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
+      groupPkEnabled = settings['group_pk_enabled'] == true || settings['group_pk_enabled']?.toString() == '1';
       final text = settings['announcement']?.toString().trim() ?? '';
       roomAnnouncement = text.isEmpty ? null : text;
     });
@@ -192,6 +202,8 @@ class _RoomScreenState extends State<RoomScreen> {
     seatOptions.sort();
     var seatCount = seatOptions.contains(roomSeatCount) ? roomSeatCount : seatOptions.last;
     var locked = roomLocked;
+    var themeId = roomThemeId;
+    var pkEnabled = groupPkEnabled;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -222,6 +234,25 @@ class _RoomScreenState extends State<RoomScreen> {
                   maxLines: 3,
                   decoration: const InputDecoration(labelText: 'Room announcement', hintText: 'Rules or message shown in room chat'),
                 ),
+                DropdownButtonFormField<String>(
+                  value: themeId,
+                  decoration: const InputDecoration(labelText: 'Room theme (visible to everyone)'),
+                  items: const [
+                    DropdownMenuItem(value: 'dark', child: Text('Dark')),
+                    DropdownMenuItem(value: 'midnight', child: Text('Midnight')),
+                    DropdownMenuItem(value: 'rose', child: Text('Rose')),
+                    DropdownMenuItem(value: 'forest', child: Text('Forest')),
+                    DropdownMenuItem(value: 'gold', child: Text('Gold')),
+                  ],
+                  onChanged: (value) { if (value != null) setDialogState(() => themeId = value); },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enable Group PK mode'),
+                  subtitle: const Text('Shared room mode indicator'),
+                  value: pkEnabled,
+                  onChanged: (value) => setDialogState(() => pkEnabled = value),
+                ),
               ],
             ),
           ),
@@ -232,6 +263,8 @@ class _RoomScreenState extends State<RoomScreen> {
               'seat_count': seatCount,
               'locked': locked,
               'announcement': announcement.text.trim(),
+              'theme_id': themeId,
+              'group_pk_enabled': pkEnabled,
             }), child: const Text('Save')),
           ],
         ),
@@ -247,6 +280,8 @@ class _RoomScreenState extends State<RoomScreen> {
       seatCount: result['seat_count'] as int,
       locked: result['locked'] as bool,
       announcement: result['announcement'] as String,
+      themeId: result['theme_id'] as String,
+      groupPkEnabled: result['group_pk_enabled'] as bool,
     );
     if (!mounted) return;
     if (!ok) {
@@ -257,6 +292,8 @@ class _RoomScreenState extends State<RoomScreen> {
       roomName = result['name'] as String;
       roomSeatCount = result['seat_count'] as int;
       roomLocked = result['locked'] as bool;
+      roomThemeId = result['theme_id'] as String;
+      groupPkEnabled = result['group_pk_enabled'] as bool;
       final text = result['announcement'] as String;
       roomAnnouncement = text.isEmpty ? null : text;
     });
@@ -443,6 +480,8 @@ class _RoomScreenState extends State<RoomScreen> {
 
   @override
   void dispose() {
+    memberRefreshTimer?.cancel();
+    unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
     rtcEvents = null;
     final current = rtc;
@@ -479,6 +518,7 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     }
 
+    if (leaving) await roomMusic.stopForSeatDown(widget.state.userId);
     if (leaving && !muted) {
       await rtc?.setMicPublished(false);
     }
@@ -705,6 +745,7 @@ class _RoomScreenState extends State<RoomScreen> {
         return;
       }
     }
+    await roomMusic.stopRoomPlayback();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -720,6 +761,219 @@ class _RoomScreenState extends State<RoomScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Room ID copied. Share it with friends to invite them.')),
     );
+  }
+
+  Color get _roomThemeColor => switch (roomThemeId) {
+    'midnight' => const Color(0xFF111B32),
+    'rose' => const Color(0xFF32192B),
+    'forest' => const Color(0xFF14281F),
+    'gold' => const Color(0xFF2C2514),
+    _ => const Color(0xFF111116),
+  };
+
+  Future<void> _showRoomMusic() async {
+    if (mySeat == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Take a seat to control room music')));
+      return;
+    }
+    await roomMusic.loadLocalSongs();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .72,
+            child: Column(
+              children: [
+                const ListTile(
+                  title: Text('Phone music / KTV', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text('Audio plays on this device only. Add local audio files to your queue.'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.library_music_rounded),
+                  title: Text(roomMusic.current?.song.title ?? 'Nothing playing'),
+                  subtitle: Text('Queue: ${roomMusic.queue.length} • Library: ${roomMusic.localSongCount}/${KtvService.maxLocalSongs}'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(tooltip: 'Previous', onPressed: roomMusic.canPlayPrevious ? () async { await roomMusic.playPrevious(); refresh(() {}); } : null, icon: const Icon(Icons.skip_previous_rounded)),
+                      IconButton(tooltip: roomMusic.isPlaying ? 'Pause' : 'Play', onPressed: roomMusic.current == null ? null : () async { await roomMusic.togglePlayPause(); refresh(() {}); }, icon: Icon(roomMusic.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded)),
+                      IconButton(tooltip: 'Next', onPressed: roomMusic.canPlayNext ? () async { await roomMusic.playNext(); refresh(() {}); } : null, icon: const Icon(Icons.skip_next_rounded)),
+                      IconButton(tooltip: roomMusic.outputMuted ? 'Unmute music' : 'Mute music', onPressed: () async { await roomMusic.setOutputMuted(!roomMusic.outputMuted); refresh(() {}); }, icon: Icon(roomMusic.outputMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded)),
+                    ],
+                  ),
+                ),
+                if (roomMusic.playbackError != null)
+                  Padding(padding: const EdgeInsets.all(8), child: Text('Playback error: ${roomMusic.playbackError}', style: const TextStyle(color: Colors.redAccent))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Expanded(child: OutlinedButton.icon(
+                        onPressed: roomMusic.canAddLocalSong ? () async {
+                          final result = await FilePicker.platform.pickFiles(type: FileType.audio, allowMultiple: true);
+                          if (result == null) return;
+                          for (final file in result.files) {
+                            final path = file.path;
+                            if (path == null) continue;
+                            try { await roomMusic.importLocalSong(fileName: file.name, sourcePath: path); }
+                            catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString()))); }
+                          }
+                          refresh(() {});
+                        } : null,
+                        icon: const Icon(Icons.add_rounded), label: const Text('Add phone audio'),
+                      )),
+                      const SizedBox(width: 8),
+                      IconButton(tooltip: 'Stop and clear queue', onPressed: () async { await roomMusic.stopRoomPlayback(); refresh(() {}); }, icon: const Icon(Icons.stop_rounded)),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                Expanded(child: ListView.builder(
+                  itemCount: roomMusic.library.where((song) => song.local).length,
+                  itemBuilder: (context, index) {
+                    final songs = roomMusic.library.where((song) => song.local).toList(growable: false);
+                    final song = songs[index];
+                    return ListTile(
+                      leading: const Icon(Icons.music_note_rounded),
+                      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(song.singer),
+                      trailing: IconButton(
+                        tooltip: 'Queue song',
+                        icon: const Icon(Icons.queue_music_rounded),
+                        onPressed: () { roomMusic.addToQueue(song, widget.state.userId); refresh(() {}); },
+                      ),
+                      onTap: () async { roomMusic.addToQueue(song, widget.state.userId); await roomMusic.playNext(); refresh(() {}); },
+                    );
+                  },
+                )),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showLuckyPouch() async {
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the room server to use Lucky Pouch')));
+      return;
+    }
+    Future<Map<String, dynamic>?> refreshPouch() async {
+      final response = await widget.state.backend.roomLuckyPouch(roomId: widget.room.id);
+      final pouch = response?['pouch'];
+      return pouch is Map ? Map<String, dynamic>.from(pouch) : null;
+    }
+    var pouch = await refreshPouch();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Lucky Pouch', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                if (pouch == null) ...[
+                  const Text('No active pouch. Members can create one using their coins.'),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () async {
+                      final values = await showDialog<(int, int)>(
+                        context: context,
+                        builder: (dialogContext) {
+                          var coins = 5000;
+                          var slots = 10;
+                          return StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
+                            title: const Text('Create Lucky Pouch'),
+                            content: Column(mainAxisSize: MainAxisSize.min, children: [
+                              DropdownButtonFormField<int>(
+                                value: coins,
+                                decoration: const InputDecoration(labelText: 'Coin amount'),
+                                items: const [5000, 10000, 25000, 50000].map((n) => DropdownMenuItem(value: n, child: Text('$n coins'))).toList(),
+                                onChanged: (v) { if (v != null) setDialogState(() => coins = v); },
+                              ),
+                              DropdownButtonFormField<int>(
+                                value: slots,
+                                decoration: const InputDecoration(labelText: 'Winners'),
+                                items: const [5, 10, 20].map((n) => DropdownMenuItem(value: n, child: Text('$n people'))).toList(),
+                                onChanged: (v) { if (v != null) setDialogState(() => slots = v); },
+                              ),
+                            ]),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+                              FilledButton(onPressed: () => Navigator.pop(dialogContext, (coins, slots)), child: const Text('Create')),
+                            ],
+                          ));
+                        },
+                      );
+                      if (values == null) return;
+                      final result = await widget.state.backend.createRoomLuckyPouch(
+                        roomId: widget.room.id,
+                        userId: widget.state.userId,
+                        totalCoins: values.$1,
+                        slots: values.$2,
+                        requestId: '${widget.state.userId}-${DateTime.now().microsecondsSinceEpoch}',
+                      );
+                      final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
+                      if (balance != null) widget.state.setCoinBalance(balance);
+                      pouch = await refreshPouch();
+                      if (pouch == null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not create pouch. Check your coin balance or active pouch.')));
+                      refresh(() {});
+                    },
+                    icon: const Icon(Icons.redeem_rounded),
+                    label: const Text('Create with coins'),
+                  ),
+                ] else ...[
+                  Text('${pouch!['remaining_coins']} coins left • ${pouch!['remaining_slots']} winners'),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: pouch!['claimed'] == true || (int.tryParse(pouch!['remaining_slots']?.toString() ?? '0') ?? 0) == 0 ? null : () async {
+                      final result = await widget.state.backend.claimRoomLuckyPouch(roomId: widget.room.id, userId: widget.state.userId);
+                      final amount = int.tryParse(result?['amount']?.toString() ?? '');
+                      final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
+                      if (balance != null) widget.state.setCoinBalance(balance);
+                      if (amount != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lucky Pouch: +$amount coins')));
+                      pouch = await refreshPouch();
+                      refresh(() {});
+                    },
+                    icon: const Icon(Icons.card_giftcard_rounded),
+                    label: Text(pouch!['claimed'] == true ? 'Already claimed' : 'Claim coins'),
+                  ),
+                  TextButton(onPressed: () async { pouch = await refreshPouch(); refresh(() {}); }, child: const Text('Refresh')),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showLuckyNumber() async {
+    final number = Random.secure().nextInt(99) + 1;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Lucky Number'),
+        content: Text('Your number is $number. This is a local for-fun draw; it does not award coins.'),
+        actions: [FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  Future<void> _toggleRoomEffects() async {
+    setState(() => effectsEnabled = !effectsEnabled);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(effectsEnabled ? 'Room glow effects enabled on this device' : 'Room glow effects disabled on this device')));
   }
 
   Future<void> _showRoomTools() async {
@@ -751,6 +1005,22 @@ class _RoomScreenState extends State<RoomScreen> {
                   FilledButton.tonalIcon(
                     onPressed: () { Navigator.pop(sheetContext); _openGames(); },
                     icon: const Icon(Icons.sports_esports_rounded), label: const Text('Games'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _showRoomMusic(); },
+                    icon: const Icon(Icons.music_note_rounded), label: const Text('Music / KTV'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _showLuckyPouch(); },
+                    icon: const Icon(Icons.redeem_rounded), label: const Text('Lucky Pouch'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _showLuckyNumber(); },
+                    icon: const Icon(Icons.casino_rounded), label: const Text('Lucky Number'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _toggleRoomEffects(); },
+                    icon: Icon(effectsEnabled ? Icons.auto_awesome_rounded : Icons.auto_awesome_outlined), label: const Text('Effects'),
                   ),
                   if (isRoomHost)
                     FilledButton.tonalIcon(
@@ -1054,6 +1324,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final spec = SeatLayoutSpec.forCount(roomSeatCount);
 
     return Scaffold(
+      backgroundColor: _roomThemeColor,
       appBar: AppBar(
         title: Row(
           children: [
@@ -1140,7 +1411,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     width: mine ? 3 : 1,
-                                    color: mine ? const Color(0xFFFFD36A) : Colors.white24,
+                                    color: mine ? const Color(0xFFFFD36A) : (effectsEnabled ? const Color(0xFF9C7BFF) : Colors.white24),
                                   ),
                                 ),
                                 child: Builder(
@@ -1234,6 +1505,16 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
           ),
+          if (groupPkEnabled)
+            Positioned(
+              left: 12,
+              top: 8,
+              child: Chip(
+                avatar: const Icon(Icons.bolt_rounded, size: 18),
+                label: const Text('GROUP PK MODE'),
+                backgroundColor: const Color(0xFF5D1E65),
+              ),
+            ),
           Positioned(
             right: 10,
             top: 112,
