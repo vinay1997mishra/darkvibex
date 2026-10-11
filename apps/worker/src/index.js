@@ -245,10 +245,44 @@ async function ensureRoomSettingsTable(db) {
     `CREATE TABLE IF NOT EXISTS room_settings (
       room_id TEXT PRIMARY KEY,
       announcement TEXT NOT NULL DEFAULT '',
+      theme_id TEXT NOT NULL DEFAULT 'dark',
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
   ).run();
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN theme_id TEXT NOT NULL DEFAULT 'dark'").run();
+  } catch (_) {}
+}
+
+async function ensureRoomLuckyPouchTables(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_pouches (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    total_coins INTEGER NOT NULL,
+    total_slots INTEGER NOT NULL,
+    remaining_coins INTEGER NOT NULL,
+    remaining_slots INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    request_id TEXT NOT NULL,
+    last_claim_key TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    UNIQUE (owner_user_id, request_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_pouch_claims (
+    id TEXT PRIMARY KEY,
+    claim_key TEXT NOT NULL UNIQUE,
+    pouch_id TEXT NOT NULL,
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (pouch_id, user_id),
+    FOREIGN KEY (pouch_id) REFERENCES room_lucky_pouches(id) ON DELETE CASCADE
+  )`).run();
 }
 
 async function ensureRoomSafetyTables(db) {
@@ -469,12 +503,121 @@ async function handleApi(request, env, url) {
     return json({ ok: true, accepted: true, version });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "lucky-pouch") {
+    const roomId = parts[2];
+    await ensureRoomLuckyPouchTables(db);
+    const room = await db.prepare("SELECT id, owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const userId = String(session.sub);
+    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+
+    if (request.method === "GET") {
+      const pouch = await db.prepare(
+        `SELECT p.id, p.owner_user_id, p.total_coins, p.total_slots, p.remaining_coins,
+                p.remaining_slots, p.expires_at,
+                EXISTS(SELECT 1 FROM room_lucky_pouch_claims c WHERE c.pouch_id = p.id AND c.user_id = ?) AS claimed
+           FROM room_lucky_pouches p
+          WHERE p.room_id = ? AND p.status = 'open' AND p.expires_at > ?
+          ORDER BY p.created_at DESC LIMIT 1`
+      ).bind(userId, roomId, now()).first();
+      return json({ ok: true, pouch: pouch ?? null });
+    }
+
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const actorId = String(body.user_id ?? "").trim();
+      const ownerError = await requireSession(request, env, actorId);
+      if (ownerError) return ownerError;
+      const totalCoins = Number(body.total_coins);
+      const slots = Number(body.slots);
+      const requestId = String(body.request_id ?? "").trim().slice(0, 100);
+      if (!Number.isSafeInteger(totalCoins) || totalCoins < 100 || totalCoins > 10000000 ||
+          !Number.isSafeInteger(slots) || slots < 2 || slots > 500 || !requestId) {
+        return json({ ok: false, error: "invalid_pouch" }, { status: 400 });
+      }
+      const existing = await db.prepare("SELECT id FROM room_lucky_pouches WHERE owner_user_id = ? AND request_id = ?")
+        .bind(actorId, requestId).first();
+      if (existing) return json({ ok: true, pouch_id: existing.id, duplicate: true });
+      const active = await db.prepare("SELECT id FROM room_lucky_pouches WHERE room_id = ? AND status = 'open' AND expires_at > ?")
+        .bind(roomId, now()).first();
+      if (active) return json({ ok: false, error: "pouch_already_active" }, { status: 409 });
+      const pouchId = id();
+      const ts = now();
+      const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(actorId).first();
+      if (!balance || Number(balance.coins ?? 0) < totalCoins) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
+      await db.batch([
+        db.prepare("INSERT INTO room_lucky_pouches (id, room_id, owner_user_id, total_coins, total_slots, remaining_coins, remaining_slots, status, request_id, created_at, expires_at) SELECT ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND coins >= ?)")
+          .bind(pouchId, roomId, actorId, totalCoins, slots, totalCoins, slots, requestId, ts, ts + 3600000, actorId, totalCoins),
+        db.prepare("UPDATE users SET coins = coins - ?, updated_at = ? WHERE id = ? AND coins >= ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
+          .bind(totalCoins, ts, actorId, totalCoins, pouchId),
+        db.prepare("INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) SELECT ?, ?, 'room_lucky_pouch_create', ?, coins, ?, ? FROM users WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
+          .bind(id(), actorId, -totalCoins, pouchId, ts, actorId, pouchId),
+      ]);
+      const created = await db.prepare("SELECT id FROM room_lucky_pouches WHERE id = ?").bind(pouchId).first();
+      if (!created) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
+      const updated = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(actorId).first();
+      return json({ ok: true, pouch_id: pouchId, coin_balance: Number(updated?.coins ?? 0) });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 5 &&
+      parts[3] === "lucky-pouch" && parts[4] === "claim" && request.method === "POST") {
+    const roomId = parts[2];
+    await ensureRoomLuckyPouchTables(db);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    const pouch = await db.prepare(
+      "SELECT * FROM room_lucky_pouches WHERE room_id = ? AND status = 'open' AND expires_at > ? ORDER BY created_at DESC LIMIT 1"
+    ).bind(roomId, now()).first();
+    if (!pouch) return json({ ok: false, error: "no_active_pouch" }, { status: 404 });
+    const prior = await db.prepare("SELECT amount FROM room_lucky_pouch_claims WHERE pouch_id = ? AND user_id = ?")
+      .bind(pouch.id, userId).first();
+    if (prior) return json({ ok: true, amount: Number(prior.amount), duplicate: true });
+    const remainingCoins = Number(pouch.remaining_coins);
+    const remainingSlots = Number(pouch.remaining_slots);
+    if (remainingSlots < 1 || remainingCoins < remainingSlots) return json({ ok: false, error: "pouch_empty" }, { status: 409 });
+    const amount = remainingSlots === 1 ? remainingCoins : 1 + Math.floor(Math.random() * (remainingCoins - remainingSlots + 1));
+    const claimKey = id();
+    const ts = now();
+    await db.batch([
+      db.prepare("UPDATE room_lucky_pouches SET remaining_coins = remaining_coins - ?, remaining_slots = remaining_slots - 1, status = CASE WHEN remaining_slots = 1 THEN 'claimed' ELSE status END, last_claim_key = ? WHERE id = ? AND remaining_coins = ? AND remaining_slots = ? AND status = 'open' AND expires_at > ? AND NOT EXISTS (SELECT 1 FROM room_lucky_pouch_claims WHERE pouch_id = ? AND user_id = ?)")
+        .bind(amount, claimKey, pouch.id, remainingCoins, remainingSlots, ts, pouch.id, userId),
+      db.prepare("INSERT INTO room_lucky_pouch_claims (id, claim_key, pouch_id, room_id, user_id, amount, created_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ? AND last_claim_key = ?)")
+        .bind(claimKey, claimKey, pouch.id, roomId, userId, amount, ts, pouch.id, claimKey),
+      db.prepare("UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouch_claims WHERE claim_key = ?)")
+        .bind(amount, ts, userId, claimKey),
+      db.prepare("INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) SELECT ?, ?, 'room_lucky_pouch_claim', ?, coins, ?, ? FROM users WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouch_claims WHERE claim_key = ?)")
+        .bind(id(), userId, amount, pouch.id, ts, userId, claimKey),
+    ]);
+    const claim = await db.prepare("SELECT amount FROM room_lucky_pouch_claims WHERE claim_key = ? AND user_id = ?")
+      .bind(claimKey, userId).first();
+    if (!claim) {
+      const duplicate = await db.prepare("SELECT amount FROM room_lucky_pouch_claims WHERE pouch_id = ? AND user_id = ?")
+        .bind(pouch.id, userId).first();
+      if (duplicate) return json({ ok: true, amount: Number(duplicate.amount), duplicate: true });
+      return json({ ok: false, error: "claim_race_retry" }, { status: 409 });
+    }
+    const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+    return json({ ok: true, amount: Number(claim.amount), coin_balance: Number(balance?.coins ?? 0) });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
     await ensureRoomSettingsTable(db);
     const room = await db.prepare(
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
-              COALESCE(s.announcement, '') AS announcement
+              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
         WHERE r.id = ?`
     ).bind(roomId).first();
@@ -508,6 +651,9 @@ async function handleApi(request, env, url) {
       const seatCount = requestedSeatCount;
       const locked = body.locked === true ? 1 : 0;
       const announcement = String(body.announcement ?? "").trim().slice(0, 500);
+      const allowedThemes = new Set(["dark", "midnight", "rose", "forest", "gold"]);
+      const themeId = String(body.theme_id ?? room.theme_id ?? "dark");
+      if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
       const overflow = await db.prepare(
         "SELECT COUNT(*) AS total FROM room_members WHERE room_id = ? AND seat_index >= ?"
@@ -520,10 +666,10 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, updated_at) VALUES (?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement } });
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId } });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
