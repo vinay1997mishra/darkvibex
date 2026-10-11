@@ -286,4 +286,102 @@ class BackendApi {
           'stake': stake,
         },
       );
+
+  Future<List<Map<String, dynamic>>> roomMembers({
+    required String roomId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/members',
+    );
+    final rows = value?['members'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<bool> roomFollowStatus({
+    required String roomId,
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/follow?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
+    return value?['following'] == true;
+  }
+
+  Future<bool> setRoomFollow({
+    required String roomId,
+    required String userId,
+    required bool follow,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/follow',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'follow': follow,
+      },
+    );
+    return value?['following'] == follow;
+  }
+
+  Future<Map<String, dynamic>?> aladdinLampStatus({
+    required String roomId,
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/lamp?user_id=${Uri.encodeQueryComponent(userId)}',
+      );
+
+  Future<Map<String, dynamic>?> claimAladdinLampTask({
+    required String roomId,
+    required String userId,
+    required String taskId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/lamp/claim',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'task_id': taskId,
+        },
+      );
+
+  Future<bool> recordAladdinShare({
+    required String roomId,
+    required String userId,
+    required String platform,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/lamp/share',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'platform': platform,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> inviteAladdinMic({
+    required String roomId,
+    required String hostUserId,
+    required String inviteeUserId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/lamp/invite',
+      body: <String, dynamic>{
+        'host_user_id': hostUserId,
+        'invitee_user_id': inviteeUserId,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
 }
