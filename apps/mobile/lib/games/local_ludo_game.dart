@@ -40,10 +40,11 @@ class LocalLudoGame {
 
   int roll() {
     if (winner != null || rolled != null) return rolled ?? 1;
-    rolled = _random.nextInt(6) + 1;
-    status = '${_label(currentPlayer)} rolled $rolled.';
-    if (movableIndexes.isEmpty) _finishTurn(keepTurn: rolled == 6);
-    return rolled ?? 0;
+    final value = _random.nextInt(6) + 1;
+    rolled = value;
+    status = '${_label(currentPlayer)} rolled $value.';
+    if (movableIndexes.isEmpty) _finishTurn(keepTurn: value == 6);
+    return value;
   }
 
   List<int> get movableIndexes {
