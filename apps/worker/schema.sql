@@ -180,3 +180,60 @@ CREATE INDEX IF NOT EXISTS idx_owner_audit_time
   ON owner_audit(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_owner_announcements_time
   ON owner_announcements(updated_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS user_entitlements (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  item_name TEXT NOT NULL,
+  starts_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_entitlements_user ON user_entitlements(user_id, kind, expires_at);
+
+CREATE TABLE IF NOT EXISTS families (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  level INTEGER NOT NULL DEFAULT 1,
+  experience INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS family_members (
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (family_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_family_member_user ON family_members(user_id);
+CREATE TABLE IF NOT EXISTS family_signins (
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  day_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (family_id, user_id, day_key)
+);
+
+CREATE TABLE IF NOT EXISTS dollar_wallets (
+  user_id TEXT PRIMARY KEY,
+  balance_cents INTEGER NOT NULL DEFAULT 0 CHECK (balance_cents >= 0),
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  balance_after_cents INTEGER NOT NULL,
+  destination_type TEXT NOT NULL DEFAULT '',
+  destination_ref TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time
+  ON dollar_wallet_ledger(user_id, created_at DESC);
