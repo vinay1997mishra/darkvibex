@@ -476,6 +476,12 @@ async function handleApi(request, env, url) {
       const locked = body.locked === true ? 1 : 0;
       const announcement = String(body.announcement ?? "").trim().slice(0, 500);
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
+      const overflow = await db.prepare(
+        "SELECT COUNT(*) AS total FROM room_members WHERE room_id = ? AND seat_index >= ?"
+      ).bind(roomId, seatCount).first();
+      if (Number(overflow?.total ?? 0) > 0) {
+        return json({ ok: false, error: "seats_occupied" }, { status: 409 });
+      }
       const ts = now();
       await db.batch([
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
