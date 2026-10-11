@@ -82,6 +82,25 @@ class LoginScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
+                      height: 52,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF1877F2),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: state.signingIn
+                            ? null
+                            : () => state.signInWithFacebook(),
+                        icon: const Icon(Icons.facebook_rounded),
+                        label: const Text(
+                          'Continue with Facebook',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
                       height: 50,
                       child: OutlinedButton(
                         onPressed: state.signingIn
