@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_identity.dart';
 import '../screens/home_shell.dart';
+import '../screens/login_screen.dart';
 import 'app_state.dart';
 
 class DarkVibeXApp extends StatefulWidget {
@@ -54,7 +55,20 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
           indicatorColor: Color(0x33FFD36A),
         ),
       ),
-      home: HomeShell(state: state),
+      home: AnimatedBuilder(
+        animation: state,
+        builder: (context, _) {
+          if (state.isInitializing) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (!state.isAuthenticated) {
+            return LoginScreen(state: state);
+          }
+          return HomeShell(state: state);
+        },
+      ),
     );
   }
 }
