@@ -251,6 +251,30 @@ async function ensureRoomSettingsTable(db) {
   ).run();
 }
 
+async function ensureRoomSafetyTables(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_bans (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      banned_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_reports (
+      id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      reporter_user_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
 async function ensureLegalConsentTable(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS legal_consents (
@@ -566,6 +590,13 @@ async function handleApi(request, env, url) {
       "SELECT owner_user_id, locked FROM rooms WHERE id = ?"
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    await ensureRoomSafetyTables(db);
+    const roomBan = await db.prepare(
+      "SELECT 1 AS blocked FROM room_bans WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (roomBan && roomAccess.owner_user_id !== userId) {
+      return json({ ok: false, error: "room_blocked" }, { status: 403 });
+    }
     if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId) {
       return json({ ok: false, error: "room_locked" }, { status: 403 });
     }
@@ -684,6 +715,8 @@ async function handleApi(request, env, url) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
       if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
       if (room.owner_user_id !== ownerId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      await ensureRoomSafetyTables(db);
+      const shouldBan = body.ban === true;
       if (env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
         const seconds = Math.floor(Date.now() / 1000);
         const adminToken = await signJwt(
@@ -725,12 +758,39 @@ async function handleApi(request, env, url) {
           }
         }
       }
+      if (shouldBan) {
+        await db.prepare(
+          "INSERT INTO room_bans (room_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id, user_id) DO UPDATE SET banned_by = excluded.banned_by, created_at = excluded.created_at"
+        ).bind(roomId, targetId, ownerId, now()).run();
+      }
       const result = await db.prepare(
         "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
       ).bind(roomId, targetId).run();
       return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "report" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const reason = String(body.reason ?? "").trim().slice(0, 80);
+    const details = String(body.details ?? "").trim().slice(0, 500);
+    const allowedReasons = new Set(["Harassment", "Inappropriate content", "Spam or scam", "Safety concern", "Other"]);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!allowedReasons.has(reason)) return json({ ok: false, error: "invalid_report_reason" }, { status: 400 });
+    const membership = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    await ensureRoomSafetyTables(db);
+    const reportId = id();
+    await db.prepare(
+      "INSERT INTO room_reports (id, room_id, reporter_user_id, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(reportId, roomId, userId, reason, details, now()).run();
+    return json({ ok: true, report_id: reportId }, { status: 201 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "follow") {
