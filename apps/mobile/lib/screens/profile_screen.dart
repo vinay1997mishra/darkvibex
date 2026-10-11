@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import 'vip_screen.dart';
+import 'legal_policy_screen.dart';
+import 'app_settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
@@ -141,6 +143,7 @@ class ProfileScreen extends StatelessWidget {
                 _item(context, state, Icons.store_rounded, 'Store', 'Frames, effects and themes'),
                 _item(context, state, Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
                 _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
+                _item(context, state, Icons.description_outlined, 'Terms & Privacy', 'Room rules, terms and privacy notice'),
                 ListTile(
                   leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
                   title: const Text('Sign out'),
@@ -163,6 +166,18 @@ class ProfileScreen extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () async {
+        if (title == 'Settings') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const AppSettingsScreen(),
+          ));
+          return;
+        }
+        if (title == 'Terms & Privacy' || title == 'Privacy & Safety') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const LegalPolicyScreen(),
+          ));
+          return;
+        }
         if (title == 'Unique ID') {
           final currentId = state.customVipId?.isNotEmpty == true
               ? state.customVipId!
