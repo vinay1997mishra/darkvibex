@@ -419,8 +419,34 @@ async function ensureParityTables(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS families (id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_user_id TEXT NOT NULL,level INTEGER NOT NULL DEFAULT 1,experience INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS family_members (family_id TEXT NOT NULL,user_id TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'member',joined_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id))"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_family_member_user ON family_members(user_id)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS family_signins (family_id TEXT NOT NULL,user_id TEXT NOT NULL,day_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id,day_key))")
+    db.prepare("CREATE TABLE IF NOT EXISTS family_signins (family_id TEXT NOT NULL,user_id TEXT NOT NULL,day_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id,day_key))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallets (user_id TEXT PRIMARY KEY,balance_cents INTEGER NOT NULL DEFAULT 0 CHECK(balance_cents>=0),updated_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,kind TEXT NOT NULL,amount_cents INTEGER NOT NULL,balance_after_cents INTEGER NOT NULL,destination_type TEXT NOT NULL DEFAULT '',destination_ref TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time ON dollar_wallet_ledger(user_id,created_at DESC)")
   ]);
+}
+
+async function eligibleDollarWalletUser(db, userId) {
+  const user = await db.prepare("SELECT id,role FROM users WHERE id=?").bind(userId).first();
+  if (!user) throw new Error("user_not_found");
+  const eligible = new Set(["coin_seller","merchant","platform_owner"]);
+  if (!eligible.has(String(user.role ?? ""))) throw new Error("dollar_wallet_not_available");
+  await db.prepare(
+    "INSERT OR IGNORE INTO dollar_wallets (user_id,balance_cents,updated_at) VALUES (?,0,?)"
+  ).bind(userId,now()).run();
+  return user;
+}
+
+async function dollarWalletState(db, userId) {
+  await ensureParityTables(db);
+  await eligibleDollarWalletUser(db,userId);
+  const wallet=await db.prepare(
+    "SELECT balance_cents,updated_at FROM dollar_wallets WHERE user_id=?"
+  ).bind(userId).first();
+  const ledger=await db.prepare(
+    "SELECT id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at FROM dollar_wallet_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
+  ).bind(userId).all();
+  return {balance_cents:Number(wallet?.balance_cents??0),updated_at:wallet?.updated_at??null,ledger:ledger.results??[]};
 }
 
 function mixRound(value) {
@@ -972,6 +998,47 @@ async function handleApi(request, env, url) {
       if(String(error?.message??error).toLowerCase().includes("unique"))return json({ok:true,already_signed_in:true,experience_added:0});
       throw error;
     }
+  }
+
+  if (url.pathname === "/api/dollar-wallet" && request.method === "GET") {
+    if (!env.SESSION_SECRET) return json({ok:false,error:"session_secret_not_configured"},{status:503});
+    const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
+    const userId=String(url.searchParams.get("user_id")??"").trim();
+    if(!userId || String(session.sub)!==userId)return json({ok:false,error:"forbidden"},{status:403});
+    try {
+      return json({ok:true,...await dollarWalletState(db,userId)});
+    } catch(error) {
+      const code=String(error?.message??error);
+      return json({ok:false,error:code},{status:code==="dollar_wallet_not_available"?403:400});
+    }
+  }
+
+  if (url.pathname === "/api/dollar-wallet/settle" && request.method === "POST") {
+    if (!env.SESSION_SECRET) return json({ok:false,error:"session_secret_not_configured"},{status:503});
+    const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
+    const body=await bodyJson(request);
+    const userId=String(body.user_id??"").trim();
+    if(!userId || String(session.sub)!==userId)return json({ok:false,error:"forbidden"},{status:403});
+    const amountCents=Number(body.amount_cents??0);
+    const destinationType=String(body.destination_type??"").trim().toLowerCase();
+    const destinationRef=String(body.destination_ref??"").trim().slice(0,180);
+    if(!Number.isSafeInteger(amountCents)||amountCents<=0)return json({ok:false,error:"invalid_amount"},{status:400});
+    if(!["company","crypto"].includes(destinationType))return json({ok:false,error:"invalid_destination"},{status:400});
+    if(destinationType==="crypto" && !destinationRef)return json({ok:false,error:"crypto_address_required"},{status:400});
+    await ensureParityTables(db);
+    try { await eligibleDollarWalletUser(db,userId); }
+    catch(error){return json({ok:false,error:String(error?.message??error)},{status:403});}
+    const changed=await db.prepare(
+      "UPDATE dollar_wallets SET balance_cents=balance_cents-?,updated_at=? WHERE user_id=? AND balance_cents>=?"
+    ).bind(amountCents,now(),userId,amountCents).run();
+    if(Number(changed.meta?.changes??0)<1)return json({ok:false,error:"insufficient_dollars"},{status:400});
+    const wallet=await db.prepare("SELECT balance_cents FROM dollar_wallets WHERE user_id=?").bind(userId).first();
+    const balance=Number(wallet?.balance_cents??0);
+    const ledgerId=id();
+    await db.prepare(
+      "INSERT INTO dollar_wallet_ledger (id,user_id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at) VALUES (?,?,'settlement',?,?,?,?,?)"
+    ).bind(ledgerId,userId,-amountCents,balance,destinationType,destinationRef,now()).run();
+    return json({ok:true,ledger_id:ledgerId,balance_cents:balance});
   }
 
   if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
