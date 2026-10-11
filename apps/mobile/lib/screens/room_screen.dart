@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:livekit_client/livekit_client.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
@@ -27,6 +28,10 @@ class _RoomScreenState extends State<RoomScreen> {
   bool muted = true;
   String voiceStatus = 'Connecting…';
   RtcAdapter? rtc;
+  EventsListener<RoomEvent>? rtcEvents;
+  VideoTrack? localVideoTrack;
+  final Map<String, VideoTrack> remoteVideoTracks = <String, VideoTrack>{};
+  bool cameraPublished = false;
   final List<String> chat = <String>['Welcome to the room 👋'];
 
   @override
@@ -63,10 +68,13 @@ class _RoomScreenState extends State<RoomScreen> {
         authToken: token,
       );
       rtc = candidate;
+      if (candidate is LiveKitRtcAdapter) {
+        _bindVideoTracks(candidate);
+      }
       if (!mounted) return;
       setState(() {
         voiceStatus = candidate is LiveKitRtcAdapter
-            ? 'Voice connected'
+            ? 'Voice/video connected'
             : 'Local voice mode';
       });
     } catch (_) {
@@ -79,8 +87,83 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  void _bindVideoTracks(LiveKitRtcAdapter adapter) {
+    final room = adapter.room;
+    if (room == null) return;
+    rtcEvents?.dispose();
+    rtcEvents = room.createListener()
+      ..on<TrackSubscribedEvent>((_) => _refreshVideoTracks(adapter))
+      ..on<TrackUnsubscribedEvent>((_) => _refreshVideoTracks(adapter))
+      ..on<TrackPublishedEvent>((_) => _refreshVideoTracks(adapter))
+      ..on<TrackUnpublishedEvent>((_) => _refreshVideoTracks(adapter))
+      ..on<ParticipantDisconnectedEvent>((_) => _refreshVideoTracks(adapter));
+    _refreshVideoTracks(adapter);
+  }
+
+  void _refreshVideoTracks(LiveKitRtcAdapter adapter) {
+    final room = adapter.room;
+    if (room == null || !mounted) return;
+
+    VideoTrack? local;
+    final localParticipant = room.localParticipant;
+    if (localParticipant != null) {
+      for (final publication in localParticipant.videoTrackPublications) {
+        final track = publication.track;
+        if (track is VideoTrack && !publication.muted) {
+          local = track;
+          break;
+        }
+      }
+    }
+
+    final remotes = <String, VideoTrack>{};
+    for (final participant in room.remoteParticipants.values) {
+      for (final publication in participant.videoTrackPublications) {
+        final track = publication.track;
+        if (track is VideoTrack && !publication.muted) {
+          remotes[participant.identity] = track;
+          break;
+        }
+      }
+    }
+
+    setState(() {
+      localVideoTrack = local;
+      remoteVideoTracks
+        ..clear()
+        ..addAll(remotes);
+    });
+  }
+
+  Future<void> _toggleCamera() async {
+    if (mySeat == null) return;
+    final adapter = rtc;
+    if (adapter is! LiveKitRtcAdapter) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video needs the live room server')),
+      );
+      return;
+    }
+
+    final enable = !cameraPublished;
+    try {
+      await adapter.setCameraPublished(enable);
+      if (!mounted) return;
+      setState(() => cameraPublished = enable);
+      _refreshVideoTracks(adapter);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Camera unavailable: $error')),
+      );
+    }
+  }
+
   @override
   void dispose() {
+    rtcEvents?.dispose();
+    rtcEvents = null;
     final current = rtc;
     if (current != null) {
       unawaited(
@@ -118,11 +201,16 @@ class _RoomScreenState extends State<RoomScreen> {
     if (leaving && !muted) {
       await rtc?.setMicPublished(false);
     }
+    if (leaving && cameraPublished && rtc is LiveKitRtcAdapter) {
+      await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+    }
     if (!mounted) return;
     setState(() {
       if (leaving) {
         mySeat = null;
         muted = true;
+        cameraPublished = false;
+        localVideoTrack = null;
       } else {
         mySeat = seat;
         muted = true;
@@ -221,6 +309,52 @@ class _RoomScreenState extends State<RoomScreen> {
     setState(() => chat.add('${widget.state.displayName}: $value'));
   }
 
+  Widget _videoStage() {
+    final entries = <MapEntry<String, VideoTrack>>[];
+    if (localVideoTrack != null) {
+      entries.add(MapEntry<String, VideoTrack>('You', localVideoTrack!));
+    }
+    entries.addAll(remoteVideoTracks.entries);
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 180,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+        scrollDirection: Axis.horizontal,
+        itemCount: entries.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final entry = entries[index];
+          return SizedBox(
+            width: 132,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: ColoredBox(
+                      color: Colors.black,
+                      child: VideoTrackRenderer(entry.value),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  entry.key,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final spec = SeatLayoutSpec.forCount(widget.room.seatCount);
@@ -243,6 +377,7 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       body: Column(
         children: [
+          _videoStage(),
           Expanded(
             flex: 5,
             child: LayoutBuilder(
@@ -329,6 +464,11 @@ class _RoomScreenState extends State<RoomScreen> {
               IconButton.filledTonal(
                 onPressed: mySeat == null ? null : _toggleMic,
                 icon: Icon(muted ? Icons.mic_off_rounded : Icons.mic_rounded),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: mySeat == null ? null : _toggleCamera,
+                icon: Icon(cameraPublished ? Icons.videocam_rounded : Icons.videocam_off_rounded),
               ),
               const Spacer(),
               FilledButton.icon(
