@@ -28,6 +28,7 @@ class RoomScreen extends StatefulWidget {
 }
 
 class _RoomScreenState extends State<RoomScreen> {
+  static final Set<String> _acceptedLegalInSession = <String>{};
   int? mySeat;
   bool muted = true;
   String voiceStatus = 'Connecting…';
@@ -86,8 +87,13 @@ class _RoomScreenState extends State<RoomScreen> {
   static const _legalVersion = 'darkvibex-terms-privacy-2026-10-v1';
 
   Future<bool> _ensureLegalAgreement() async {
+    final consentKey = '${widget.state.userId}:$_legalVersion';
+    if (_acceptedLegalInSession.contains(consentKey)) return true;
     if (!widget.state.backendConnected) return true;
-    if (await widget.state.backend.legalConsentAccepted(version: _legalVersion)) return true;
+    if (await widget.state.backend.legalConsentAccepted(version: _legalVersion)) {
+      _acceptedLegalInSession.add(consentKey);
+      return true;
+    }
     if (!mounted) return false;
     var checked = false;
     final accepted = await showDialog<bool>(
@@ -132,14 +138,11 @@ class _RoomScreenState extends State<RoomScreen> {
       return false;
     }
     final saved = await widget.state.backend.acceptLegalConsent(version: _legalVersion);
-    if (!saved) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Agreement could not be saved. Please reconnect and try again.')),
-        );
-        Navigator.of(context).pop();
-      }
-      return false;
+    _acceptedLegalInSession.add(consentKey);
+    if (!saved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Agreement is active for this session; server sync is unavailable.')),
+      );
     }
     return true;
   }
