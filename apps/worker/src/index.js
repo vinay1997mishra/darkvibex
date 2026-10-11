@@ -241,6 +241,238 @@ async function walletChange(db, userId, amount, kind, referenceId = null) {
   return next;
 }
 
+
+const DEFAULT_GIFTS = [
+  {id:"rose",name:"Rose",emoji:"🌹",category:"popular",price_coins:1000,effect:"compact"},
+  {id:"star",name:"Shining Star",emoji:"⭐",category:"popular",price_coins:5000,effect:"compact"},
+  {id:"crown",name:"Golden Crown",emoji:"👑",category:"popular",price_coins:50000,effect:"overlay"},
+  {id:"sports-car",name:"Sports Car",emoji:"🏎️",category:"popular",price_coins:500000,effect:"cinematic"},
+  {id:"dragon",name:"Royal Dragon",emoji:"🐉",category:"popular",price_coins:5000000,effect:"cinematic"},
+  {id:"lucky-candy-star",name:"Candy Star",emoji:"🍬",category:"lucky",price_coins:10000,effect:"overlay"},
+  {id:"lucky-rainbow-heart",name:"Rainbow Heart",emoji:"💖",category:"lucky",price_coins:25000,effect:"overlay"},
+  {id:"lucky-galaxy-ring",name:"Galaxy Ring",emoji:"💍",category:"lucky",price_coins:100000,effect:"cinematic"},
+  {id:"lucky-unicorn",name:"Shining Unicorn",emoji:"🦄",category:"lucky",price_coins:500000,effect:"cinematic"},
+  {id:"music-mic",name:"Golden Mic",emoji:"🎤",category:"music",price_coins:20000,effect:"overlay"},
+  {id:"music-guitar",name:"Electric Guitar",emoji:"🎸",category:"music",price_coins:50000,effect:"overlay"},
+  {id:"music-dj",name:"DJ Stage",emoji:"🎧",category:"music",price_coins:200000,effect:"cinematic"},
+  {id:"lucky-bag-bronze",name:"Lucky Bag",emoji:"🧧",category:"lucky_bag",price_coins:100000,effect:"overlay"},
+  {id:"lucky-bag-gold",name:"Royal Lucky Bag",emoji:"🎁",category:"lucky_bag",price_coins:500000,effect:"cinematic"},
+  {id:"peace",name:"Peace",emoji:"🕊️",category:"moderation",price_coins:10000,effect:"compact"},
+  {id:"respect",name:"Respect",emoji:"🤝",category:"moderation",price_coins:25000,effect:"compact"},
+  {id:"cp-rose",name:"CP Rose",emoji:"🌹",category:"cp",price_coins:44444,effect:"compact"},
+  {id:"cp-heart",name:"CP Heart",emoji:"💞",category:"cp",price_coins:150000,effect:"overlay"},
+  {id:"cp-ring",name:"CP Ring",emoji:"💍",category:"cp",price_coins:500000,effect:"overlay"},
+  {id:"cp-castle",name:"CP Castle",emoji:"🏰",category:"cp",price_coins:2500000,effect:"cinematic"},
+  {id:"cp-forever",name:"Forever CP",emoji:"♾️",category:"cp",price_coins:10000000,effect:"cinematic"},
+  {id:"enemy-broken-rose",name:"Broken Rose",emoji:"🥀",category:"enemy",price_coins:44444,effect:"compact"},
+  {id:"enemy-cracked-heart",name:"Cracked Heart",emoji:"💔",category:"enemy",price_coins:150000,effect:"overlay"},
+  {id:"enemy-poison-bottle",name:"Poison Bottle",emoji:"🧪",category:"enemy",price_coins:350000,effect:"overlay"},
+  {id:"enemy-dagger",name:"Dagger",emoji:"🗡️",category:"enemy",price_coins:500000,effect:"overlay"},
+  {id:"enemy-black-scorpion",name:"Black Scorpion",emoji:"🦂",category:"enemy",price_coins:850000,effect:"overlay"},
+  {id:"enemy-venom-snake",name:"Venom Snake",emoji:"🐍",category:"enemy",price_coins:1200000,effect:"overlay"},
+  {id:"enemy-skull",name:"Skull",emoji:"💀",category:"enemy",price_coins:1550000,effect:"overlay"},
+  {id:"enemy-broken-crown",name:"Broken Crown",emoji:"♛",category:"enemy",price_coins:1900000,effect:"overlay"},
+  {id:"enemy-dark-chains",name:"Dark Chains",emoji:"⛓️",category:"enemy",price_coins:2250000,effect:"cinematic"},
+  {id:"enemy-war-hammer",name:"War Hammer",emoji:"🔨",category:"enemy",price_coins:2600000,effect:"cinematic"},
+  {id:"enemy-thunder-axe",name:"Thunder Axe",emoji:"🪓",category:"enemy",price_coins:2950000,effect:"cinematic"},
+  {id:"enemy-demon-mask",name:"Demon Mask",emoji:"👹",category:"enemy",price_coins:3300000,effect:"cinematic"},
+  {id:"enemy-hell-hound",name:"Hell Hound",emoji:"🐕",category:"enemy",price_coins:3650000,effect:"cinematic"},
+  {id:"enemy-shadow-panther",name:"Shadow Panther",emoji:"🐆",category:"enemy",price_coins:4000000,effect:"cinematic"},
+  {id:"enemy-blood-wolf",name:"Blood Wolf",emoji:"🐺",category:"enemy",price_coins:4350000,effect:"cinematic"},
+  {id:"enemy-dark-phoenix",name:"Dark Phoenix",emoji:"🔥",category:"enemy",price_coins:6000000,effect:"cinematic"},
+  {id:"enemy-demon-dragon",name:"Demon Dragon",emoji:"🐉",category:"enemy",price_coins:8000000,effect:"cinematic"},
+  {id:"enemy-war-of-rivals",name:"War of Rivals",emoji:"⚔️",category:"enemy",price_coins:12000000,effect:"cinematic"},
+  {id:"enemy-throne",name:"Throne of Enemies",emoji:"♜",category:"enemy",price_coins:15000000,effect:"cinematic"},
+  {id:"enemy-apocalypse",name:"Apocalypse",emoji:"🌩️",category:"enemy",price_coins:20000000,effect:"cinematic"}
+];
+
+const DEFAULT_STORE = {
+  vip:[
+    {id:"vip-1",name:"VIP 1",price_coins:2000000,data:{duration_days:30,level:1}},
+    {id:"vip-2",name:"VIP 2",price_coins:5000000,data:{duration_days:30,level:2}},
+    {id:"vip-3",name:"VIP 3",price_coins:10000000,data:{duration_days:30,level:3}}
+  ],
+  frame:[
+    {id:"frame-gold",name:"Gold Frame",price_coins:1000000,data:{duration_days:7}},
+    {id:"frame-neon",name:"Neon Frame",price_coins:2500000,data:{duration_days:7}}
+  ],
+  ring:[
+    {id:"ring-galaxy",name:"Galaxy Ring",price_coins:2000000,data:{duration_days:7}},
+    {id:"ring-flame",name:"Flame Ring",price_coins:3500000,data:{duration_days:7}}
+  ],
+  bubble:[
+    {id:"bubble-gold",name:"Gold Chat Bubble",price_coins:500000,data:{duration_days:7}},
+    {id:"bubble-neon",name:"Neon Chat Bubble",price_coins:1000000,data:{duration_days:7}}
+  ],
+  profile_background:[
+    {id:"bg-midnight",name:"Midnight Profile",price_coins:1500000,data:{duration_days:7}},
+    {id:"bg-royal",name:"Royal Profile",price_coins:3000000,data:{duration_days:7}}
+  ],
+  vehicle:[
+    {id:"vehicle-supercar",name:"Supercar Entry",price_coins:3000000,data:{duration_days:7}},
+    {id:"vehicle-dragon",name:"Dragon Entry",price_coins:8000000,data:{duration_days:7}}
+  ],
+  theme:[
+    {id:"theme-black-gold",name:"Black Gold Room",price_coins:10000000,data:{duration_days:7}},
+    {id:"theme-neon-night",name:"Neon Night Room",price_coins:10000000,data:{duration_days:7}}
+  ],
+  tag:[
+    {id:"tag-vibe",name:"VIBE",price_coins:500000,data:{duration_days:30}},
+    {id:"tag-royal",name:"ROYAL",price_coins:1500000,data:{duration_days:30}}
+  ]
+};
+
+const FRUITS = {
+  lemon:{key:"lemon",emoji:"🍋",label:"Lemon",multiplier:5},
+  raspberry:{key:"raspberry",emoji:"🫐",label:"Raspberry",multiplier:5},
+  kiwi:{key:"kiwi",emoji:"🥝",label:"Kiwi",multiplier:5},
+  plum:{key:"plum",emoji:"🍑",label:"Plum",multiplier:5},
+  banana:{key:"banana",emoji:"🍌",label:"Banana",multiplier:10},
+  strawberry:{key:"strawberry",emoji:"🍓",label:"Strawberry",multiplier:15},
+  watermelon:{key:"watermelon",emoji:"🍉",label:"Watermelon",multiplier:25},
+  cherry:{key:"cherry",emoji:"🍒",label:"Cherry",multiplier:45}
+};
+const FRUIT_STAKES = new Set([5000,25000,100000,500000,2000000,10000000]);
+
+function defaultCatalog(kind) {
+  if (kind === "gift") return DEFAULT_GIFTS.map((g,index)=>({
+    kind:"gift",id:g.id,name:g.name,sort_order:index,price_coins:g.price_coins,country:"",
+    data:{emoji:g.emoji,category:g.category,effect:g.effect}
+  }));
+  const rows = DEFAULT_STORE[kind] ?? [];
+  return rows.map((g,index)=>({kind,id:g.id,name:g.name,sort_order:index,price_coins:g.price_coins,country:"",data:g.data??{}}));
+}
+
+function mergeCatalog(defaults, ownerRows) {
+  const byId = new Map(defaults.map((row)=>[row.id,row]));
+  for (const row of ownerRows) byId.set(row.id,row);
+  return [...byId.values()].sort((a,b)=>Number(a.sort_order??0)-Number(b.sort_order??0));
+}
+
+async function catalogItem(db, kind, itemId) {
+  const ownerRows = await publicCatalog(db, kind);
+  const merged = mergeCatalog(defaultCatalog(kind), ownerRows);
+  return merged.find((row)=>String(row.id)===String(itemId)) ?? null;
+}
+
+function relationshipLevel(progress) {
+  const thresholds=[0,500000,1500000,3000000,6000000,10000000,20000000,35000000,55000000,80000000];
+  let level=1;
+  for (let i=1;i<thresholds.length;i+=1) if (progress>=thresholds[i]) level=i+1;
+  const previous=thresholds[Math.min(level-1,thresholds.length-1)];
+  const next=thresholds[level] ?? null;
+  return {level,previous_threshold:previous,next_threshold:next};
+}
+
+async function relationshipProgress(db, userA, userB, kind) {
+  const prefix = kind === "enemy" ? "enemy-%" : "cp-%";
+  const row = await db.prepare(
+    "SELECT COALESCE(SUM(coin_cost),0) AS progress FROM gift_events WHERE gift_id LIKE ? AND ((sender_user_id=? AND receiver_user_id=?) OR (sender_user_id=? AND receiver_user_id=?))"
+  ).bind(prefix,userA,userB,userB,userA).first();
+  const progress=Number(row?.progress??0);
+  return {kind,progress,...relationshipLevel(progress)};
+}
+
+async function ensureParityTables(db) {
+  await db.batch([
+    db.prepare("CREATE TABLE IF NOT EXISTS user_entitlements (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,kind TEXT NOT NULL,item_id TEXT NOT NULL,item_name TEXT NOT NULL,starts_at INTEGER NOT NULL,expires_at INTEGER,active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)),created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_entitlements_user ON user_entitlements(user_id,kind,expires_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS families (id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_user_id TEXT NOT NULL,level INTEGER NOT NULL DEFAULT 1,experience INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS family_members (family_id TEXT NOT NULL,user_id TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'member',joined_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_family_member_user ON family_members(user_id)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS family_signins (family_id TEXT NOT NULL,user_id TEXT NOT NULL,day_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id,day_key))")
+  ]);
+}
+
+function mixRound(value) {
+  let x=(Number(value)>>>0)+0x9e3779b9;
+  x^=x>>>16;x=Math.imul(x,0x21f0aaad);x^=x>>>15;x=Math.imul(x,0x735a2d97);x^=x>>>15;
+  return x>>>0;
+}
+function fruitOutcome(roundId) {
+  const seed=mixRound(roundId);
+  const bucket=seed%1000;
+  let pool;
+  if (bucket<750) pool=["lemon","raspberry","kiwi","plum"];
+  else if (bucket<950) pool=["banana","strawberry","watermelon"];
+  else pool=["cherry"];
+  const winner=pool[mixRound(seed+17)%pool.length];
+  const lucky=(mixRound(seed+31)%67)===0;
+  const all=Object.keys(FRUITS);
+  const bonus=[];
+  if (lucky) {
+    let cursor=seed;
+    while (bonus.length<4) {
+      cursor=mixRound(cursor+bonus.length+1);
+      const key=all[cursor%all.length];
+      if (!bonus.includes(key)) bonus.push(key);
+    }
+  }
+  return {round_id:roundId,winner,lucky11:lucky,bonus_fruits:bonus};
+}
+function fruitRound(ts=now()) {
+  const cycle=26000,betting=21000;
+  const roundId=Math.floor(ts/cycle);
+  const pos=((ts%cycle)+cycle)%cycle;
+  const phase=pos<betting?"betting":"result";
+  const remaining=phase==="betting"?betting-pos:cycle-pos;
+  return {...fruitOutcome(roundId),phase,remaining_ms:remaining,round_end:ts+remaining,cycle_end:ts+(cycle-pos),round_duration_ms:betting};
+}
+
+async function settleFruitBets(db,userId) {
+  const current=fruitRound();
+  const pending=await db.prepare(
+    "SELECT id,stake,result FROM game_bets WHERE game_id='fruit-party' AND user_id=? AND result LIKE 'pending|%' ORDER BY created_at ASC LIMIT 200"
+  ).bind(userId).all();
+  for (const bet of pending.results??[]) {
+    const parts=String(bet.result??"").split("|");
+    if (parts.length<3) continue;
+    const roundId=Number(parts[1]),choice=parts[2];
+    const ready=roundId<current.round_id || (roundId===current.round_id && current.phase==="result");
+    if (!ready || !FRUITS[choice]) continue;
+    const outcome=fruitOutcome(roundId);
+    const hit=choice===outcome.winner || (outcome.lucky11 && outcome.bonus_fruits.includes(choice));
+    const payout=hit?Number(bet.stake)*FRUITS[choice].multiplier:0;
+    const settled="settled|"+roundId+"|"+outcome.winner+"|"+choice+"|"+(outcome.lucky11?"lucky11":"normal");
+    const changed=await db.prepare(
+      "UPDATE game_bets SET result=?,payout=? WHERE id=? AND result LIKE 'pending|%'"
+    ).bind(settled,payout,bet.id).run();
+    if (Number(changed.meta?.changes??0)>0 && payout>0) {
+      await walletChange(db,userId,payout,"game_win",bet.id);
+    }
+  }
+}
+
+async function fruitState(db,userId) {
+  await ensureUser(db,userId);
+  await settleFruitBets(db,userId);
+  const current=fruitRound();
+  const wallet=await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+  const bets=await db.prepare(
+    "SELECT id,stake,result,payout,created_at FROM game_bets WHERE game_id='fruit-party' AND user_id=? ORDER BY created_at DESC LIMIT 100"
+  ).bind(userId).all();
+  const history=[];
+  for (let i=1;i<=7;i+=1) {
+    const outcome=fruitOutcome(current.round_id-i);
+    history.push({...outcome,fruit:FRUITS[outcome.winner]});
+  }
+  const top=await db.prepare(
+    "SELECT b.user_id,u.display_name,b.payout,b.result,b.created_at FROM game_bets b LEFT JOIN users u ON u.id=b.user_id WHERE b.game_id='fruit-party' AND b.payout>0 ORDER BY b.created_at DESC,b.payout DESC LIMIT 30"
+  ).all();
+  const topWinners=(top.results??[]).sort((a,b)=>Number(b.payout??0)-Number(a.payout??0)).slice(0,3);
+  const myBets={};
+  for (const bet of bets.results??[]) {
+    const parts=String(bet.result??"").split("|");
+    if (parts[0]==="pending" && Number(parts[1])===current.round_id) {
+      myBets[parts[2]]=(myBets[parts[2]]??0)+Number(bet.stake??0);
+    }
+  }
+  return {
+    ok:true,server_time:now(),wallet_balance:Number(wallet?.coins??0),round:current,
+    fruits:Object.values(FRUITS),my_bets:myBets,history,top_winners:topWinners
+  };
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -267,7 +499,17 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/catalog" && request.method === "GET") {
     const kind = String(url.searchParams.get("kind") ?? "").trim().slice(0, 60);
     if (!kind) return json({ ok: false, error: "kind_required" }, { status: 400 });
-    return json({ ok: true, items: await publicCatalog(db, kind) });
+    const ownerItems = await publicCatalog(db, kind);
+    return json({ ok: true, items: mergeCatalog(defaultCatalog(kind), ownerItems).slice(0, 300) });
+  }
+
+  if (url.pathname === "/api/search" && request.method === "GET") {
+    const q=String(url.searchParams.get("q")??"").trim().slice(0,80);
+    if (!q) return json({ok:true,rooms:[],users:[]});
+    const like="%"+q+"%";
+    const rooms=await db.prepare("SELECT id,name,owner_user_id,seat_count,locked FROM rooms WHERE id LIKE ? OR name LIKE ? ORDER BY updated_at DESC LIMIT 30").bind(like,like).all();
+    const users=await db.prepare("SELECT id,display_name,vip_level,avatar_key FROM users WHERE id LIKE ? OR display_name LIKE ? ORDER BY updated_at DESC LIMIT 30").bind(like,like).all();
+    return json({ok:true,rooms:rooms.results??[],users:users.results??[]});
   }
 
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
@@ -391,6 +633,13 @@ async function handleApi(request, env, url) {
     return json({ ok: true, seat_index: seatIndex, mic_muted: Boolean(muted) });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members" && request.method === "GET") {
+    const rows=await db.prepare(
+      "SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,u.display_name,u.avatar_key,u.vip_level FROM room_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.room_id=? ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END,m.seat_index ASC,m.joined_at ASC LIMIT 200"
+    ).bind(parts[2]).all();
+    return json({ok:true,members:rows.results??[]});
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "messages") {
     const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
@@ -511,49 +760,138 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
-    const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
-    const cost = Number(body.coin_cost ?? 0);
-    if (!sender || !receiver || !Number.isInteger(cost) || cost <= 0) {
-      return json({ ok: false, error: "invalid_gift" }, { status: 400 });
-    }
-    await ensureUser(db, sender);
-    await ensureUser(db, receiver);
-    await ensureUserAllowed(db, sender);
-    await ensureUserAllowed(db, receiver);
-    const eventId = id();
-    const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
+    const giftId = String(body.gift_id ?? "").trim().slice(0, 80);
+    if (!sender || !receiver || !giftId) return json({ok:false,error:"invalid_gift"},{status:400});
+    await ensureUser(db,sender);await ensureUser(db,receiver);
+    await ensureUserAllowed(db,sender);await ensureUserAllowed(db,receiver);
+    const gift=await catalogItem(db,"gift",giftId);
+    if (!gift) return json({ok:false,error:"gift_not_found"},{status:404});
+    const cost=Number(gift.price_coins??0);
+    if (!Number.isSafeInteger(cost) || cost<=0) return json({ok:false,error:"invalid_gift_price"},{status:400});
+    const eventId=id();
+    const beforeCp=giftId.startsWith("cp-")?await relationshipProgress(db,sender,receiver,"cp"):null;
+    const beforeEnemy=giftId.startsWith("enemy-")?await relationshipProgress(db,sender,receiver,"enemy"):null;
+    const balance=await walletChange(db,sender,-cost,"gift_sent",eventId);
     await db.batch([
-      db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?").bind(cost, now(), receiver),
-      db.prepare(
-        "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
+      db.prepare("UPDATE users SET diamonds=diamonds+?,updated_at=? WHERE id=?").bind(cost,now(),receiver),
+      db.prepare("INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,created_at) VALUES (?,?,?,?,?,?,?)").bind(eventId,body.room_id??null,sender,receiver,giftId,cost,now())
     ]);
-    return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
+    const relation=giftId.startsWith("cp-")?await relationshipProgress(db,sender,receiver,"cp"):
+      giftId.startsWith("enemy-")?await relationshipProgress(db,sender,receiver,"enemy"):null;
+    return json({ok:true,event_id:eventId,sender_coin_balance:balance,receiver_diamonds_added:cost,gift,relation,
+      level_before:beforeCp?.level??beforeEnemy?.level??null,level_after:relation?.level??null});
+  }
+
+  if (url.pathname === "/api/relationships" && request.method === "GET") {
+    const userA=String(url.searchParams.get("user_a")??"").trim();
+    const userB=String(url.searchParams.get("user_b")??"").trim();
+    if (!userA || !userB) return json({ok:false,error:"user_ids_required"},{status:400});
+    return json({ok:true,cp:await relationshipProgress(db,userA,userB,"cp"),enemy:await relationshipProgress(db,userA,userB,"enemy")});
+  }
+
+  if (url.pathname === "/api/store/purchase" && request.method === "POST") {
+    await ensureParityTables(db);
+    const body=await bodyJson(request);
+    const userId=String(body.user_id??"").trim(),kind=String(body.kind??"").trim(),itemId=String(body.item_id??"").trim();
+    if (!userId||!kind||!itemId) return json({ok:false,error:"purchase_fields_required"},{status:400});
+    await ensureUser(db,userId);await ensureUserAllowed(db,userId);
+    const item=await catalogItem(db,kind,itemId);
+    if (!item) return json({ok:false,error:"item_not_found"},{status:404});
+    const price=Number(item.price_coins??0);
+    const purchaseId=id();
+    const balance=price>0?await walletChange(db,userId,-price,"store_purchase",purchaseId):(await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first())?.coins??0;
+    const days=Math.max(0,Number(item.data?.duration_days??7));
+    const starts=now(),expires=days>0?starts+days*86400000:null;
+    await db.prepare("INSERT INTO user_entitlements (id,user_id,kind,item_id,item_name,starts_at,expires_at,active,created_at) VALUES (?,?,?,?,?,?,?,1,?)")
+      .bind(purchaseId,userId,kind,itemId,String(item.name??itemId),starts,expires,starts).run();
+    if (kind==="vip") {
+      const level=Math.max(0,Number(item.data?.level??0));
+      if (level>0) await db.prepare("UPDATE users SET vip_level=MAX(vip_level,?),updated_at=? WHERE id=?").bind(level,now(),userId).run();
+    }
+    return json({ok:true,purchase_id:purchaseId,coin_balance:Number(balance),expires_at:expires});
+  }
+
+  if (url.pathname === "/api/store/entitlements" && request.method === "GET") {
+    await ensureParityTables(db);
+    const userId=String(url.searchParams.get("user_id")??"").trim();
+    const rows=await db.prepare("SELECT id,kind,item_id,item_name,starts_at,expires_at,active FROM user_entitlements WHERE user_id=? AND active=1 AND (expires_at IS NULL OR expires_at>?) ORDER BY created_at DESC LIMIT 200").bind(userId,now()).all();
+    return json({ok:true,items:rows.results??[]});
+  }
+
+  if (url.pathname === "/api/family" && request.method === "GET") {
+    await ensureParityTables(db);
+    const userId=String(url.searchParams.get("user_id")??"").trim();
+    const family=await db.prepare("SELECT f.* FROM families f JOIN family_members m ON m.family_id=f.id WHERE m.user_id=? LIMIT 1").bind(userId).first();
+    if (!family) return json({ok:true,family:null,members:[]});
+    const members=await db.prepare("SELECT m.user_id,m.role,m.joined_at,u.display_name,u.vip_level FROM family_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.family_id=? ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,m.joined_at ASC LIMIT 200").bind(family.id).all();
+    return json({ok:true,family,members:members.results??[]});
+  }
+
+  if (url.pathname === "/api/family/create" && request.method === "POST") {
+    await ensureParityTables(db);
+    const body=await bodyJson(request),userId=String(body.user_id??"").trim(),name=String(body.name??"").trim().slice(0,60);
+    if(!userId||!name)return json({ok:false,error:"family_fields_required"},{status:400});
+    await ensureUser(db,userId);await ensureUserAllowed(db,userId);
+    const existing=await db.prepare("SELECT family_id FROM family_members WHERE user_id=? LIMIT 1").bind(userId).first();
+    if(existing)return json({ok:false,error:"already_in_family"},{status:409});
+    const familyId=String(Math.floor(100000+Math.random()*900000)),ts=now();
+    await db.batch([
+      db.prepare("INSERT INTO families (id,name,owner_user_id,level,experience,created_at,updated_at) VALUES (?,?,?,1,0,?,?)").bind(familyId,name,userId,ts,ts),
+      db.prepare("INSERT INTO family_members (family_id,user_id,role,joined_at) VALUES (?,?,'owner',?)").bind(familyId,userId,ts)
+    ]);
+    return json({ok:true,family_id:familyId},{status:201});
+  }
+
+  if (url.pathname === "/api/family/join" && request.method === "POST") {
+    await ensureParityTables(db);
+    const body=await bodyJson(request),userId=String(body.user_id??"").trim(),familyId=String(body.family_id??"").trim();
+    if(!userId||!familyId)return json({ok:false,error:"family_fields_required"},{status:400});
+    await ensureUser(db,userId);await ensureUserAllowed(db,userId);
+    const family=await db.prepare("SELECT id FROM families WHERE id=?").bind(familyId).first();
+    if(!family)return json({ok:false,error:"family_not_found"},{status:404});
+    const existing=await db.prepare("SELECT family_id FROM family_members WHERE user_id=? LIMIT 1").bind(userId).first();
+    if(existing)return json({ok:false,error:"already_in_family"},{status:409});
+    await db.prepare("INSERT INTO family_members (family_id,user_id,role,joined_at) VALUES (?,?,'member',?)").bind(familyId,userId,now()).run();
+    return json({ok:true});
+  }
+
+  if (url.pathname === "/api/family/signin" && request.method === "POST") {
+    await ensureParityTables(db);
+    const body=await bodyJson(request),userId=String(body.user_id??"").trim();
+    const member=await db.prepare("SELECT family_id FROM family_members WHERE user_id=? LIMIT 1").bind(userId).first();
+    if(!member)return json({ok:false,error:"not_in_family"},{status:404});
+    const dayKey=new Date().toISOString().slice(0,10),ts=now();
+    try{
+      await db.prepare("INSERT INTO family_signins (family_id,user_id,day_key,created_at) VALUES (?,?,?,?)").bind(member.family_id,userId,dayKey,ts).run();
+      await db.prepare("UPDATE families SET experience=experience+100,level=1+CAST((experience+100)/5000 AS INTEGER),updated_at=? WHERE id=?").bind(ts,member.family_id).run();
+      return json({ok:true,experience_added:100});
+    }catch(error){
+      if(String(error?.message??error).toLowerCase().includes("unique"))return json({ok:true,already_signed_in:true,experience_added:0});
+      throw error;
+    }
+  }
+
+  if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
+    const gamesFeature=await ownerSetting(db,"feature.games",{enabled:true});
+    if(gamesFeature.enabled===false)return json({ok:false,error:"games_disabled"},{status:403});
+    const userId=String(url.searchParams.get("user_id")??"").trim();
+    if(!userId)return json({ok:false,error:"user_id_required"},{status:400});
+    return json(await fruitState(db,userId));
   }
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
-    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) return json({ ok: false, error: "games_disabled" }, { status: 403 });
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const stake = Number(body.stake ?? 0);
-    if (!userId || !Number.isInteger(stake) || stake <= 0) {
-      return json({ ok: false, error: "invalid_bet" }, { status: 400 });
-    }
-    await ensureUser(db, userId);
-    await ensureUserAllowed(db, userId);
-    const betId = id();
-    const afterStake = await walletChange(db, userId, -stake, "game_bet", betId);
-    const symbols = ["apple", "orange", "watermelon", "grape", "kiwi", "strawberry", "cherry", "lemon"];
-    const result = symbols[Math.floor(Math.random() * symbols.length)];
-    const won = Math.random() < 0.28;
-    const payout = won ? stake * 5 : 0;
-    let balance = afterStake;
-    if (payout > 0) balance = await walletChange(db, userId, payout, "game_win", betId);
-    await db.prepare(
-      "INSERT INTO game_bets (id, game_id, user_id, stake, result, payout, created_at) VALUES (?, 'fruit-party', ?, ?, ?, ?, ?)"
-    ).bind(betId, userId, stake, result, payout, now()).run();
-    return json({ ok: true, bet_id: betId, result, payout, coin_balance: balance });
+    const gamesFeature=await ownerSetting(db,"feature.games",{enabled:true});
+    if(gamesFeature.enabled===false)return json({ok:false,error:"games_disabled"},{status:403});
+    const body=await bodyJson(request),userId=String(body.user_id??"").trim(),fruit=String(body.fruit??"").trim(),stake=Number(body.stake??0);
+    if(!userId||!FRUITS[fruit]||!FRUIT_STAKES.has(stake))return json({ok:false,error:"invalid_bet"},{status:400});
+    await ensureUser(db,userId);await ensureUserAllowed(db,userId);await settleFruitBets(db,userId);
+    const round=fruitRound();
+    if(round.phase!=="betting")return json({ok:false,error:"betting_closed",round},{status:409});
+    const betId=id();
+    const balance=await walletChange(db,userId,-stake,"game_bet",betId);
+    await db.prepare("INSERT INTO game_bets (id,game_id,user_id,stake,result,payout,created_at) VALUES (?,'fruit-party',?,?,?,0,?)")
+      .bind(betId,userId,stake,"pending|"+round.round_id+"|"+fruit,now()).run();
+    return json({ok:true,bet_id:betId,coin_balance:balance,round_id:round.round_id,fruit});
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
