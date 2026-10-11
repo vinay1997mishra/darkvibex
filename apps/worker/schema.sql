@@ -237,3 +237,78 @@ CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time
   ON dollar_wallet_ledger(user_id, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS social_follows (
+  follower_user_id TEXT NOT NULL,
+  target_user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (follower_user_id, target_user_id)
+);
+CREATE TABLE IF NOT EXISTS user_blocks (
+  user_id TEXT NOT NULL,
+  target_user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, target_user_id)
+);
+CREATE TABLE IF NOT EXISTS user_reports (
+  id TEXT PRIMARY KEY,
+  reporter_user_id TEXT NOT NULL,
+  target_user_id TEXT NOT NULL,
+  room_id TEXT NOT NULL DEFAULT '',
+  categories_json TEXT NOT NULL DEFAULT '[]',
+  details TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reports_target_time
+  ON user_reports(target_user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS dynamic_posts (
+  id TEXT PRIMARY KEY,
+  author_user_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  topic TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL DEFAULT 'published',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dynamic_likes (
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS dynamic_comments (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS parties (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  dress_up TEXT NOT NULL DEFAULT 'default',
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS party_members (
+  party_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (party_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS room_progress (
+  room_id TEXT PRIMARY KEY,
+  experience INTEGER NOT NULL DEFAULT 0,
+  level INTEGER NOT NULL DEFAULT 1,
+  active_exp INTEGER NOT NULL DEFAULT 0,
+  sending_exp INTEGER NOT NULL DEFAULT 0,
+  receiving_exp INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
