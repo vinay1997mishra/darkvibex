@@ -180,3 +180,71 @@ CREATE INDEX IF NOT EXISTS idx_owner_audit_time
   ON owner_audit(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_owner_announcements_time
   ON owner_announcements(updated_at DESC);
+
+
+-- Aladdin's Lamp / room daily tasks.
+CREATE TABLE IF NOT EXISTS lamp_task_progress (
+  room_id TEXT NOT NULL,
+  day_key INTEGER NOT NULL,
+  task_id TEXT NOT NULL,
+  progress INTEGER NOT NULL DEFAULT 0,
+  claimed_at INTEGER,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, day_key, task_id)
+);
+
+CREATE TABLE IF NOT EXISTS lamp_daily_uniques (
+  room_id TEXT NOT NULL,
+  day_key INTEGER NOT NULL,
+  scope TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, day_key, scope, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS lamp_room_user_first_seen (
+  room_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  first_seen_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS lamp_room_user_days (
+  room_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  day_key INTEGER NOT NULL,
+  first_entered_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, user_id, day_key)
+);
+
+CREATE TABLE IF NOT EXISTS room_followers (
+  room_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  followed_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS lamp_mic_invites (
+  room_id TEXT NOT NULL,
+  day_key INTEGER NOT NULL,
+  invitee_user_id TEXT NOT NULL,
+  invited_by_user_id TEXT NOT NULL,
+  invited_at INTEGER NOT NULL,
+  accepted_at INTEGER,
+  PRIMARY KEY (room_id, day_key, invitee_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS lamp_room_clock (
+  room_id TEXT NOT NULL,
+  day_key INTEGER NOT NULL,
+  last_sample_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, day_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lamp_progress_room_day
+  ON lamp_task_progress(room_id, day_key);
+CREATE INDEX IF NOT EXISTS idx_lamp_user_days_room_day
+  ON lamp_room_user_days(room_id, day_key);
+CREATE INDEX IF NOT EXISTS idx_room_followers_room
+  ON room_followers(room_id);
