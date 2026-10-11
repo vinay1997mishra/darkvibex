@@ -258,6 +258,164 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> socialState({
+    required String userId,
+    required String targetUserId,
+  }) =>
+      _json(
+        'GET',
+        '/api/social/state?user_id=${Uri.encodeQueryComponent(userId)}&target_id=${Uri.encodeQueryComponent(targetUserId)}',
+      );
+
+  Future<Map<String, dynamic>?> setFollow({
+    required String authToken,
+    required String targetUserId,
+    required bool enabled,
+  }) =>
+      _json(
+        'POST',
+        '/api/social/follow',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'target_user_id': targetUserId,
+          'enabled': enabled,
+        },
+      );
+
+  Future<Map<String, dynamic>?> setBlocked({
+    required String authToken,
+    required String targetUserId,
+    required bool enabled,
+  }) =>
+      _json(
+        'POST',
+        '/api/social/block',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'target_user_id': targetUserId,
+          'enabled': enabled,
+        },
+      );
+
+  Future<Map<String, dynamic>?> reportUser({
+    required String authToken,
+    required String targetUserId,
+    String roomId = '',
+    List<String> categories = const <String>[],
+    String details = '',
+  }) =>
+      _json(
+        'POST',
+        '/api/social/report',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'target_user_id': targetUserId,
+          'room_id': roomId,
+          'categories': categories,
+          'details': details,
+        },
+      );
+
+  Future<List<Map<String, dynamic>>> dynamicPosts() async {
+    final value = await _json('GET', '/api/dynamic');
+    final rows = value?['posts'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> createDynamicPost({
+    required String authToken,
+    required String text,
+    String topic = '',
+  }) =>
+      _json(
+        'POST',
+        '/api/dynamic',
+        authToken: authToken,
+        body: <String, dynamic>{'text': text, 'topic': topic},
+      );
+
+  Future<Map<String, dynamic>?> likeDynamicPost({
+    required String authToken,
+    required String postId,
+  }) =>
+      _json(
+        'POST',
+        '/api/dynamic/${Uri.encodeComponent(postId)}/like',
+        authToken: authToken,
+      );
+
+  Future<Map<String, dynamic>?> commentDynamicPost({
+    required String authToken,
+    required String postId,
+    required String text,
+  }) =>
+      _json(
+        'POST',
+        '/api/dynamic/${Uri.encodeComponent(postId)}/comments',
+        authToken: authToken,
+        body: <String, dynamic>{'text': text},
+      );
+
+  Future<List<Map<String, dynamic>>> rank(String kind) async {
+    final value = await _json(
+      'GET',
+      '/api/community/ranks?kind=${Uri.encodeQueryComponent(kind)}',
+    );
+    final rows = value?['entries'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> roomProgress(String roomId) =>
+      _json(
+        'GET',
+        '/api/room-progress?room_id=${Uri.encodeQueryComponent(roomId)}',
+      );
+
+  Future<List<Map<String, dynamic>>> parties() async {
+    final value = await _json('GET', '/api/parties');
+    final rows = value?['parties'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> createParty({
+    required String authToken,
+    required String type,
+    required String title,
+    String dressUp = 'default',
+  }) =>
+      _json(
+        'POST',
+        '/api/parties',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'type': type,
+          'title': title,
+          'dress_up': dressUp,
+        },
+      );
+
+  Future<Map<String, dynamic>?> joinParty({
+    required String authToken,
+    required String partyId,
+  }) =>
+      _json(
+        'POST',
+        '/api/parties/${Uri.encodeComponent(partyId)}/join',
+        authToken: authToken,
+      );
+
   Future<Map<String, dynamic>?> dollarWallet({
     required String userId,
     required String authToken,
