@@ -264,9 +264,27 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<bool> setRoomAdmin({
+    required String roomId,
+    required String actorUserId,
+    required String targetUserId,
+    required bool admin,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/members',
+      body: {
+        'user_id': actorUserId,
+        'target_user_id': targetUserId,
+        'action': admin ? 'set_admin' : 'remove_admin',
+      },
+    );
+    return value?['ok'] == true;
+  }
+
   Future<bool> removeRoomMember({
     required String roomId,
-    required String ownerUserId,
+    required String actorUserId,
     required String targetUserId,
     bool ban = false,
   }) async {
@@ -274,7 +292,7 @@ class BackendApi {
       'POST',
       '/api/rooms/${Uri.encodeComponent(roomId)}/members',
       body: {
-        'user_id': ownerUserId,
+        'user_id': actorUserId,
         'target_user_id': targetUserId,
         'ban': ban,
       },
