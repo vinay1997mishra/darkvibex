@@ -164,7 +164,10 @@ class ProfileScreen extends StatelessWidget {
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () async {
         if (title == 'Unique ID') {
-          await Clipboard.setData(ClipboardData(text: subtitle));
+          final currentId = state.customVipId?.isNotEmpty == true
+              ? state.customVipId!
+              : state.userId;
+          await Clipboard.setData(ClipboardData(text: currentId));
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Unique ID copied')),
