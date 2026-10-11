@@ -472,7 +472,16 @@ async function handleApi(request, env, url) {
       if (authError) return authError;
       if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
       const name = String(body.name ?? "").trim().slice(0, 80);
-      const seatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? room.seat_count)));
+      const requestedSeatCount = Number(body.seat_count ?? room.seat_count);
+      if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
+        return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
+      }
+      const vipStatus = await getVipStatus(db, userId);
+      const maxSeats = Math.max(8, Math.min(42, Number(vipStatus.room_seat_limit ?? 12)));
+      if (requestedSeatCount > maxSeats && requestedSeatCount > Number(room.seat_count)) {
+        return json({ ok: false, error: "room_seat_limit", max_seats: maxSeats }, { status: 403 });
+      }
+      const seatCount = requestedSeatCount;
       const locked = body.locked === true ? 1 : 0;
       const announcement = String(body.announcement ?? "").trim().slice(0, 500);
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
