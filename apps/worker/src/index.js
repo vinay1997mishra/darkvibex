@@ -577,6 +577,18 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "leave" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const result = await db.prepare(
+      "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).run();
+    return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "seat" && request.method === "POST") {
     const roomId = parts[2];
     const body = await bodyJson(request);
@@ -606,6 +618,13 @@ async function handleApi(request, env, url) {
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const roomId = parts[2];
     if (request.method === "GET") {
+      const authError = await requireSession(request, env);
+      if (authError) return authError;
+      const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, String(session.sub)).first();
+      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const rows = await db.prepare(
         `SELECT m.id, m.user_id, u.display_name, m.text, m.created_at
            FROM room_messages m
@@ -631,17 +650,42 @@ async function handleApi(request, env, url) {
     }
   }
 
-  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members" && request.method === "GET") {
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members") {
     const roomId = parts[2];
-    const rows = await db.prepare(
-      `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
-         FROM room_members m
-         LEFT JOIN users u ON u.id = m.user_id
-        WHERE m.room_id = ?
-        ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
-        LIMIT 200`
-    ).bind(roomId).all();
-    return json({ ok: true, members: rows.results ?? [] });
+    if (request.method === "GET") {
+      const authError = await requireSession(request, env);
+      if (authError) return authError;
+      const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, String(session.sub)).first();
+      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      const rows = await db.prepare(
+        `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
+           FROM room_members m
+           LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.room_id = ?
+          ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
+          LIMIT 200`
+      ).bind(roomId).all();
+      return json({ ok: true, members: rows.results ?? [] });
+    }
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const ownerId = String(body.user_id ?? "").trim();
+      const targetId = String(body.target_user_id ?? "").trim();
+      const authError = await requireSession(request, env, ownerId);
+      if (authError) return authError;
+      if (!targetId || targetId === ownerId) return json({ ok: false, error: "invalid_target" }, { status: 400 });
+      const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+      if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+      if (room.owner_user_id !== ownerId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      const result = await db.prepare(
+        "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, targetId).run();
+      return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "follow") {
