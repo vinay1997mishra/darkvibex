@@ -13,3 +13,5 @@ Working Android package: `com.darkvibex.app`.
 
 ## Deployment
 Cloudflare Workers Builds is connected to the `main` branch. Production Worker source lives in `apps/worker`.
+
+- VIP system: VIP1–VIP18 with Coin Seller EXP progression and premium privileges.
