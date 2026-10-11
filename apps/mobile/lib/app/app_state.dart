@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../infra/backend_api.dart';
+import '../vip/vip_policy.dart';
 
 class RoomSummary {
   const RoomSummary({
@@ -55,6 +56,14 @@ class AppState extends ChangeNotifier {
   int coins = 2500000;
   int diamonds = 120;
   int vipLevel = 1;
+  int vipExpBalance = 0;
+  int vipTotalReceivedCoins = 0;
+  DateTime? vipActiveUntil;
+  String? customVipId;
+  String? vipError;
+  final Map<String, bool> vipPreferences = <String, bool>{};
+  bool get vipAnonymousEverywhere =>
+      vipPreferences['anonymous_everywhere'] ?? false;
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
 
   final List<RoomSummary> rooms = <RoomSummary>[
@@ -217,6 +226,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _loadRemoteData() async {
     await refreshWallet(notify: false);
+    await refreshVip(notify: false);
 
     final remoteRooms = await backend.listRooms();
     if (remoteRooms.isNotEmpty) {
@@ -250,6 +260,12 @@ class AppState extends ChangeNotifier {
     coins = 2500000;
     diamonds = 120;
     vipLevel = 1;
+    vipExpBalance = 0;
+    vipTotalReceivedCoins = 0;
+    vipActiveUntil = null;
+    customVipId = null;
+    vipError = null;
+    vipPreferences.clear();
     walletLedger.clear();
     notifyListeners();
   }
@@ -276,8 +292,94 @@ class AppState extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  Future<void> refreshVip({bool notify = true}) async {
+    if (!backendConnected) return;
+    final value = await backend.vipStatus(userId: userId);
+    final vip = value?['vip'];
+    if (vip is Map) {
+      vipLevel = int.tryParse(vip['level']?.toString() ?? '') ?? vipLevel;
+      vipExpBalance =
+          int.tryParse(vip['exp_balance']?.toString() ?? '') ?? vipExpBalance;
+      vipTotalReceivedCoins =
+          int.tryParse(vip['total_received_coins']?.toString() ?? '') ??
+              vipTotalReceivedCoins;
+      final activeUntilMs =
+          int.tryParse(vip['active_until']?.toString() ?? '');
+      vipActiveUntil = activeUntilMs == null || activeUntilMs <= 0
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(activeUntilMs);
+      customVipId = vip['custom_id']?.toString();
+      final prefs = vip['preferences'];
+      if (prefs is Map) {
+        vipPreferences
+          ..clear()
+          ..addEntries(
+            prefs.entries.map(
+              (entry) => MapEntry(
+                entry.key.toString(),
+                entry.value == true ||
+                    entry.value == 1 ||
+                    entry.value.toString() == 'true',
+              ),
+            ),
+          );
+      }
+    }
+    if (notify) notifyListeners();
+  }
+
+  bool vipPreference(String key) => vipPreferences[key] ?? false;
+
+  Future<bool> setVipPreference(String key, bool enabled) async {
+    vipError = null;
+    if (!backendConnected) {
+      vipPreferences[key] = enabled;
+      notifyListeners();
+      return true;
+    }
+    final result = await backend.updateVipPreference(
+      userId: userId,
+      key: key,
+      enabled: enabled,
+    );
+    if (result?['ok'] != true) {
+      vipError = result?['error']?.toString() ?? 'VIP setting could not be saved.';
+      notifyListeners();
+      return false;
+    }
+    vipPreferences[key] = enabled;
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> changeVipUniqueId(String value) async {
+    vipError = null;
+    final clean = value.trim();
+    if (clean.isEmpty) return false;
+    if (!backendConnected) {
+      customVipId = clean;
+      notifyListeners();
+      return true;
+    }
+    final result = await backend.changeVipUniqueId(
+      userId: userId,
+      customId: clean,
+    );
+    if (result?['ok'] != true) {
+      vipError = result?['error']?.toString() ?? 'Unique ID could not be changed.';
+      notifyListeners();
+      return false;
+    }
+    customVipId = result?['custom_id']?.toString() ?? clean;
+    await refreshVip(notify: false);
+    notifyListeners();
+    return true;
+  }
+
   Future<RoomSummary> createRoom(String name, {int seatCount = 12}) async {
     final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
+    final allowedSeats =
+        seatCount.clamp(8, VipPolicy.maxRoomSeats(vipLevel)).toInt();
     String roomId = (100000 + rooms.length + 1).toString();
 
     if (backendConnected) {
@@ -285,7 +387,7 @@ class AppState extends ChangeNotifier {
         ownerUserId: userId,
         ownerName: displayName,
         name: cleanName,
-        seatCount: seatCount,
+        seatCount: allowedSeats,
       );
       if (remoteId != null && remoteId.isNotEmpty) roomId = remoteId;
     }
@@ -296,7 +398,7 @@ class AppState extends ChangeNotifier {
       ownerName: displayName,
       ownerUserId: userId,
       online: 1,
-      seatCount: seatCount,
+      seatCount: allowedSeats,
     );
     rooms.insert(0, room);
     notifyListeners();
