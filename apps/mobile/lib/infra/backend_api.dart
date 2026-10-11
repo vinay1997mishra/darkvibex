@@ -114,6 +114,48 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
+      _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
+
+  Future<bool> saveRoomSettings({
+    required String roomId,
+    required String userId,
+    required String name,
+    required int seatCount,
+    required bool locked,
+    required String announcement,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/settings',
+      body: {
+        'user_id': userId,
+        'name': name,
+        'seat_count': seatCount,
+        'locked': locked,
+        'announcement': announcement,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> legalConsentAccepted({required String version}) async {
+    final value = await _json(
+      'GET',
+      '/api/legal/consent?version=${Uri.encodeQueryComponent(version)}',
+    );
+    return value?['accepted'] == true;
+  }
+
+  Future<bool> acceptLegalConsent({required String version}) async {
+    final value = await _json(
+      'POST',
+      '/api/legal/consent',
+      body: {'version': version},
+    );
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> listRooms() async {
     final value = await _json('GET', '/api/rooms');
     final rows = value?['rooms'];
