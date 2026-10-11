@@ -298,5 +298,5 @@ class _BoardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _BoardPainter oldDelegate) => oldDelegate.game != game;
+  bool shouldRepaint(covariant _BoardPainter oldDelegate) => true;
 }
