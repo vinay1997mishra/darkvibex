@@ -12,7 +12,7 @@ class VipScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const gold = Color(0xFFFFD36A);
-    final currentLevel = state.vipLevel.clamp(1, 11);
+    final currentLevel = state.vipLevel.clamp(1, 11).toInt();
 
     return Scaffold(
       appBar: AppBar(
