@@ -114,6 +114,28 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> roomLuckyPouch({required String roomId}) =>
+      _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch');
+
+  Future<Map<String, dynamic>?> createRoomLuckyPouch({
+    required String roomId,
+    required String userId,
+    required int totalCoins,
+    required int slots,
+    required String requestId,
+  }) =>
+      _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch', body: {
+        'user_id': userId, 'total_coins': totalCoins, 'slots': slots, 'request_id': requestId,
+      });
+
+  Future<Map<String, dynamic>?> claimRoomLuckyPouch({
+    required String roomId,
+    required String userId,
+  }) =>
+      _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch/claim', body: {
+        'user_id': userId,
+      });
+
   Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
       _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
 
