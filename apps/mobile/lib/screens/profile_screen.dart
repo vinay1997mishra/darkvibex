@@ -6,6 +6,8 @@ import '../app/app_state.dart';
 import 'vip_screen.dart';
 import 'legal_policy_screen.dart';
 import 'app_settings_screen.dart';
+import 'wallet_screen.dart';
+import 'coin_seller_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
@@ -125,6 +127,24 @@ class ProfileScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_rounded),
+                  title: const Text('Wallet'),
+                  subtitle: Text('${state.coins} coins • ${state.diamonds} diamonds'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => WalletScreen(state: state),
+                  )),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.storefront_rounded),
+                  title: const Text('Coin Seller'),
+                  subtitle: const Text('Coin seller tools'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => CoinSellerScreen(state: state),
+                  )),
+                ),
                 ListTile(
                   leading: const Icon(Icons.workspace_premium_rounded),
                   title: const Text('VIP'),
