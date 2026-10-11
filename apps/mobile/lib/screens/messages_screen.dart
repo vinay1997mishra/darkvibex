@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
-import '../infra/backend_api.dart';
 import 'conversation_screen.dart';
 
 class MessagesScreen extends StatelessWidget {
@@ -32,7 +31,7 @@ class MessagesScreen extends StatelessWidget {
                 leading: CircleAvatar(
                   backgroundImage: item.avatarKey == null
                       ? null
-                      : NetworkImage(BackendApi.fileUrl(item.avatarKey!)),
+                      : NetworkImage(state.backend.fileUrl(item.avatarKey!)),
                   child: item.avatarKey == null
                       ? Text(item.name.isEmpty ? '?' : item.name.substring(0, 1))
                       : null,
