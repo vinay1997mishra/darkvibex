@@ -15,6 +15,7 @@ class BackendApi {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    String? authToken,
   }) async {
     if (!configured) return null;
     final client = HttpClient();
@@ -27,6 +28,12 @@ class BackendApi {
         _ => await client.openUrl(method, uri),
       };
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      if (authToken != null && authToken.trim().isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer ${authToken.trim()}',
+        );
+      }
       if (body != null) {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));
@@ -248,6 +255,35 @@ class BackendApi {
           'receiver_user_id': receiverUserId,
           'gift_id': giftId,
           'quantity': quantity,
+        },
+      );
+
+  Future<Map<String, dynamic>?> dollarWallet({
+    required String userId,
+    required String authToken,
+  }) =>
+      _json(
+        'GET',
+        '/api/dollar-wallet?user_id=${Uri.encodeQueryComponent(userId)}',
+        authToken: authToken,
+      );
+
+  Future<Map<String, dynamic>?> settleDollars({
+    required String userId,
+    required String authToken,
+    required int amountCents,
+    required String destinationType,
+    String destinationRef = '',
+  }) =>
+      _json(
+        'POST',
+        '/api/dollar-wallet/settle',
+        authToken: authToken,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'amount_cents': amountCents,
+          'destination_type': destinationType,
+          'destination_ref': destinationRef,
         },
       );
 
