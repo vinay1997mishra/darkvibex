@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../app/app_state.dart';
 import '../effects/gift_effect_overlay.dart';
@@ -30,6 +31,7 @@ class RoomScreen extends StatefulWidget {
 
 class _RoomScreenState extends State<RoomScreen> {
   final GiftEffectController effects = GiftEffectController();
+  final AudioPlayer musicPlayer = AudioPlayer();
   final ValueNotifier<Map<String, double>> silentLevels =
       ValueNotifier<Map<String, double>>(const <String, double>{});
 
@@ -165,6 +167,7 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     effects.dispose();
     silentLevels.dispose();
+    unawaited(musicPlayer.dispose());
     super.dispose();
   }
 
@@ -231,6 +234,14 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  String _mediaUrl(Object? value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return '';
+    if (raw.startsWith('https://')) return raw;
+    if (BackendApi.origin.isEmpty) return '';
+    return '${BackendApi.origin}/api/files?key=${Uri.encodeQueryComponent(raw)}';
+  }
+
   Future<bool> _sendGift(GiftSelection selection) async {
     final result = await widget.state.backend.sendGift(
       roomId: widget.room.id,
@@ -263,6 +274,7 @@ class _RoomScreenState extends State<RoomScreen> {
         sender: widget.state.displayName,
         receiver: selection.recipient.displayName,
         tier: selection.gift.effect,
+        asset: _mediaUrl(selection.gift.data['asset']),
         levelBefore: levelBefore,
         levelAfter: levelAfter,
       ),
@@ -361,16 +373,33 @@ class _RoomScreenState extends State<RoomScreen> {
                         itemCount: songs.length,
                         itemBuilder: (context, index) {
                           final song = songs[index];
+                          final data = song['data'] is Map
+                              ? Map<String, dynamic>.from(song['data'] as Map)
+                              : <String, dynamic>{};
+                          final media = _mediaUrl(data['asset']);
                           return ListTile(
                             leading: const Icon(Icons.music_note_rounded),
                             title: Text(song['name']?.toString() ?? 'Song'),
                             subtitle: Text(
-                              (song['data'] is Map
-                                      ? (song['data'] as Map)['description']
-                                      : null)
-                                  ?.toString() ??
-                                  '',
+                              data['description']?.toString() ??
+                                  (media.isEmpty ? 'No audio file attached' : 'Tap to play'),
                             ),
+                            trailing: media.isEmpty
+                                ? null
+                                : const Icon(Icons.play_arrow_rounded),
+                            onTap: media.isEmpty
+                                ? null
+                                : () async {
+                                    try {
+                                      await musicPlayer.setUrl(media);
+                                      await musicPlayer.play();
+                                    } catch (_) {
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Song could not be played')),
+                                      );
+                                    }
+                                  },
                           );
                         },
                       ),
