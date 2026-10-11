@@ -9,6 +9,12 @@ class _Dice extends Random {
 
   @override
   int nextInt(int max) => values.removeAt(0) % max;
+
+  @override
+  bool nextBool() => nextInt(2) == 0;
+
+  @override
+  double nextDouble() => nextInt(1 << 20) / (1 << 20);
 }
 
 void main() {
