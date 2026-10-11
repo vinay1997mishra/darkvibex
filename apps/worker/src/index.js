@@ -613,6 +613,16 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "leave" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    await db.prepare(
+      "UPDATE room_members SET seat_index = NULL, mic_muted = 1, updated_at = 0 WHERE room_id = ? AND user_id = ?"
+    ).bind(parts[2], userId).run();
+    return json({ ok: true });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "seat" && request.method === "POST") {
     const roomId = parts[2];
     const body = await bodyJson(request);
@@ -766,8 +776,12 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db,sender);await ensureUserAllowed(db,receiver);
     const gift=await catalogItem(db,"gift",giftId);
     if (!gift) return json({ok:false,error:"gift_not_found"},{status:404});
-    const cost=Number(gift.price_coins??0);
-    if (!Number.isSafeInteger(cost) || cost<=0) return json({ok:false,error:"invalid_gift_price"},{status:400});
+    const unitCost=Number(gift.price_coins??0);
+    const quantity=Math.max(1,Math.min(9999,Number(body.quantity??1)));
+    const cost=unitCost*quantity;
+    if (!Number.isSafeInteger(unitCost) || unitCost<=0 || !Number.isInteger(quantity) || !Number.isSafeInteger(cost)) {
+      return json({ok:false,error:"invalid_gift_price"},{status:400});
+    }
     const eventId=id();
     const beforeCp=giftId.startsWith("cp-")?await relationshipProgress(db,sender,receiver,"cp"):null;
     const beforeEnemy=giftId.startsWith("enemy-")?await relationshipProgress(db,sender,receiver,"enemy"):null;
@@ -778,7 +792,7 @@ async function handleApi(request, env, url) {
     ]);
     const relation=giftId.startsWith("cp-")?await relationshipProgress(db,sender,receiver,"cp"):
       giftId.startsWith("enemy-")?await relationshipProgress(db,sender,receiver,"enemy"):null;
-    return json({ok:true,event_id:eventId,sender_coin_balance:balance,receiver_diamonds_added:cost,gift,relation,
+    return json({ok:true,event_id:eventId,sender_coin_balance:balance,receiver_diamonds_added:cost,gift,quantity,unit_cost:unitCost,relation,
       level_before:beforeCp?.level??beforeEnemy?.level??null,level_after:relation?.level??null});
   }
 
