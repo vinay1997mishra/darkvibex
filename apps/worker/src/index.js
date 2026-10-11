@@ -344,10 +344,12 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
     const name = String(body.name ?? "").trim().slice(0, 80);
-    const seatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? 12)));
+    const requestedSeatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? 12)));
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, ownerId);
+    const vipStatus = await getVipStatus(db, ownerId);
+    const seatCount = Math.max(8, Math.min(requestedSeatCount, Number(vipStatus.room_seat_limit ?? 12)));
     const roomId = String(body.id ?? "").trim() || String(Math.floor(100000 + Math.random() * 900000));
     const ts = now();
     await db.prepare(
