@@ -79,7 +79,8 @@ class GiftEffectOverlay extends StatelessWidget {
             ),
           );
         },
-      );
+      ),
+    );
   }
 }
 
