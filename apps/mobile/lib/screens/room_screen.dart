@@ -10,6 +10,7 @@ import '../infra/backend_api.dart';
 import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
+import '../vip/vip_policy.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 
@@ -164,8 +165,12 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!isRoomHost) return;
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
-    const capacities = [8, 10, 12, 15, 20, 25, 30, 35, 42];
-    var seatCount = capacities.contains(roomSeatCount) ? roomSeatCount : 12;
+    final seatOptions = [8, 10, 12, 15, 20, 25, 30, 35, 42]
+        .where((count) => count <= VipPolicy.maxRoomSeats(widget.state.vipLevel))
+        .toList();
+    if (!seatOptions.contains(roomSeatCount)) seatOptions.add(roomSeatCount);
+    seatOptions.sort();
+    var seatCount = seatOptions.contains(roomSeatCount) ? roomSeatCount : seatOptions.last;
     var locked = roomLocked;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -180,7 +185,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 DropdownButtonFormField<int>(
                   value: seatCount,
                   decoration: const InputDecoration(labelText: 'Seat capacity'),
-                  items: [8, 10, 12, 15, 20, 25, 30, 35, 42]
+                  items: seatOptions
                       .map((count) => DropdownMenuItem(value: count, child: Text('$count seats')))
                       .toList(),
                   onChanged: (value) { if (value != null) setDialogState(() => seatCount = value); },
