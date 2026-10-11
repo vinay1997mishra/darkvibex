@@ -232,6 +232,7 @@ class _RoomScreenState extends State<RoomScreen> {
       final text = result['announcement'] as String;
       roomAnnouncement = text.isEmpty ? null : text;
     });
+    await widget.state.refreshRooms();
   }
 
   Future<void> _showRoomRules() async {
