@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'local_ludo_screen.dart';
 
 class GamesScreen extends StatefulWidget {
   const GamesScreen({super.key, required this.state});
@@ -68,6 +69,46 @@ class _GamesScreenState extends State<GamesScreen> {
     }
   }
 
+
+  Future<void> _openLudo() async {
+    final count = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Free Ludo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text('Choose players. No coins or wallet balance are used.'),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.people_alt_outlined),
+                title: const Text('2 players'),
+                subtitle: const Text('Local pass-and-play'),
+                onTap: () => Navigator.pop(sheetContext, 2),
+              ),
+              ListTile(
+                leading: const Icon(Icons.groups_2_outlined),
+                title: const Text('4 players'),
+                subtitle: const Text('Local pass-and-play'),
+                onTap: () => Navigator.pop(sheetContext, 4),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || count == null) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => LocalLudoScreen(playerCount: count)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -104,26 +145,9 @@ class _GamesScreenState extends State<GamesScreen> {
             child: ListTile(
               leading: const Text('🎲', style: TextStyle(fontSize: 32)),
               title: const Text('Ludo'),
-              subtitle: const Text('Board game module'),
+              subtitle: const Text('Free 2-player or 4-player local game'),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => showModalBottomSheet<void>(
-                context: context,
-                showDragHandle: true,
-                builder: (context) => const SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Ludo', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                        SizedBox(height: 8),
-                        Text('Ludo multiplayer is not connected in this build. No coins will be charged.'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              onTap: _openLudo,
             ),
           ),
         ],
