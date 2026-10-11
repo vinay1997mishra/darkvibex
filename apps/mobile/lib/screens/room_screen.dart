@@ -972,6 +972,30 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<void> _toggleRoomSound() async {
+    await roomMusic.setOutputMuted(!roomMusic.outputMuted);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(roomMusic.outputMuted ? 'Room music muted on this device' : 'Room music sound enabled on this device'),
+    ));
+  }
+
+  Future<void> _showPublicScreen() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(roomName),
+        content: Text(roomAnnouncement?.isNotEmpty == true
+            ? roomAnnouncement!
+            : 'No owner announcement is set. Room safety rules are shown to everyone here.'),
+        actions: [
+          TextButton(onPressed: () { Navigator.pop(dialogContext); _showRoomRules(); }, child: const Text('Terms & rules')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _toggleRoomEffects() async {
     setState(() => effectsEnabled = !effectsEnabled);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(effectsEnabled ? 'Room glow effects enabled on this device' : 'Room glow effects disabled on this device')));
@@ -1022,6 +1046,14 @@ class _RoomScreenState extends State<RoomScreen> {
                   FilledButton.tonalIcon(
                     onPressed: () { Navigator.pop(sheetContext); _toggleRoomEffects(); },
                     icon: Icon(effectsEnabled ? Icons.auto_awesome_rounded : Icons.auto_awesome_outlined), label: const Text('Effects'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _toggleRoomSound(); },
+                    icon: Icon(roomMusic.outputMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded), label: const Text('Sound On / Off'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () { Navigator.pop(sheetContext); _showPublicScreen(); },
+                    icon: const Icon(Icons.tv_rounded), label: const Text('Public Screen'),
                   ),
                   if (isRoomHost)
                     FilledButton.tonalIcon(
