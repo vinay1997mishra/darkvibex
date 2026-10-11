@@ -662,6 +662,9 @@ async function handleApi(request, env, url) {
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
               i.image_key,
+              (SELECT COUNT(*) FROM direct_messages unread
+                WHERE unread.sender_user_id = CASE WHEN m.sender_user_id = ? THEN m.receiver_user_id ELSE m.sender_user_id END
+                  AND unread.receiver_user_id = ? AND unread.read_at IS NULL) AS unread_count,
               s.display_name AS sender_name, s.avatar_key AS sender_avatar_key,
               r.display_name AS receiver_name, r.avatar_key AS receiver_avatar_key
          FROM direct_messages m
@@ -671,7 +674,7 @@ async function handleApi(request, env, url) {
         WHERE m.sender_user_id = ? OR m.receiver_user_id = ?
         ORDER BY m.created_at DESC
         LIMIT 200`
-    ).bind(userId, userId).all();
+    ).bind(userId, userId, userId, userId).all();
 
     const seen = new Set();
     const inbox = [];
@@ -686,7 +689,7 @@ async function handleApi(request, env, url) {
         avatar_key: row.sender_user_id === userId ? row.receiver_avatar_key : row.sender_avatar_key,
         image_key: row.image_key,
         created_at: row.created_at,
-        unread: row.receiver_user_id === userId && row.read_at == null ? 1 : 0,
+        unread: Number(row.unread_count ?? 0),
       });
     }
     return json({ ok: true, inbox });
