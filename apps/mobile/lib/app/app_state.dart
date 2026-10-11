@@ -56,6 +56,7 @@ class AppState extends ChangeNotifier {
   int diamonds = 120;
   int vipLevel = 1;
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
+  final List<String> recentRoomIds = <String>[];
 
   final List<RoomSummary> rooms = <RoomSummary>[
     const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
@@ -251,6 +252,7 @@ class AppState extends ChangeNotifier {
     diamonds = 120;
     vipLevel = 1;
     walletLedger.clear();
+    recentRoomIds.clear();
     notifyListeners();
   }
 
@@ -301,6 +303,16 @@ class AppState extends ChangeNotifier {
     rooms.insert(0, room);
     notifyListeners();
     return room;
+  }
+
+  void markRoomVisited(String roomId) {
+    if (roomId.isEmpty) return;
+    recentRoomIds.remove(roomId);
+    recentRoomIds.insert(0, roomId);
+    if (recentRoomIds.length > 10) {
+      recentRoomIds.removeRange(10, recentRoomIds.length);
+    }
+    notifyListeners();
   }
 
   bool spendCoins(int amount) {
