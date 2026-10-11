@@ -219,6 +219,38 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> roomMessages({required String roomId}) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/messages',
+    );
+    final rows = value?['messages'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<bool> leaveRoom({required String roomId, required String userId}) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/leave',
+      body: {'user_id': userId},
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> removeRoomMember({
+    required String roomId,
+    required String ownerUserId,
+    required String targetUserId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/members',
+      body: {'user_id': ownerUserId, 'target_user_id': targetUserId},
+    );
+    return value?['ok'] == true;
+  }
+
   Future<bool> sendRoomMessage({
     required String roomId,
     required String userId,
