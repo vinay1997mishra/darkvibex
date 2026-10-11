@@ -64,6 +64,19 @@ class AppState extends ChangeNotifier {
   final Map<String, bool> vipPreferences = <String, bool>{};
   bool get vipAnonymousEverywhere =>
       vipPreferences['anonymous_everywhere'] ?? false;
+
+  bool get vipIsActive =>
+      vipLevel > 0 &&
+      (vipActiveUntil == null || vipActiveUntil!.isAfter(DateTime.now()));
+
+  bool hasVipPrivilege(String id) {
+    if (!vipIsActive) return false;
+    for (final privilege in VipPolicy.privileges) {
+      if (privilege.id == id) return privilege.isUnlockedAt(vipLevel);
+    }
+    return false;
+  }
+
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
 
   final List<RoomSummary> rooms = <RoomSummary>[
