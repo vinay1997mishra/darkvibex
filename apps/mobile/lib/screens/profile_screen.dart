@@ -48,6 +48,13 @@ class ProfileScreen extends StatelessWidget {
                 _item(Icons.store_rounded, 'Store', 'Frames, effects and themes'),
                 _item(Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
                 _item(Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
+                ListTile(
+                  leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+                  title: const Text('Sign out'),
+                  subtitle: Text(state.authProvider == 'google' ? 'Google account' : 'Guest session'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: state.signOut,
+                ),
               ],
             ),
           ),
