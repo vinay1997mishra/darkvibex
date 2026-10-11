@@ -43,6 +43,7 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String userRole = 'user';
   String? sessionToken;
   String? authProvider;
   bool backendConnected = false;
@@ -255,6 +256,7 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    userRole = user['role']?.toString() ?? userRole;
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
@@ -301,6 +303,7 @@ class AppState extends ChangeNotifier {
     authError = null;
     userId = '91000001';
     displayName = 'DarkVibeX User';
+    userRole = 'user';
     coins = 2500000;
     diamonds = 120;
     vipLevel = 1;
