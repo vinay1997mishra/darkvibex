@@ -42,7 +42,7 @@ class ProfileScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                _item(Icons.workspace_premium_rounded, 'VIP', 'Level ${state.vipLevel}'),
+                _item(Icons.workspace_premium_rounded, 'VIP', 'Level ${state.vipLevel}/18'),
                 _item(Icons.badge_rounded, 'Unique ID', state.userId),
                 _item(Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
                 _item(Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
