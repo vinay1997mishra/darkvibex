@@ -122,6 +122,18 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<bool> leaveRoom({
+    required String roomId,
+    required String userId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/$roomId/leave',
+      body: <String, dynamic>{'user_id': userId},
+    );
+    return value?['ok'] == true;
+  }
+
   Future<bool> setSeat({
     required String roomId,
     required String userId,
@@ -214,7 +226,7 @@ class BackendApi {
     required String senderUserId,
     required String receiverUserId,
     required String giftId,
-    required int coinCost,
+    int quantity = 1,
   }) =>
       _json(
         'POST',
@@ -224,7 +236,7 @@ class BackendApi {
           'sender_user_id': senderUserId,
           'receiver_user_id': receiverUserId,
           'gift_id': giftId,
-          'coin_cost': coinCost,
+          'quantity': quantity,
         },
       );
 
