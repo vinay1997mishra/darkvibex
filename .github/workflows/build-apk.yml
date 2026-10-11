@@ -95,15 +95,21 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
       - name: Build debug APK
+        if: env.ANDROID_KEYSTORE_PATH == ''
         working-directory: apps/mobile
         run: flutter build apk --debug --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
 
       - name: Build signed release APK
         if: env.ANDROID_KEYSTORE_PATH != ''
         working-directory: apps/mobile
-        run: flutter build apk --release --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
+        run: |
+          flutter clean
+          flutter pub get
+          flutter build apk --release --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload debug APK
+        if: env.ANDROID_KEYSTORE_PATH == ''
+        uses: actions/upload-artifact@v4
         with:
           name: DarkVibeX-live-debug-apk
           path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
