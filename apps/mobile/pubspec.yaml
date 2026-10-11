@@ -21,6 +21,8 @@ dependencies:
 
   pag: ^1.0.7
 
+  share_plus: ^13.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
