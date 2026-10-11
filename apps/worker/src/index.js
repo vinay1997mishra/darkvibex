@@ -258,6 +258,9 @@ const DEFAULT_GIFTS = [
   {id:"music-dj",name:"DJ Stage",emoji:"🎧",category:"music",price_coins:200000,effect:"cinematic"},
   {id:"lucky-bag-bronze",name:"Lucky Bag",emoji:"🧧",category:"lucky_bag",price_coins:100000,effect:"overlay"},
   {id:"lucky-bag-gold",name:"Royal Lucky Bag",emoji:"🎁",category:"lucky_bag",price_coins:500000,effect:"cinematic"},
+  {id:"four-box",name:"4 Box",emoji:"🎁",category:"four_box",price_coins:100000,effect:"overlay"},
+  {id:"rank-crown",name:"Rank Crown",emoji:"🏆",category:"rank_hall",price_coins:500000,effect:"cinematic"},
+  {id:"custom-spark",name:"Custom Spark",emoji:"✨",category:"custom",price_coins:50000,effect:"overlay"},
   {id:"peace",name:"Peace",emoji:"🕊️",category:"moderation",price_coins:10000,effect:"compact"},
   {id:"respect",name:"Respect",emoji:"🤝",category:"moderation",price_coins:25000,effect:"compact"},
   {id:"cp-rose",name:"CP Rose",emoji:"🌹",category:"cp",price_coins:44444,effect:"compact"},
@@ -491,7 +494,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/config" && request.method === "GET") {
-    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "maintenance"];
+    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.store", "feature.family", "feature.relationships", "feature.music", "maintenance"];
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
@@ -802,6 +805,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/relationships" && request.method === "GET") {
+    const relationshipFeature=await ownerSetting(db,"feature.relationships",{enabled:true});
+    if(relationshipFeature.enabled===false)return json({ok:false,error:"relationships_disabled"},{status:403});
     const userA=String(url.searchParams.get("user_a")??"").trim();
     const userB=String(url.searchParams.get("user_b")??"").trim();
     if (!userA || !userB) return json({ok:false,error:"user_ids_required"},{status:400});
@@ -809,6 +814,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/store/purchase" && request.method === "POST") {
+    const storeFeature=await ownerSetting(db,"feature.store",{enabled:true});
+    if(storeFeature.enabled===false)return json({ok:false,error:"store_disabled"},{status:403});
     await ensureParityTables(db);
     const body=await bodyJson(request);
     const userId=String(body.user_id??"").trim(),kind=String(body.kind??"").trim(),itemId=String(body.item_id??"").trim();
@@ -831,6 +838,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/store/entitlements" && request.method === "GET") {
+    const storeFeature=await ownerSetting(db,"feature.store",{enabled:true});
+    if(storeFeature.enabled===false)return json({ok:false,error:"store_disabled"},{status:403});
     await ensureParityTables(db);
     const userId=String(url.searchParams.get("user_id")??"").trim();
     const rows=await db.prepare("SELECT id,kind,item_id,item_name,starts_at,expires_at,active FROM user_entitlements WHERE user_id=? AND active=1 AND (expires_at IS NULL OR expires_at>?) ORDER BY created_at DESC LIMIT 200").bind(userId,now()).all();
@@ -838,6 +847,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/family" && request.method === "GET") {
+    const familyFeature=await ownerSetting(db,"feature.family",{enabled:true});
+    if(familyFeature.enabled===false)return json({ok:false,error:"family_disabled"},{status:403});
     await ensureParityTables(db);
     const userId=String(url.searchParams.get("user_id")??"").trim();
     const family=await db.prepare("SELECT f.* FROM families f JOIN family_members m ON m.family_id=f.id WHERE m.user_id=? LIMIT 1").bind(userId).first();
@@ -847,6 +858,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/family/create" && request.method === "POST") {
+    const familyFeature=await ownerSetting(db,"feature.family",{enabled:true});
+    if(familyFeature.enabled===false)return json({ok:false,error:"family_disabled"},{status:403});
     await ensureParityTables(db);
     const body=await bodyJson(request),userId=String(body.user_id??"").trim(),name=String(body.name??"").trim().slice(0,60);
     if(!userId||!name)return json({ok:false,error:"family_fields_required"},{status:400});
@@ -862,6 +875,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/family/join" && request.method === "POST") {
+    const familyFeature=await ownerSetting(db,"feature.family",{enabled:true});
+    if(familyFeature.enabled===false)return json({ok:false,error:"family_disabled"},{status:403});
     await ensureParityTables(db);
     const body=await bodyJson(request),userId=String(body.user_id??"").trim(),familyId=String(body.family_id??"").trim();
     if(!userId||!familyId)return json({ok:false,error:"family_fields_required"},{status:400});
@@ -875,6 +890,8 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/family/signin" && request.method === "POST") {
+    const familyFeature=await ownerSetting(db,"feature.family",{enabled:true});
+    if(familyFeature.enabled===false)return json({ok:false,error:"family_disabled"},{status:403});
     await ensureParityTables(db);
     const body=await bodyJson(request),userId=String(body.user_id??"").trim();
     const member=await db.prepare("SELECT family_id FROM family_members WHERE user_id=? LIMIT 1").bind(userId).first();
