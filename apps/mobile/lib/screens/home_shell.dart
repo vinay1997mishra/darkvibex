@@ -6,6 +6,7 @@ import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'room_screen.dart';
 import 'wallet_screen.dart';
+import 'vip_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.state});
@@ -26,6 +27,7 @@ class _HomeShellState extends State<HomeShell> {
       MessagesScreen(state: widget.state),
       GamesScreen(state: widget.state),
       WalletScreen(state: widget.state),
+      VipScreen(state: widget.state),
       ProfileScreen(state: widget.state),
     ];
 
@@ -39,6 +41,7 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.chat_bubble_rounded), label: 'Messages'),
           NavigationDestination(icon: Icon(Icons.sports_esports_rounded), label: 'Games'),
           NavigationDestination(icon: Icon(Icons.account_balance_wallet_rounded), label: 'Wallet'),
+          NavigationDestination(icon: Icon(Icons.workspace_premium_rounded), label: 'VIP'),
           NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Mine'),
         ],
       ),
