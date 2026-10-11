@@ -541,7 +541,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                                     member.displayName.isEmpty
                                                         ? '?'
                                                         : member.displayName
-                                                            .characters.first
+                                                            .substring(0, 1)
                                                             .toUpperCase(),
                                                     style: const TextStyle(
                                                       fontSize: 22,
