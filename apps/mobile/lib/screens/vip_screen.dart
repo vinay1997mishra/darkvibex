@@ -13,7 +13,7 @@ class VipScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
-        final level = state.vipLevel.clamp(0, VipPolicy.maxLevel);
+        final level = state.vipLevel.clamp(0, VipPolicy.maxLevel).toInt();
         final active = state.vipActiveUntil == null ||
             state.vipActiveUntil!.isAfter(DateTime.now());
         final next = level < VipPolicy.maxLevel
@@ -22,7 +22,7 @@ class VipScreen extends StatelessWidget {
         final target = next?.upgradeExp ?? 1;
         final progress = level >= VipPolicy.maxLevel
             ? 1.0
-            : (state.vipExpBalance / target).clamp(0.0, 1.0);
+            : (state.vipExpBalance / target).clamp(0.0, 1.0).toDouble();
 
         return Scaffold(
           backgroundColor: const Color(0xFF070707),
