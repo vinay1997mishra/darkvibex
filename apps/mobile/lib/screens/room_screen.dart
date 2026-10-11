@@ -11,6 +11,7 @@ import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import 'aladdin_lamp_screen.dart';
+import 'legal_policy_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -41,6 +42,10 @@ class _RoomScreenState extends State<RoomScreen> {
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   Timer? memberRefreshTimer;
   String? roomAvatarKey;
+  String? roomAnnouncement;
+  late String roomName;
+  late int roomSeatCount;
+  bool roomLocked = false;
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
 
@@ -48,6 +53,8 @@ class _RoomScreenState extends State<RoomScreen> {
   void initState() {
     super.initState();
     roomAvatarKey = widget.room.avatarKey;
+    roomName = widget.room.name;
+    roomSeatCount = widget.room.seatCount;
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
@@ -74,6 +81,162 @@ class _RoomScreenState extends State<RoomScreen> {
         mySeat = int.tryParse(own.first['seat_index']?.toString() ?? '');
       }
     });
+  }
+
+  static const _legalVersion = 'darkvibex-terms-privacy-2026-10-v1';
+
+  Future<bool> _ensureLegalAgreement() async {
+    if (!widget.state.backendConnected) return true;
+    if (await widget.state.backend.legalConsentAccepted(version: _legalVersion)) return true;
+    if (!mounted) return false;
+    var checked = false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Room rules & agreement'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Please read the DarkVibeX Terms and Privacy notice before using room chat and voice. Be respectful, do not share unlawful or harmful content, and remember that other room participants can see or hear what you share.'),
+                TextButton(
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => const LegalPolicyScreen(),
+                  )),
+                  child: const Text('Read Terms & Privacy'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: checked,
+                  onChanged: (value) => setDialogState(() => checked = value ?? false),
+                  title: const Text('I have read and agree to the Terms and Privacy notice.'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Leave room')),
+            FilledButton(
+              onPressed: checked ? () => Navigator.pop(dialogContext, true) : null,
+              child: const Text('Agree & continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (accepted != true) {
+      if (mounted) Navigator.of(context).pop();
+      return false;
+    }
+    final saved = await widget.state.backend.acceptLegalConsent(version: _legalVersion);
+    if (!saved) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Agreement could not be saved. Please reconnect and try again.')),
+        );
+        Navigator.of(context).pop();
+      }
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _loadRoomSettings() async {
+    final value = await widget.state.backend.roomSettings(roomId: widget.room.id);
+    final settings = value?['settings'];
+    if (!mounted || settings is! Map) return;
+    setState(() {
+      roomName = settings['name']?.toString() ?? roomName;
+      roomSeatCount = int.tryParse(settings['seat_count']?.toString() ?? '') ?? roomSeatCount;
+      roomLocked = settings['locked'] == true || settings['locked']?.toString() == '1';
+      final text = settings['announcement']?.toString().trim() ?? '';
+      roomAnnouncement = text.isEmpty ? null : text;
+    });
+  }
+
+  Future<void> _openRoomSettings() async {
+    if (!isRoomHost) return;
+    final name = TextEditingController(text: roomName);
+    final announcement = TextEditingController(text: roomAnnouncement ?? '');
+    var seatCount = roomSeatCount.clamp(8, 42);
+    var locked = roomLocked;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Room settings'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: name, maxLength: 80, decoration: const InputDecoration(labelText: 'Room name')),
+                DropdownButtonFormField<int>(
+                  value: seatCount,
+                  decoration: const InputDecoration(labelText: 'Seat capacity'),
+                  items: [8, 10, 12, 15, 20, 25, 30, 35, 42]
+                      .map((count) => DropdownMenuItem(value: count, child: Text('$count seats')))
+                      .toList(),
+                  onChanged: (value) { if (value != null) setDialogState(() => seatCount = value); },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Lock room'),
+                  value: locked,
+                  onChanged: (value) => setDialogState(() => locked = value),
+                ),
+                TextField(
+                  controller: announcement,
+                  maxLength: 500,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'Room announcement', hintText: 'Rules or message shown in room chat'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, {
+              'name': name.text.trim(),
+              'seat_count': seatCount,
+              'locked': locked,
+              'announcement': announcement.text.trim(),
+            }), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+    announcement.dispose();
+    if (result == null || !mounted) return;
+    final ok = await widget.state.backend.saveRoomSettings(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      name: result['name'] as String,
+      seatCount: result['seat_count'] as int,
+      locked: result['locked'] as bool,
+      announcement: result['announcement'] as String,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room settings could not be saved')));
+      return;
+    }
+    setState(() {
+      roomName = result['name'] as String;
+      roomSeatCount = result['seat_count'] as int;
+      roomLocked = result['locked'] as bool;
+      final text = result['announcement'] as String;
+      roomAnnouncement = text.isEmpty ? null : text;
+    });
+  }
+
+  Future<void> _showRoomRules() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const LegalPolicyScreen()),
+    );
   }
 
   Future<void> _pickRoomAvatar() async {
@@ -118,12 +281,14 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _connectVoice() async {
+    if (!await _ensureLegalAgreement()) return;
     if (widget.state.backendConnected) {
       await widget.state.backend.joinRoom(
         roomId: widget.room.id,
         userId: widget.state.userId,
         displayName: widget.state.displayName,
       );
+      await _loadRoomSettings();
     }
 
     final token = widget.state.sessionToken;
@@ -374,6 +539,15 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
             if (isRoomHost)
               ListTile(
+                leading: const Icon(Icons.settings_rounded),
+                title: const Text('Room settings'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _openRoomSettings();
+                },
+              ),
+            if (isRoomHost)
+              ListTile(
                 leading: const Icon(Icons.add_a_photo_outlined),
                 title: const Text('Change room photo'),
                 onTap: () {
@@ -602,7 +776,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final spec = SeatLayoutSpec.forCount(widget.room.seatCount);
+    final spec = SeatLayoutSpec.forCount(roomSeatCount);
 
     return Scaffold(
       appBar: AppBar(
@@ -620,7 +794,7 @@ class _RoomScreenState extends State<RoomScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.room.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(roomName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
                     'ID ${widget.room.id} • $voiceStatus',
                     style: Theme.of(context).textTheme.bodySmall,
@@ -644,6 +818,8 @@ class _RoomScreenState extends State<RoomScreen> {
                 color: followingRoom ? const Color(0xFFFF5D8F) : null,
               ),
             ),
+          if (isRoomHost)
+            IconButton(onPressed: _openRoomSettings, tooltip: 'Room settings', icon: const Icon(Icons.settings_rounded)),
           IconButton(
             onPressed: _openRoomMenu,
             tooltip: 'Room options',
@@ -668,7 +844,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     alignment: WrapAlignment.center,
                     spacing: 8,
                     runSpacing: 14,
-                    children: List<Widget>.generate(widget.room.seatCount, (seat) {
+                    children: List<Widget>.generate(roomSeatCount, (seat) {
                       final mine = mySeat == seat;
                       return SizedBox(
                         width: diameter + 26,
@@ -741,12 +917,37 @@ class _RoomScreenState extends State<RoomScreen> {
               decoration: const BoxDecoration(
                 border: Border(top: BorderSide(color: Colors.white12)),
               ),
-              child: ListView.builder(
-                itemCount: chat.length,
-                itemBuilder: (context, index) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text(chat[index]),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Card(
+                    color: const Color(0xFF2A1F12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            const Icon(Icons.campaign_rounded, size: 18, color: Color(0xFFFFD36A)),
+                            const SizedBox(width: 6),
+                            const Expanded(child: Text('Room announcement & safety rules', style: TextStyle(fontWeight: FontWeight.w800))),
+                            TextButton(onPressed: _showRoomRules, child: const Text('Terms')),
+                          ]),
+                          Text(roomAnnouncement ?? 'Be respectful. No harassment, explicit or unlawful content, scams, or sharing private information. Room chat and voice are visible to participants.'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: chat.length,
+                      itemBuilder: (context, index) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Text(chat[index]),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
