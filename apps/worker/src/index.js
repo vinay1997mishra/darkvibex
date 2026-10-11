@@ -640,6 +640,10 @@ async function handleApi(request, env, url) {
       const authError = await requireSession(request, env, userId);
       if (authError) return authError;
       await ensureUserAllowed(db, userId, { checkMute: true });
+      const membership = await db.prepare(
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, userId).first();
+      if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const textValue = String(body.text ?? "").trim().slice(0, 500);
       if (!userId || !textValue) return json({ ok: false, error: "message_required" }, { status: 400 });
       const messageId = id();
@@ -680,6 +684,47 @@ async function handleApi(request, env, url) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
       if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
       if (room.owner_user_id !== ownerId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      if (env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
+        const seconds = Math.floor(Date.now() / 1000);
+        const adminToken = await signJwt(
+          String(env.LIVEKIT_API_SECRET),
+          { alg: "HS256", typ: "JWT" },
+          {
+            iss: String(env.LIVEKIT_API_KEY),
+            sub: ownerId,
+            nbf: seconds - 5,
+            exp: seconds + 60,
+            video: { room: roomId, roomAdmin: true },
+          },
+        );
+        const livekitBase = String(env.LIVEKIT_URL).replace(/^ws(s?):\/\//i, "http$1://").replace(/\/$/, "");
+        let livekitResponse;
+        try {
+          livekitResponse = await fetch(
+            `${livekitBase}/twirp/livekit.RoomService/RemoveParticipant`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${adminToken}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                room: roomId,
+                identity: targetId,
+                revoke_token_ts: seconds,
+              }),
+            },
+          );
+        } catch (_) {
+          return json({ ok: false, error: "livekit_unavailable" }, { status: 503 });
+        }
+        if (!livekitResponse.ok) {
+          const detail = await livekitResponse.text();
+          if (!/participant does not exist/i.test(detail)) {
+            return json({ ok: false, error: "livekit_remove_failed" }, { status: 502 });
+          }
+        }
+      }
       const result = await db.prepare(
         "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
       ).bind(roomId, targetId).run();
