@@ -938,7 +938,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   Text('${pouch!['remaining_coins']} coins left • ${pouch!['remaining_slots']} winners'),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: pouch!['claimed'] == true || (int.tryParse(pouch!['remaining_slots']?.toString() ?? '0') ?? 0) == 0 ? null : () async {
+                    onPressed: (pouch!['claimed'] == true || pouch!['claimed']?.toString() == '1') || (int.tryParse(pouch!['remaining_slots']?.toString() ?? '0') ?? 0) == 0 ? null : () async {
                       final result = await widget.state.backend.claimRoomLuckyPouch(roomId: widget.room.id, userId: widget.state.userId);
                       final amount = int.tryParse(result?['amount']?.toString() ?? '');
                       final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
@@ -948,7 +948,7 @@ class _RoomScreenState extends State<RoomScreen> {
                       refresh(() {});
                     },
                     icon: const Icon(Icons.card_giftcard_rounded),
-                    label: Text(pouch!['claimed'] == true ? 'Already claimed' : 'Claim coins'),
+                    label: Text((pouch!['claimed'] == true || pouch!['claimed']?.toString() == '1') ? 'Already claimed' : 'Claim coins'),
                   ),
                   TextButton(onPressed: () async { pouch = await refreshPouch(); refresh(() {}); }, child: const Text('Refresh')),
                 ],
