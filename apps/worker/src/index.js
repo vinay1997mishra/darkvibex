@@ -1064,6 +1064,19 @@ async function handleApi(request, env, url) {
     return json({ok:true,bet_id:betId,coin_balance:balance,round_id:round.round_id,fruit});
   }
 
+  if (url.pathname === "/api/files" && request.method === "GET") {
+    if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
+    const key = String(url.searchParams.get("key") ?? "").trim().replace(/^\/+/, "").slice(0, 500);
+    if (!key) return json({ ok: false, error: "key_required" }, { status: 400 });
+    const object = await env.FILES.get(key);
+    if (!object) return json({ ok: false, error: "not_found" }, { status: 404 });
+    const headers = new Headers(corsHeaders);
+    headers.set("content-type", object.httpMetadata?.contentType || "application/octet-stream");
+    headers.set("cache-control", object.httpMetadata?.cacheControl || "public, max-age=86400");
+    if (object.httpEtag) headers.set("etag", object.httpEtag);
+    return new Response(object.body, { status: 200, headers });
+  }
+
   if (url.pathname === "/api/files" && request.method === "PUT") {
     if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
     const rawKey = String(request.headers.get("x-file-key") ?? "").trim();
