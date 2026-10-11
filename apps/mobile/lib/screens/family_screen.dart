@@ -124,7 +124,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             Text(family!['name']?.toString() ?? 'Family', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
                             Text('ID ${family!['id']} • Level ${family!['level']}'),
                             const SizedBox(height: 10),
-                            LinearProgressIndicator(value: ((Number.parse(family!['experience']?.toString() ?? '0') % 5000) / 5000).clamp(0, 1)),
+                            LinearProgressIndicator(
+                              value: (((int.tryParse(family!['experience']?.toString() ?? '') ?? 0) % 5000) / 5000)
+                                  .clamp(0.0, 1.0)
+                                  .toDouble(),
+                            ),
                             const SizedBox(height: 6),
                             Text('${family!['experience']} EXP'),
                             const SizedBox(height: 12),
@@ -139,7 +143,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     for (final member in members)
                       Card(
                         child: ListTile(
-                          leading: CircleAvatar(child: Text((member['display_name']?.toString() ?? '?').characters.first.toUpperCase())),
+                          leading: CircleAvatar(child: Text(((member['display_name']?.toString() ?? '?').isEmpty ? '?' : (member['display_name']?.toString() ?? '?').substring(0, 1).toUpperCase()))),
                           title: Text(member['display_name']?.toString() ?? member['user_id']?.toString() ?? 'User'),
                           subtitle: Text('ID ${member['user_id']} • VIP ${member['vip_level'] ?? 0}'),
                           trailing: Chip(label: Text(member['role']?.toString().toUpperCase() ?? 'MEMBER')),
