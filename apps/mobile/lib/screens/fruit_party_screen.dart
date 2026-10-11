@@ -39,7 +39,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     _sync();
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() => remainingMs = (remainingMs - 1000).clamp(0, 999999));
+      setState(() => remainingMs = remainingMs > 1000 ? remainingMs - 1000 : 0);
       tick += 1;
       if (tick % 5 == 0) _sync();
     });
