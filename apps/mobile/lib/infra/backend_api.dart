@@ -147,6 +147,7 @@ class BackendApi {
     required bool locked,
     required String announcement,
     String themeId = 'dark',
+    bool groupPkEnabled = false,
   }) async {
     final value = await _json(
       'POST',
@@ -158,6 +159,7 @@ class BackendApi {
         'locked': locked,
         'announcement': announcement,
         'theme_id': themeId,
+        'group_pk_enabled': groupPkEnabled,
       },
     );
     return value?['ok'] == true;
