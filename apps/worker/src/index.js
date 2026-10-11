@@ -1,5 +1,7 @@
 import { normalizeRole } from "./role_policy.js";
 import { handleOwnerApi } from "./owner_api.js";
+import { awardSellerVipExp, getVipStatus } from "./vip_store.js";
+import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
