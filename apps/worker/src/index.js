@@ -245,6 +245,13 @@ async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
 
+  if (url.pathname === "/api/auth/config" && request.method === "GET") {
+    return json({
+      ok: true,
+      google_web_client_id: String(env.GOOGLE_WEB_CLIENT_ID ?? ""),
+    });
+  }
+
   const maintenance = await ownerSetting(db, "maintenance", { enabled: false, message: "" });
   if (maintenance.enabled === true && url.pathname !== "/api/config") {
     return json({ ok: false, error: "maintenance", message: String(maintenance.message ?? "") }, { status: 503 });
