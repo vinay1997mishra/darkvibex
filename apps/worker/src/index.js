@@ -246,12 +246,16 @@ async function ensureRoomSettingsTable(db) {
       room_id TEXT PRIMARY KEY,
       announcement TEXT NOT NULL DEFAULT '',
       theme_id TEXT NOT NULL DEFAULT 'dark',
+      group_pk_enabled INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
   ).run();
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN theme_id TEXT NOT NULL DEFAULT 'dark'").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN group_pk_enabled INTEGER NOT NULL DEFAULT 0").run();
   } catch (_) {}
 }
 
@@ -617,7 +621,7 @@ async function handleApi(request, env, url) {
     await ensureRoomSettingsTable(db);
     const room = await db.prepare(
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
-              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id
+              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
         WHERE r.id = ?`
     ).bind(roomId).first();
@@ -654,6 +658,7 @@ async function handleApi(request, env, url) {
       const allowedThemes = new Set(["dark", "midnight", "rose", "forest", "gold"]);
       const themeId = String(body.theme_id ?? room.theme_id ?? "dark");
       if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
+      const groupPkEnabled = body.group_pk_enabled === true ? 1 : 0;
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
       const overflow = await db.prepare(
         "SELECT COUNT(*) AS total FROM room_members WHERE room_id = ? AND seat_index >= ?"
@@ -666,10 +671,10 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, theme_id, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, themeId, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId } });
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled } });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
