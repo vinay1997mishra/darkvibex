@@ -38,7 +38,7 @@ class KtvService {
   KtvService({AudioPlayer? audioPlayer}) : _player = audioPlayer;
   String? playbackError;
   static const int maxLocalSongs = 300;
-  static const String _prefsKey = 'tinni_ktv_local_songs_v1';
+  static const String _prefsKey = 'darkvibex_ktv_local_songs_v1';
   bool _localLibraryLoaded = false;
   // Continuous playback: completed songs advance through the room queue.
 
