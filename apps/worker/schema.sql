@@ -220,23 +220,6 @@ CREATE TABLE IF NOT EXISTS family_signins (
   PRIMARY KEY (family_id, user_id, day_key)
 );
 
-CREATE TABLE IF NOT EXISTS dollar_wallets (
-  user_id TEXT PRIMARY KEY,
-  balance_cents INTEGER NOT NULL DEFAULT 0 CHECK (balance_cents >= 0),
-  updated_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  amount_cents INTEGER NOT NULL,
-  balance_after_cents INTEGER NOT NULL,
-  destination_type TEXT NOT NULL DEFAULT '',
-  destination_ref TEXT NOT NULL DEFAULT '',
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time
-  ON dollar_wallet_ledger(user_id, created_at DESC);
 
 
 CREATE TABLE IF NOT EXISTS social_follows (

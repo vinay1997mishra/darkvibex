@@ -579,7 +579,6 @@ class _RoomScreenState extends State<RoomScreen> {
                                                   ),
                                             ),
                                           ),
-                                        ),
                                         const SizedBox(height: 4),
                                         Text(
                                           member?.displayName ??

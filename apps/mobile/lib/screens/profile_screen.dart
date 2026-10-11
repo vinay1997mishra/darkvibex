@@ -4,6 +4,7 @@ import '../app/app_state.dart';
 import 'family_screen.dart';
 import 'relationships_screen.dart';
 import 'store_screen.dart';
+import 'vip_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
@@ -85,7 +86,7 @@ class ProfileScreen extends StatelessWidget {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => StoreScreen(state: state),
+                      builder: (_) => VipScreen(state: state),
                     ),
                   ),
                 ),

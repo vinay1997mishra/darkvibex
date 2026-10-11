@@ -176,9 +176,6 @@ async function ensureOwnerSchema(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_gifts_receiver_time ON gift_events(receiver_user_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_game_bets_user_time ON game_bets(user_id, created_at DESC)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallets (user_id TEXT PRIMARY KEY,balance_cents INTEGER NOT NULL DEFAULT 0 CHECK(balance_cents>=0),updated_at INTEGER NOT NULL)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,kind TEXT NOT NULL,amount_cents INTEGER NOT NULL,balance_after_cents INTEGER NOT NULL,destination_type TEXT NOT NULL DEFAULT '',destination_ref TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time ON dollar_wallet_ledger(user_id,created_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_controls (
       user_id TEXT PRIMARY KEY,
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','banned')),
@@ -299,19 +296,7 @@ async function getUserDetails(db, userId) {
        FROM room_members m LEFT JOIN rooms r ON r.id = m.room_id
       WHERE m.user_id = ? ORDER BY m.updated_at DESC LIMIT 1`
   ).bind(userId).first();
-  const dollar = await db.prepare(
-    "SELECT balance_cents,updated_at FROM dollar_wallets WHERE user_id=?"
-  ).bind(userId).first();
-  const dollarLedger = await db.prepare(
-    "SELECT id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at FROM dollar_wallet_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 25"
-  ).bind(userId).all();
-  return {
-    ...user,
-    wallet_ledger: ledger.results ?? [],
-    dollar_balance_cents: Number(dollar?.balance_cents ?? 0),
-    dollar_ledger: dollarLedger.results ?? [],
-    current_room: room ?? null,
-  };
+  return { ...user, wallet_ledger: ledger.results ?? [], current_room: room ?? null };
 }
 
 async function listRooms(db, query = "") {
@@ -388,7 +373,7 @@ async function handleUsers(request, db, actor, url, parts) {
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 60);
     const role = body.role == null ? current.role : normalizeRole(body.role);
-    const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 999, Number(current.vip_level ?? 0));
+    const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 11, Number(current.vip_level ?? 0));
     await db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
       .bind(name || current.display_name, role, vip, now(), userId).run();
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
@@ -398,22 +383,14 @@ async function handleUsers(request, db, actor, url, parts) {
   if (parts[4] === "wallet" && request.method === "POST") {
     requirePermission(actor, "wallet.write");
     const body = await bodyJson(request);
-    const current = await db.prepare("SELECT coins, diamonds, role FROM users WHERE id = ?").bind(userId).first();
+    const current = await db.prepare("SELECT coins, diamonds FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const coinDelta = clampInt(body.coin_delta ?? 0, -900000000000000, 900000000000000, 0);
     const diamondDelta = clampInt(body.diamond_delta ?? 0, -900000000000000, 900000000000000, 0);
-    const dollarDeltaCents = clampInt(body.dollar_delta_cents ?? 0, -900000000000, 900000000000, 0);
     const nextCoins = Number(current.coins ?? 0) + coinDelta;
     const nextDiamonds = Number(current.diamonds ?? 0) + diamondDelta;
-    const eligibleDollarRoles = new Set(["coin_seller","merchant","platform_owner"]);
-    if (dollarDeltaCents !== 0 && !eligibleDollarRoles.has(String(current.role ?? ""))) {
-      return json({ ok: false, error: "dollar_wallet_not_available" }, { status: 400 });
-    }
-    const currentDollarRow = await db.prepare("SELECT balance_cents FROM dollar_wallets WHERE user_id=?").bind(userId).first();
-    const currentDollar = Number(currentDollarRow?.balance_cents ?? 0);
-    const nextDollar = currentDollar + dollarDeltaCents;
-    if (!Number.isSafeInteger(nextCoins) || !Number.isSafeInteger(nextDiamonds) || !Number.isSafeInteger(nextDollar) ||
-        nextCoins < 0 || nextDiamonds < 0 || nextDollar < 0) {
+    if (!Number.isSafeInteger(nextCoins) || !Number.isSafeInteger(nextDiamonds) ||
+        nextCoins < 0 || nextDiamonds < 0) {
       return json({ ok: false, error: "invalid_balance_change" }, { status: 400 });
     }
     const ts = now();
@@ -423,20 +400,9 @@ async function handleUsers(request, db, actor, url, parts) {
         "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, 'owner_adjustment', ?, ?, ?, ?)"
       ).bind(id(), userId, coinDelta, nextCoins, actor.id, ts));
     }
-    if (dollarDeltaCents !== 0) {
-      statements.push(db.prepare(
-        "INSERT OR IGNORE INTO dollar_wallets (user_id,balance_cents,updated_at) VALUES (?,0,?)"
-      ).bind(userId,ts));
-      statements.push(db.prepare(
-        "UPDATE dollar_wallets SET balance_cents=?,updated_at=? WHERE user_id=?"
-      ).bind(nextDollar,ts,userId));
-      statements.push(db.prepare(
-        "INSERT INTO dollar_wallet_ledger (id,user_id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at) VALUES (?,?,'owner_adjustment',?,?, 'owner', ?, ?)"
-      ).bind(id(),userId,dollarDeltaCents,nextDollar,actor.id,ts));
-    }
     await db.batch(statements);
-    await audit(db, actor, "wallet_adjustment", "user", userId, `coins=${coinDelta}; diamonds=${diamondDelta}; dollars_cents=${dollarDeltaCents}`);
-    return json({ ok: true, coins: nextCoins, diamonds: nextDiamonds, dollar_balance_cents: nextDollar });
+    await audit(db, actor, "wallet_adjustment", "user", userId, `coins=${coinDelta}; diamonds=${diamondDelta}`);
+    return json({ ok: true, coins: nextCoins, diamonds: nextDiamonds });
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {

@@ -14,7 +14,6 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   static const kinds = <(String, String, IconData)>[
-    ('vip', 'VIP', Icons.workspace_premium_rounded),
     ('frame', 'Frames', Icons.crop_square_rounded),
     ('ring', 'Rings', Icons.radio_button_unchecked_rounded),
     ('bubble', 'Bubbles', Icons.chat_bubble_outline_rounded),

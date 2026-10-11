@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
-import 'dollar_wallet_screen.dart';
 
 class WalletScreen extends StatelessWidget {
   const WalletScreen({super.key, required this.state});
@@ -78,31 +77,7 @@ class WalletScreen extends StatelessWidget {
                         '${int.tryParse(row['amount']?.toString() ?? '') ?? 0}',
                       ),
                     ),
-                if (const <String>{
-                  'coin_seller',
-                  'merchant',
-                  'platform_owner',
-                }.contains(state.userRole)) ...[
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.attach_money_rounded),
-                    title: const Text('Dollar Wallet'),
-                    subtitle: Text(
-                      state.userRole == 'coin_seller'
-                          ? 'Coin Seller settlement wallet'
-                          : state.userRole == 'merchant'
-                              ? 'Merchant settlement wallet'
-                              : 'Platform settlement wallet',
-                    ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DollarWalletScreen(state: state),
-                      ),
-                    ),
-                  ),
-                ],
+              ],
               ],
             ),
           ),

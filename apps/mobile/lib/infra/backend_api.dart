@@ -71,17 +71,6 @@ class BackendApi {
         },
       );
 
-  Future<Map<String, dynamic>?> startFacebookSession({
-    required String accessToken,
-  }) =>
-      _json(
-        'POST',
-        '/api/session/facebook',
-        body: <String, dynamic>{
-          'access_token': accessToken,
-        },
-      );
-
   Future<Map<String, dynamic>?> startGuestSession({
     required String userId,
     required String displayName,
@@ -414,35 +403,6 @@ class BackendApi {
         'POST',
         '/api/parties/${Uri.encodeComponent(partyId)}/join',
         authToken: authToken,
-      );
-
-  Future<Map<String, dynamic>?> dollarWallet({
-    required String userId,
-    required String authToken,
-  }) =>
-      _json(
-        'GET',
-        '/api/dollar-wallet?user_id=${Uri.encodeQueryComponent(userId)}',
-        authToken: authToken,
-      );
-
-  Future<Map<String, dynamic>?> settleDollars({
-    required String userId,
-    required String authToken,
-    required int amountCents,
-    required String destinationType,
-    String destinationRef = '',
-  }) =>
-      _json(
-        'POST',
-        '/api/dollar-wallet/settle',
-        authToken: authToken,
-        body: <String, dynamic>{
-          'user_id': userId,
-          'amount_cents': amountCents,
-          'destination_type': destinationType,
-          'destination_ref': destinationRef,
-        },
       );
 
   Future<List<Map<String, dynamic>>> catalog(String kind) async {

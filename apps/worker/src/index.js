@@ -117,41 +117,6 @@ async function verifyGoogleIdToken(idToken, expectedAudience) {
   return claims;
 }
 
-async function verifyFacebookAccessToken(accessToken, appId, appSecret) {
-  const token = String(accessToken ?? "").trim();
-  const expectedAppId = String(appId ?? "").trim();
-  const secret = String(appSecret ?? "").trim();
-  if (!expectedAppId || !secret) throw new Error("facebook_auth_not_configured");
-  if (!token) throw new Error("facebook_access_token_required");
-
-  const appAccessToken = expectedAppId + "|" + secret;
-  const debugResponse = await fetch(
-    "https://graph.facebook.com/debug_token?input_token=" +
-      encodeURIComponent(token) +
-      "&access_token=" +
-      encodeURIComponent(appAccessToken),
-    { headers: { accept: "application/json" } },
-  );
-  if (!debugResponse.ok) throw new Error("invalid_facebook_token");
-  const debugPayload = await debugResponse.json();
-  const data = debugPayload?.data ?? {};
-  if (data.is_valid !== true || String(data.app_id ?? "") !== expectedAppId || !data.user_id) {
-    throw new Error("invalid_facebook_token");
-  }
-
-  const meResponse = await fetch(
-    "https://graph.facebook.com/me?fields=id,name&access_token=" +
-      encodeURIComponent(token),
-    { headers: { accept: "application/json" } },
-  );
-  if (!meResponse.ok) throw new Error("invalid_facebook_profile");
-  const profile = await meResponse.json();
-  if (!profile?.id || String(profile.id) !== String(data.user_id)) {
-    throw new Error("invalid_facebook_profile");
-  }
-  return profile;
-}
-
 function bearerToken(request) {
   const value = String(request.headers.get("authorization") ?? "");
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
@@ -326,11 +291,6 @@ const DEFAULT_GIFTS = [
 ];
 
 const DEFAULT_STORE = {
-  vip:[
-    {id:"vip-1",name:"VIP 1",price_coins:2000000,data:{duration_days:30,level:1}},
-    {id:"vip-2",name:"VIP 2",price_coins:5000000,data:{duration_days:30,level:2}},
-    {id:"vip-3",name:"VIP 3",price_coins:10000000,data:{duration_days:30,level:3}}
-  ],
   frame:[
     {id:"frame-gold",name:"Gold Frame",price_coins:1000000,data:{duration_days:7}},
     {id:"frame-neon",name:"Neon Frame",price_coins:2500000,data:{duration_days:7}}
@@ -420,9 +380,6 @@ async function ensureParityTables(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS family_members (family_id TEXT NOT NULL,user_id TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'member',joined_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id))"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_family_member_user ON family_members(user_id)"),
     db.prepare("CREATE TABLE IF NOT EXISTS family_signins (family_id TEXT NOT NULL,user_id TEXT NOT NULL,day_key TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(family_id,user_id,day_key))"),
-    db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallets (user_id TEXT PRIMARY KEY,balance_cents INTEGER NOT NULL DEFAULT 0 CHECK(balance_cents>=0),updated_at INTEGER NOT NULL)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS dollar_wallet_ledger (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,kind TEXT NOT NULL,amount_cents INTEGER NOT NULL,balance_after_cents INTEGER NOT NULL,destination_type TEXT NOT NULL DEFAULT '',destination_ref TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_dollar_ledger_user_time ON dollar_wallet_ledger(user_id,created_at DESC)"),
     db.prepare("CREATE TABLE IF NOT EXISTS social_follows (follower_user_id TEXT NOT NULL,target_user_id TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(follower_user_id,target_user_id))"),
     db.prepare("CREATE TABLE IF NOT EXISTS user_blocks (user_id TEXT NOT NULL,target_user_id TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(user_id,target_user_id))"),
     db.prepare("CREATE TABLE IF NOT EXISTS user_reports (id TEXT PRIMARY KEY,reporter_user_id TEXT NOT NULL,target_user_id TEXT NOT NULL,room_id TEXT NOT NULL DEFAULT '',categories_json TEXT NOT NULL DEFAULT '[]',details TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'open',created_at INTEGER NOT NULL)"),
@@ -434,29 +391,6 @@ async function ensureParityTables(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS party_members (party_id TEXT NOT NULL,user_id TEXT NOT NULL,joined_at INTEGER NOT NULL,PRIMARY KEY(party_id,user_id))"),
     db.prepare("CREATE TABLE IF NOT EXISTS room_progress (room_id TEXT PRIMARY KEY,experience INTEGER NOT NULL DEFAULT 0,level INTEGER NOT NULL DEFAULT 1,active_exp INTEGER NOT NULL DEFAULT 0,sending_exp INTEGER NOT NULL DEFAULT 0,receiving_exp INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)")
   ]);
-}
-
-async function eligibleDollarWalletUser(db, userId) {
-  const user = await db.prepare("SELECT id,role FROM users WHERE id=?").bind(userId).first();
-  if (!user) throw new Error("user_not_found");
-  const eligible = new Set(["coin_seller","merchant","platform_owner"]);
-  if (!eligible.has(String(user.role ?? ""))) throw new Error("dollar_wallet_not_available");
-  await db.prepare(
-    "INSERT OR IGNORE INTO dollar_wallets (user_id,balance_cents,updated_at) VALUES (?,0,?)"
-  ).bind(userId,now()).run();
-  return user;
-}
-
-async function dollarWalletState(db, userId) {
-  await ensureParityTables(db);
-  await eligibleDollarWalletUser(db,userId);
-  const wallet=await db.prepare(
-    "SELECT balance_cents,updated_at FROM dollar_wallets WHERE user_id=?"
-  ).bind(userId).first();
-  const ledger=await db.prepare(
-    "SELECT id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at FROM dollar_wallet_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
-  ).bind(userId).all();
-  return {balance_cents:Number(wallet?.balance_cents??0),updated_at:wallet?.updated_at??null,ledger:ledger.results??[]};
 }
 
 function roomLevelFromExp(exp) {
@@ -585,7 +519,6 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       google_web_client_id: String(env.GOOGLE_WEB_CLIENT_ID ?? ""),
-      facebook_enabled: Boolean(env.FACEBOOK_APP_ID && env.FACEBOOK_APP_SECRET),
     });
   }
 
@@ -647,37 +580,6 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     const token = await createSessionToken(env, userId, user.display_name);
     return json({ ok: true, token, user, provider: "google" });
-  }
-
-  if (url.pathname === "/api/session/facebook" && request.method === "POST") {
-    if (!env.SESSION_SECRET) {
-      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
-    }
-    const body = await bodyJson(request);
-    const accessToken = String(body.access_token ?? "").trim();
-    if (!accessToken) {
-      return json({ ok: false, error: "facebook_access_token_required" }, { status: 400 });
-    }
-
-    let profile;
-    try {
-      profile = await verifyFacebookAccessToken(
-        accessToken,
-        env.FACEBOOK_APP_ID,
-        env.FACEBOOK_APP_SECRET,
-      );
-    } catch (error) {
-      const code = String(error?.message ?? error);
-      const status = code === "facebook_auth_not_configured" ? 503 : 401;
-      return json({ ok: false, error: code }, { status });
-    }
-
-    const userId = "fb_" + String(profile.id);
-    const displayName = String(profile.name ?? "DarkVibeX User").trim().slice(0, 60);
-    const user = await ensureUser(db, userId, displayName);
-    await ensureUserAllowed(db, userId);
-    const token = await createSessionToken(env, userId, user.display_name);
-    return json({ ok: true, token, user, provider: "facebook" });
   }
 
   if (url.pathname === "/api/session/guest" && request.method === "POST") {
@@ -957,6 +859,7 @@ async function handleApi(request, env, url) {
     const body=await bodyJson(request);
     const userId=String(body.user_id??"").trim(),kind=String(body.kind??"").trim(),itemId=String(body.item_id??"").trim();
     if (!userId||!kind||!itemId) return json({ok:false,error:"purchase_fields_required"},{status:400});
+    if (kind==="vip") return json({ok:false,error:"vip_page_only"},{status:400});
     await ensureUser(db,userId);await ensureUserAllowed(db,userId);
     const item=await catalogItem(db,kind,itemId);
     if (!item) return json({ok:false,error:"item_not_found"},{status:404});
@@ -967,10 +870,6 @@ async function handleApi(request, env, url) {
     const starts=now(),expires=days>0?starts+days*86400000:null;
     await db.prepare("INSERT INTO user_entitlements (id,user_id,kind,item_id,item_name,starts_at,expires_at,active,created_at) VALUES (?,?,?,?,?,?,?,1,?)")
       .bind(purchaseId,userId,kind,itemId,String(item.name??itemId),starts,expires,starts).run();
-    if (kind==="vip") {
-      const level=Math.max(0,Number(item.data?.level??0));
-      if (level>0) await db.prepare("UPDATE users SET vip_level=MAX(vip_level,?),updated_at=? WHERE id=?").bind(level,now(),userId).run();
-    }
     return json({ok:true,purchase_id:purchaseId,coin_balance:Number(balance),expires_at:expires});
   }
 
@@ -1042,47 +941,6 @@ async function handleApi(request, env, url) {
       if(String(error?.message??error).toLowerCase().includes("unique"))return json({ok:true,already_signed_in:true,experience_added:0});
       throw error;
     }
-  }
-
-  if (url.pathname === "/api/dollar-wallet" && request.method === "GET") {
-    if (!env.SESSION_SECRET) return json({ok:false,error:"session_secret_not_configured"},{status:503});
-    const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
-    const userId=String(url.searchParams.get("user_id")??"").trim();
-    if(!userId || String(session.sub)!==userId)return json({ok:false,error:"forbidden"},{status:403});
-    try {
-      return json({ok:true,...await dollarWalletState(db,userId)});
-    } catch(error) {
-      const code=String(error?.message??error);
-      return json({ok:false,error:code},{status:code==="dollar_wallet_not_available"?403:400});
-    }
-  }
-
-  if (url.pathname === "/api/dollar-wallet/settle" && request.method === "POST") {
-    if (!env.SESSION_SECRET) return json({ok:false,error:"session_secret_not_configured"},{status:503});
-    const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
-    const body=await bodyJson(request);
-    const userId=String(body.user_id??"").trim();
-    if(!userId || String(session.sub)!==userId)return json({ok:false,error:"forbidden"},{status:403});
-    const amountCents=Number(body.amount_cents??0);
-    const destinationType=String(body.destination_type??"").trim().toLowerCase();
-    const destinationRef=String(body.destination_ref??"").trim().slice(0,180);
-    if(!Number.isSafeInteger(amountCents)||amountCents<=0)return json({ok:false,error:"invalid_amount"},{status:400});
-    if(!["company","crypto"].includes(destinationType))return json({ok:false,error:"invalid_destination"},{status:400});
-    if(destinationType==="crypto" && !destinationRef)return json({ok:false,error:"crypto_address_required"},{status:400});
-    await ensureParityTables(db);
-    try { await eligibleDollarWalletUser(db,userId); }
-    catch(error){return json({ok:false,error:String(error?.message??error)},{status:403});}
-    const changed=await db.prepare(
-      "UPDATE dollar_wallets SET balance_cents=balance_cents-?,updated_at=? WHERE user_id=? AND balance_cents>=?"
-    ).bind(amountCents,now(),userId,amountCents).run();
-    if(Number(changed.meta?.changes??0)<1)return json({ok:false,error:"insufficient_dollars"},{status:400});
-    const wallet=await db.prepare("SELECT balance_cents FROM dollar_wallets WHERE user_id=?").bind(userId).first();
-    const balance=Number(wallet?.balance_cents??0);
-    const ledgerId=id();
-    await db.prepare(
-      "INSERT INTO dollar_wallet_ledger (id,user_id,kind,amount_cents,balance_after_cents,destination_type,destination_ref,created_at) VALUES (?,?,'settlement',?,?,?,?,?)"
-    ).bind(ledgerId,userId,-amountCents,balance,destinationType,destinationRef,now()).run();
-    return json({ok:true,ledger_id:ledgerId,balance_cents:balance});
   }
 
   if (url.pathname === "/api/social/state" && request.method === "GET") {

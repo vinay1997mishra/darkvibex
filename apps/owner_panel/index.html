@@ -66,7 +66,7 @@
             <div class="form-grid">
               <label>Display name<input id="editUserName" /></label>
               <label>Role<select id="editUserRole"><option value="user">User</option><option value="room_owner">Room owner</option><option value="room_admin">Room admin</option><option value="moderator">Moderator</option><option value="coin_seller">Coin seller</option><option value="merchant">Merchant</option><option value="platform_owner">Platform owner</option></select></label>
-              <label>VIP level<input id="editVip" type="number" min="0" max="999" /></label>
+              <label>VIP level<input id="editVip" type="number" min="0" max="11" /></label>
               <label>Account status<select id="editStatus"><option value="active">Active</option><option value="suspended">Suspended</option><option value="banned">Banned</option></select></label>
               <label class="span-2">Moderation note<textarea id="editNote" rows="3" placeholder="Internal owner note"></textarea></label>
             </div>
@@ -74,7 +74,7 @@
             <hr />
             <h3>Wallet adjustment</h3>
             <p class="muted" id="walletBalance"></p>
-            <div class="form-grid compact"><label>Coin change<input id="coinDelta" type="number" placeholder="e.g. 50000 or -50000" /></label><label>Diamond change<input id="diamondDelta" type="number" placeholder="e.g. 100 or -100" /></label><label>Dollar change<input id="dollarDelta" type="number" step="0.01" placeholder="e.g. 10.00 or -2.50" /></label></div>
+            <div class="form-grid compact"><label>Coin change<input id="coinDelta" type="number" placeholder="e.g. 50000 or -50000" /></label><label>Diamond change<input id="diamondDelta" type="number" placeholder="e.g. 100 or -100" /></label></div>
             <button id="applyWallet" class="primary">Apply adjustment</button>
             <div id="walletLedger" class="stack compact-stack"></div>
           </article>
@@ -90,9 +90,9 @@
 
         <section class="view" data-view-panel="catalog">
           <article class="panel">
-            <div class="panel-head"><div><h2>Content catalog</h2><p>Manage gifts, VIPs, tags, themes, frames, rings, bubbles, profile backgrounds, vehicles and future modules.</p></div></div>
+            <div class="panel-head"><div><h2>Content catalog</h2><p>Manage gifts, tags, themes, frames, rings, bubbles, profile backgrounds, vehicles and future modules.</p></div></div>
             <div class="form-grid">
-              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="vip">VIP</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="music">Room music</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
+              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="music">Room music</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
               <label>Item ID<input id="catalogId" placeholder="Optional; generated if blank" /></label>
               <label>Display name<input id="catalogName" /></label>
               <label>Price in coins<input id="catalogPrice" type="number" min="0" value="0" /></label>
