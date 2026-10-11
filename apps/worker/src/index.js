@@ -663,6 +663,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const sellerId = String(body.seller_user_id ?? "").trim();
     const receiverId = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, sellerId);
+    if (authError) return authError;
     const amount = Number(body.coins ?? 0);
     if (!sellerId || !receiverId || sellerId === receiverId || !Number.isSafeInteger(amount) || amount <= 0) {
       return json({ ok: false, error: "invalid_coin_seller_transfer" }, { status: 400 });
