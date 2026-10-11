@@ -89,8 +89,8 @@ class _RoomScreenState extends State<RoomScreen> {
   Future<bool> _ensureLegalAgreement() async {
     final consentKey = '${widget.state.userId}:$_legalVersion';
     if (_acceptedLegalInSession.contains(consentKey)) return true;
-    if (!widget.state.backendConnected) return true;
-    if (await widget.state.backend.legalConsentAccepted(version: _legalVersion)) {
+    if (widget.state.backendConnected &&
+        await widget.state.backend.legalConsentAccepted(version: _legalVersion)) {
       _acceptedLegalInSession.add(consentKey);
       return true;
     }
