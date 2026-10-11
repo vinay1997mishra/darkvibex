@@ -798,6 +798,10 @@ async function handleLiveKitToken(request, env) {
   if (!roomId) {
     return json({ ok: false, error: "room_id_required" }, { status: 400 });
   }
+  const membership = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? LIMIT 1"
+  ).bind(roomId, String(session.sub)).first();
+  if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
 
   const seconds = Math.floor(Date.now() / 1000);
   const token = await signJwt(
