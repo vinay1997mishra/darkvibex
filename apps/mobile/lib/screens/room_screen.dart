@@ -121,7 +121,7 @@ class _RoomScreenState extends State<RoomScreen> {
       for (final publication in participant.videoTrackPublications) {
         final track = publication.track;
         if (track is VideoTrack && !publication.muted) {
-          remotes[participant.identity] = track;
+          remotes[participant.identity] = track as VideoTrack;
           break;
         }
       }
@@ -323,7 +323,7 @@ class _RoomScreenState extends State<RoomScreen> {
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
         scrollDirection: Axis.horizontal,
         itemCount: entries.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final entry = entries[index];
           return SizedBox(
