@@ -369,9 +369,21 @@ async function handleUsers(request, db, actor, url, parts) {
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 60);
     const role = body.role == null ? current.role : normalizeRole(body.role);
-    const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 999, Number(current.vip_level ?? 0));
+    const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 18, Number(current.vip_level ?? 0));
+    const changedAt = now();
     await db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
-      .bind(name || current.display_name, role, vip, now(), userId).run();
+      .bind(name || current.display_name, role, vip, changedAt, userId).run();
+    if (body.vip_level != null && vip !== Number(current.vip_level ?? 0)) {
+      try {
+        const activeUntil = vip > 0
+          ? changedAt + (vip >= 18 ? 45 : 30) * 24 * 60 * 60 * 1000
+          : null;
+        await db.prepare("UPDATE user_vip SET level = ?, active_until = ?, updated_at = ? WHERE user_id = ?")
+          .bind(vip, activeUntil, changedAt, userId).run();
+      } catch (error) {
+        if (!String(error?.message ?? error).includes("no such table")) throw error;
+      }
+    }
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
     return json({ ok: true, user: await getUserDetails(db, userId) });
   }
