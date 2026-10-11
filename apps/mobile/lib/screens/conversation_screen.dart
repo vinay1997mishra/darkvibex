@@ -109,9 +109,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               constraints: const BoxConstraints(maxWidth: 300),
                               decoration: BoxDecoration(
                                 color: mine
-                                    ? const Color(0x33FFD36A)
+                                    ? (widget.state.hasVipPrivilege('chat_bubble')
+                                        ? const Color(0x664B3511)
+                                        : const Color(0x33FFD36A))
                                     : Colors.white10,
                                 borderRadius: BorderRadius.circular(16),
+                                border: mine &&
+                                        widget.state.hasVipPrivilege('chat_bubble')
+                                    ? Border.all(
+                                        color: const Color(0xAAFFD36A),
+                                      )
+                                    : null,
+                                boxShadow: mine &&
+                                        widget.state.hasVipPrivilege('chat_bubble')
+                                    ? const [
+                                        BoxShadow(
+                                          color: Color(0x33FFD36A),
+                                          blurRadius: 10,
+                                        ),
+                                      ]
+                                    : null,
                               ),
                               child: Text(item['text']?.toString() ?? ''),
                             ),
