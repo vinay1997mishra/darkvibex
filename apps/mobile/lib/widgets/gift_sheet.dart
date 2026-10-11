@@ -153,7 +153,7 @@ class _GiftSheetState extends State<GiftSheet> {
                             ),
                             child: Center(
                               child: Text(
-                                member.displayName.isEmpty ? '?' : member.displayName.characters.first.toUpperCase(),
+                                member.displayName.isEmpty ? '?' : member.displayName.substring(0, 1).toUpperCase(),
                                 style: const TextStyle(fontWeight: FontWeight.w900),
                               ),
                             ),
