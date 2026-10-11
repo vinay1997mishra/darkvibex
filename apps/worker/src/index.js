@@ -212,15 +212,16 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
 }
 
 async function listRooms(db) {
+  const cutoff = now() - 60000;
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
             COALESCE(u.display_name, '') AS owner_name,
-            (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
+            (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id AND m.updated_at > ?) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
       ORDER BY r.updated_at DESC
       LIMIT 100`
-  ).all();
+  ).bind(cutoff).all();
   return result.results ?? [];
 }
 
@@ -644,9 +645,13 @@ async function handleApi(request, env, url) {
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members" && request.method === "GET") {
+    const viewerId=String(url.searchParams.get("viewer_id")??"").trim();
+    if(viewerId){
+      await db.prepare("UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?").bind(now(),parts[2],viewerId).run();
+    }
     const rows=await db.prepare(
-      "SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,u.display_name,u.avatar_key,u.vip_level FROM room_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.room_id=? ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END,m.seat_index ASC,m.joined_at ASC LIMIT 200"
-    ).bind(parts[2]).all();
+      "SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,u.display_name,u.avatar_key,u.vip_level FROM room_members m LEFT JOIN users u ON u.id=m.user_id WHERE m.room_id=? AND m.updated_at>? ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END,m.seat_index ASC,m.joined_at ASC LIMIT 200"
+    ).bind(parts[2],now()-60000).all();
     return json({ok:true,members:rows.results??[]});
   }
 
