@@ -9,7 +9,7 @@ const state = {
   catalog: [],
 };
 const viewTitles = {overview:"Overview",users:"Users",rooms:"Rooms",catalog:"Content",settings:"Settings",announcements:"Announcements",staff:"Staff",audit:"Audit log"};
-const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation"};
+const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp"};
 
 function authHeaders(){return {authorization:"Bearer "+state.token,"content-type":"application/json"};}
 async function api(path, options={}){
