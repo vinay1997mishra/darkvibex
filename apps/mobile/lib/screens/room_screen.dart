@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import '../app/app_state.dart';
@@ -36,14 +37,83 @@ class _RoomScreenState extends State<RoomScreen> {
   bool followingRoom = false;
   bool followBusy = false;
   final List<String> chat = <String>['Welcome to the room 👋'];
+  final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
+  Timer? memberRefreshTimer;
+  String? roomAvatarKey;
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
 
   @override
   void initState() {
     super.initState();
+    roomAvatarKey = widget.room.avatarKey;
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
+    unawaited(_loadRoomMembers());
+    memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      unawaited(_loadRoomMembers());
+    });
+  }
+
+  Future<void> _loadRoomMembers() async {
+    if (!widget.state.backendConnected) return;
+    final rows = await widget.state.backend.roomMembers(roomId: widget.room.id);
+    final next = <int, Map<String, dynamic>>{};
+    for (final member in rows) {
+      final seat = int.tryParse(member['seat_index']?.toString() ?? '');
+      if (seat != null) next[seat] = member;
+    }
+    if (!mounted) return;
+    setState(() {
+      membersBySeat
+        ..clear()
+        ..addAll(next);
+      final own = rows.where((member) => member['user_id']?.toString() == widget.state.userId);
+      if (own.isNotEmpty) {
+        mySeat = int.tryParse(own.first['seat_index']?.toString() ?? '');
+      }
+    });
+  }
+
+  Future<void> _pickRoomAvatar() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final type = switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      _ => null,
+    };
+    if (type == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
+      );
+      return;
+    }
+    final key = await widget.state.backend.uploadImage(
+      key: 'rooms/${widget.room.id}/avatar.${ext == 'jpeg' ? 'jpg' : ext}',
+      bytes: await file.readAsBytes(),
+      contentType: type,
+    );
+    if (key == null || !await widget.state.backend.setRoomAvatar(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      avatarKey: key,
+    )) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room photo could not be saved')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => roomAvatarKey = key);
+    widget.state.setRoomAvatarKey(widget.room.id, key);
   }
 
   Future<void> _connectVoice() async {
@@ -96,6 +166,7 @@ class _RoomScreenState extends State<RoomScreen> {
   void _bindVideoTracks(LiveKitRtcAdapter adapter) {
     final room = adapter.room;
     if (room == null) return;
+    memberRefreshTimer?.cancel();
     rtcEvents?.dispose();
     rtcEvents = room.createListener()
       ..on<TrackSubscribedEvent>((_) => _refreshVideoTracks(adapter))
@@ -222,6 +293,7 @@ class _RoomScreenState extends State<RoomScreen> {
         muted = true;
       }
     });
+    unawaited(_loadRoomMembers());
   }
 
   Future<void> _toggleMic() async {
@@ -480,17 +552,33 @@ class _RoomScreenState extends State<RoomScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(widget.room.name),
-            Text(
-              'ID ${widget.room.id} • $voiceStatus',
-              style: Theme.of(context).textTheme.bodySmall,
+            CircleAvatar(
+              radius: 19,
+              backgroundImage: roomAvatarKey == null
+                  ? null
+                  : NetworkImage(widget.state.backend.fileUrl(roomAvatarKey!)),
+              child: roomAvatarKey == null ? const Icon(Icons.mic_rounded, size: 18) : null,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.room.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    'ID ${widget.room.id} • $voiceStatus',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
         actions: [
+          if (isRoomHost)
+            IconButton(onPressed: _pickRoomAvatar, tooltip: 'Change room photo', icon: const Icon(Icons.add_a_photo_outlined)),
           if (!isRoomHost)
             IconButton(
               onPressed: followBusy ? null : _toggleRoomFollow,
@@ -544,15 +632,38 @@ class _RoomScreenState extends State<RoomScreen> {
                                     color: mine ? const Color(0xFFFFD36A) : Colors.white24,
                                   ),
                                 ),
-                                child: Icon(
-                                  mine
-                                      ? (muted ? Icons.mic_off_rounded : Icons.mic_rounded)
-                                      : Icons.add_rounded,
+                                child: Builder(
+                                  builder: (context) {
+                                    final member = membersBySeat[seat];
+                                    final avatar = member?['avatar_key']?.toString();
+                                    if (member != null && avatar != null && avatar.isNotEmpty) {
+                                      return CircleAvatar(
+                                        backgroundImage: NetworkImage(widget.state.backend.fileUrl(avatar)),
+                                        child: Align(
+                                          alignment: Alignment.bottomRight,
+                                          child: Icon(
+                                            member['mic_muted'] == 1 ? Icons.mic_off_rounded : Icons.mic_rounded,
+                                            size: 13,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return Icon(
+                                      member != null
+                                          ? Icons.person_rounded
+                                          : mine
+                                              ? (muted ? Icons.mic_off_rounded : Icons.mic_rounded)
+                                              : Icons.add_rounded,
+                                    );
+                                  },
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                mine ? widget.state.displayName : 'Seat ${seat + 1}',
+                                mine
+                                    ? widget.state.displayName
+                                    : (membersBySeat[seat]?['display_name']?.toString() ?? 'Seat ${seat + 1}'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 11),

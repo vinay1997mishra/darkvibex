@@ -240,13 +240,33 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId).first();
 }
 
+async function ensureImageTables(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_images (
+      room_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`
+  ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS direct_message_images (
+      message_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`
+  ).run();
+}
+
 async function listRooms(db) {
+  await ensureImageTables(db);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
+            ri.image_key AS avatar_key,
             COALESCE(u.display_name, '') AS owner_name,
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN room_images ri ON ri.room_id = r.id
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).all();
@@ -354,6 +374,20 @@ async function handleApi(request, env, url) {
     return json({ ok: true, user });
   }
 
+  if (url.pathname === "/api/users/avatar" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const imageKey = String(body.avatar_key ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!imageKey.startsWith(`users/${userId}/avatar.`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+      return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
+    }
+    await db.prepare("UPDATE users SET avatar_key = ?, updated_at = ? WHERE id = ?")
+      .bind(imageKey, now(), userId).run();
+    return json({ ok: true, avatar_key: imageKey });
+  }
+
   if (parts[0] === "api" && parts[1] === "users" && parts.length === 3 && request.method === "GET") {
     const user = await db.prepare(
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
@@ -363,6 +397,26 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/rooms" && request.method === "GET") {
     return json({ ok: true, rooms: await listRooms(db) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "avatar" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const imageKey = String(body.avatar_key ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+    if (!imageKey.startsWith(`rooms/${roomId}/avatar.`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+      return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
+    }
+    await ensureImageTables(db);
+    await db.prepare(
+      "INSERT INTO room_images (room_id, image_key, updated_at) VALUES (?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET image_key = excluded.image_key, updated_at = excluded.updated_at"
+    ).bind(roomId, imageKey, now()).run();
+    return json({ ok: true, avatar_key: imageKey });
   }
 
   if (url.pathname === "/api/rooms" && request.method === "POST") {
@@ -464,7 +518,7 @@ async function handleApi(request, env, url) {
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members" && request.method === "GET") {
     const roomId = parts[2];
     const rows = await db.prepare(
-      `SELECT m.user_id, u.display_name, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
+      `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
          FROM room_members m
          LEFT JOIN users u ON u.id = m.user_id
         WHERE m.room_id = ?
@@ -540,18 +594,32 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
     const textValue = String(body.text ?? "").trim().slice(0, 1000);
-    if (!sender || !receiver || !textValue) {
+    const imageKey = String(body.image_key ?? "").trim();
+    if (!sender || !receiver || (!textValue && !imageKey)) {
       return json({ ok: false, error: "invalid_message" }, { status: 400 });
+    }
+    if (imageKey && (!imageKey.startsWith(`messages/${sender}/`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey))) {
+      return json({ ok: false, error: "invalid_image_key" }, { status: 400 });
     }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender, { checkMute: true });
     await ensureUserAllowed(db, receiver);
     const messageId = id();
-    await db.prepare(
-      "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, NULL)"
-    ).bind(messageId, sender, receiver, textValue, now()).run();
-    return json({ ok: true, message_id: messageId }, { status: 201 });
+    await ensureImageTables(db);
+    const createdAt = now();
+    const statements = [
+      db.prepare(
+        "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, text, created_at, read_at) VALUES (?, ?, ?, ?, ?, NULL)"
+      ).bind(messageId, sender, receiver, textValue, createdAt),
+    ];
+    if (imageKey) {
+      statements.push(db.prepare(
+        "INSERT INTO direct_message_images (message_id, image_key, created_at) VALUES (?, ?, ?)"
+      ).bind(messageId, imageKey, createdAt));
+    }
+    await db.batch(statements);
+    return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
   }
 
   if (url.pathname === "/api/messages/thread" && request.method === "GET") {
@@ -564,12 +632,15 @@ async function handleApi(request, env, url) {
     }
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    await ensureImageTables(db);
     const rows = await db.prepare(
-      `SELECT id, sender_user_id, receiver_user_id, text, created_at, read_at
-         FROM direct_messages
-        WHERE (sender_user_id = ? AND receiver_user_id = ?)
-           OR (sender_user_id = ? AND receiver_user_id = ?)
-        ORDER BY created_at ASC
+      `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
+              i.image_key
+         FROM direct_messages m
+         LEFT JOIN direct_message_images i ON i.message_id = m.id
+        WHERE (m.sender_user_id = ? AND m.receiver_user_id = ?)
+           OR (m.sender_user_id = ? AND m.receiver_user_id = ?)
+        ORDER BY m.created_at ASC
         LIMIT 200`
     ).bind(userId, otherId, otherId, userId).all();
     await db.prepare(
@@ -587,12 +658,16 @@ async function handleApi(request, env, url) {
     }
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    await ensureImageTables(db);
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
-              s.display_name AS sender_name, r.display_name AS receiver_name
+              i.image_key,
+              s.display_name AS sender_name, s.avatar_key AS sender_avatar_key,
+              r.display_name AS receiver_name, r.avatar_key AS receiver_avatar_key
          FROM direct_messages m
          LEFT JOIN users s ON s.id = m.sender_user_id
          LEFT JOIN users r ON r.id = m.receiver_user_id
+         LEFT JOIN direct_message_images i ON i.message_id = m.id
         WHERE m.sender_user_id = ? OR m.receiver_user_id = ?
         ORDER BY m.created_at DESC
         LIMIT 200`
@@ -607,7 +682,9 @@ async function handleApi(request, env, url) {
       inbox.push({
         id: otherId,
         name: row.sender_user_id === userId ? row.receiver_name : row.sender_name,
-        preview: row.text,
+        preview: row.text || (row.image_key ? "📷 Photo" : ""),
+        avatar_key: row.sender_user_id === userId ? row.receiver_avatar_key : row.sender_avatar_key,
+        image_key: row.image_key,
         created_at: row.created_at,
         unread: row.receiver_user_id === userId && row.read_at == null ? 1 : 0,
       });
@@ -763,11 +840,67 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env);
     if (authError) return authError;
     if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
-    const rawKey = String(request.headers.get("x-file-key") ?? "").trim();
-    const key = rawKey.replace(/[^a-zA-Z0-9._/-]/g, "").replace(/^\/+/, "");
-    if (!key || key.includes("..")) return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
-    await env.FILES.put(key, request.body, {
-      httpMetadata: { contentType: request.headers.get("content-type") ?? "application/octet-stream" },
+    let session;
+    try {
+      session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    } catch (_) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+    const actor = String(session?.sub ?? "");
+    const key = String(request.headers.get("x-file-key") ?? "").trim();
+    const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+    const extension = key.split(".").pop()?.toLowerCase();
+    if (!actor || !extensions[type] || extension !== extensions[type] ||
+        key.includes("..") || key.startsWith("/") || !/^[a-zA-Z0-9._/-]+$/.test(key)) {
+      return json({ ok: false, error: "invalid_image_upload" }, { status: 400 });
+    }
+    const userPrefix = `users/${actor}/`;
+    const messagePrefix = `messages/${actor}/`;
+    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix);
+    const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar\.(jpg|png|webp)$/i);
+    if (roomMatch) {
+      const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
+      authorizedKey = room?.owner_user_id === actor;
+    }
+    if (!authorizedKey) return json({ ok: false, error: "file_owner_required" }, { status: 403 });
+    const declaredLength = Number(request.headers.get("content-length") ?? 0);
+    if (declaredLength > 5 * 1024 * 1024) {
+      return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+    }
+    const reader = request.body?.getReader();
+    if (!reader) return json({ ok: false, error: "image_body_required" }, { status: 400 });
+    const chunks = [];
+    let size = 0;
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 5 * 1024 * 1024) {
+        await reader.cancel();
+        return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+      }
+      chunks.push(part.value);
+    }
+    if (!size) return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const isPng = bytes.length >= 8 && bytes[0] === 137 && bytes[1] === 80 &&
+      bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 &&
+      bytes[6] === 26 && bytes[7] === 10;
+    const isJpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+    const isWebp = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+    if ((type === "image/jpeg" && !isJpeg) || (type === "image/png" && !isPng) ||
+        (type === "image/webp" && !isWebp)) {
+      return json({ ok: false, error: "image_content_type_mismatch" }, { status: 400 });
+    }
+    await env.FILES.put(key, bytes, {
+      httpMetadata: { contentType: type, cacheControl: "public, max-age=3600" },
     });
     return json({ ok: true, key }, { status: 201 });
   }
@@ -845,6 +978,37 @@ export default {
     }
 
     try {
+      if (url.pathname === "/api/files" && request.method === "GET") {
+        if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
+        const key = String(url.searchParams.get("key") ?? "").trim();
+        if (!key || key.includes("..") || key.startsWith("/") ||
+            !/^(users|rooms|messages)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+          return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
+        }
+        if (key.startsWith("messages/")) {
+          const authError = await requireSession(request, env);
+          if (authError) return authError;
+          const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+          const db = requireDb(env);
+          await ensureImageTables(db);
+          const allowed = await db.prepare(
+            `SELECT 1 AS allowed
+               FROM direct_message_images i
+               JOIN direct_messages m ON m.id = i.message_id
+              WHERE i.image_key = ? AND (m.sender_user_id = ? OR m.receiver_user_id = ?)
+              LIMIT 1`
+          ).bind(key, String(session.sub), String(session.sub)).first();
+          if (!allowed) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+        }
+        const object = await env.FILES.get(key);
+        if (!object) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+        const headers = new Headers(corsHeaders);
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+        headers.set("cache-control", "public, max-age=3600");
+        headers.set("x-content-type-options", "nosniff");
+        return new Response(object.body, { headers });
+      }
       if (url.pathname === "/livekit/token") {
         return await handleLiveKitToken(request, env);
       }

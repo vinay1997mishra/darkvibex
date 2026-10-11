@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 
@@ -22,6 +23,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final controller = TextEditingController();
   final List<Map<String, dynamic>> messages = <Map<String, dynamic>>[];
   bool loading = true;
+  bool uploadingImage = false;
 
   @override
   void initState() {
@@ -75,8 +77,69 @@ class _ConversationScreenState extends State<ConversationScreen> {
       'text': text,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
+    await widget.state.refreshInbox();
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _sendImage() async {
+    if (!widget.state.backendConnected || uploadingImage) return;
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final type = switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      _ => null,
+    };
+    if (type == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
+        );
+      }
+      return;
+    }
+    setState(() => uploadingImage = true);
+    try {
+      final key = 'messages/${widget.state.userId}/${DateTime.now().microsecondsSinceEpoch}.${ext == 'jpeg' ? 'jpg' : ext}';
+      final uploaded = await widget.state.backend.uploadImage(
+        key: key,
+        bytes: await file.readAsBytes(),
+        contentType: type,
+      );
+      if (uploaded == null) throw StateError('upload_failed');
+      final sent = await widget.state.backend.sendDirectMessage(
+        senderUserId: widget.state.userId,
+        receiverUserId: widget.otherUserId,
+        text: '',
+        imageKey: uploaded,
+      );
+      if (!sent) throw StateError('message_failed');
+      messages.add(<String, dynamic>{
+        'sender_user_id': widget.state.userId,
+        'receiver_user_id': widget.otherUserId,
+        'text': '',
+        'image_key': uploaded,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      });
+      await widget.state.refreshInbox();
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo could not be sent')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => uploadingImage = false);
+    }
   }
 
   @override
@@ -130,7 +193,31 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                       ]
                                     : null,
                               ),
-                              child: Text(item['text']?.toString() ?? ''),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (item['image_key']?.toString().isNotEmpty == true)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.network(
+                                        widget.state.backend.fileUrl(item['image_key'].toString()),
+                                        headers: widget.state.sessionToken == null
+                                            ? const <String, String>{}
+                                            : <String, String>{'Authorization': 'Bearer ${widget.state.sessionToken}'},
+                                        width: 220,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const SizedBox(
+                                          width: 220,
+                                          height: 120,
+                                          child: Center(child: Icon(Icons.broken_image_outlined)),
+                                        ),
+                                      ),
+                                    ),
+                                  if (item['text']?.toString().isNotEmpty == true)
+                                    Text(item['text'].toString()),
+                                ],
+                              ),
                             ),
                           );
                         },
@@ -142,6 +229,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               child: Row(
                 children: [
+                  IconButton(
+                    onPressed: uploadingImage ? null : _sendImage,
+                    tooltip: 'Share photo',
+                    icon: uploadingImage
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.image_rounded),
+                  ),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: TextField(
                       controller: controller,

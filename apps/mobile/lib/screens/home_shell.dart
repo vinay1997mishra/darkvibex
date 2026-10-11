@@ -150,7 +150,12 @@ class _RoomsHome extends StatelessWidget {
                     contentPadding: const EdgeInsets.all(14),
                     leading: CircleAvatar(
                       radius: 26,
-                      child: Text(room.name.isEmpty ? '?' : room.name.substring(0, 1).toUpperCase()),
+                      backgroundImage: room.avatarKey == null
+                          ? null
+                          : NetworkImage(state.backend.fileUrl(room.avatarKey!)),
+                      child: room.avatarKey == null
+                          ? Text(room.name.isEmpty ? '?' : room.name.substring(0, 1).toUpperCase())
+                          : null,
                     ),
                     title: Text(room.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text('ID ${room.id} • ${room.online} online • ${room.seatCount} seats'),

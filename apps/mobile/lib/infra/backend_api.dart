@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class BackendApi {
   const BackendApi();
@@ -52,6 +53,35 @@ class BackendApi {
     } finally {
       client.close(force: true);
     }
+  }
+
+  static String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
+
+  Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
+    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > 5 * 1024 * 1024) return null;
+    final client = HttpClient();
+    try {
+      final request = await client.putUrl(Uri.parse('$origin/api/files'));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${sessionToken!.trim()}');
+      request.headers.set('x-file-key', key);
+      request.headers.contentType = ContentType.parse(contentType);
+      request.add(bytes);
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final value = jsonDecode(text);
+      return value is Map<String, dynamic> ? value['key']?.toString() : null;
+    } catch (_) { return null; } finally { client.close(force: true); }
+  }
+
+  Future<bool> setUserAvatar({required String userId, required String avatarKey}) async {
+    final value = await _json('POST', '/api/users/avatar', body: {'user_id': userId, 'avatar_key': avatarKey});
+    return value?['ok'] == true;
+  }
+
+  Future<bool> setRoomAvatar({required String roomId, required String userId, required String avatarKey}) async {
+    final value = await _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/avatar', body: {'user_id': userId, 'avatar_key': avatarKey});
+    return value?['ok'] == true;
   }
 
   Future<Map<String, dynamic>?> health() =>
@@ -198,6 +228,7 @@ class BackendApi {
     required String senderUserId,
     required String receiverUserId,
     required String text,
+    String? imageKey,
   }) async {
     final value = await _json(
       'POST',
@@ -206,6 +237,7 @@ class BackendApi {
         'sender_user_id': senderUserId,
         'receiver_user_id': receiverUserId,
         'text': text,
+        if (imageKey != null) 'image_key': imageKey,
       },
     );
     return value?['ok'] == true;

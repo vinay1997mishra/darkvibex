@@ -65,6 +65,18 @@ CREATE TABLE IF NOT EXISTS direct_messages (
   FOREIGN KEY (receiver_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS room_images (
+  room_id TEXT PRIMARY KEY,
+  image_key TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS direct_message_images (
+  message_id TEXT PRIMARY KEY,
+  image_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS wallet_ledger (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
