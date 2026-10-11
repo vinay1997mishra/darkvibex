@@ -905,6 +905,11 @@ async function handleApi(request, env, url) {
       const isOwner = room.owner_user_id === actorId;
       const actorAdmin = await db.prepare("SELECT 1 AS active FROM room_admins WHERE room_id = ? AND user_id = ?")
         .bind(roomId, actorId).first();
+      const actorMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+        .bind(roomId, actorId).first();
+      if (!isOwner && actorAdmin && !actorMember) {
+        return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      }
       const targetMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).first();
       if (!targetMember) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
