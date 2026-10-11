@@ -161,7 +161,8 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!isRoomHost) return;
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
-    var seatCount = roomSeatCount.clamp(8, 42);
+    const capacities = [8, 10, 12, 15, 20, 25, 30, 35, 42];
+    var seatCount = capacities.contains(roomSeatCount) ? roomSeatCount : 12;
     var locked = roomLocked;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -283,11 +284,20 @@ class _RoomScreenState extends State<RoomScreen> {
   Future<void> _connectVoice() async {
     if (!await _ensureLegalAgreement()) return;
     if (widget.state.backendConnected) {
-      await widget.state.backend.joinRoom(
+      final joined = await widget.state.backend.joinRoom(
         roomId: widget.room.id,
         userId: widget.state.userId,
         displayName: widget.state.displayName,
       );
+      if (!joined) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('This room is locked or unavailable')),
+          );
+          Navigator.of(context).pop();
+        }
+        return;
+      }
       await _loadRoomSettings();
     }
 
