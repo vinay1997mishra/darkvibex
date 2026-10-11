@@ -8,6 +8,7 @@ import '../infra/backend_api.dart';
 import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
+import 'aladdin_lamp_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -32,12 +33,17 @@ class _RoomScreenState extends State<RoomScreen> {
   VideoTrack? localVideoTrack;
   final Map<String, VideoTrack> remoteVideoTracks = <String, VideoTrack>{};
   bool cameraPublished = false;
+  bool followingRoom = false;
+  bool followBusy = false;
   final List<String> chat = <String>['Welcome to the room 👋'];
+
+  bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
 
   @override
   void initState() {
     super.initState();
     unawaited(_connectVoice());
+    unawaited(_loadRoomFollow());
   }
 
   Future<void> _connectVoice() async {
@@ -241,14 +247,123 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _loadRoomFollow() async {
+    if (isRoomHost || !widget.state.backendConnected) return;
+    final following = await widget.state.backend.roomFollowStatus(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    setState(() => followingRoom = following);
+  }
+
+  Future<void> _toggleRoomFollow() async {
+    if (isRoomHost || followBusy || !widget.state.backendConnected) return;
+    setState(() => followBusy = true);
+    final next = !followingRoom;
+    final ok = await widget.state.backend.setRoomFollow(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      follow: next,
+    );
+    if (!mounted) return;
+    setState(() {
+      followBusy = false;
+      if (ok) followingRoom = next;
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update room follow')),
+      );
+    }
+  }
+
+  Future<void> _openLamp() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => AladdinLampScreen(
+          state: widget.state,
+          room: widget.room,
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _chooseGiftReceiver() async {
+    final members =
+        await widget.state.backend.roomMembers(roomId: widget.room.id);
+    if (!mounted) return null;
+    final candidates = members
+        .where((member) =>
+            member['user_id']?.toString().isNotEmpty == true &&
+            member['user_id']?.toString() != widget.state.userId)
+        .toList();
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other user is in the room yet')),
+      );
+      return null;
+    }
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text(
+                'Send gift to',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+            ),
+            for (final member in candidates)
+              ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.person_rounded),
+                ),
+                title: Text(
+                  member['display_name']?.toString().trim().isNotEmpty == true
+                      ? member['display_name'].toString()
+                      : 'User ' + member['user_id'].toString(),
+                ),
+                subtitle: Text(
+                  member['seat_index'] == null ? 'Audience' : 'On mic',
+                ),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  member['user_id'].toString(),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _sendGift() async {
     const giftCost = 5000;
+    String receiverId = widget.room.ownerUserId;
 
-    if (widget.state.backendConnected && widget.room.ownerUserId.isNotEmpty) {
+    if (isRoomHost) {
+      if (!widget.state.backendConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Connect to the server to send a host gift')),
+        );
+        return;
+      }
+      final selected = await _chooseGiftReceiver();
+      if (selected == null || selected.isEmpty) return;
+      receiverId = selected;
+    }
+
+    if (widget.state.backendConnected && receiverId.isNotEmpty) {
       final result = await widget.state.backend.sendGift(
         roomId: widget.room.id,
         senderUserId: widget.state.userId,
-        receiverUserId: widget.room.ownerUserId,
+        receiverUserId: receiverId,
         giftId: 'basic-star',
         coinCost: giftCost,
       );
@@ -268,7 +383,11 @@ class _RoomScreenState extends State<RoomScreen> {
     final ok = widget.state.spendCoins(giftCost);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? '✨ Gift sent • 5,000 coins' : 'Not enough coins')),
+      SnackBar(
+        content: Text(
+          ok ? '✨ Gift sent • 5,000 coins' : 'Not enough coins',
+        ),
+      ),
     );
   }
 
@@ -372,11 +491,28 @@ class _RoomScreenState extends State<RoomScreen> {
           ],
         ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_horiz_rounded)),
+          if (!isRoomHost)
+            IconButton(
+              onPressed: followBusy ? null : _toggleRoomFollow,
+              tooltip: followingRoom ? 'Unfollow room' : 'Follow room',
+              icon: Icon(
+                followingRoom
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: followingRoom ? const Color(0xFFFF5D8F) : null,
+              ),
+            ),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.more_horiz_rounded),
+          ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
+          Positioned.fill(
+            child: Column(
+              children: [
           _videoStage(),
           Expanded(
             flex: 5,
@@ -448,6 +584,14 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
             ),
           ),
+              ],
+            ),
+          ),
+          Positioned(
+            right: 10,
+            top: 112,
+            child: _RoomLampButton(onTap: _openLamp),
+          ),
         ],
       ),
       bottomNavigationBar: SafeArea(
@@ -482,4 +626,144 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
     );
   }
+}
+
+
+class _RoomLampButton extends StatelessWidget {
+  const _RoomLampButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 82,
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: const LinearGradient(
+              colors: <Color>[
+                Color(0xFF4F178D),
+                Color(0xFF8729E9),
+              ],
+            ),
+            border: Border.all(
+              color: const Color(0xFFFFDF54),
+              width: 1.3,
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: const Color(0xFFFFD54A).withOpacity(.28),
+                blurRadius: 16,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 52,
+                height: 34,
+                child: CustomPaint(painter: _MiniLampPainter()),
+              ),
+              SizedBox(height: 3),
+              Text(
+                'Aladdin\'s\nLamp',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFFFFEA83),
+                  fontSize: 10,
+                  height: 1.05,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniLampPainter extends CustomPainter {
+  const _MiniLampPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gold = Paint()
+      ..shader = const LinearGradient(
+        colors: <Color>[
+          Color(0xFFFFF2A1),
+          Color(0xFFFFC62C),
+          Color(0xFFD88C00),
+        ],
+      ).createShader(Offset.zero & size);
+    final body = Path()
+      ..moveTo(size.width * .28, size.height * .50)
+      ..quadraticBezierTo(
+        size.width * .42,
+        size.height * .30,
+        size.width * .66,
+        size.height * .47,
+      )
+      ..quadraticBezierTo(
+        size.width * .70,
+        size.height * .72,
+        size.width * .43,
+        size.height * .76,
+      )
+      ..quadraticBezierTo(
+        size.width * .28,
+        size.height * .72,
+        size.width * .28,
+        size.height * .50,
+      )
+      ..close();
+    canvas.drawPath(body, gold);
+    final spout = Path()
+      ..moveTo(size.width * .30, size.height * .51)
+      ..quadraticBezierTo(
+        size.width * .13,
+        size.height * .44,
+        size.width * .06,
+        size.height * .29,
+      )
+      ..quadraticBezierTo(
+        size.width * .22,
+        size.height * .33,
+        size.width * .40,
+        size.height * .47,
+      )
+      ..close();
+    canvas.drawPath(spout, gold);
+    final handle = Paint()
+      ..color = const Color(0xFFFFDD53)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(size.width * .70, size.height * .52),
+        width: size.width * .25,
+        height: size.height * .45,
+      ),
+      -1.2,
+      2.5,
+      false,
+      handle,
+    );
+    canvas.drawCircle(
+      Offset(size.width * .48, size.height * .22),
+      2,
+      Paint()..color = const Color(0xFFFFFFC5),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
