@@ -82,12 +82,19 @@ class _RoomsHome extends StatelessWidget {
     );
     controller.dispose();
     if (name == null || !context.mounted) return;
-    final created = await state.createRoom(name);
-    if (!context.mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => RoomScreen(state: state, room: created)),
-    );
+    try {
+      final created = await state.createRoom(name);
+      if (!context.mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => RoomScreen(state: state, room: created)),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room could not be created. Check your connection and try again.')),
+      );
+    }
   }
 
   @override
