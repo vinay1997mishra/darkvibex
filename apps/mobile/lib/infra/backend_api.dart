@@ -242,11 +242,30 @@ class BackendApi {
     required String roomId,
     required String ownerUserId,
     required String targetUserId,
+    bool ban = false,
   }) async {
     final value = await _json(
       'POST',
       '/api/rooms/${Uri.encodeComponent(roomId)}/members',
-      body: {'user_id': ownerUserId, 'target_user_id': targetUserId},
+      body: {
+        'user_id': ownerUserId,
+        'target_user_id': targetUserId,
+        'ban': ban,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> reportRoom({
+    required String roomId,
+    required String userId,
+    required String reason,
+    required String details,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/report',
+      body: {'user_id': userId, 'reason': reason, 'details': details},
     );
     return value?['ok'] == true;
   }
