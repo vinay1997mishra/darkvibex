@@ -547,6 +547,13 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, userId);
+    const roomAccess = await db.prepare(
+      "SELECT owner_user_id, locked FROM rooms WHERE id = ?"
+    ).bind(roomId).first();
+    if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId) {
+      return json({ ok: false, error: "room_locked" }, { status: 403 });
+    }
     const ts = now();
     await db.prepare(
       "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
