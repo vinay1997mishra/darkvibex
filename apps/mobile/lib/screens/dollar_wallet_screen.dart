@@ -23,7 +23,7 @@ class _DollarWalletScreenState extends State<DollarWalletScreen> {
     _load();
   }
 
-  String money(int cents) => '\$' + (cents / 100).toStringAsFixed(2);
+  String money(int cents) => '\${(cents / 100).toStringAsFixed(2)}';
 
   Future<void> _load() async {
     final token = widget.state.sessionToken;
@@ -64,7 +64,7 @@ class _DollarWalletScreenState extends State<DollarWalletScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                value: destination,
+                initialValue: destination,
                 decoration: const InputDecoration(labelText: 'Destination'),
                 items: const [
                   DropdownMenuItem(
