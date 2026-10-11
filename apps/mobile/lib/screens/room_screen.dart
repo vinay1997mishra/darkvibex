@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
 
@@ -350,6 +351,59 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _openRoomMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy_rounded),
+              title: const Text('Copy room ID'),
+              subtitle: Text(widget.room.id),
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: widget.room.id));
+                if (!mounted) return;
+                Navigator.pop(sheetContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Room ID copied')),
+                );
+              },
+            ),
+            if (isRoomHost)
+              ListTile(
+                leading: const Icon(Icons.add_a_photo_outlined),
+                title: const Text('Change room photo'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _pickRoomAvatar();
+                },
+              ),
+            if (!isRoomHost)
+              ListTile(
+                leading: Icon(followingRoom ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+                title: Text(followingRoom ? 'Unfollow room' : 'Follow room'),
+                onTap: followBusy ? null : () {
+                  Navigator.pop(sheetContext);
+                  _toggleRoomFollow();
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.exit_to_app_rounded),
+              title: const Text('Leave room'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _openLamp() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -591,7 +645,8 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
             ),
           IconButton(
-            onPressed: () {},
+            onPressed: _openRoomMenu,
+            tooltip: 'Room options',
             icon: const Icon(Icons.more_horiz_rounded),
           ),
         ],
