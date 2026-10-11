@@ -34,6 +34,9 @@ jobs:
         run: |
           node --check src/index.js
           node --check src/owner_api.js
+          node --check src/vip_policy.js
+          node --check src/vip_store.js
+          node --check src/vip_actions.js
           node --check ../owner_panel/app.js
       - name: Safe hierarchy policy
         working-directory: .
