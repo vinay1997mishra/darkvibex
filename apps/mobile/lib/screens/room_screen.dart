@@ -97,7 +97,7 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     final key = await widget.state.backend.uploadImage(
-      key: 'rooms/${widget.room.id}/avatar.${ext == 'jpeg' ? 'jpg' : ext}',
+      key: 'rooms/${widget.room.id}/avatar-${DateTime.now().microsecondsSinceEpoch}.${ext == 'jpeg' ? 'jpg' : ext}',
       bytes: await file.readAsBytes(),
       contentType: type,
     );

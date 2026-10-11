@@ -33,7 +33,7 @@ class ProfileScreen extends StatelessWidget {
       return;
     }
     final key = await state.backend.uploadImage(
-      key: 'users/${state.userId}/avatar.${ext == 'jpeg' ? 'jpg' : ext}',
+      key: 'users/${state.userId}/avatar-${DateTime.now().microsecondsSinceEpoch}.${ext == 'jpeg' ? 'jpg' : ext}',
       bytes: await file.readAsBytes(),
       contentType: type,
     );

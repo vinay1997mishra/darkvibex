@@ -380,7 +380,7 @@ async function handleApi(request, env, url) {
     const imageKey = String(body.avatar_key ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!imageKey.startsWith(`users/${userId}/avatar.`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+    if (!imageKey.startsWith(`users/${userId}/avatar-`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
       return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
     }
     await db.prepare("UPDATE users SET avatar_key = ?, updated_at = ? WHERE id = ?")
@@ -409,7 +409,7 @@ async function handleApi(request, env, url) {
     const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
-    if (!imageKey.startsWith(`rooms/${roomId}/avatar.`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+    if (!imageKey.startsWith(`rooms/${roomId}/avatar-`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
       return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
     }
     await ensureImageTables(db);
@@ -858,7 +858,7 @@ async function handleApi(request, env, url) {
     const userPrefix = `users/${actor}/`;
     const messagePrefix = `messages/${actor}/`;
     let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix);
-    const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar\.(jpg|png|webp)$/i);
+    const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
     if (roomMatch) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
       authorizedKey = room?.owner_user_id === actor;
