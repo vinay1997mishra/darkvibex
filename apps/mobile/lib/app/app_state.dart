@@ -435,16 +435,17 @@ class AppState extends ChangeNotifier {
     final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
     final allowedSeats =
         seatCount.clamp(8, VipPolicy.maxRoomSeats(vipLevel)).toInt();
-    String roomId = (100000 + rooms.length + 1).toString();
-
-    if (backendConnected) {
-      final remoteId = await backend.createRoom(
-        ownerUserId: userId,
-        ownerName: displayName,
-        name: cleanName,
-        seatCount: allowedSeats,
-      );
-      if (remoteId != null && remoteId.isNotEmpty) roomId = remoteId;
+    if (!backendConnected) {
+      throw StateError('Server connection is required to create a room.');
+    }
+    final roomId = await backend.createRoom(
+      ownerUserId: userId,
+      ownerName: displayName,
+      name: cleanName,
+      seatCount: allowedSeats,
+    );
+    if (roomId == null || roomId.isEmpty) {
+      throw StateError('The server could not create this room.');
     }
 
     final room = RoomSummary(
