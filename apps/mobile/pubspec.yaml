@@ -13,6 +13,14 @@ dependencies:
   google_sign_in: ^7.2.0
   flutter_facebook_auth: ^7.2.0
 
+  just_audio: ^0.10.5
+
+  video_player: ^2.14.0
+
+  flutter_svga: ^0.0.13
+
+  pag: ^1.0.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
