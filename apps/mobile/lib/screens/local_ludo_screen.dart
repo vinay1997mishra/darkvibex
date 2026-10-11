@@ -228,8 +228,8 @@ class _BoardPainter extends CustomPainter {
       );
     }
     final laneColors = <LocalLudoPlayer, List<Offset>>{
-      LocalLudoPlayer.red: [for (var x = 1; x <= 6; x++) Offset(x, 7)],
-      LocalLudoPlayer.green: [for (var y = 1; y <= 6; y++) Offset(7, y)],
+      LocalLudoPlayer.red: [for (var x = 1; x <= 6; x++) Offset(x.toDouble(), 7.0)],
+      LocalLudoPlayer.green: [for (var y = 1; y <= 6; y++) Offset(7.0, y.toDouble())],
       LocalLudoPlayer.yellow: [for (var x = 13; x >= 8; x--) Offset(x, 7)],
       LocalLudoPlayer.blue: [for (var y = 13; y >= 8; y--) Offset(7, y)],
     };
