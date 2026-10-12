@@ -56,51 +56,48 @@ async function fixture() {
     const response = await request("/api/session/guest", { method: "POST", body: { user_id: id, display_name: name } });
     assert.equal(response.status, 200);
   }
-  sqlite.prepare("UPDATE users SET role='coin_seller',coins=100000 WHERE id='seller'").run();
+  sqlite.prepare("UPDATE users SET role='coin_seller',coins=1000000000 WHERE id='seller'").run();
   return { sqlite, request };
 }
 
-test("Coin Seller grants up to 10,000 VIP EXP twice per receiver per India calendar month", async () => {
+test("Coin Seller transfers have no monthly or per-transfer VIP EXP cap", async () => {
   const { sqlite, request } = await fixture();
   const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
     body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
   });
 
-  const first = await transfer(10000);
-  assert.equal(first.status, 200);
-  assert.equal(first.body.vip_award.awarded_exp, 10000);
-  assert.equal(first.body.vip_award.monthly_grants_remaining, 1);
+  const amounts = [10000, 20000, 30000, 100000000];
+  const receiverCoinsBefore = sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins;
+  for (const coins of amounts) {
+    const result = await transfer(coins);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.vip_award.awarded_exp, coins);
+    assert.equal(result.body.vip_award.multiplier, 1);
+    assert.equal("monthly_grants_remaining" in result.body.vip_award, false);
+  }
 
-  const second = await transfer(20000);
-  assert.equal(second.status, 200);
-  assert.equal(second.body.vip_award.awarded_exp, 10000);
-  assert.equal(second.body.vip_award.monthly_grants_remaining, 0);
-
-  const sellerBefore = sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins;
-  const receiverBefore = sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins;
-  const third = await transfer(10000);
-  assert.equal(third.status, 409);
-  assert.equal(third.body.error, "vip_exp_monthly_limit_reached");
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins, sellerBefore);
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, receiverBefore);
-  assert.equal(sqlite.prepare("SELECT exp_balance FROM user_vip WHERE user_id='receiver'").get().exp_balance, 20000);
-  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM vip_seller_exp_grants WHERE user_id='receiver'").get().n, 2);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins, 1000000000 - amounts.reduce((sum, n) => sum + n, 0));
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, receiverCoinsBefore + amounts.reduce((sum, n) => sum + n, 0));
+  assert.equal(sqlite.prepare("SELECT total_received_coins FROM user_vip WHERE user_id='receiver'").get().total_received_coins, amounts.reduce((sum, n) => sum + n, 0));
+  assert.equal(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, amounts.reduce((sum, n) => sum + n, 0));
   sqlite.close();
 });
 
-test("VIP17 1.5x remains subject to the 10,000 EXP grant cap", async () => {
+test("VIP17 Coin Seller receipts still earn exactly one VIP EXP per coin", async () => {
   const { sqlite, request } = await fixture();
   sqlite.prepare("UPDATE users SET vip_level=17 WHERE id='receiver'").run();
   await request("/api/vip/receiver", { userId: "receiver" });
   sqlite.prepare("UPDATE user_vip SET level=17,active_until=? WHERE user_id='receiver'").run(Date.now() + 86400000);
 
+  const coins = 40000;
   const result = await request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
-    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins: 10000 },
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
   });
   assert.equal(result.status, 200);
-  assert.equal(result.body.vip_award.multiplier, 1.5);
-  assert.equal(result.body.vip_award.awarded_exp, 10000);
+  assert.equal(result.body.vip_award.multiplier, 1);
+  assert.equal(result.body.vip_award.awarded_exp, coins);
+  assert.equal(result.body.vip_award.vip.exp_multiplier, 1);
   sqlite.close();
 });

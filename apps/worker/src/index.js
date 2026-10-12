@@ -1,6 +1,6 @@
 import { normalizeRole } from "./role_policy.js";
 import { handleOwnerApi } from "./owner_api.js";
-import { awardSellerVipExp, ensureVipSchema, getVipStatus, sellerVipExpMonthlyUsage } from "./vip_store.js";
+import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureSupportSchema } from "./support_store.js";
 import {
@@ -1556,10 +1556,6 @@ async function handleApi(request, env, url) {
     if (sellerBefore < amount) {
       return json({ ok: false, error: "insufficient_coins" }, { status: 400 });
     }
-    const monthlyUsage = await sellerVipExpMonthlyUsage(db, receiverId);
-    if (monthlyUsage.remaining <= 0) {
-      return json({ ok: false, error: "vip_exp_monthly_limit_reached", remaining_grants: 0 }, { status: 409 });
-    }
     const transferId = id();
     const ts = now();
     const sellerAfter = sellerBefore - amount;
@@ -1570,7 +1566,7 @@ async function handleApi(request, env, url) {
       db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(id(), sellerId, "coin_seller_transfer_sent", -amount, sellerAfter, transferId, ts),
       db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(id(), receiverId, "coin_seller_received", amount, receiverAfter, transferId, ts),
     ]);
-    const vipAward = await awardSellerVipExp(db, receiverId, amount, ts, { sellerUserId: sellerId, transferId });
+    const vipAward = await awardSellerVipExp(db, receiverId, amount, ts);
     return json({
       ok: true,
       transfer_id: transferId,

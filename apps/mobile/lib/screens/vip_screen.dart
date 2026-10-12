@@ -239,7 +239,7 @@ class VipScreen extends StatelessWidget {
             Text('Available VIP Exp: ${_compact(state.vipExpBalance)}'),
             Text('Total eligible coins received: ${_compact(state.vipTotalReceivedCoins)}'),
             Text(
-              'EXP rate: ${state.vipLevel >= 17 ? '150%' : '100%'} while VIP is active',
+              'Coin Seller EXP rate: 1 VIP EXP per coin received',
             ),
             if (until != null) Text('Active until: ${_date(until)}'),
             const SizedBox(height: 8),
@@ -633,7 +633,7 @@ class VipRulesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'DarkVibeX VIP has 18 levels. Eligible coins received from a Coin Seller earn VIP Exp. Normally 1 coin = 1 VIP Exp. While VIP17 or VIP18 is active, 1 coin = 1.5 VIP Exp.',
+            'DarkVibeX VIP has 18 levels. Coins received from a Coin Seller earn exactly 1 VIP Exp per coin at every VIP level, with no monthly or total EXP cap.',
             style: TextStyle(color: Colors.white70, height: 1.45),
           ),
           const SizedBox(height: 18),
