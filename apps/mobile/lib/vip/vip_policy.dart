@@ -98,7 +98,6 @@ class VipPolicy {
     VipPrivilege(id: 'custom_avatar_frame', title: 'Customized Avatar Frame', description: 'Use a premium customized avatar frame.', minLevel: 16),
     VipPrivilege(id: 'exclusive_mic_effect', title: 'Exclusive Mic Effect', description: 'Premium effect around your mic/avatar while speaking.', minLevel: 16),
     VipPrivilege(id: 'card_background', title: 'Exclusive Card Background', description: 'Use an exclusive VIP profile-card background.', minLevel: 17),
-    VipPrivilege(id: 'vip_exp_150', title: '150% VIP EXP', description: 'While VIP17+ is active, Coin Seller wallet receipts earn 1.5 VIP EXP per coin.', minLevel: 17),
     VipPrivilege(id: 'customized_vehicles', title: 'Customized Vehicles', description: 'VIP18 receives the highest-tier premium/custom vehicle collection.', minLevel: 18),
     VipPrivilege(id: 'mic_chair', title: 'Mic Chair', description: 'Personal premium chair/effect while on mic.', minLevel: 18),
     VipPrivilege(id: 'anonymous_everywhere', title: 'Anonymous Everywhere', description: 'When enabled, hide your name on game wins, banners, room history and other public activity surfaces.', minLevel: 18),
@@ -139,8 +138,7 @@ class VipPolicy {
     return level > 14 ? 14 : level;
   }
 
-  static double expMultiplier(int level, {required bool active}) =>
-      active && level >= 17 ? 1.5 : 1.0;
+  static double expMultiplier(int level, {required bool active}) => 1.0;
 
   static int validityDays(int level) => level >= 18 ? 45 : 30;
 }
