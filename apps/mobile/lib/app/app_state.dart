@@ -60,6 +60,9 @@ class AppState extends ChangeNotifier {
 
   int coins = 2500000;
   int diamonds = 120;
+  int idLevel = 0;
+  int idLevelExp = 0;
+  int idLevelExpToNext = 10000;
   int vipLevel = 0;
   int vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
@@ -246,6 +249,7 @@ class AppState extends ChangeNotifier {
   Future<void> _loadRemoteData() async {
     await refreshWallet(notify: false);
     await refreshVip(notify: false);
+    await refreshIdLevel(notify: false);
 
     final remoteRooms = await backend.listRooms();
     if (remoteRooms.isNotEmpty) {
@@ -318,6 +322,9 @@ class AppState extends ChangeNotifier {
     messages.clear();
     coins = 2500000;
     diamonds = 120;
+    idLevel = 0;
+    idLevelExp = 0;
+    idLevelExpToNext = 10000;
     vipLevel = 0;
     vipExpBalance = 0;
     vipTotalReceivedCoins = 0;
@@ -385,6 +392,18 @@ class AppState extends ChangeNotifier {
             ),
           );
       }
+    }
+    if (notify) notifyListeners();
+  }
+
+  Future<void> refreshIdLevel({bool notify = true}) async {
+    if (!backendConnected) return;
+    final value = await backend.idLevelStatus(userId: userId);
+    final level = value?['level'];
+    if (level is Map) {
+      idLevel = int.tryParse(level['level']?.toString() ?? '') ?? idLevel;
+      idLevelExp = int.tryParse(level['exp']?.toString() ?? '') ?? idLevelExp;
+      idLevelExpToNext = int.tryParse(level['exp_to_next']?.toString() ?? '') ?? idLevelExpToNext;
     }
     if (notify) notifyListeners();
   }
