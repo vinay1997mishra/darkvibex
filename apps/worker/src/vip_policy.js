@@ -28,7 +28,7 @@ export function vipRule(level){
 
 export function vipCapabilities(level, active){
   return {
-    exp_multiplier: active && level >= 17 ? 1.5 : 1,
+    exp_multiplier: 1,
     friend_bonus: active ? (level >= 13 ? 1500 : level >= 9 ? 700 : level >= 4 ? 300 : 0) : 0,
     room_seat_limit: active ? (level >= 10 ? 30 : level >= 7 ? 20 : 12) : 12,
     room_background_enabled: active && level >= 3,
