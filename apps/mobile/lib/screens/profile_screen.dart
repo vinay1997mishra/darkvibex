@@ -64,8 +64,22 @@ class ProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const SizedBox(height: 8),
-          Row(
-            children: [
+          Card(
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: state.hasVipPrivilege('card_background')
+                  ? const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF35204F), Color(0xFF171326), Color(0xFF4C3419)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    )
+                  : null,
+              child: Row(
+                children: [
               Container(
                 width: 76,
                 height: 76,
@@ -117,11 +131,24 @@ class ProfileScreen extends StatelessWidget {
                     Text(
                       'ID ${state.customVipId?.isNotEmpty == true ? state.customVipId : state.userId} • VIP ${state.vipLevel}/18',
                     ),
+                    if (state.hasVipPrivilege('honorary_title'))
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            Icon(Icons.military_tech_rounded, size: 16, color: Color(0xFFFFD36A)),
+                            SizedBox(width: 4),
+                            Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
-              IconButton(onPressed: () => _pickAvatar(context), icon: const Icon(Icons.edit_rounded)),
-            ],
+                  IconButton(onPressed: () => _pickAvatar(context), icon: const Icon(Icons.edit_rounded)),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 22),
           Card(
