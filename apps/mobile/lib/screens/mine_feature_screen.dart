@@ -14,6 +14,8 @@ class MineFeatureScreen extends StatefulWidget {
 class _MineFeatureScreenState extends State<MineFeatureScreen> {
   bool loading = true;
   bool saving = false;
+  String? claiming;
+  Map<String, dynamic>? stats;
   List<Map<String, dynamic>> rows = const [];
   final message = TextEditingController();
   String category = 'General';
@@ -31,16 +33,21 @@ class _MineFeatureScreenState extends State<MineFeatureScreen> {
   }
 
   Future<void> _load() async {
+    if (widget.kind == 'Wealth Level') {
+      final value = await widget.state.backend.mineWealth(userId: widget.state.userId);
+      if (!mounted) return;
+      setState(() { stats = value; loading = false; });
+      return;
+    }
     final values = switch (widget.kind) {
       'Guardian' => await widget.state.backend.mineGuardian(userId: widget.state.userId),
       'Feedback' => await widget.state.backend.mineFeedback(userId: widget.state.userId),
+      'Task' => await widget.state.backend.mineTasks(userId: widget.state.userId),
+      'Medal of Honor' => await widget.state.backend.mineMedals(userId: widget.state.userId),
       _ => await widget.state.backend.mineBlocks(userId: widget.state.userId),
     };
     if (!mounted) return;
-    setState(() {
-      rows = values;
-      loading = false;
-    });
+    setState(() { rows = values; loading = false; });
   }
 
   Future<void> _submitFeedback() async {
@@ -78,6 +85,9 @@ class _MineFeatureScreenState extends State<MineFeatureScreen> {
     final title = switch (widget.kind) {
       'Guardian' => 'My Guardian',
       'Feedback' => 'Feedback',
+      'Task' => 'Task',
+      'Wealth Level' => 'Wealth level',
+      'Medal of Honor' => 'Medal of Honor',
       _ => 'Blacklist',
     };
     return Scaffold(
@@ -89,7 +99,48 @@ class _MineFeatureScreenState extends State<MineFeatureScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (widget.kind == 'Feedback') ...[
+                  if (widget.kind == 'Wealth Level') ...[
+                    const Card(child: ListTile(
+                      leading: Icon(Icons.diamond_rounded),
+                      title: Text('Wealth Level'),
+                      subtitle: Text('Based on lifetime coins spent on gifts.'),
+                    )),
+                    ListTile(
+                      title: Text('Level ${(stats?['wealth'] as Map?)?['level'] ?? 0}'),
+                      subtitle: Text('Lifetime gift coins spent: ${stats?['lifetime_sent_coins'] ?? 0}'),
+                    ),
+                    if ((stats?['wealth'] as Map?)?['next_threshold'] != null)
+                      ListTile(title: const Text('Next level at'), subtitle: Text('${(stats?['wealth'] as Map?)?['next_threshold']} coins')),
+                  ] else if (widget.kind == 'Task') ...[
+                    for (final task in rows)
+                      Card(child: ListTile(
+                        title: Text(task['title']?.toString() ?? 'Task'),
+                        subtitle: Text('Reward: ${task['reward_coins'] ?? 0} coins'),
+                        trailing: task['claimed'] == true
+                          ? const Text('Claimed')
+                          : FilledButton(
+                              onPressed: task['completed'] == true && claiming == null ? () async {
+                                final taskId = task['id']?.toString() ?? '';
+                                setState(() => claiming = taskId);
+                                final result = await widget.state.backend.claimMineTask(userId: widget.state.userId, taskId: taskId);
+                                await widget.state.refreshWallet();
+                                if (!mounted) return;
+                                setState(() {
+                                  claiming = null;
+                                  if (result?['tasks'] is List) {
+                                    rows = (result!['tasks'] as List).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+                                  }
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result?['ok'] == true ? 'Reward claimed' : 'Could not claim reward')));
+                              } : null,
+                              child: Text(claiming == task['id'] ? 'Claiming…' : task['completed'] == true ? 'Claim' : 'Incomplete'),
+                            ),
+                      )),
+                  ] else if (widget.kind == 'Medal of Honor') ...[
+                    if (rows.isEmpty) const ListTile(title: Text('No medals yet')),
+                    for (final medal in rows)
+                      ListTile(leading: const Icon(Icons.military_tech_rounded), title: Text(medal['name']?.toString() ?? 'Medal')),
+                  ] else if (widget.kind == 'Feedback') ...[
                     DropdownButtonFormField<String>(
                       initialValue: category,
                       decoration: const InputDecoration(labelText: 'Category'),
