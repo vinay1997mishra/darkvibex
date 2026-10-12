@@ -294,6 +294,22 @@ async function ensureRoomLuckyPouchTables(db) {
   )`).run();
 }
 
+async function expireRoomLuckyPouches(db, ts = now()) {
+  await ensureRoomLuckyPouchTables(db);
+  const expired = await db.prepare("SELECT id,owner_user_id FROM room_lucky_pouches WHERE status='open' AND expires_at<=? ORDER BY expires_at LIMIT 500").bind(ts).all();
+  for (const pouch of expired.results ?? []) {
+    const token = id();
+    await db.batch([
+      db.prepare("UPDATE room_lucky_pouches SET status='expired',last_claim_key=? WHERE id=? AND status='open' AND expires_at<=?").bind(token, pouch.id, ts),
+      db.prepare("UPDATE users SET coins=coins+(SELECT remaining_coins FROM room_lucky_pouches WHERE id=? AND status='expired' AND last_claim_key=?),updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM room_lucky_pouches WHERE id=? AND status='expired' AND last_claim_key=? AND remaining_coins>0)")
+        .bind(pouch.id, token, ts, pouch.owner_user_id, pouch.id, token),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'room_lucky_pouch_refund',p.remaining_coins,u.coins,p.id,? FROM users u JOIN room_lucky_pouches p ON p.owner_user_id=u.id WHERE p.id=? AND p.status='expired' AND p.last_claim_key=? AND p.remaining_coins>0")
+        .bind(id(), ts, pouch.id, token),
+      db.prepare("UPDATE room_lucky_pouches SET status='refunded' WHERE id=? AND status='expired' AND last_claim_key=?").bind(pouch.id, token),
+    ]);
+  }
+}
+
 async function ensureInboxEnvelopeTables(db) {
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS inbox_red_envelopes (
@@ -624,6 +640,7 @@ async function handleApi(request, env, url) {
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "lucky-pouch") {
     const roomId = parts[2];
     await ensureRoomLuckyPouchTables(db);
+    await expireRoomLuckyPouches(db);
     const room = await db.prepare("SELECT id, owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     const authError = await requireSession(request, env);
@@ -652,10 +669,9 @@ async function handleApi(request, env, url) {
       const ownerError = await requireSession(request, env, actorId);
       if (ownerError) return ownerError;
       const totalCoins = Number(body.total_coins);
-      const slots = Number(body.slots);
       const requestId = String(body.request_id ?? "").trim().slice(0, 100);
       if (!Number.isSafeInteger(totalCoins) || totalCoins < 100 || totalCoins > 10000000 ||
-          !Number.isSafeInteger(slots) || slots < 2 || slots > 500 || !requestId) {
+          !requestId) {
         return json({ ok: false, error: "invalid_pouch" }, { status: 400 });
       }
       const existing = await db.prepare("SELECT id FROM room_lucky_pouches WHERE owner_user_id = ? AND request_id = ?")
@@ -666,11 +682,14 @@ async function handleApi(request, env, url) {
       if (active) return json({ ok: false, error: "pouch_already_active" }, { status: 409 });
       const pouchId = id();
       const ts = now();
+      const memberCount = await db.prepare("SELECT COUNT(*) AS total FROM room_members WHERE room_id=?").bind(roomId).first();
+      const slots = Math.max(1, Math.min(500, Number(memberCount?.total ?? 0)));
+      if (totalCoins < slots) return json({ ok: false, error: "coins_below_room_member_count", required_coins: slots }, { status: 400 });
       const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(actorId).first();
       if (!balance || Number(balance.coins ?? 0) < totalCoins) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
       await db.batch([
         db.prepare("INSERT INTO room_lucky_pouches (id, room_id, owner_user_id, total_coins, total_slots, remaining_coins, remaining_slots, status, request_id, created_at, expires_at) SELECT ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND coins >= ?)")
-          .bind(pouchId, roomId, actorId, totalCoins, slots, totalCoins, slots, requestId, ts, ts + 3600000, actorId, totalCoins),
+          .bind(pouchId, roomId, actorId, totalCoins, slots, totalCoins, slots, requestId, ts, ts + 86400000, actorId, totalCoins),
         db.prepare("UPDATE users SET coins = coins - ?, updated_at = ? WHERE id = ? AND coins >= ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
           .bind(totalCoins, ts, actorId, totalCoins, pouchId),
         db.prepare("INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) SELECT ?, ?, 'room_lucky_pouch_create', ?, coins, ?, ? FROM users WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
@@ -679,7 +698,7 @@ async function handleApi(request, env, url) {
       const created = await db.prepare("SELECT id FROM room_lucky_pouches WHERE id = ?").bind(pouchId).first();
       if (!created) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
       const updated = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(actorId).first();
-      return json({ ok: true, pouch_id: pouchId, coin_balance: Number(updated?.coins ?? 0) });
+      return json({ ok: true, pouch_id: pouchId, coin_balance: Number(updated?.coins ?? 0), eligible_room_members: slots, expires_at: ts + 86400000 });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
@@ -688,6 +707,7 @@ async function handleApi(request, env, url) {
       parts[3] === "lucky-pouch" && parts[4] === "claim" && request.method === "POST") {
     const roomId = parts[2];
     await ensureRoomLuckyPouchTables(db);
+    await expireRoomLuckyPouches(db);
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
@@ -1926,7 +1946,8 @@ async function handleLiveKitToken(request, env) {
 
 export default {
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(expireInboxEnvelopes(requireDb(env)));
+    const db = requireDb(env);
+    ctx.waitUntil(Promise.all([expireInboxEnvelopes(db), expireRoomLuckyPouches(db)]));
   },
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
