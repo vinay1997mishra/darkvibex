@@ -158,6 +158,7 @@ class BackendApi {
     required String announcement,
     String themeId = 'dark',
     bool groupPkEnabled = false,
+    String welcomeImageKey = '',
   }) async {
     final value = await _json(
       'POST',
@@ -170,6 +171,7 @@ class BackendApi {
         'announcement': announcement,
         'theme_id': themeId,
         'group_pk_enabled': groupPkEnabled,
+        'welcome_image_key': welcomeImageKey,
       },
     );
     return value?['ok'] == true;
