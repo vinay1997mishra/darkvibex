@@ -160,11 +160,27 @@ class _CpScreenState extends State<CpScreen> {
   }
 
   Future<void> _showMemories() async {
-    await showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (c) => SafeArea(
-      child: SizedBox(height: MediaQuery.sizeOf(c).height * .6, child: memories.isEmpty
-        ? const Center(child: Text('No CP memories yet'))
-        : ListView(children: [for (final m in memories) ListTile(leading: const Icon(Icons.favorite_border), title: Text(m['text']?.toString() ?? ''), subtitle: Text(m['display_name']?.toString() ?? 'CP')])])),
-    ));
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .6,
+          child: memories.isEmpty
+              ? const Center(child: Text('No CP memories yet'))
+              : ListView(
+                  children: [
+                    for (final memory in memories)
+                      ListTile(
+                        leading: const Icon(Icons.favorite_border),
+                        title: Text(memory['text']?.toString() ?? ''),
+                        subtitle: Text(memory['display_name']?.toString() ?? 'CP'),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
   }
 
   Future<void> _selectRing() async {
