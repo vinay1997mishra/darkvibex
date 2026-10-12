@@ -51,9 +51,15 @@ class _CoinSellerScreenState extends State<CoinSellerScreen> {
         _receiver.clear();
         _amount.clear();
         await widget.state.refreshWallet();
-        if (mounted) _show('Coins transferred successfully.');
+        final vipAward = result?['vip_award'];
+        final exp = vipAward is Map ? vipAward['awarded_exp'] : null;
+        final remaining = vipAward is Map ? vipAward['monthly_grants_remaining'] : null;
+        if (mounted) _show('Coins transferred. Receiver earned ${exp ?? 0} VIP EXP; $remaining monthly grants left.');
       } else {
-        _show('Transfer failed. Check Coin Seller access, user ID, and balance.');
+        final error = result?['error']?.toString();
+        _show(error == 'vip_exp_monthly_limit_reached'
+            ? 'This user has already received VIP EXP twice this month.'
+            : 'Transfer failed. Check Coin Seller access, user ID, and balance.');
       }
     } catch (_) {
       if (mounted) _show('Could not reach the server. Please try again.');
@@ -83,7 +89,7 @@ class _CoinSellerScreenState extends State<CoinSellerScreen> {
                 children: [
                   const Text('Seller coin transfer', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
-                  const Text('Send coins to a user by their DarkVibeX ID. The server checks your seller role and records the wallet entries.'),
+                  const Text('Send coins to a user by their DarkVibeX ID. Received coins earn VIP EXP. Each user can receive up to 10,000 VIP EXP per transfer, twice per calendar month.'),
                   const SizedBox(height: 16),
                   Text('Available coins: ${widget.state.coins}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ],
