@@ -151,7 +151,7 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
         WHERE g.receiver_user_id = ? AND g.created_at >= ?
         GROUP BY g.sender_user_id, u.display_name, u.avatar_key
         ORDER BY gift_coins DESC, g.sender_user_id ASC
-        LIMIT 20`
+        LIMIT 50`
     ).bind(userId, now() - windowDays * 24 * 60 * 60 * 1000).all();
     const supporters = rows.results ?? [];
     const first = supporters[0] ?? null;
