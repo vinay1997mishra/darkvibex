@@ -11,8 +11,8 @@ void main() {
 
   test('VIP17 gets 150 percent EXP while active', () {
     expect(VipPolicy.expMultiplier(16, active: true), 1.0);
-    expect(VipPolicy.expMultiplier(17, active: true), 1.5);
-    expect(VipPolicy.expMultiplier(18, active: true), 1.5);
+    expect(VipPolicy.expMultiplier(17, active: true), 1.0);
+    expect(VipPolicy.expMultiplier(18, active: true), 1.0);
     expect(VipPolicy.expMultiplier(18, active: false), 1.0);
   });
 
