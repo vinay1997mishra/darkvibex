@@ -673,6 +673,9 @@ async function handleApi(request, env, url) {
       const allowedThemes = new Set(["dark", "midnight", "rose", "forest", "gold"]);
       const themeId = String(body.theme_id ?? room.theme_id ?? "dark");
       if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
+      if (themeId !== "dark" && themeId !== room.theme_id && !vipStatus.room_background_enabled) {
+        return json({ ok: false, error: "vip3_required_for_room_background" }, { status: 403 });
+      }
       const groupPkEnabled = body.group_pk_enabled === true ? 1 : 0;
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
       const overflow = await db.prepare(
@@ -926,7 +929,7 @@ async function handleApi(request, env, url) {
       if (!isOwner && actorAdmin && !actorMember) {
         return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       }
-      const targetMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      const targetMember = await db.prepare("SELECT seat_index FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).first();
       if (!targetMember) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
 
@@ -949,6 +952,14 @@ async function handleApi(request, env, url) {
       if (!isOwner && !actorAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
       if (isTargetOwner || (!isOwner && targetAdmin)) {
         return json({ ok: false, error: "moderation_target_protected" }, { status: 403 });
+      }
+
+      const targetVip = await getVipStatus(db, targetId);
+      if (!isOwner && targetMember.seat_index != null && targetVip.seat_protection_enabled) {
+        return json({ ok: false, error: "vip_seat_protected" }, { status: 403 });
+      }
+      if (!isOwner && targetVip.kick_protection_enabled) {
+        return json({ ok: false, error: "vip_kick_protected" }, { status: 403 });
       }
 
       await ensureRoomSafetyTables(db);
