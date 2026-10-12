@@ -926,13 +926,15 @@ async function handleApi(request, env, url) {
       }
       const messageId = id();
       await ensureImageTables(db);
-      await db.prepare(
+      const createdAt = now();
+      const statements = [db.prepare(
         "INSERT INTO room_messages (id, room_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(messageId, roomId, userId, textValue, now()).run();
+      ).bind(messageId, roomId, userId, textValue, createdAt)];
       if (imageKey) {
-        await db.prepare("INSERT INTO room_message_images (message_id, image_key, created_at) VALUES (?, ?, ?)")
-          .bind(messageId, imageKey, now()).run();
+        statements.push(db.prepare("INSERT INTO room_message_images (message_id, image_key, created_at) VALUES (?, ?, ?)")
+          .bind(messageId, imageKey, createdAt));
       }
+      await db.batch(statements);
       return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
     }
   }
