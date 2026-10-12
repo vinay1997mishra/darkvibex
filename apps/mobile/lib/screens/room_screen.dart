@@ -53,6 +53,7 @@ class _RoomScreenState extends State<RoomScreen> {
   Timer? memberRefreshTimer;
   String? roomAvatarKey;
   String? roomAnnouncement;
+  String? roomWelcomeImageKey;
   late String roomName;
   late int roomSeatCount;
   bool roomLocked = false;
@@ -192,6 +193,8 @@ class _RoomScreenState extends State<RoomScreen> {
       groupPkEnabled = settings['group_pk_enabled'] == true || settings['group_pk_enabled']?.toString() == '1';
       final text = settings['announcement']?.toString().trim() ?? '';
       roomAnnouncement = text.isEmpty ? null : text;
+      final welcomeKey = settings['welcome_image_key']?.toString().trim() ?? '';
+      roomWelcomeImageKey = welcomeKey.isEmpty ? null : welcomeKey;
     });
   }
 
@@ -210,6 +213,8 @@ class _RoomScreenState extends State<RoomScreen> {
     var locked = roomLocked;
     var themeId = roomThemeId;
     var pkEnabled = groupPkEnabled;
+    var welcomeImageKey = roomWelcomeImageKey ?? '';
+    var welcomeUploading = false;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -240,6 +245,68 @@ class _RoomScreenState extends State<RoomScreen> {
                   maxLines: 3,
                   decoration: const InputDecoration(labelText: 'Room announcement', hintText: 'Rules or message shown in room chat'),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: !widget.state.hasVipPrivilege('picture_welcome') || welcomeUploading
+                      ? null
+                      : () async {
+                          final file = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 82,
+                            maxWidth: 1440,
+                            maxHeight: 1440,
+                          );
+                          if (file == null || !dialogContext.mounted) return;
+                          final ext = file.name.split('.').last.toLowerCase();
+                          final contentType = switch (ext) {
+                            'jpg' || 'jpeg' => 'image/jpeg',
+                            'png' => 'image/png',
+                            'webp' => 'image/webp',
+                            _ => null,
+                          };
+                          if (contentType == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Choose a JPG, PNG or WebP image.')),
+                            );
+                            return;
+                          }
+                          setDialogState(() => welcomeUploading = true);
+                          try {
+                            final normalizedExt = ext == 'jpeg' ? 'jpg' : ext;
+                            final key = await widget.state.backend.uploadImage(
+                              key: 'users/${widget.state.userId}/welcome-${widget.room.id}-${DateTime.now().microsecondsSinceEpoch}.$normalizedExt',
+                              bytes: await file.readAsBytes(),
+                              contentType: contentType,
+                            );
+                            if (key == null) throw StateError('upload_failed');
+                            if (dialogContext.mounted) setDialogState(() => welcomeImageKey = key);
+                          } catch (_) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Picture welcome could not be uploaded.')),
+                            );
+                          } finally {
+                            if (dialogContext.mounted) setDialogState(() => welcomeUploading = false);
+                          }
+                        },
+                  icon: welcomeUploading
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.add_photo_alternate_rounded),
+                  label: Text(welcomeImageKey.isEmpty ? 'Set picture welcome (VIP5)' : 'Change picture welcome'),
+                ),
+                if (!widget.state.hasVipPrivilege('picture_welcome'))
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Requires active VIP5 or above', style: TextStyle(fontSize: 12, color: Colors.white60)),
+                  ),
+                if (welcomeImageKey.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => setDialogState(() => welcomeImageKey = ''),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Remove welcome picture'),
+                    ),
+                  ),
                 DropdownButtonFormField<String>(
                   value: themeId,
                   decoration: InputDecoration(
@@ -278,6 +345,7 @@ class _RoomScreenState extends State<RoomScreen> {
               'announcement': announcement.text.trim(),
               'theme_id': themeId,
               'group_pk_enabled': pkEnabled,
+              'welcome_image_key': welcomeImageKey,
             }), child: const Text('Save')),
           ],
         ),
@@ -295,6 +363,7 @@ class _RoomScreenState extends State<RoomScreen> {
       announcement: result['announcement'] as String,
       themeId: result['theme_id'] as String,
       groupPkEnabled: result['group_pk_enabled'] as bool,
+      welcomeImageKey: result['welcome_image_key'] as String,
     );
     if (!mounted) return;
     if (!ok) {
@@ -307,6 +376,8 @@ class _RoomScreenState extends State<RoomScreen> {
       roomLocked = result['locked'] as bool;
       roomThemeId = result['theme_id'] as String;
       groupPkEnabled = result['group_pk_enabled'] as bool;
+      final welcomeKey = result['welcome_image_key'] as String;
+      roomWelcomeImageKey = welcomeKey.isEmpty ? null : welcomeKey;
       final text = result['announcement'] as String;
       roomAnnouncement = text.isEmpty ? null : text;
     });
@@ -1683,6 +1754,23 @@ class _RoomScreenState extends State<RoomScreen> {
                             TextButton(onPressed: _showRoomRules, child: const Text('Terms')),
                           ]),
                           Text(roomAnnouncement ?? 'Be respectful. No harassment, explicit or unlawful content, scams, or sharing private information. Room chat and voice are visible to participants.'),
+                          if (roomWelcomeImageKey?.isNotEmpty == true)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(
+                                  widget.state.backend.fileUrl(roomWelcomeImageKey!),
+                                  height: 116,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const SizedBox(
+                                    height: 48,
+                                    child: Center(child: Text('Welcome picture unavailable')),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
