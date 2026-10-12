@@ -573,6 +573,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> linkGoogleAccount() async {
+    try {
+      if (!googleSignInReady) {
+        final config = await backend.googleAuthConfig();
+        _googleWebClientId = config?['google_web_client_id']?.toString().trim();
+        if (_googleWebClientId == null || _googleWebClientId!.isEmpty) return false;
+        await GoogleSignIn.instance.initialize(serverClientId: _googleWebClientId);
+        googleSignInReady = true;
+      }
+      if (!GoogleSignIn.instance.supportsAuthenticate()) return false;
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) return false;
+      final linked = await backend.linkMineGoogle(userId: userId, idToken: idToken);
+      return linked != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> saveProfile({
     required String displayName,
     required String countryCode,
