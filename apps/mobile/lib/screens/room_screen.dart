@@ -1085,20 +1085,19 @@ class _RoomScreenState extends State<RoomScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Lucky Pouch', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const Text('Room Red Envelope', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
                 if (pouch == null) ...[
-                  const Text('No active pouch. Members can create one using their coins.'),
+                  const Text('No active envelope. Create one with coins; members present in the room can each claim once. It stays open for 24 hours.'),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: () async {
-                      final values = await showDialog<(int, int)>(
+                      final amount = await showDialog<int>(
                         context: context,
                         builder: (dialogContext) {
                           var coins = 5000;
-                          var slots = 10;
                           return StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
-                            title: const Text('Create Lucky Pouch'),
+                            title: const Text('Create Room Red Envelope'),
                             content: Column(mainAxisSize: MainAxisSize.min, children: [
                               DropdownButtonFormField<int>(
                                 value: coins,
@@ -1106,39 +1105,34 @@ class _RoomScreenState extends State<RoomScreen> {
                                 items: const [5000, 10000, 25000, 50000].map((n) => DropdownMenuItem(value: n, child: Text('$n coins'))).toList(),
                                 onChanged: (v) { if (v != null) setDialogState(() => coins = v); },
                               ),
-                              DropdownButtonFormField<int>(
-                                value: slots,
-                                decoration: const InputDecoration(labelText: 'Winners'),
-                                items: const [5, 10, 20].map((n) => DropdownMenuItem(value: n, child: Text('$n people'))).toList(),
-                                onChanged: (v) { if (v != null) setDialogState(() => slots = v); },
-                              ),
+                              const SizedBox(height: 8),
+                              const Text('Coins are split among room members when created. Unclaimed coins return after 24 hours.'),
                             ]),
                             actions: [
                               TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-                              FilledButton(onPressed: () => Navigator.pop(dialogContext, (coins, slots)), child: const Text('Create')),
+                              FilledButton(onPressed: () => Navigator.pop(dialogContext, coins), child: const Text('Create')),
                             ],
                           ));
                         },
                       );
-                      if (values == null) return;
+                      if (amount == null) return;
                       final result = await widget.state.backend.createRoomLuckyPouch(
                         roomId: widget.room.id,
                         userId: widget.state.userId,
-                        totalCoins: values.$1,
-                        slots: values.$2,
+                        totalCoins: amount,
                         requestId: '${widget.state.userId}-${DateTime.now().microsecondsSinceEpoch}',
                       );
                       final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
                       if (balance != null) widget.state.setCoinBalance(balance);
                       pouch = await refreshPouch();
-                      if (pouch == null && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not create pouch. Check your coin balance or active pouch.')));
+                      if (pouch == null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result?['error'] == 'coins_below_room_member_count' ? 'Envelope needs at least ${result?['required_coins']} coins for the members in this room.' : 'Could not create envelope. Check your coin balance or active envelope.')));
                       refresh(() {});
                     },
                     icon: const Icon(Icons.redeem_rounded),
                     label: const Text('Create with coins'),
                   ),
                 ] else ...[
-                  Text('${pouch!['remaining_coins']} coins left • ${pouch!['remaining_slots']} winners'),
+                  Text('${pouch!['remaining_coins']} coins left • ${pouch!['remaining_slots']} claims left • expires ${DateTime.fromMillisecondsSinceEpoch(int.tryParse(pouch!['expires_at']?.toString() ?? '') ?? 0).toLocal()}'),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: (pouch!['claimed'] == true || pouch!['claimed']?.toString() == '1') || (int.tryParse(pouch!['remaining_slots']?.toString() ?? '0') ?? 0) == 0 ? null : () async {
@@ -1146,12 +1140,12 @@ class _RoomScreenState extends State<RoomScreen> {
                       final amount = int.tryParse(result?['amount']?.toString() ?? '');
                       final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
                       if (balance != null) widget.state.setCoinBalance(balance);
-                      if (amount != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lucky Pouch: +$amount coins')));
+                      if (amount != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Red envelope: +$amount coins')));
                       pouch = await refreshPouch();
                       refresh(() {});
                     },
                     icon: const Icon(Icons.card_giftcard_rounded),
-                    label: Text((pouch!['claimed'] == true || pouch!['claimed']?.toString() == '1') ? 'Already claimed' : 'Claim coins'),
+                    label: Text((pouch!['claimed'] == true || pouch!['claimed']?.toString() == '1') ? 'Already claimed' : 'Open and claim'),
                   ),
                   TextButton(onPressed: () async { pouch = await refreshPouch(); refresh(() {}); }, child: const Text('Refresh')),
                 ],
