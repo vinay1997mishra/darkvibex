@@ -190,7 +190,7 @@ class VipScreen extends StatelessWidget {
                           state.setVipPreference('anonymous_everywhere', value),
                     ),
                 ],
-                if (level >= 15) ...[
+                if (level >= 5) ...[
                   const SizedBox(height: 12),
                   Card(
                     color: const Color(0xFF151515),

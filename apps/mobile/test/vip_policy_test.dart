@@ -30,6 +30,10 @@ void main() {
     expect(VipPolicy.maxRoomSeats(10), 30);
     expect(VipPolicy.showIdStyleLevel(14), 14);
     expect(VipPolicy.showIdStyleLevel(18), 14);
+    final uniqueId = VipPolicy.privileges.firstWhere((p) => p.id == 'unique_id');
+    expect(uniqueId.isUnlockedAt(4), false);
+    expect(uniqueId.isUnlockedAt(5), true);
+    expect(uniqueId.isUnlockedAt(18), true);
   });
 
   test('removed incomplete privileges are not present', () {

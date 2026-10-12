@@ -1194,6 +1194,8 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "vip" && parts.length === 3 && request.method === "GET") {
     const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
     return json({ ok: true, vip: await getVipStatus(db, userId) });
@@ -1201,6 +1203,8 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "preferences" && request.method === "POST") {
     const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     const body = await bodyJson(request);
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
@@ -1210,6 +1214,8 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "unique-id" && request.method === "POST") {
     const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     const body = await bodyJson(request);
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
@@ -1219,6 +1225,8 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "say-hi" && request.method === "POST") {
     const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     const body = await bodyJson(request);
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId, { checkMute: true });
