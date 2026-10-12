@@ -200,7 +200,9 @@ class _RoomScreenState extends State<RoomScreen> {
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
     final seatOptions = <int>[8, 9, 10, ...List<int>.generate(31, (index) => index + 12)]
-        .where((count) => count <= VipPolicy.maxRoomSeats(widget.state.vipLevel))
+        .where((count) => count <= VipPolicy.maxRoomSeats(
+              widget.state.vipIsActive ? widget.state.vipLevel : 0,
+            ))
         .toList();
     if (!seatOptions.contains(roomSeatCount)) seatOptions.add(roomSeatCount);
     seatOptions.sort();
@@ -240,7 +242,12 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
                 DropdownButtonFormField<String>(
                   value: themeId,
-                  decoration: const InputDecoration(labelText: 'Room theme (visible to everyone)'),
+                  decoration: InputDecoration(
+                    labelText: 'Room theme (visible to everyone)',
+                    helperText: widget.state.hasVipPrivilege('room_background')
+                        ? 'VIP room background unlocked'
+                        : 'VIP3 unlocks custom room backgrounds',
+                  ),
                   items: const [
                     DropdownMenuItem(value: 'dark', child: Text('Dark')),
                     DropdownMenuItem(value: 'midnight', child: Text('Midnight')),
@@ -248,7 +255,9 @@ class _RoomScreenState extends State<RoomScreen> {
                     DropdownMenuItem(value: 'forest', child: Text('Forest')),
                     DropdownMenuItem(value: 'gold', child: Text('Gold')),
                   ],
-                  onChanged: (value) { if (value != null) setDialogState(() => themeId = value); },
+                  onChanged: widget.state.hasVipPrivilege('room_background')
+                      ? (value) { if (value != null) setDialogState(() => themeId = value); }
+                      : null,
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
