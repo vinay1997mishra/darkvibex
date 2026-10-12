@@ -1233,7 +1233,7 @@ async function handleApi(request, env, url) {
     const amount = Number(body.amount);
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
-    if (!sender || !receiver || sender === receiver || !Number.isSafeInteger(amount) || amount < 1 || amount > 100000000) {
+    if (!sender || !receiver || sender === receiver || !Number.isSafeInteger(amount) || amount < 1) {
       return json({ ok: false, error: "invalid_red_envelope" }, { status: 400 });
     }
     await ensureUserAllowed(db, sender, { checkMute: true });
