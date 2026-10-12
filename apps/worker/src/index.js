@@ -1691,9 +1691,13 @@ async function handleApi(request, env, url) {
     await ensureUser(db, friendId);
     await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
     const vip = await getVipStatus(db, userId, now());
+    const friendVip = await getVipStatus(db, friendId, now());
     const count = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(userId).first();
+    const friendCount = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(friendId).first();
     const exists = await db.prepare("SELECT 1 AS yes FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId).first();
-    if (!exists && !vip.active && Number(count?.total ?? 0) >= 300) return json({ ok: false, error: "friend_limit_reached", friend_limit: 300 }, { status: 409 });
+    if (!exists && ((!vip.active && Number(count?.total ?? 0) >= 300) || (!friendVip.active && Number(friendCount?.total ?? 0) >= 300))) {
+      return json({ ok: false, error: "friend_limit_reached", friend_limit: 300 }, { status: 409 });
+    }
     const ts = now();
     await db.batch([
       db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(userId, friendId, ts),
