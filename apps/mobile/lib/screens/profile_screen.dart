@@ -12,7 +12,6 @@ import 'wallet_screen.dart';
 import 'coin_seller_screen.dart';
 import 'vip_support_screen.dart';
 import 'cosmetics_shop_screen.dart';
-import '../widgets/vip_animated_frame.dart';
 import 'id_level_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
