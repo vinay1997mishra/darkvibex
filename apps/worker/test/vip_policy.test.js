@@ -34,4 +34,6 @@ test("expired VIP capabilities return to base limits", () => {
   assert.equal(expired.show_id_style_level, 0);
   assert.equal(expired.entrance_vehicle_tier, 0);
   assert.equal(expired.exp_multiplier, 1);
+  assert.equal(vipCapabilities(17, true).exp_multiplier, 1);
+  assert.equal(vipCapabilities(18, true).exp_multiplier, 1);
 });
