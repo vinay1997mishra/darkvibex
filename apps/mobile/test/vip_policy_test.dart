@@ -36,11 +36,31 @@ void main() {
     expect(uniqueId.isUnlockedAt(18), true);
   });
 
+  test('confirmed gift and mic emoticon perks are VIP gated', () {
+    final gifts = VipPolicy.privileges.firstWhere((p) => p.id == 'exclusive_gifts');
+    final mic = VipPolicy.privileges.firstWhere((p) => p.id == 'exclusive_mic_emoticon');
+    expect(gifts.isUnlockedAt(2), false);
+    expect(gifts.isUnlockedAt(3), true);
+    expect(mic.isUnlockedAt(8), false);
+    expect(mic.isUnlockedAt(9), true);
+  });
+
+  test('base friend limit and VIP unlimited friends', () {
+    expect(VipPolicy.friendLimit(0, active: false), 300);
+    expect(VipPolicy.friendLimit(3, active: true), isNull);
+  });
+
+  test('message roaming tiers are 30, 60 and 120 days', () {
+    expect(VipPolicy.messageRetentionDays(5), 30);
+    expect(VipPolicy.messageRetentionDays(8), 60);
+    expect(VipPolicy.messageRetentionDays(12), 120);
+  });
+
   test('removed incomplete privileges are not present', () {
     final ids = VipPolicy.privileges.map((p) => p.id).toSet();
-    expect(ids.contains('exclusive_gifts'), false);
+    expect(ids.contains('exclusive_gifts'), true);
     expect(ids.contains('exclusive_game_room'), false);
     expect(ids.contains('hide_host_sign'), false);
-    expect(ids.contains('exclusive_mic_emoticon'), false);
+    expect(ids.contains('exclusive_mic_emoticon'), true);
   });
 }
