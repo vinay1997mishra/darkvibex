@@ -1810,11 +1810,13 @@ export default {
           if (!allowed) return json({ ok: false, error: "file_not_found" }, { status: 404 });
         }
         const protectedAvatar = key.match(/^users\/([^/]+)\/avatar-/);
+        let privacyProtectedAvatar = false;
         if (protectedAvatar) {
           const db = requireDb(env);
           const targetId = protectedAvatar[1];
           const targetVip = await getVipStatus(db, targetId);
           if (targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true) {
+            privacyProtectedAvatar = true;
             const authError = await requireSession(request, env);
             if (authError) return json({ ok: false, error: "file_not_found" }, { status: 404 });
             const viewer = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -1826,7 +1828,7 @@ export default {
         const headers = new Headers(corsHeaders);
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
-        headers.set("cache-control", "public, max-age=3600");
+        headers.set("cache-control", privacyProtectedAvatar ? "private, no-store" : "public, max-age=3600");
         headers.set("x-content-type-options", "nosniff");
         return new Response(object.body, { headers });
       }
