@@ -32,6 +32,7 @@ export function vipCapabilities(level, active){
     friend_bonus: active ? (level >= 13 ? 1500 : level >= 9 ? 700 : level >= 4 ? 300 : 0) : 0,
     room_seat_limit: active ? (level >= 10 ? 30 : level >= 7 ? 20 : 12) : 12,
     room_background_enabled: active && level >= 3,
+    picture_welcome_enabled: active && level >= 5,
     room_images_enabled: active && level >= 10,
     seat_protection_enabled: active && level >= 13,
     kick_protection_enabled: active && level >= 14,
