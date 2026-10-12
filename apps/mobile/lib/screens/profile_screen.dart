@@ -13,6 +13,8 @@ import 'coin_seller_screen.dart';
 import 'vip_support_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'id_level_screen.dart';
+import 'family_screen.dart';
+import 'cp_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 
@@ -329,6 +331,18 @@ class ProfileScreen extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Unique ID copied')),
           );
+          return;
+        }
+        if (title == 'Family') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => FamilyScreen(state: state),
+          ));
+          return;
+        }
+        if (title == 'CP') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CpScreen(state: state),
+          ));
           return;
         }
         if (title == 'Store') {
