@@ -33,6 +33,17 @@ class _MineFeatureScreenState extends State<MineFeatureScreen> {
   }
 
   Future<void> _load() async {
+    if (widget.kind == 'Guardian') {
+      final value = await widget.state.backend.mineGuardianState(userId: widget.state.userId);
+      final rawRows = value?['supporters'];
+      if (!mounted) return;
+      setState(() {
+        stats = value;
+        rows = rawRows is List ? rawRows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : const [];
+        loading = false;
+      });
+      return;
+    }
     if (widget.kind == 'Wealth Level') {
       final value = await widget.state.backend.mineWealth(userId: widget.state.userId);
       if (!mounted) return;
@@ -173,11 +184,14 @@ class _MineFeatureScreenState extends State<MineFeatureScreen> {
                         trailing: Text(row['status']?.toString() ?? 'received'),
                       ),
                   ] else if (widget.kind == 'Guardian') ...[
-                    const Card(
+                    Card(
                       child: ListTile(
-                        leading: Icon(Icons.shield_rounded),
-                        title: Text('Guardian'),
-                        subtitle: Text('Top gift supporter in the last 30 days; 5,000,000 coins required.'),
+                        leading: const Icon(Icons.shield_rounded),
+                        title: Text((stats?['guardian'] as Map?)?['display_name']?.toString() ?? 'Guardian not assigned'),
+                        subtitle: Text((stats?['guardian'] as Map?)?['guardian_eligible'] == true
+                            ? 'Current Guardian • 30 day window'
+                            : 'Top supporter needs 5,000,000 coins in 30 days'),
+                        trailing: Text('${stats?['guardian_threshold'] ?? 5000000}'),
                       ),
                     ),
                     if (rows.isEmpty)
@@ -187,7 +201,7 @@ class _MineFeatureScreenState extends State<MineFeatureScreen> {
                         leading: CircleAvatar(child: Text('${i + 1}')),
                         title: Text(rows[i]['display_name']?.toString() ?? rows[i]['user_id']?.toString() ?? 'User'),
                         subtitle: Text('ID ${rows[i]['user_id'] ?? ''}'),
-                        trailing: Text('${rows[i]['gift_coins'] ?? 0} coins'),
+                        trailing: Text('${rows[i]['gift_coins'] ?? rows[i]['coins'] ?? 0} coins'),
                       ),
                   ] else ...[
                     if (rows.isEmpty)
