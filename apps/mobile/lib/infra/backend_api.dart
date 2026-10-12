@@ -101,6 +101,26 @@ class BackendApi {
   Future<Map<String, dynamic>?> userProfile({required String userId}) =>
       _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
 
+  Future<Map<String, dynamic>?> mineWealth({required String userId}) =>
+      _json('GET', '/api/mine/wealth?user_id=${Uri.encodeQueryComponent(userId)}');
+
+  Future<List<Map<String, dynamic>>> mineTasks({required String userId}) async {
+    final value = await _json('GET', '/api/mine/tasks?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['tasks'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> claimMineTask({required String userId, required String taskId}) =>
+      _json('POST', '/api/mine/tasks/claim', body: {'user_id': userId, 'task_id': taskId});
+
+  Future<List<Map<String, dynamic>>> mineMedals({required String userId}) async {
+    final value = await _json('GET', '/api/mine/medals?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['medals'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
   Future<List<Map<String, dynamic>>> mineGuardian({required String userId}) async {
     final value = await _json('GET', '/api/mine/guardian?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['supporters'];
