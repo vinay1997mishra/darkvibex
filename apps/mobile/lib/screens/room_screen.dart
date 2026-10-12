@@ -17,6 +17,7 @@ import '../vip/vip_policy.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
+import 'profile_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -728,6 +729,17 @@ class _RoomScreenState extends State<RoomScreen> {
                           final canModerate = !isSelf && !isOwner &&
                               ((isRoomHost) || (isRoomAdmin && member['is_admin'] != true && member['is_admin']?.toString() != '1'));
                           return ListTile(
+                            onTap: isSelf
+                                ? null
+                                : () {
+                                    Navigator.pop(sheetContext);
+                                    Future<void>.delayed(Duration.zero, () {
+                                      if (!mounted) return;
+                                      Navigator.of(this.context).push(MaterialPageRoute<void>(
+                                        builder: (_) => PublicProfileScreen(state: widget.state, userId: userId),
+                                      ));
+                                    });
+                                  },
                             leading: CircleAvatar(
                               backgroundImage: avatar != null && avatar.isNotEmpty
                                   ? NetworkImage(widget.state.backend.fileUrl(avatar))
