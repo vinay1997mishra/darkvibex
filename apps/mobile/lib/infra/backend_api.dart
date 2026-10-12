@@ -136,6 +136,9 @@ class BackendApi {
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
+  Future<Map<String, dynamic>?> mineGuardianState({required String userId}) =>
+      _json('GET', '/api/mine/guardian?user_id=${Uri.encodeQueryComponent(userId)}');
+
   Future<List<Map<String, dynamic>>> mineGuardian({required String userId}) async {
     final value = await _json('GET', '/api/mine/guardian?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['supporters'];
