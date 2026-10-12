@@ -101,6 +101,41 @@ class BackendApi {
   Future<Map<String, dynamic>?> userProfile({required String userId}) =>
       _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
 
+  Future<List<Map<String, dynamic>>> mineGuardian({required String userId}) async {
+    final value = await _json('GET', '/api/mine/guardian?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['supporters'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> mineFeedback({required String userId}) async {
+    final value = await _json('GET', '/api/mine/feedback?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['feedback'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<bool> submitMineFeedback({required String userId, required String category, required String message}) async {
+    final value = await _json('POST', '/api/mine/feedback', body: {
+      'user_id': userId, 'category': category, 'message': message,
+    });
+    return value?['ok'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> mineBlocks({required String userId}) async {
+    final value = await _json('GET', '/api/mine/blocks?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['blocked'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<bool> setMineBlock({required String userId, required String targetUserId, required bool blocked}) async {
+    final value = await _json('POST', '/api/mine/blocks', body: {
+      'user_id': userId, 'target_user_id': targetUserId, 'blocked': blocked,
+    });
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> profileVisitors({required String userId}) async {
     final value = await _json('GET', '/api/users/${Uri.encodeComponent(userId)}/visitors');
     final rows = value?['visitors'];
