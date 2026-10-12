@@ -30,7 +30,16 @@ test("expired VIP capabilities return to base limits", () => {
   const expired = vipCapabilities(18, false);
   assert.equal(expired.room_seat_limit, 12);
   assert.equal(expired.friend_bonus, 0);
+  assert.equal(expired.friend_limit, 300);
+  assert.equal(expired.friends_unlimited, false);
+  assert.equal(vipCapabilities(1, true).friend_limit, null);
+  assert.equal(vipCapabilities(3, true).exclusive_gifts_enabled, true);
+  assert.equal(vipCapabilities(8, true).exclusive_mic_emoticon_enabled, false);
+  assert.equal(vipCapabilities(9, true).exclusive_mic_emoticon_enabled, true);
+  assert.equal(vipCapabilities(18, true).honorary_title_enabled, true);
   assert.equal(expired.message_retention_days, 0);
+  assert.equal(vipCapabilities(8, true).message_retention_days, 60);
+  assert.equal(vipCapabilities(12, true).message_retention_days, 120);
   assert.equal(expired.show_id_style_level, 0);
   assert.equal(expired.entrance_vehicle_tier, 0);
   assert.equal(expired.exp_multiplier, 1);
