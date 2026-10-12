@@ -725,6 +725,8 @@ class _RoomScreenState extends State<RoomScreen> {
                           final seat = int.tryParse(member['seat_index']?.toString() ?? '');
                           final isSelf = userId == widget.state.userId;
                           final isOwner = userId == widget.room.ownerUserId;
+                          final canModerate = !isSelf && !isOwner &&
+                              ((isRoomHost) || (isRoomAdmin && member['is_admin'] != true && member['is_admin']?.toString() != '1'));
                           return ListTile(
                             leading: CircleAvatar(
                               backgroundImage: avatar != null && avatar.isNotEmpty
@@ -736,9 +738,18 @@ class _RoomScreenState extends State<RoomScreen> {
                             ),
                             title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}'),
                             subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
-                            trailing: !isSelf && !isOwner && (
-                                    (isRoomHost) || (isRoomAdmin && member['is_admin'] != true && member['is_admin']?.toString() != '1'))
-                                ? PopupMenuButton<String>(
+                            trailing: !isSelf && (widget.state.hasVipPrivilege('free_say_hi') || canModerate)
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (widget.state.hasVipPrivilege('free_say_hi') && widget.state.vipFreeSayHiRemaining > 0)
+                                        IconButton(
+                                          tooltip: 'Free Say Hi (${widget.state.vipFreeSayHiRemaining} left)',
+                                          icon: const Icon(Icons.waving_hand_rounded, color: Color(0xFFFFD36A)),
+                                          onPressed: () => _composeVipSayHi(context, userId, name?.isNotEmpty == true ? name! : 'User'),
+                                        ),
+                                      if (canModerate)
+                                        PopupMenuButton<String>(
                                     tooltip: 'Member actions',
                                     onSelected: (action) async {
                                       Navigator.pop(sheetContext);
@@ -759,6 +770,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                       const PopupMenuItem(value: 'remove', child: Text('Remove from room')),
                                       const PopupMenuItem(value: 'block', child: Text('Block from room')),
                                     ],
+                                        ),
+                                    ],
                                   )
                                 : null,
                           );
@@ -770,6 +783,42 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _composeVipSayHi(BuildContext context, String receiverId, String receiverName) async {
+    final controller = TextEditingController();
+    final message = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Free Say Hi to $receiverName'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: const InputDecoration(hintText: 'Write up to 30 words'),
+            ),
+            Text('${widget.state.vipFreeSayHiRemaining} free messages remaining'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Send')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (message == null || message.isEmpty || !mounted) return;
+    final sent = await widget.state.sendVipSayHi(receiverUserId: receiverId, message: message);
+    if (!mounted || !context.mounted) return;
+    final reason = widget.state.vipError;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(sent ? 'Free Say Hi sent' : (reason == 'say_hi_disabled_by_receiver' ? 'This user has disabled Say Hi' : reason ?? 'Say Hi could not be sent')),
+    ));
   }
 
   Future<void> _leaveRoom() async {
