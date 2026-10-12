@@ -100,6 +100,26 @@ class BackendApi {
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> vipSupportTickets({required String userId}) async {
+    final value = await _json('GET', '/api/vip/${Uri.encodeComponent(userId)}/support-tickets');
+    final rows = value?['tickets'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<String?> createVipSupportTicket({required String userId, required String subject, required String message}) async {
+    final value = await _json('POST', '/api/vip/${Uri.encodeComponent(userId)}/support-tickets', body: {'subject': subject, 'message': message});
+    return value?['ticket_id']?.toString();
+  }
+
+  Future<Map<String, dynamic>?> vipSupportTicket({required String userId, required String ticketId}) =>
+      _json('GET', '/api/vip/${Uri.encodeComponent(userId)}/support-tickets/${Uri.encodeComponent(ticketId)}');
+
+  Future<bool> replyVipSupportTicket({required String userId, required String ticketId, required String message}) async {
+    final value = await _json('POST', '/api/vip/${Uri.encodeComponent(userId)}/support-tickets/${Uri.encodeComponent(ticketId)}/reply', body: {'message': message});
+    return value?['ok'] == true;
+  }
+
   Future<Map<String, dynamic>?> startGoogleSession({
     required String idToken,
   }) =>
