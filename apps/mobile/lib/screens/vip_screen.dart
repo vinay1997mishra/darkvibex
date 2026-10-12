@@ -239,7 +239,7 @@ class VipScreen extends StatelessWidget {
             Text('Available VIP Exp: ${_compact(state.vipExpBalance)}'),
             Text('Total eligible coins received: ${_compact(state.vipTotalReceivedCoins)}'),
             Text(
-              'Coin Seller EXP rate: 1 VIP EXP per coin received',
+              'Coin Seller EXP rate: 1 VIP EXP per 400 coins received',
             ),
             if (until != null) Text('Active until: ${_date(until)}'),
             const SizedBox(height: 8),
@@ -633,7 +633,7 @@ class VipRulesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'DarkVibeX VIP has 18 levels. Coins received from a Coin Seller earn exactly 1 VIP Exp per coin at every VIP level, with no monthly or total EXP cap.',
+            'DarkVibeX VIP has 18 levels. Every 400 eligible coins received from a Coin Seller earn 1 VIP EXP. Partial amounts carry across transfers; there is no monthly or total EXP cap.',
             style: TextStyle(color: Colors.white70, height: 1.45),
           ),
           const SizedBox(height: 18),
@@ -651,7 +651,6 @@ class VipRulesScreen extends StatelessWidget {
               ),
               columns: const [
                 DataColumn(label: Text('Level')),
-                DataColumn(label: Text('Total coins')),
                 DataColumn(label: Text('Upgrade EXP')),
                 DataColumn(label: Text('Maintain EXP')),
                 DataColumn(label: Text('Validity')),
@@ -661,7 +660,6 @@ class VipRulesScreen extends StatelessWidget {
                   DataRow(
                     cells: [
                       DataCell(Text('VIP${item.level}')),
-                      DataCell(Text(VipScreen._compact(item.totalRechargeCoins))),
                       DataCell(Text(VipScreen._compact(item.upgradeExp))),
                       DataCell(Text(VipScreen._compact(item.maintainExp))),
                       DataCell(Text('${item.validityDays} days')),
@@ -677,7 +675,7 @@ class VipRulesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'VIP1–VIP17 use a 30-day active period. VIP18 uses 45 days. At expiry, the maintenance EXP for the active level is deducted when available; otherwise the account drops one VIP level and the maintainable EXP balance is cleared. Leftover EXP after a successful upgrade or maintenance remains available.',
+            'VIP1–VIP17 use a 30-day active period. VIP18 uses 45 days. Every VIP level-up resets EXP to 0; extra EXP does not carry into the next level. At expiry, the maintenance EXP for the active level is deducted when available; otherwise the account drops one VIP level and the maintainable EXP balance is cleared.',
             style: TextStyle(color: Colors.white70, height: 1.45),
           ),
           const SizedBox(height: 14),

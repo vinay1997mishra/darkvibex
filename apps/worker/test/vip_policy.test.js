@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { vipCapabilities } from "../src/vip_policy.js";
+import { vipCapabilities, vipRule } from "../src/vip_policy.js";
+test("VIP EXP thresholds match the confirmed 400 coin schedule", () => {
+  const expected = [87500,250000,500000,1000000,2500000,3750000,6875000,8750000,11250000,15625000,18750000,22500000,26250000,26250000,28750000,28750000,28750000,28750000];
+  assert.deepEqual(expected.map((_,i)=>vipRule(i+1).upgrade),expected);
+});
+
 
 test("VIP room and safety entitlements are active-only and level-gated", () => {
   assert.equal(vipCapabilities(2, true).room_background_enabled, false);
@@ -46,3 +51,4 @@ test("expired VIP capabilities return to base limits", () => {
   assert.equal(vipCapabilities(17, true).exp_multiplier, 1);
   assert.equal(vipCapabilities(18, true).exp_multiplier, 1);
 });
+

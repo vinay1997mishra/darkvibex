@@ -41,24 +41,24 @@ class VipPolicy {
   static const int freeSayHiMaxWords = 30;
 
   static const List<VipLevelRule> levels = <VipLevelRule>[
-    VipLevelRule(level: 1, totalRechargeCoins: 50000, upgradeExp: 50000, maintainExp: 30000),
-    VipLevelRule(level: 2, totalRechargeCoins: 100000, upgradeExp: 50000, maintainExp: 30000),
-    VipLevelRule(level: 3, totalRechargeCoins: 300000, upgradeExp: 100000, maintainExp: 90000),
-    VipLevelRule(level: 4, totalRechargeCoins: 1000000, upgradeExp: 800000, maintainExp: 500000),
-    VipLevelRule(level: 5, totalRechargeCoins: 3000000, upgradeExp: 2000000, maintainExp: 1300000),
-    VipLevelRule(level: 6, totalRechargeCoins: 7000000, upgradeExp: 4000000, maintainExp: 2600000),
-    VipLevelRule(level: 7, totalRechargeCoins: 14000000, upgradeExp: 7000000, maintainExp: 4500000),
-    VipLevelRule(level: 8, totalRechargeCoins: 26000000, upgradeExp: 12000000, maintainExp: 7800000),
-    VipLevelRule(level: 9, totalRechargeCoins: 42000000, upgradeExp: 16000000, maintainExp: 11000000),
-    VipLevelRule(level: 10, totalRechargeCoins: 62000000, upgradeExp: 20000000, maintainExp: 14000000),
-    VipLevelRule(level: 11, totalRechargeCoins: 102000000, upgradeExp: 40000000, maintainExp: 28000000),
-    VipLevelRule(level: 12, totalRechargeCoins: 220000000, upgradeExp: 118000000, maintainExp: 83000000),
-    VipLevelRule(level: 13, totalRechargeCoins: 430000000, upgradeExp: 210000000, maintainExp: 150000000),
-    VipLevelRule(level: 14, totalRechargeCoins: 820000000, upgradeExp: 390000000, maintainExp: 310000000),
-    VipLevelRule(level: 15, totalRechargeCoins: 1820000000, upgradeExp: 1000000000, maintainExp: 700000000),
-    VipLevelRule(level: 16, totalRechargeCoins: 3820000000, upgradeExp: 2000000000, maintainExp: 1400000000),
-    VipLevelRule(level: 17, totalRechargeCoins: 7382000000, upgradeExp: 3500000000, maintainExp: 3000000000),
-    VipLevelRule(level: 18, totalRechargeCoins: 11882000000, upgradeExp: 4500000000, maintainExp: 4000000000, validityDays: 45),
+    VipLevelRule(level: 1, totalRechargeCoins: 35000000, upgradeExp: 87500, maintainExp: 75),
+    VipLevelRule(level: 2, totalRechargeCoins: 135000000, upgradeExp: 250000, maintainExp: 75),
+    VipLevelRule(level: 3, totalRechargeCoins: 335000000, upgradeExp: 500000, maintainExp: 225),
+    VipLevelRule(level: 4, totalRechargeCoins: 735000000, upgradeExp: 1000000, maintainExp: 1250),
+    VipLevelRule(level: 5, totalRechargeCoins: 1735000000, upgradeExp: 2500000, maintainExp: 3250),
+    VipLevelRule(level: 6, totalRechargeCoins: 3235000000, upgradeExp: 3750000, maintainExp: 6500),
+    VipLevelRule(level: 7, totalRechargeCoins: 5985000000, upgradeExp: 6875000, maintainExp: 11250),
+    VipLevelRule(level: 8, totalRechargeCoins: 9485000000, upgradeExp: 8750000, maintainExp: 19500),
+    VipLevelRule(level: 9, totalRechargeCoins: 13985000000, upgradeExp: 11250000, maintainExp: 27500),
+    VipLevelRule(level: 10, totalRechargeCoins: 20235000000, upgradeExp: 15625000, maintainExp: 35000),
+    VipLevelRule(level: 11, totalRechargeCoins: 27735000000, upgradeExp: 18750000, maintainExp: 70000),
+    VipLevelRule(level: 12, totalRechargeCoins: 36735000000, upgradeExp: 22500000, maintainExp: 207500),
+    VipLevelRule(level: 13, totalRechargeCoins: 47235000000, upgradeExp: 26250000, maintainExp: 375000),
+    VipLevelRule(level: 14, totalRechargeCoins: 57735000000, upgradeExp: 26250000, maintainExp: 775000),
+    VipLevelRule(level: 15, totalRechargeCoins: 69235000000, upgradeExp: 28750000, maintainExp: 1750000),
+    VipLevelRule(level: 16, totalRechargeCoins: 80735000000, upgradeExp: 28750000, maintainExp: 3500000),
+    VipLevelRule(level: 17, totalRechargeCoins: 92235000000, upgradeExp: 28750000, maintainExp: 7500000),
+    VipLevelRule(level: 18, totalRechargeCoins: 103735000000, upgradeExp: 28750000, maintainExp: 10000000, validityDays: 45),
   ];
 
   static const List<VipPrivilege> privileges = <VipPrivilege>[
@@ -141,3 +141,4 @@ class VipPolicy {
 
   static int validityDays(int level) => level >= 18 ? 45 : 30;
 }
+

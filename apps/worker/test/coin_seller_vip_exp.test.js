@@ -69,22 +69,53 @@ test("Coin Seller transfers have no monthly or per-transfer VIP EXP cap", async 
 
   const amounts = [10000, 20000, 30000, 100000000];
   const receiverCoinsBefore = sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins;
+  let priorCoins = 0;
+  let awardedTotal = 0;
   for (const coins of amounts) {
     const result = await transfer(coins);
     assert.equal(result.status, 200);
-    assert.equal(result.body.vip_award.awarded_exp, coins);
-    assert.equal(result.body.vip_award.multiplier, 1);
+    const awarded = Math.floor((priorCoins + coins) / 400) - Math.floor(priorCoins / 400);
+    assert.equal(result.body.vip_award.awarded_exp, awarded);
+    assert.equal(result.body.vip_award.multiplier, 1 / 400);
+    priorCoins += coins;
+    awardedTotal += awarded;
     assert.equal("monthly_grants_remaining" in result.body.vip_award, false);
   }
 
   assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins, 1000000000 - amounts.reduce((sum, n) => sum + n, 0));
   assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, receiverCoinsBefore + amounts.reduce((sum, n) => sum + n, 0));
   assert.equal(sqlite.prepare("SELECT total_received_coins FROM user_vip WHERE user_id='receiver'").get().total_received_coins, amounts.reduce((sum, n) => sum + n, 0));
-  assert.equal(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, amounts.reduce((sum, n) => sum + n, 0));
+  assert.equal(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, awardedTotal);
   sqlite.close();
 });
 
-test("VIP17 Coin Seller receipts still earn exactly one VIP EXP per coin", async () => {
+test("VIP coin EXP carries partial coin amounts and resets to zero on every level-up", async () => {
+  const { sqlite, request } = await fixture();
+  const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
+    method: "POST", userId: "seller",
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
+  });
+
+  const first = await transfer(399);
+  assert.equal(first.body.vip_award.awarded_exp, 0);
+  assert.equal(first.body.vip_award.vip.exp_balance, 0);
+  const second = await transfer(1);
+  assert.equal(second.body.vip_award.awarded_exp, 1);
+  assert.equal(second.body.vip_award.vip.exp_balance, 1);
+
+  const toVip1 = await transfer(34999600);
+  assert.equal(toVip1.body.vip_award.awarded_exp, 87499);
+  assert.equal(toVip1.body.vip_award.vip.level, 1);
+  assert.equal(toVip1.body.vip_award.vip.exp_balance, 0);
+
+  const toVip2 = await transfer(100000000);
+  assert.equal(toVip2.body.vip_award.awarded_exp, 250000);
+  assert.equal(toVip2.body.vip_award.vip.level, 2);
+  assert.equal(toVip2.body.vip_award.vip.exp_balance, 0);
+  sqlite.close();
+});
+
+test("Coin Seller receipts earn one VIP EXP per 400 coins at VIP17", async () => {
   const { sqlite, request } = await fixture();
   sqlite.prepare("UPDATE users SET vip_level=17 WHERE id='receiver'").run();
   await request("/api/vip/receiver", { userId: "receiver" });
@@ -96,8 +127,20 @@ test("VIP17 Coin Seller receipts still earn exactly one VIP EXP per coin", async
     body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
   });
   assert.equal(result.status, 200);
-  assert.equal(result.body.vip_award.multiplier, 1);
-  assert.equal(result.body.vip_award.awarded_exp, coins);
+  assert.equal(result.body.vip_award.multiplier, 1 / 400);
+  assert.equal(result.body.vip_award.awarded_exp, 100);
   assert.equal(result.body.vip_award.vip.exp_multiplier, 1);
+  sqlite.close();
+});
+
+test("existing VIP balances migrate from the old one-EXP-per-coin rate", async () => {
+  const { sqlite, request } = await fixture();
+  await request("/api/vip/receiver", { userId: "receiver" });
+  sqlite.prepare("UPDATE user_vip SET exp_balance=80000,exp_rate_version=0 WHERE user_id='receiver'").run();
+
+  const result = await request("/api/vip/receiver", { userId: "receiver" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.vip.exp_balance, 200);
+  assert.equal(sqlite.prepare("SELECT exp_rate_version FROM user_vip WHERE user_id='receiver'").get().exp_rate_version, 1);
   sqlite.close();
 });
