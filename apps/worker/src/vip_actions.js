@@ -19,7 +19,7 @@ export async function setVipPreference(db,userId,key,enabled,ts=Date.now()){
 export async function changeVipUniqueId(db,userId,requestedId,ts=Date.now()){
   const row=await readVipRow(db,userId,ts);
   const status=vipPayload(row,ts);
-  if(!status.active||status.level<5) throw new Error("vip5_required");
+  if(!status.active||status.level<15) throw new Error("vip15_required");
   const customId=String(requestedId??"").trim();
   if(!/^[A-Za-z0-9_-]{3,20}$/.test(customId)) throw new Error("invalid_custom_id");
 
