@@ -404,6 +404,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Map<String, dynamic>? user;
   bool loading = true;
   bool isFriend = false;
+  bool isFollowing = false;
 
   @override
   void initState() {
@@ -415,11 +416,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final response = await widget.state.backend.userProfile(userId: widget.userId);
     final friends = await widget.state.backend.friends(userId: widget.state.userId);
     final friendStatus = friends.any((row) => row['id']?.toString() == widget.userId);
+    final followStatus = await widget.state.backend.isFollowing(userId: widget.state.userId, targetUserId: widget.userId);
     if (!mounted) return;
     setState(() {
       user = response?['user'] is Map ? Map<String, dynamic>.from(response!['user'] as Map) : null;
       loading = false;
       isFriend = friendStatus;
+      isFollowing = followStatus;
     });
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
@@ -480,6 +483,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               label: Text(isFriend ? 'Friend' : 'Add friend'),
                             ),
                           ),
+                        if (widget.userId != widget.state.userId)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: OutlinedButton.icon(
+                              onPressed: _toggleFollow,
+                              icon: Icon(isFollowing ? Icons.person_remove_alt_1_rounded : Icons.person_add_alt_rounded),
+                              label: Text(isFollowing ? 'Following' : 'Follow'),
+                            ),
+                          ),
                         if (widget.state.hasVipPrivilege('free_say_hi'))
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
@@ -495,6 +507,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     ),
                   ),
       );
+  }
+
+  Future<void> _toggleFollow() async {
+    final next = !isFollowing;
+    final ok = await widget.state.backend.setFollowing(
+      userId: widget.state.userId,
+      targetUserId: widget.userId,
+      followed: next,
+    );
+    if (!mounted) return;
+    if (ok) setState(() => isFollowing = next);
   }
 
   Future<void> _addFriend() async {
