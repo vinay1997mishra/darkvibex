@@ -16,6 +16,7 @@ import 'id_level_screen.dart';
 import 'family_screen.dart';
 import 'cp_screen.dart';
 import 'mine_feature_screen.dart';
+import 'edit_profile_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 
@@ -283,6 +284,7 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => VipSupportScreen(state: state))),
                   ),
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
+                _item(context, state, Icons.edit_rounded, 'Edit Profile', 'Name, country and gender'),
                 _item(context, state, Icons.diamond_rounded, 'Wealth Level', 'Lifetime gift spending level'),
                 _item(context, state, Icons.shield_rounded, 'My Guardian', 'Top gift supporters over 30 days'),
                 _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
@@ -318,7 +320,13 @@ class ProfileScreen extends StatelessWidget {
       onTap: () async {
         if (title == 'Settings') {
           await Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => const AppSettingsScreen(),
+            builder: (_) => AppSettingsScreen(state: state),
+          ));
+          return;
+        }
+        if (title == 'Edit Profile') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => EditProfileScreen(state: state),
           ));
           return;
         }
