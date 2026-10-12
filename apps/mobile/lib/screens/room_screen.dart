@@ -481,6 +481,7 @@ class _RoomScreenState extends State<RoomScreen> {
         return;
       }
       await _loadRoomSettings();
+      await widget.state.refreshIdLevel(notify: false);
     }
 
     final token = widget.state.sessionToken;
@@ -961,9 +962,19 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _shareRoomId() async {
     await Clipboard.setData(ClipboardData(text: widget.room.id));
+    final result = widget.state.backendConnected
+        ? await widget.state.backend.shareRoomForIdLevel(
+            userId: widget.state.userId,
+            roomId: widget.room.id,
+          )
+        : null;
+    await widget.state.refreshIdLevel(notify: false);
     if (!mounted) return;
+    final gained = int.tryParse(result?['id_level_daily_exp']?.toString() ?? '') ?? 0;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Room ID copied. Share it with friends to invite them.')),
+      SnackBar(content: Text(gained > 0
+          ? 'Room ID copied • +$gained ID Level EXP today'
+          : 'Room ID copied. Daily room-share EXP was already claimed.')),
     );
   }
 
@@ -1457,6 +1468,7 @@ class _RoomScreenState extends State<RoomScreen> {
       final remoteBalance = int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
       if (remoteBalance != null) {
         widget.state.setCoinBalance(remoteBalance);
+        await widget.state.refreshIdLevel(notify: false);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins')));
         return;
