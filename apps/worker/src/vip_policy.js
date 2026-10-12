@@ -29,12 +29,15 @@ export function vipRule(level){
 export function vipCapabilities(level, active){
   return {
     exp_multiplier: active && level >= 17 ? 1.5 : 1,
-    friend_bonus: level >= 13 ? 1500 : level >= 9 ? 700 : level >= 4 ? 300 : 0,
-    room_seat_limit: level >= 10 ? 30 : level >= 7 ? 20 : 12,
-    message_retention_days: level >= 12 ? 180 : level >= 8 ? 90 : level >= 5 ? 30 : 0,
-    show_id_style_level: level < 5 ? 0 : Math.min(level,14),
+    friend_bonus: active ? (level >= 13 ? 1500 : level >= 9 ? 700 : level >= 4 ? 300 : 0) : 0,
+    room_seat_limit: active ? (level >= 10 ? 30 : level >= 7 ? 20 : 12) : 12,
+    room_background_enabled: active && level >= 3,
+    seat_protection_enabled: active && level >= 13,
+    kick_protection_enabled: active && level >= 14,
+    message_retention_days: active ? (level >= 12 ? 180 : level >= 8 ? 90 : level >= 5 ? 30 : 0) : 0,
+    show_id_style_level: !active || level < 5 ? 0 : Math.min(level,14),
     nickname_light_enabled: active && level >= 8 && level <= 17,
-    entrance_vehicle_tier: level >= 8 ? Math.max(1,level-7) : 0,
+    entrance_vehicle_tier: active && level >= 8 ? Math.max(1,level-7) : 0,
     validity_days: level >= 18 ? 45 : 30,
   };
 }
