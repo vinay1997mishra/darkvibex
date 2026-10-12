@@ -500,6 +500,27 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> idLevelStatus({required String userId}) =>
+      _json('GET', '/api/id-level?user_id=${Uri.encodeQueryComponent(userId)}');
+
+  Future<Map<String, dynamic>?> shareRoomForIdLevel({
+    required String userId,
+    required String roomId,
+  }) =>
+      _json('POST', '/api/id-level/room-share', body: {
+        'user_id': userId,
+        'room_id': roomId,
+      }, returnErrorBody: true);
+
+  Future<Map<String, dynamic>?> claimIdLevelReward({
+    required String userId,
+    required int level,
+  }) =>
+      _json('POST', '/api/id-level/rewards/claim', body: {
+        'user_id': userId,
+        'level': level,
+      }, returnErrorBody: true);
+
   Future<Map<String, dynamic>?> vipStatus({
     required String userId,
   }) =>
