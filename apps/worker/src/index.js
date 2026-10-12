@@ -252,7 +252,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
   return db.prepare(
-    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
+    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, country_code, gender FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
