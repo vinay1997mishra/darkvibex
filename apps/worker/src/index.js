@@ -483,13 +483,13 @@ async function handleApi(request, env, url) {
     });
   }
 
-  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange });
-  if (mineResponse) return mineResponse;
-
   const maintenance = await ownerSetting(db, "maintenance", { enabled: false, message: "" });
   if (maintenance.enabled === true && url.pathname !== "/api/config") {
     return json({ ok: false, error: "maintenance", message: String(maintenance.message ?? "") }, { status: 503 });
   }
+
+  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange });
+  if (mineResponse) return mineResponse;
 
   if (url.pathname === "/api/config" && request.method === "GET") {
     const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "maintenance"];
