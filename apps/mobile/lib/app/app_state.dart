@@ -581,13 +581,9 @@ class AppState extends ChangeNotifier {
     final name = displayName.trim();
     final country = countryCode.trim().toUpperCase();
     final normalizedGender = gender.trim().toLowerCase();
-    if (name.isEmpty || !RegExp(r'^[A-Z]{2}
-    if (value < 0) return;
-    coins = value;
-    notifyListeners();
-  }
-}
-).hasMatch(country) ||
+    final validCountry = country.length == 2 &&
+        country.codeUnits.every((code) => code >= 65 && code <= 90);
+    if (name.isEmpty || !validCountry ||
         !const {'male', 'female', 'other'}.contains(normalizedGender)) {
       return false;
     }
