@@ -45,7 +45,10 @@ class _RoomScreenState extends State<RoomScreen> {
   bool cameraPublished = false;
   bool followingRoom = false;
   bool followBusy = false;
-  final List<String> chat = <String>['Welcome to the room 👋'];
+  final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
+    <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
+  ];
+  bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   Timer? memberRefreshTimer;
   String? roomAvatarKey;
@@ -104,13 +107,9 @@ class _RoomScreenState extends State<RoomScreen> {
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
-    if (!mounted || rows.isEmpty && chat.length == 1 && chat.first == 'Welcome to the room 👋') return;
-    final next = rows.map((message) {
-      final name = message['display_name']?.toString().trim();
-      final text = message['text']?.toString() ?? '';
-      return '${name == null || name.isEmpty ? 'User' : name}: $text';
-    }).where((message) => !message.endsWith(': ')).toList();
-    if (!mounted || next.join('\n') == chat.join('\n')) return;
+    if (!mounted || rows.isEmpty && chat.length == 1 && chat.first['text'] == 'Welcome to the room 👋') return;
+    final next = rows.map((message) => Map<String, dynamic>.from(message)).toList();
+    if (!mounted || next.toString() == chat.toString()) return;
     setState(() {
       chat
         ..clear()
@@ -1403,7 +1402,61 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     if (!mounted) return;
-    setState(() => chat.add('${widget.state.displayName}: $value'));
+    setState(() => chat.add(<String, dynamic>{'display_name': widget.state.displayName, 'text': value}));
+  }
+
+  Future<void> _sendRoomImage() async {
+    if (!widget.state.hasVipPrivilege('send_pictures')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room photo messages unlock at VIP10.')),
+      );
+      return;
+    }
+    if (!widget.state.backendConnected || uploadingRoomImage) return;
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 82,
+      maxWidth: 1440,
+      maxHeight: 1440,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final contentType = switch (ext) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => null,
+    };
+    if (contentType == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a JPG, PNG or WebP image.')),
+      );
+      return;
+    }
+    setState(() => uploadingRoomImage = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final normalizedExt = ext == 'jpeg' ? 'jpg' : ext;
+      final key = await widget.state.backend.uploadImage(
+        key: 'messages/${widget.state.userId}/room-${widget.room.id}-${DateTime.now().microsecondsSinceEpoch}.$normalizedExt',
+        bytes: bytes,
+        contentType: contentType,
+      );
+      if (key == null) throw StateError('upload_failed');
+      final sent = await widget.state.backend.sendRoomMessage(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        imageKey: key,
+      );
+      if (!sent) throw StateError('send_failed');
+      await _loadRoomMessages();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Photo could not be sent. Check your connection and try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingRoomImage = false);
+    }
   }
 
   Widget _videoStage() {
@@ -1637,10 +1690,40 @@ class _RoomScreenState extends State<RoomScreen> {
                   Expanded(
                     child: ListView.builder(
                       itemCount: chat.length,
-                      itemBuilder: (context, index) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Text(chat[index]),
-                      ),
+                      itemBuilder: (context, index) {
+                        final message = chat[index];
+                        final name = message['display_name']?.toString().trim();
+                        final text = message['text']?.toString() ?? '';
+                        final imageKey = message['image_key']?.toString();
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (text.isNotEmpty)
+                                Text('${name == null || name.isEmpty ? 'User' : name}: $text'),
+                              if (imageKey != null && imageKey.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4, left: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      widget.state.backend.fileUrl(imageKey),
+                                      width: 210,
+                                      height: 160,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const SizedBox(
+                                        width: 210,
+                                        height: 64,
+                                        child: Center(child: Text('Photo unavailable')),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -1676,6 +1759,14 @@ class _RoomScreenState extends State<RoomScreen> {
               IconButton.filledTonal(
                 onPressed: _sendMessage,
                 icon: const Icon(Icons.chat_rounded),
+              ),
+              const SizedBox(width: 4),
+              IconButton.filledTonal(
+                onPressed: uploadingRoomImage ? null : _sendRoomImage,
+                tooltip: 'Send room photo (VIP10)',
+                icon: uploadingRoomImage
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.image_rounded),
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(
