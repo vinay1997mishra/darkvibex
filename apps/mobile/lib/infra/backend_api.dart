@@ -500,6 +500,19 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> cosmetics({required String userId}) =>
+      _json('GET', '/api/cosmetics/${Uri.encodeComponent(userId)}');
+
+  Future<Map<String, dynamic>?> purchaseCosmetic({required String userId, required String itemId, String? recipientUserId}) =>
+      _json('POST', '/api/cosmetics/purchase', returnErrorBody: true, body: {
+        'user_id': userId,
+        'item_id': itemId,
+        if (recipientUserId != null) 'recipient_user_id': recipientUserId,
+      });
+
+  Future<Map<String, dynamic>?> equipCosmetic({required String userId, required String itemId}) =>
+      _json('POST', '/api/cosmetics/equip', returnErrorBody: true, body: {'user_id': userId, 'item_id': itemId});
+
   Future<Map<String, dynamic>?> idLevelStatus({required String userId}) =>
       _json('GET', '/api/id-level?user_id=${Uri.encodeQueryComponent(userId)}');
 

@@ -11,6 +11,8 @@ import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
 import 'coin_seller_screen.dart';
 import 'vip_support_screen.dart';
+import 'cosmetics_shop_screen.dart';
+import '../widgets/vip_animated_frame.dart';
 import 'id_level_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
@@ -157,7 +159,8 @@ class ProfileScreen extends StatelessWidget {
                 children: [
               VipAnimatedFrame(
                 size: 76,
-                enabled: state.hasVipPrivilege('dynamic_avatar'),
+                enabled: state.activeFrameId != null || state.hasVipPrivilege('dynamic_avatar'),
+                styleId: state.activeFrameId,
                 child: Container(
                   padding: EdgeInsets.all(state.hasVipPrivilege('headframe') ? 3 : 0),
                   decoration: BoxDecoration(
@@ -280,7 +283,7 @@ class ProfileScreen extends StatelessWidget {
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
                 _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
                 _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
-                _item(context, state, Icons.store_rounded, 'Store', 'Frames, effects and themes'),
+                _item(context, state, Icons.store_rounded, 'Store', 'Frames, vehicles and entry effects'),
                 _item(context, state, Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
                 _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
                 _item(context, state, Icons.description_outlined, 'Terms & Privacy', 'Room rules, terms and privacy notice'),
@@ -327,6 +330,12 @@ class ProfileScreen extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Unique ID copied')),
           );
+          return;
+        }
+        if (title == 'Store') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CosmeticsShopScreen(state: state),
+          ));
           return;
         }
         await showDialog<void>(

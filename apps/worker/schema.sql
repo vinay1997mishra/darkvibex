@@ -124,6 +124,19 @@ CREATE TABLE IF NOT EXISTS direct_message_images (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_cosmetics (
+  user_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('frame','vehicle')),
+  acquired_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0,1)),
+  PRIMARY KEY (user_id, item_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_cosmetics_active
+  ON user_cosmetics(user_id, kind, active, expires_at);
+
 CREATE TABLE IF NOT EXISTS wallet_ledger (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
