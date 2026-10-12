@@ -197,7 +197,8 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: 15,
                   itemBuilder: (context, index) {
-                    final player = members.where((row) => int.tryParse(row['seat_index']?.toString() ?? '') == index).firstOrNull;
+                    final seatMembers = members.where((row) => int.tryParse(row['seat_index']?.toString() ?? '') == index).toList();
+                    final player = seatMembers.isEmpty ? null : seatMembers.first;
                     final name = player?['display_name']?.toString() ?? '';
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 3),
