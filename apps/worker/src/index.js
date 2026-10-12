@@ -230,7 +230,19 @@ async function publicCatalog(db, kind) {
   }
 }
 
+const profileColumnsReady = new WeakSet();
+
+async function ensureUserProfileColumns(db) {
+  if (profileColumnsReady.has(db)) return;
+  const rows = await db.prepare("PRAGMA table_info(users)").all();
+  const columns = new Set((rows.results ?? []).map((row) => String(row.name)));
+  if (!columns.has("country_code")) await db.prepare("ALTER TABLE users ADD COLUMN country_code TEXT NOT NULL DEFAULT ''").run();
+  if (!columns.has("gender")) await db.prepare("ALTER TABLE users ADD COLUMN gender TEXT NOT NULL DEFAULT ''").run();
+  profileColumnsReady.add(db);
+}
+
 async function ensureUser(db, userId, displayName = "DarkVibeX User") {
+  await ensureUserProfileColumns(db);
   const ts = now();
   await db.prepare(
     `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, created_at, updated_at)
@@ -628,6 +640,23 @@ async function handleApi(request, env, url) {
     const user = await ensureUser(db, userId, String(body.display_name ?? "").trim());
     await ensureUserAllowed(db, userId);
     return json({ ok: true, user });
+  }
+
+  if (url.pathname === "/api/users/profile" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const displayName = String(body.display_name ?? "").trim().slice(0, 40);
+    const countryCode = String(body.country_code ?? "").trim().toUpperCase().slice(0, 2);
+    const gender = String(body.gender ?? "").trim().toLowerCase();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!displayName || !/^[A-Z]{2}$/.test(countryCode) || !["male", "female", "other"].includes(gender)) {
+      return json({ ok: false, error: "invalid_profile" }, { status: 400 });
+    }
+    await ensureUserProfileColumns(db);
+    await db.prepare("UPDATE users SET display_name = ?, country_code = ?, gender = ?, updated_at = ? WHERE id = ?")
+      .bind(displayName, countryCode, gender, now(), userId).run();
+    return json({ ok: true, user: await db.prepare("SELECT id,display_name,country_code,gender,avatar_key FROM users WHERE id = ?").bind(userId).first() });
   }
 
   if (url.pathname === "/api/users/avatar" && request.method === "POST") {
