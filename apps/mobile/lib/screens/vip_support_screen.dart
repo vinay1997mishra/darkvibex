@@ -162,8 +162,47 @@ class _VipTicketThreadState extends State<_VipTicketThread> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(staff ? 'VIP Support' : 'You', style: const TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text(message['body']?.toString() ?? '')]),
             ));
           }).toList())),
-          if (closed) const SafeArea(top: false, child: Padding(padding: EdgeInsets.all(16), child: Text('This ticket is closed.'))
-          else SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [Expanded(child: TextField(controller: _reply, minLines: 1, maxLines: 4, maxLength: 2000, decoration: const InputDecoration(hintText: 'Write a reply', counterText: '', border: OutlineInputBorder()))), const SizedBox(width: 8), IconButton.filled(onPressed: _sending ? null : _send, icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send))]))),
+          if (closed)
+            const SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('This ticket is closed.'),
+              ),
+            )
+          else
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _reply,
+                      minLines: 1,
+                      maxLines: 4,
+                      maxLength: 2000,
+                      decoration: const InputDecoration(
+                        hintText: 'Write a reply',
+                        counterText: '',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _sending ? null : _send,
+                    icon: _sending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send),
+                  ),
+                ]),
+              ),
+            ),
         ]);
       },
     ),
