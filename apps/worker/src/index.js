@@ -4,6 +4,7 @@ import { COSMETIC_CATALOG, ensureCosmeticsSchema } from "./cosmetics.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
+import { handleMineFeatureApi } from "./mine_features.js";
 import { ensureSupportSchema } from "./support_store.js";
 import {
   acceptPendingLampMicInvite,
@@ -469,6 +470,9 @@ async function handleApi(request, env, url) {
       google_web_client_id: String(env.GOOGLE_WEB_CLIENT_ID ?? ""),
     });
   }
+
+  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id });
+  if (mineResponse) return mineResponse;
 
   const maintenance = await ownerSetting(db, "maintenance", { enabled: false, message: "" });
   if (maintenance.enabled === true && url.pathname !== "/api/config") {
