@@ -116,6 +116,21 @@ class BackendApi {
   Future<Map<String, dynamic>?> userProfile({required String userId}) =>
       _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
 
+  Future<List<Map<String, dynamic>>> mineIdentities({required String userId}) async {
+    final value = await _json('GET', '/api/mine/account-identities?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['identities'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>?> linkMineGoogle({required String userId, required String idToken}) async {
+    final value = await _json('POST', '/api/mine/account-identities/google', body: {
+      'user_id': userId, 'id_token': idToken,
+    }, returnErrorBody: true);
+    if (value?['ok'] != true || value?['identities'] is! List) return null;
+    return (value!['identities'] as List).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
   Future<Map<String, dynamic>?> mineWealth({required String userId}) =>
       _json('GET', '/api/mine/wealth?user_id=${Uri.encodeQueryComponent(userId)}');
 
