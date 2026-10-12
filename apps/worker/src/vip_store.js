@@ -6,6 +6,7 @@ const parsed=(value)=>{try{return JSON.parse(String(value??"{}"))||{};}catch(_){
 export async function ensureVipSchema(db){
   await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta INTEGER NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
 }
 
 async function logEvent(db,userId,kind,coins,exp,before,after,ts){
