@@ -159,11 +159,10 @@ class BackendApi {
     required String roomId,
     required String userId,
     required int totalCoins,
-    required int slots,
     required String requestId,
   }) =>
       _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch', body: {
-        'user_id': userId, 'total_coins': totalCoins, 'slots': slots, 'request_id': requestId,
+        'user_id': userId, 'total_coins': totalCoins, 'request_id': requestId,
       });
 
   Future<Map<String, dynamic>?> claimRoomLuckyPouch({
