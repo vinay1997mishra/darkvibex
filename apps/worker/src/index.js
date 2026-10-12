@@ -527,6 +527,10 @@ async function handleApi(request, env, url) {
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (user && viewerId !== viewedUserId) {
+      const targetVip = await getVipStatus(db, viewedUserId);
+      if (targetVip.active && targetVip.level >= 18 && targetVip.preferences.anonymous_everywhere === true) {
+        user.display_name = "Anonymous";
+      }
       const viewerVip = await getVipStatus(db, viewerId);
       const shouldHide = viewerVip.active && viewerVip.level >= 11 && viewerVip.preferences.hide_visitors === true;
       if (!shouldHide) {
