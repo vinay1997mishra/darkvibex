@@ -69,7 +69,7 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
     final exp = int.tryParse(status?['exp']?.toString() ?? '') ?? 0;
     final next = int.tryParse(status?['exp_to_next']?.toString() ?? '') ?? 0;
     final total = int.tryParse(status?['total_exp']?.toString() ?? '') ?? 0;
-    final progress = next == 0 ? 1.0 : (exp / next).clamp(0.0, 1.0);
+    final progress = next == 0 ? 1.0 : (exp / next).clamp(0.0, 1.0).toDouble();
     final rewards = (status?['rewards'] as List?)
             ?.whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
