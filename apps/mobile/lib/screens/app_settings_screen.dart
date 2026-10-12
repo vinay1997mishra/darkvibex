@@ -18,6 +18,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
   bool messageNotifications = true;
   String language = 'English';
   bool loaded = false;
+  bool linking = false;
+  List<Map<String, dynamic>> identities = const [];
 
   String get _prefix => 'darkvibex.${widget.state.userId}.';
 
@@ -29,8 +31,10 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    final linked = await widget.state.backend.mineIdentities(userId: widget.state.userId);
     if (!mounted) return;
     setState(() {
+      identities = linked;
       roomNotifications = prefs.getBool('${_prefix}room_notifications') ?? true;
       messageNotifications = prefs.getBool('${_prefix}message_notifications') ?? true;
       language = prefs.getString('${_prefix}language') ?? 'English';
@@ -42,6 +46,23 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (value is bool) await prefs.setBool('$_prefix$key', value);
     if (value is String) await prefs.setString('$_prefix$key', value);
+  }
+
+  bool get _googleLinked => identities.any((row) => row['provider']?.toString() == 'google');
+
+  Future<void> _linkGoogle() async {
+    if (_googleLinked || linking) return;
+    setState(() => linking = true);
+    final ok = await widget.state.linkGoogleAccount();
+    final linked = await widget.state.backend.mineIdentities(userId: widget.state.userId);
+    if (!mounted) return;
+    setState(() {
+      linking = false;
+      identities = linked;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? 'Google account linked' : 'Google account could not be linked'),
+    ));
   }
 
   Future<void> _openMine(String kind) async {
@@ -105,8 +126,14 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.link_rounded),
-                    title: const Text('Account'),
-                    subtitle: Text(widget.state.authProvider == 'google' ? 'Google account connected' : 'Guest account'),
+                    title: const Text('Bind Google account'),
+                    subtitle: Text(_googleLinked
+                        ? 'Google identity linked'
+                        : widget.state.authProvider == 'google'
+                            ? 'Google sign-in account'
+                            : linking ? 'Connecting…' : 'Link Google sign-in for account recovery'),
+                    trailing: _googleLinked ? const Icon(Icons.check_circle_outline_rounded) : const Icon(Icons.chevron_right_rounded),
+                    onTap: _googleLinked || linking ? null : _linkGoogle,
                   ),
                   ListTile(
                     leading: const Icon(Icons.block_rounded),
