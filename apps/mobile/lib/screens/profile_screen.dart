@@ -283,6 +283,7 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => VipSupportScreen(state: state))),
                   ),
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
+                _item(context, state, Icons.diamond_rounded, 'Wealth Level', 'Lifetime gift spending level'),
                 _item(context, state, Icons.shield_rounded, 'My Guardian', 'Top gift supporters over 30 days'),
                 _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
                 _item(context, state, Icons.task_alt_rounded, 'Task', 'Daily and account tasks'),
@@ -321,23 +322,10 @@ class ProfileScreen extends StatelessWidget {
           ));
           return;
         }
-        if (title == 'My Guardian' || title == 'Feedback' || title == 'Blacklist') {
+        if (title == 'Wealth Level' || title == 'My Guardian' || title == 'Feedback' || title == 'Blacklist' || title == 'Task' || title == 'Medal of Honor') {
           await Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => MineFeatureScreen(state: state, kind: title),
           ));
-          return;
-        }
-        if (title == 'Medal of Honor' || title == 'Task') {
-          await showDialog<void>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              title: Text(title),
-              content: const Text('This Tinni Star feature is not connected to a DarkVibeX backend yet.'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-              ],
-            ),
-          );
           return;
         }
         if (title == 'Terms & Privacy' || title == 'Privacy & Safety') {
