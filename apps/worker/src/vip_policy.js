@@ -33,6 +33,7 @@ export function vipCapabilities(level, active){
     room_seat_limit: active ? (level >= 10 ? 30 : level >= 7 ? 20 : 12) : 12,
     room_background_enabled: active && level >= 3,
     picture_welcome_enabled: active && level >= 5,
+    red_envelope_enabled: active && level >= 6,
     room_images_enabled: active && level >= 10,
     customer_service_enabled: active && level >= 9,
     seat_protection_enabled: active && level >= 13,
