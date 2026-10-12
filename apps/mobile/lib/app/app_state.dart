@@ -68,7 +68,8 @@ class AppState extends ChangeNotifier {
   String? vipError;
   final Map<String, bool> vipPreferences = <String, bool>{};
   bool get vipAnonymousEverywhere =>
-      vipPreferences['anonymous_everywhere'] ?? false;
+      hasVipPrivilege('anonymous_everywhere') &&
+      (vipPreferences['anonymous_everywhere'] ?? false);
 
   bool get vipIsActive =>
       vipLevel > 0 &&

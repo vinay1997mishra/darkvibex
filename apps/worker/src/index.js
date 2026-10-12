@@ -1,6 +1,6 @@
 import { normalizeRole } from "./role_policy.js";
 import { handleOwnerApi } from "./owner_api.js";
-import { awardSellerVipExp, getVipStatus } from "./vip_store.js";
+import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import {
   acceptPendingLampMicInvite,
@@ -355,17 +355,21 @@ async function ensureImageTables(db) {
 
 async function listRooms(db) {
   await ensureImageTables(db);
+  await ensureVipSchema(db);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
             ri.image_key AS avatar_key,
-            COALESCE(u.display_name, '') AS owner_name,
+            CASE WHEN ov.level >= 18 AND ov.active_until > ?
+                       AND json_extract(ov.preferences_json, '$.anonymous_everywhere') = 1
+                 THEN 'Anonymous' ELSE COALESCE(u.display_name, '') END AS owner_name,
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
       ORDER BY r.updated_at DESC
       LIMIT 100`
-  ).all();
+  ).bind(now()).all();
   return result.results ?? [];
 }
 
@@ -829,6 +833,7 @@ async function handleApi(request, env, url) {
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const roomId = parts[2];
     if (request.method === "GET") {
+      await ensureVipSchema(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -837,12 +842,17 @@ async function handleApi(request, env, url) {
       ).bind(roomId, String(session.sub)).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const rows = await db.prepare(
-        `SELECT m.id, m.user_id, u.display_name, m.text, m.created_at
+        `SELECT m.id, m.user_id,
+                CASE WHEN v.level >= 18 AND v.active_until > ?
+                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                     THEN 'Anonymous' ELSE u.display_name END AS display_name,
+                m.text, m.created_at
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN user_vip v ON v.user_id = m.user_id
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC LIMIT 100`
-      ).bind(roomId).all();
+      ).bind(now(), roomId).all();
       return json({ ok: true, messages: (rows.results ?? []).reverse() });
     }
     if (request.method === "POST") {
@@ -869,6 +879,7 @@ async function handleApi(request, env, url) {
     const roomId = parts[2];
     await ensureRoomAdminTable(db);
     if (request.method === "GET") {
+      await ensureVipSchema(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -878,18 +889,23 @@ async function handleApi(request, env, url) {
       ).bind(roomId, actorId).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const rows = await db.prepare(
-        `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
+        `SELECT m.user_id,
+                CASE WHEN v.level >= 18 AND v.active_until > ?
+                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                     THEN 'Anonymous' ELSE u.display_name END AS display_name,
+                u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
                 CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
                 CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin
            FROM room_members m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN rooms r ON r.id = m.room_id
            LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
           WHERE m.room_id = ?
           ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(roomId).all();
+      ).bind(now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
