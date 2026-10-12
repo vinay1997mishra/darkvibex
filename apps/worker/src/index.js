@@ -247,6 +247,7 @@ async function ensureRoomSettingsTable(db) {
       announcement TEXT NOT NULL DEFAULT '',
       theme_id TEXT NOT NULL DEFAULT 'dark',
       group_pk_enabled INTEGER NOT NULL DEFAULT 0,
+      welcome_image_key TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
@@ -256,6 +257,9 @@ async function ensureRoomSettingsTable(db) {
   } catch (_) {}
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN group_pk_enabled INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN welcome_image_key TEXT NOT NULL DEFAULT ''").run();
   } catch (_) {}
 }
 
@@ -682,12 +686,15 @@ async function handleApi(request, env, url) {
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
     await ensureRoomSettingsTable(db);
+    await ensureVipSchema(db);
     const room = await db.prepare(
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
-              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled
+              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled,
+              CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
+         LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
         WHERE r.id = ?`
-    ).bind(roomId).first();
+    ).bind(now(), roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     if (request.method === "GET") {
       const authError = await requireSession(request, env);
@@ -718,6 +725,17 @@ async function handleApi(request, env, url) {
       const seatCount = requestedSeatCount;
       const locked = body.locked === true ? 1 : 0;
       const announcement = String(body.announcement ?? "").trim().slice(0, 500);
+      const welcomeImageKey = Object.prototype.hasOwnProperty.call(body, "welcome_image_key")
+        ? String(body.welcome_image_key ?? "").trim()
+        : String(room.welcome_image_key ?? "");
+      if (welcomeImageKey && welcomeImageKey !== String(room.welcome_image_key ?? "")) {
+        if (!vipStatus.picture_welcome_enabled) {
+          return json({ ok: false, error: "vip5_required_for_picture_welcome" }, { status: 403 });
+        }
+        if (!welcomeImageKey.startsWith(`users/${userId}/welcome-${roomId}-`) || !/\.(jpg|jpeg|png|webp)$/i.test(welcomeImageKey)) {
+          return json({ ok: false, error: "invalid_welcome_image_key" }, { status: 400 });
+        }
+      }
       const allowedThemes = new Set(["dark", "midnight", "rose", "forest", "gold"]);
       const themeId = String(body.theme_id ?? room.theme_id ?? "dark");
       if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
@@ -737,10 +755,10 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, themeId, groupPkEnabled, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled } });
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey } });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
