@@ -1374,16 +1374,21 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureImageTables(db);
+    const vip = await getVipStatus(db, userId, now());
+    const retentionDays = vip.active ? Number(vip.message_retention_days ?? 0) : 0;
+    const cutoff = retentionDays > 0 ? now() - retentionDays * 86400000 : 0;
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
               i.image_key
          FROM direct_messages m
          LEFT JOIN direct_message_images i ON i.message_id = m.id
-        WHERE (m.sender_user_id = ? AND m.receiver_user_id = ?)
-           OR (m.sender_user_id = ? AND m.receiver_user_id = ?)
-        ORDER BY m.created_at ASC
-        LIMIT 200`
-    ).bind(userId, otherId, otherId, userId).all();
+        WHERE ((m.sender_user_id = ? AND m.receiver_user_id = ?)
+           OR (m.sender_user_id = ? AND m.receiver_user_id = ?))
+          AND (? = 0 OR m.created_at >= ?)
+        ORDER BY m.created_at DESC
+        LIMIT ?`
+    ).bind(userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
+    rows.results = (rows.results ?? []).reverse();
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
     ).bind(now(), userId, otherId).run();
@@ -1587,6 +1592,67 @@ async function handleApi(request, env, url) {
     });
   }
 
+  if (url.pathname === "/api/friends" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    const vip = await getVipStatus(db, userId, now());
+    const friends = await db.prepare("SELECT f.friend_user_id AS id, u.display_name, u.avatar_key, u.vip_level FROM user_friends f JOIN users u ON u.id=f.friend_user_id WHERE f.user_id=? ORDER BY f.created_at DESC").bind(userId).all();
+    return json({ ok: true, friends: friends.results ?? [], friend_limit: vip.active ? null : 300 });
+  }
+
+  if (url.pathname === "/api/friends/add" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const friendId = String(body.friend_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!friendId || friendId === userId) return json({ ok: false, error: "invalid_friend" }, { status: 400 });
+    await ensureUser(db, userId);
+    await ensureUser(db, friendId);
+    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    const vip = await getVipStatus(db, userId, now());
+    const count = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(userId).first();
+    const exists = await db.prepare("SELECT 1 AS yes FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId).first();
+    if (!exists && !vip.active && Number(count?.total ?? 0) >= 300) return json({ ok: false, error: "friend_limit_reached", friend_limit: 300 }, { status: 409 });
+    const ts = now();
+    await db.batch([
+      db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(userId, friendId, ts),
+      db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(friendId, userId, ts),
+    ]);
+    return json({ ok: true, friend_limit: vip.active ? null : 300 });
+  }
+
+  if (url.pathname === "/api/friends/remove" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const friendId = String(body.friend_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    await db.batch([
+      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId),
+      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(friendId, userId),
+    ]);
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/gifts/catalog" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const vip = await getVipStatus(db, userId, now());
+    const gifts = [
+      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0 },
+      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3 },
+      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3 },
+      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3 },
+    ];
+    return json({ ok: true, gifts: gifts.filter(g => g.vip_level === 0 || (vip.active && vip.level >= g.vip_level)) });
+  }
+
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
     const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
     if (giftsFeature.enabled === false) return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
@@ -1596,10 +1662,17 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
     const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
-    const cost = Number(body.coin_cost ?? 0);
-    if (!sender || !receiver || giftId !== "basic-star" || cost !== 5000) {
-      return json({ ok: false, error: "invalid_gift" }, { status: 400 });
-    }
+    const catalog = {
+      "basic-star": { cost: 5000, vip_level: 0 },
+      "vip-rose": { cost: 10000, vip_level: 3 },
+      "vip-crown": { cost: 50000, vip_level: 3 },
+      "vip-phoenix": { cost: 100000, vip_level: 3 },
+    };
+    const gift = catalog[giftId];
+    if (!sender || !receiver || !gift) return json({ ok: false, error: "invalid_gift" }, { status: 400 });
+    const vip = await getVipStatus(db, sender, now());
+    if (gift.vip_level > 0 && (!vip.active || vip.level < gift.vip_level)) return json({ ok: false, error: "vip_required" }, { status: 403 });
+    const cost = gift.cost;
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
