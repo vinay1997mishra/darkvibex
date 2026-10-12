@@ -471,7 +471,7 @@ async function handleApi(request, env, url) {
     });
   }
 
-  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id });
+  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange });
   if (mineResponse) return mineResponse;
 
   const maintenance = await ownerSetting(db, "maintenance", { enabled: false, message: "" });
