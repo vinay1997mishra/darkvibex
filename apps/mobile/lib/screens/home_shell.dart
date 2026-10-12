@@ -211,7 +211,7 @@ class _RoomsHome extends StatelessWidget {
                       radius: 26,
                       backgroundImage: room.avatarKey == null
                           ? null
-                          : NetworkImage(state.backend.fileUrl(room.avatarKey!)),
+                          : NetworkImage(state.backend.fileUrl(room.avatarKey!), headers: state.backend.fileHeaders),
                       child: room.avatarKey == null
                           ? Text(room.name.isEmpty ? '?' : room.name.substring(0, 1).toUpperCase())
                           : null,
