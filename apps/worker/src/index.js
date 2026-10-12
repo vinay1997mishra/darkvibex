@@ -572,6 +572,11 @@ async function handleApi(request, env, url) {
     const user = await db.prepare(
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
+    if (user) {
+      const targetVip = await getVipStatus(db, viewedUserId);
+      user.active_vip_level = targetVip.active ? targetVip.level : 0;
+      user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
+    }
     if (user && viewerId !== viewedUserId) {
       const targetVip = await getVipStatus(db, viewedUserId);
       if (targetVip.active && targetVip.level >= 18 && targetVip.preferences.anonymous_everywhere === true) {
@@ -1021,7 +1026,12 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 18 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                      THEN 'Anonymous' ELSE u.display_name END AS display_name,
-                u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
+                u.avatar_key,
+                CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
+                CASE WHEN v.level >= 14 AND v.active_until > ?
+                           AND json_extract(v.preferences_json, '$.invisible_entry') = 1
+                     THEN 1 ELSE 0 END AS invisible_entry,
+                m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
                 CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
                 CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin
            FROM room_members m
@@ -1033,7 +1043,7 @@ async function handleApi(request, env, url) {
           ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), roomId).all();
+      ).bind(now(), now(), now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
@@ -1798,6 +1808,18 @@ export default {
               LIMIT 1`
           ).bind(key, String(session.sub), String(session.sub)).first();
           if (!allowed) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+        }
+        const protectedAvatar = key.match(/^users\/([^/]+)\/avatar-/);
+        if (protectedAvatar) {
+          const db = requireDb(env);
+          const targetId = protectedAvatar[1];
+          const targetVip = await getVipStatus(db, targetId);
+          if (targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true) {
+            const authError = await requireSession(request, env);
+            if (authError) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+            const viewer = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+            if (String(viewer.sub) !== targetId) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+          }
         }
         const object = await env.FILES.get(key);
         if (!object) return json({ ok: false, error: "file_not_found" }, { status: 404 });
