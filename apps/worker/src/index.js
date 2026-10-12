@@ -1255,9 +1255,13 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     const body = await bodyJson(request);
+    const receiverId = String(body.receiver_user_id ?? "").trim();
+    if (!receiverId || receiverId === userId) return json({ ok: false, error: "invalid_receiver" }, { status: 400 });
     await ensureUser(db, userId);
+    await ensureUser(db, receiverId);
     await ensureUserAllowed(db, userId, { checkMute: true });
-    const usage = await consumeFreeSayHi(db, userId, body.message);
+    await ensureUserAllowed(db, receiverId);
+    const usage = await consumeFreeSayHi(db, userId, receiverId, body.message);
     return json({ ok: true, usage });
   }
 
