@@ -85,7 +85,7 @@ class _CoinSellerScreenState extends State<CoinSellerScreen> {
                 children: [
                   const Text('Seller coin transfer', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
-                  const Text('Send any amount of coins to a user by their DarkVibeX ID. Every coin received from a Coin Seller earns exactly 1 VIP EXP, with no transfer or monthly cap.'),
+                  const Text('Send any amount of coins to a user by their DarkVibeX ID. Every 400 coins received from a Coin Seller earn 1 VIP EXP, with no transfer or monthly cap.'),
                   const SizedBox(height: 16),
                   Text('Available coins: ${widget.state.coins}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ],

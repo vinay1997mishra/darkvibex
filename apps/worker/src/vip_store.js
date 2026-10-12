@@ -4,7 +4,14 @@ const DAY_MS=86400000;
 const parsed=(value)=>{try{return JSON.parse(String(value??"{}"))||{};}catch(_){return {};}};
 
 export async function ensureVipSchema(db){
-  await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+  try {
+    await db.prepare("SELECT exp_rate_version FROM user_vip LIMIT 1").first();
+  } catch (error) {
+    if (!/no such column/i.test(String(error?.message ?? error))) throw error;
+    await db.prepare("ALTER TABLE user_vip ADD COLUMN exp_rate_version INTEGER NOT NULL DEFAULT 0").run();
+  }
+  await db.prepare("UPDATE user_vip SET exp_balance=CAST(exp_balance / 400 AS INTEGER), exp_rate_version=1 WHERE exp_rate_version=0").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta INTEGER NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
 }
@@ -87,17 +94,21 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   let total=Number(row.total_received_coins??0);
   let until=row.active_until==null?null:Number(row.active_until);
   const active=level>0&&until!=null&&until>ts;
-  const multiplier=1;
-  const awarded=coins;
+  const multiplier=1/400;
+  // Carry sub-400 coin amounts across transfers using the existing lifetime
+  // coin counter, so 399 + 1 coins correctly produce 1 VIP EXP.
+  const awarded=Math.floor((total+coins)/400)-Math.floor(total/400);
   const before=level;
   exp+=awarded;
   total+=coins;
   while(level<18){
     const next=vipRule(level+1);
     if(!next||exp<next.upgrade) break;
-    exp-=next.upgrade;
+    // Every VIP tier starts from zero; excess EXP is not carried forward.
+    exp=0;
     level+=1;
     until=ts+next.days*DAY_MS;
+    break;
   }
   const changed=level!==before;
   await db.batch([

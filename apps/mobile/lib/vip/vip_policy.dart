@@ -41,24 +41,24 @@ class VipPolicy {
   static const int freeSayHiMaxWords = 30;
 
   static const List<VipLevelRule> levels = <VipLevelRule>[
-    VipLevelRule(level: 1, totalRechargeCoins: 50000, upgradeExp: 50000, maintainExp: 30000),
-    VipLevelRule(level: 2, totalRechargeCoins: 100000, upgradeExp: 50000, maintainExp: 30000),
-    VipLevelRule(level: 3, totalRechargeCoins: 300000, upgradeExp: 100000, maintainExp: 90000),
-    VipLevelRule(level: 4, totalRechargeCoins: 1000000, upgradeExp: 800000, maintainExp: 500000),
-    VipLevelRule(level: 5, totalRechargeCoins: 3000000, upgradeExp: 2000000, maintainExp: 1300000),
-    VipLevelRule(level: 6, totalRechargeCoins: 7000000, upgradeExp: 4000000, maintainExp: 2600000),
-    VipLevelRule(level: 7, totalRechargeCoins: 14000000, upgradeExp: 7000000, maintainExp: 4500000),
-    VipLevelRule(level: 8, totalRechargeCoins: 26000000, upgradeExp: 12000000, maintainExp: 7800000),
-    VipLevelRule(level: 9, totalRechargeCoins: 42000000, upgradeExp: 16000000, maintainExp: 11000000),
-    VipLevelRule(level: 10, totalRechargeCoins: 62000000, upgradeExp: 20000000, maintainExp: 14000000),
-    VipLevelRule(level: 11, totalRechargeCoins: 102000000, upgradeExp: 40000000, maintainExp: 28000000),
-    VipLevelRule(level: 12, totalRechargeCoins: 220000000, upgradeExp: 118000000, maintainExp: 83000000),
-    VipLevelRule(level: 13, totalRechargeCoins: 430000000, upgradeExp: 210000000, maintainExp: 150000000),
-    VipLevelRule(level: 14, totalRechargeCoins: 820000000, upgradeExp: 390000000, maintainExp: 310000000),
-    VipLevelRule(level: 15, totalRechargeCoins: 1820000000, upgradeExp: 1000000000, maintainExp: 700000000),
-    VipLevelRule(level: 16, totalRechargeCoins: 3820000000, upgradeExp: 2000000000, maintainExp: 1400000000),
-    VipLevelRule(level: 17, totalRechargeCoins: 7382000000, upgradeExp: 3500000000, maintainExp: 3000000000),
-    VipLevelRule(level: 18, totalRechargeCoins: 11882000000, upgradeExp: 4500000000, maintainExp: 4000000000, validityDays: 45),
+    VipLevelRule(level: 1, totalRechargeCoins: 35000000, upgradeExp: 87500, maintainExp: 75),
+    VipLevelRule(level: 2, totalRechargeCoins: 135000000, upgradeExp: 250000, maintainExp: 75),
+    VipLevelRule(level: 3, totalRechargeCoins: 335000000, upgradeExp: 500000, maintainExp: 225),
+    VipLevelRule(level: 4, totalRechargeCoins: 735000000, upgradeExp: 1000000, maintainExp: 1250),
+    VipLevelRule(level: 5, totalRechargeCoins: 1735000000, upgradeExp: 2500000, maintainExp: 3250),
+    VipLevelRule(level: 6, totalRechargeCoins: 3235000000, upgradeExp: 3750000, maintainExp: 6500),
+    VipLevelRule(level: 7, totalRechargeCoins: 5985000000, upgradeExp: 6875000, maintainExp: 11250),
+    VipLevelRule(level: 8, totalRechargeCoins: 9485000000, upgradeExp: 8750000, maintainExp: 19500),
+    VipLevelRule(level: 9, totalRechargeCoins: 13985000000, upgradeExp: 11250000, maintainExp: 27500),
+    VipLevelRule(level: 10, totalRechargeCoins: 20235000000, upgradeExp: 15625000, maintainExp: 35000),
+    VipLevelRule(level: 11, totalRechargeCoins: 27735000000, upgradeExp: 18750000, maintainExp: 70000),
+    VipLevelRule(level: 12, totalRechargeCoins: 36735000000, upgradeExp: 22500000, maintainExp: 207500),
+    VipLevelRule(level: 13, totalRechargeCoins: 47235000000, upgradeExp: 26250000, maintainExp: 375000),
+    VipLevelRule(level: 14, totalRechargeCoins: 57735000000, upgradeExp: 26250000, maintainExp: 775000),
+    VipLevelRule(level: 15, totalRechargeCoins: 69235000000, upgradeExp: 28750000, maintainExp: 1750000),
+    VipLevelRule(level: 16, totalRechargeCoins: 80735000000, upgradeExp: 28750000, maintainExp: 3500000),
+    VipLevelRule(level: 17, totalRechargeCoins: 92235000000, upgradeExp: 28750000, maintainExp: 7500000),
+    VipLevelRule(level: 18, totalRechargeCoins: 103735000000, upgradeExp: 28750000, maintainExp: 10000000, validityDays: 45),
   ];
 
   static const List<VipPrivilege> privileges = <VipPrivilege>[
@@ -69,14 +69,13 @@ class VipPolicy {
     VipPrivilege(id: 'chat_bubble', title: 'Chat Bubble', description: 'VIP chat bubble with richer styles at higher levels.', minLevel: 2),
     VipPrivilege(id: 'hide_last_online', title: 'Hide Last Online', description: 'Hide last-online information from the profile.', minLevel: 2),
     VipPrivilege(id: 'room_background', title: 'Change Room Background', description: 'Use a custom background in your own room.', minLevel: 3),
-    VipPrivilege(id: 'friends_limit', title: 'Friends Limit Expanded', description: '300 friends for non-VIP; unlimited friends while VIP is active.', minLevel: 4),
+    VipPrivilege(id: 'friends_limit', title: 'Friends Limit Expanded', description: 'VIP4-8: +300, VIP9-12: +700, VIP13-18: +1500 friends.', minLevel: 4),
     VipPrivilege(id: 'entrance_effect', title: 'Entrance Effect', description: 'Level-specific room entrance banner/effect.', minLevel: 4),
     VipPrivilege(id: 'fantasy_card', title: 'Fantasy Card', description: 'Premium profile/fantasy card that improves with level.', minLevel: 5),
     VipPrivilege(id: 'free_say_hi', title: 'Free Say Hi', description: '4 free Say Hi messages; each message is limited to 30 words.', minLevel: 5),
     VipPrivilege(id: 'picture_welcome', title: 'Picture Welcome', description: 'Set a picture in the room welcome message.', minLevel: 5),
-    VipPrivilege(id: 'message_roaming', title: 'Message Roaming', description: 'Cloud message history: VIP5-7 30 days, VIP8-11 60 days, VIP12+ 120 days.', minLevel: 5),
+    VipPrivilege(id: 'message_roaming', title: 'Message Roaming', description: 'Cloud message history: VIP5 30 days, VIP8 60 days, VIP12+ 120 days.', minLevel: 5),
     VipPrivilege(id: 'show_id', title: 'Show ID', description: 'Decorative Show-ID skin. VIP14 style remains for VIP15-18.', minLevel: 5),
-    VipPrivilege(id: 'exclusive_gifts', title: 'Exclusive Gifts', description: 'Send special VIP gifts with exclusive effects.', minLevel: 3),
     VipPrivilege(id: 'red_envelope', title: 'Message Red Envelope', description: 'Send red-envelope rewards in private messages.', minLevel: 6),
     VipPrivilege(id: 'dynamic_avatar', title: 'Dynamic Avatar', description: 'Use an animated/dynamic avatar.', minLevel: 7),
     VipPrivilege(id: 'many_seats', title: 'Room With Many Seats', description: 'VIP7: up to 20 seats. VIP10+: up to 30 seats.', minLevel: 7),
@@ -84,7 +83,6 @@ class VipPolicy {
     VipPrivilege(id: 'nickname_light', title: 'Nickname Light Effect', description: 'Exclusive nickname light effect from VIP8 through VIP17.', minLevel: 8, maxLevel: 17),
     VipPrivilege(id: 'disable_say_hi', title: 'Disable Say Hi', description: 'Prevent other users from initiating Say Hi with you.', minLevel: 8),
     VipPrivilege(id: 'entrance_vehicle', title: 'Entrance Vehicle', description: 'Level-specific entrance vehicle; higher VIP means more premium vehicles.', minLevel: 8),
-    VipPrivilege(id: 'exclusive_mic_emoticon', title: 'Exclusive Mic Emoticon', description: 'Use a special animated microphone emoticon while speaking.', minLevel: 9),
     VipPrivilege(id: 'customer_service', title: 'Exclusive Customer Service', description: 'Dedicated VIP support channel.', minLevel: 9),
     VipPrivilege(id: 'send_pictures', title: 'Send Pictures in Chatroom', description: 'Send picture messages inside chatrooms.', minLevel: 10),
     VipPrivilege(id: 'hide_charm', title: 'Hide Charm Level', description: 'Hide charm level on public surfaces.', minLevel: 10),
@@ -94,12 +92,13 @@ class VipPolicy {
     VipPrivilege(id: 'seat_protection', title: 'Remove From Seat Protection', description: 'Protect your occupied seat from forced removal.', minLevel: 13),
     VipPrivilege(id: 'invisible_entry', title: 'Enter Chat Room Invisible', description: 'Enter rooms without a public join notice.', minLevel: 14),
     VipPrivilege(id: 'kick_protection', title: 'Kick Out Protection', description: 'Protection from normal room kick actions.', minLevel: 14),
-    VipPrivilege(id: 'unique_id', title: 'Unique ID', description: 'Unique ID customization unlocked from VIP15.', minLevel: 15),
+    VipPrivilege(id: 'unique_id', title: 'Unique ID', description: 'VIP15–VIP18: change once each month and get one extra change after every VIP level-up.', minLevel: 15),
     VipPrivilege(id: 'splash_recommend', title: 'Recommend on Splash', description: 'One-day featured recommendation on the splash surface.', minLevel: 15),
     VipPrivilege(id: 'privacy_protection', title: 'Privacy Protection', description: 'Protect profile/avatar media from ordinary save/screenshot flows where supported.', minLevel: 15),
     VipPrivilege(id: 'custom_avatar_frame', title: 'Customized Avatar Frame', description: 'Use a premium customized avatar frame.', minLevel: 16),
     VipPrivilege(id: 'exclusive_mic_effect', title: 'Exclusive Mic Effect', description: 'Premium effect around your mic/avatar while speaking.', minLevel: 16),
     VipPrivilege(id: 'card_background', title: 'Exclusive Card Background', description: 'Use an exclusive VIP profile-card background.', minLevel: 17),
+    VipPrivilege(id: 'customized_vehicles', title: 'Customized Vehicles', description: 'VIP18 receives the highest-tier premium/custom vehicle collection.', minLevel: 18),
     VipPrivilege(id: 'mic_chair', title: 'Mic Chair', description: 'Personal premium chair/effect while on mic.', minLevel: 18),
     VipPrivilege(id: 'anonymous_everywhere', title: 'Anonymous Everywhere', description: 'When enabled, hide your name on game wins, banners, room history and other public activity surfaces.', minLevel: 18),
     VipPrivilege(id: 'honorary_title', title: 'Honorary Title', description: 'Top-tier honorary VIP title.', minLevel: 18),
@@ -114,10 +113,12 @@ class VipPolicy {
   static List<VipPrivilege> unlockedAt(int level) =>
       privileges.where((item) => item.isUnlockedAt(level)).toList(growable: false);
 
-  static int? friendLimit(int level, {required bool active}) => active ? null : 300;
-
-  static int friendBonus(int level) => 0;
-
+  static int friendBonus(int level) {
+    if (level >= 13) return 1500;
+    if (level >= 9) return 700;
+    if (level >= 4) return 300;
+    return 0;
+  }
 
   static int maxRoomSeats(int level) {
     if (level >= 10) return 30;

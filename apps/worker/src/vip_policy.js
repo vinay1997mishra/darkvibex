@@ -1,13 +1,16 @@
+// Each upgrade amount is a per-level target based on the supplied USD schedule
+// at 5,000,000 coins/USD and 400 coins per VIP EXP. Total coins remain cumulative.
+// Legacy maintenance targets are kept at the same coin cost and converted to EXP.
 export const VIP_LEVELS = Object.freeze([
-  [1,50000,50000,30000,30],[2,100000,50000,30000,30],
-  [3,300000,100000,90000,30],[4,1000000,800000,500000,30],
-  [5,3000000,2000000,1300000,30],[6,7000000,4000000,2600000,30],
-  [7,14000000,7000000,4500000,30],[8,26000000,12000000,7800000,30],
-  [9,42000000,16000000,11000000,30],[10,62000000,20000000,14000000,30],
-  [11,102000000,40000000,28000000,30],[12,220000000,118000000,83000000,30],
-  [13,430000000,210000000,150000000,30],[14,820000000,390000000,310000000,30],
-  [15,1820000000,1000000000,700000000,30],[16,3820000000,2000000000,1400000000,30],
-  [17,7382000000,3500000000,3000000000,30],[18,11882000000,4500000000,4000000000,45],
+  [1,35000000,87500,75,30],[2,135000000,250000,75,30],
+  [3,335000000,500000,225,30],[4,735000000,1000000,1250,30],
+  [5,1735000000,2500000,3250,30],[6,3235000000,3750000,6500,30],
+  [7,5985000000,6875000,11250,30],[8,9485000000,8750000,19500,30],
+  [9,13985000000,11250000,27500,30],[10,20235000000,15625000,35000,30],
+  [11,27735000000,18750000,70000,30],[12,36735000000,22500000,207500,30],
+  [13,47235000000,26250000,375000,30],[14,57735000000,26250000,775000,30],
+  [15,69235000000,28750000,1750000,30],[16,80735000000,28750000,3500000,30],
+  [17,92235000000,28750000,7500000,30],[18,103735000000,28750000,10000000,45],
 ].map(([level,total,upgrade,maintain,days])=>({level,total,upgrade,maintain,days})));
 
 export const VIP_PREF_LEVEL = Object.freeze({
@@ -29,12 +32,7 @@ export function vipRule(level){
 export function vipCapabilities(level, active){
   return {
     exp_multiplier: 1,
-    friend_bonus: 0,
-    friend_limit: active ? null : 300,
-    friends_unlimited: active,
-    exclusive_gifts_enabled: active && level >= 3,
-    exclusive_mic_emoticon_enabled: active && level >= 9,
-    honorary_title_enabled: active && level >= 18,
+    friend_bonus: active ? (level >= 13 ? 1500 : level >= 9 ? 700 : level >= 4 ? 300 : 0) : 0,
     room_seat_limit: active ? (level >= 10 ? 30 : level >= 7 ? 20 : 12) : 12,
     room_background_enabled: active && level >= 3,
     picture_welcome_enabled: active && level >= 5,
