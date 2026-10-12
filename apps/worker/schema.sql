@@ -183,6 +183,16 @@ CREATE TABLE IF NOT EXISTS user_friends (
   FOREIGN KEY (friend_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS account_identities (
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (provider, subject),
+  UNIQUE (user_id, provider)
+);
+
 CREATE TABLE IF NOT EXISTS user_follows (
   follower_user_id TEXT NOT NULL,
   followed_user_id TEXT NOT NULL,
