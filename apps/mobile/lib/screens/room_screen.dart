@@ -851,7 +851,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 child: avatar == null || avatar.isEmpty ? const Icon(Icons.person_rounded, size: 20) : null,
                               ),
                             ),
-                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}'),
+                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
                             subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
                             trailing: !isSelf && (widget.state.hasVipPrivilege('free_say_hi') || canModerate)
                                 ? Row(
@@ -1417,51 +1417,57 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendGift() async {
-    const giftCost = 5000;
     String receiverId = widget.room.ownerUserId;
-
     if (isRoomHost) {
       if (!widget.state.backendConnected) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connect to the server to send a host gift')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the server to send a gift')));
         return;
       }
       final selected = await _chooseGiftReceiver();
       if (selected == null || selected.isEmpty) return;
       receiverId = selected;
     }
-
+    final gifts = widget.state.backendConnected
+        ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
+        : <Map<String, dynamic>>[{'id': 'basic-star', 'name': 'Star', 'emoji': '⭐', 'coin_cost': 5000}];
+    if (!mounted || gifts.isEmpty) return;
+    final gift = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          const Padding(padding: EdgeInsets.all(18), child: Text('Choose a gift', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+          ...gifts.map((item) => ListTile(
+            leading: Text(item['emoji']?.toString() ?? '🎁', style: const TextStyle(fontSize: 30)),
+            title: Text(item['name']?.toString() ?? 'Gift'),
+            subtitle: Text('${item['coin_cost'] ?? 0} coins'),
+            onTap: () => Navigator.pop(sheetContext, item),
+          )),
+        ]),
+      ),
+    );
+    if (!mounted || gift == null) return;
+    final giftId = gift['id']?.toString() ?? 'basic-star';
+    final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
     if (widget.state.backendConnected && receiverId.isNotEmpty) {
       final result = await widget.state.backend.sendGift(
-        roomId: widget.room.id,
-        senderUserId: widget.state.userId,
-        receiverUserId: receiverId,
-        giftId: 'basic-star',
-        coinCost: giftCost,
+        roomId: widget.room.id, senderUserId: widget.state.userId,
+        receiverUserId: receiverId, giftId: giftId, coinCost: giftCost,
       );
-      final remoteBalance = int.tryParse(
-        result?['sender_coin_balance']?.toString() ?? '',
-      );
+      final remoteBalance = int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
       if (remoteBalance != null) {
         widget.state.setCoinBalance(remoteBalance);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✨ Gift sent • 5,000 coins')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins')));
         return;
       }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gift was not sent. Check VIP access and coin balance.')));
+      return;
     }
-
     final ok = widget.state.spendCoins(giftCost);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok ? '✨ Gift sent • 5,000 coins' : 'Not enough coins',
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins' : 'Not enough coins')));
   }
 
   Future<void> _sendMessage() async {

@@ -440,6 +440,47 @@ class BackendApi {
   }) =>
       _json('GET', '/api/wallet/$userId');
 
+  Future<List<Map<String, dynamic>>> gameRooms({required String userId}) async {
+    final value = await _json('GET', '/api/game-rooms?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['rooms'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> createGameRoom({required String userId, required String name}) =>
+      _json('POST', '/api/game-rooms', body: {'user_id': userId, 'name': name}, returnErrorBody: true);
+
+  Future<Map<String, dynamic>?> gameRoom({required String roomId, required String userId}) =>
+      _json('GET', '/api/game-rooms/${Uri.encodeComponent(roomId)}?user_id=${Uri.encodeQueryComponent(userId)}');
+
+  Future<Map<String, dynamic>?> joinGameRoom({required String roomId, required String userId}) =>
+      _json('POST', '/api/game-rooms/${Uri.encodeComponent(roomId)}/join', body: {'user_id': userId}, returnErrorBody: true);
+
+  Future<Map<String, dynamic>?> tapGameRoom({required String roomId, required String userId}) =>
+      _json('POST', '/api/game-rooms/${Uri.encodeComponent(roomId)}/tap', body: {'user_id': userId}, returnErrorBody: true);
+
+  Future<List<Map<String, dynamic>>> friends({required String userId}) async {
+    final value = await _json('GET', '/api/friends?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['friends'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> addFriend({required String userId, required String friendUserId}) =>
+      _json('POST', '/api/friends/add', body: {'user_id': userId, 'friend_user_id': friendUserId}, returnErrorBody: true);
+
+  Future<bool> removeFriend({required String userId, required String friendUserId}) async {
+    final value = await _json('POST', '/api/friends/remove', body: {'user_id': userId, 'friend_user_id': friendUserId});
+    return value?['ok'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> giftCatalog({required String userId}) async {
+    final value = await _json('GET', '/api/gifts/catalog?user_id=${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['gifts'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
   Future<Map<String, dynamic>?> sendGift({
     required String roomId,
     required String senderUserId,

@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
+import '../vip/vip_policy.dart';
 
 class ConversationScreen extends StatefulWidget {
   const ConversationScreen({
@@ -49,15 +53,53 @@ class _ConversationScreenState extends State<ConversationScreen> {
     super.dispose();
   }
 
+  String get _cacheKey => 'dvx_messages_${widget.state.userId}_${widget.otherUserId}';
+
+  Future<void> _persistMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cacheKey, jsonEncode(messages));
+  }
+
   Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedText = prefs.getString(_cacheKey);
+    if (cachedText != null) {
+      try {
+        final cached = jsonDecode(cachedText);
+        if (cached is List) {
+          messages
+            ..clear()
+            ..addAll(cached.whereType<Map>().map((row) => Map<String, dynamic>.from(row)));
+        }
+      } catch (_) {}
+    }
     if (widget.state.backendConnected) {
       final rows = await widget.state.backend.messageThread(
         userId: widget.state.userId,
         otherUserId: widget.otherUserId,
       );
+      final byId = <String, Map<String, dynamic>>{};
+      for (final row in [...messages, ...rows]) {
+        final id = row['id']?.toString();
+        if (id != null && id.isNotEmpty) {
+          byId[id] = row;
+        } else {
+          final key = '${row['sender_user_id']}|${row['receiver_user_id']}|${row['created_at']}|${row['text']}|${row['image_key']}';
+          byId[key] = row;
+        }
+      }
       messages
         ..clear()
-        ..addAll(rows);
+        ..addAll(byId.values)
+        ..sort((a, b) => (int.tryParse(a['created_at']?.toString() ?? '') ?? 0)
+            .compareTo(int.tryParse(b['created_at']?.toString() ?? '') ?? 0));
+      final days = widget.state.vipIsActive && widget.state.vipLevel >= 5
+          ? VipPolicy.messageRetentionDays(widget.state.vipLevel)
+          : 0;
+      if (days > 0) {
+        final cutoff = DateTime.now().millisecondsSinceEpoch - days * 86400000;
+        messages.removeWhere((row) => (int.tryParse(row['created_at']?.toString() ?? '') ?? 0) < cutoff);
+      }
       final envelopeRows = await widget.state.backend.inboxRedEnvelopes(
         userId: widget.state.userId,
         otherUserId: widget.otherUserId,
@@ -66,6 +108,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         ..clear()
         ..addAll(envelopeRows);
     }
+    await _persistMessages();
     if (!mounted) return;
     setState(() => loading = false);
   }
@@ -144,12 +187,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
 
     controller.clear();
-    messages.add(<String, dynamic>{
-      'sender_user_id': widget.state.userId,
-      'receiver_user_id': widget.otherUserId,
-      'text': text,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-    });
+    if (widget.state.backendConnected) {
+      await _load();
+    } else {
+      messages.add(<String, dynamic>{
+        'sender_user_id': widget.state.userId,
+        'receiver_user_id': widget.otherUserId,
+        'text': text,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      });
+      await _persistMessages();
+    }
     await widget.state.refreshInbox();
     if (!mounted) return;
     setState(() {});
@@ -195,13 +243,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         imageKey: uploaded,
       );
       if (!sent) throw StateError('message_failed');
-      messages.add(<String, dynamic>{
-        'sender_user_id': widget.state.userId,
-        'receiver_user_id': widget.otherUserId,
-        'text': '',
-        'image_key': uploaded,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      });
+      await _load();
       await widget.state.refreshInbox();
       if (mounted) setState(() {});
     } catch (_) {

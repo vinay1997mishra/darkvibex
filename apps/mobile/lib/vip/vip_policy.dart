@@ -69,13 +69,14 @@ class VipPolicy {
     VipPrivilege(id: 'chat_bubble', title: 'Chat Bubble', description: 'VIP chat bubble with richer styles at higher levels.', minLevel: 2),
     VipPrivilege(id: 'hide_last_online', title: 'Hide Last Online', description: 'Hide last-online information from the profile.', minLevel: 2),
     VipPrivilege(id: 'room_background', title: 'Change Room Background', description: 'Use a custom background in your own room.', minLevel: 3),
-    VipPrivilege(id: 'friends_limit', title: 'Friends Limit Expanded', description: 'VIP4-8: +300, VIP9-12: +700, VIP13-18: +1500 friends.', minLevel: 4),
+    VipPrivilege(id: 'friends_limit', title: 'Friends Limit Expanded', description: '300 friends for non-VIP; unlimited friends while VIP is active.', minLevel: 4),
     VipPrivilege(id: 'entrance_effect', title: 'Entrance Effect', description: 'Level-specific room entrance banner/effect.', minLevel: 4),
     VipPrivilege(id: 'fantasy_card', title: 'Fantasy Card', description: 'Premium profile/fantasy card that improves with level.', minLevel: 5),
     VipPrivilege(id: 'free_say_hi', title: 'Free Say Hi', description: '4 free Say Hi messages; each message is limited to 30 words.', minLevel: 5),
     VipPrivilege(id: 'picture_welcome', title: 'Picture Welcome', description: 'Set a picture in the room welcome message.', minLevel: 5),
-    VipPrivilege(id: 'message_roaming', title: 'Message Roaming', description: 'Cloud message history: VIP5 30 days, VIP8 90 days, VIP12+ 180 days.', minLevel: 5),
+    VipPrivilege(id: 'message_roaming', title: 'Message Roaming', description: 'Cloud message history: VIP5-7 30 days, VIP8-11 60 days, VIP12+ 120 days.', minLevel: 5),
     VipPrivilege(id: 'show_id', title: 'Show ID', description: 'Decorative Show-ID skin. VIP14 style remains for VIP15-18.', minLevel: 5),
+    VipPrivilege(id: 'exclusive_gifts', title: 'Exclusive Gifts', description: 'Send special VIP gifts with exclusive effects.', minLevel: 3),
     VipPrivilege(id: 'red_envelope', title: 'Message Red Envelope', description: 'Send red-envelope rewards in private messages.', minLevel: 6),
     VipPrivilege(id: 'dynamic_avatar', title: 'Dynamic Avatar', description: 'Use an animated/dynamic avatar.', minLevel: 7),
     VipPrivilege(id: 'many_seats', title: 'Room With Many Seats', description: 'VIP7: up to 20 seats. VIP10+: up to 30 seats.', minLevel: 7),
@@ -83,6 +84,7 @@ class VipPolicy {
     VipPrivilege(id: 'nickname_light', title: 'Nickname Light Effect', description: 'Exclusive nickname light effect from VIP8 through VIP17.', minLevel: 8, maxLevel: 17),
     VipPrivilege(id: 'disable_say_hi', title: 'Disable Say Hi', description: 'Prevent other users from initiating Say Hi with you.', minLevel: 8),
     VipPrivilege(id: 'entrance_vehicle', title: 'Entrance Vehicle', description: 'Level-specific entrance vehicle; higher VIP means more premium vehicles.', minLevel: 8),
+    VipPrivilege(id: 'exclusive_mic_emoticon', title: 'Exclusive Mic Emoticon', description: 'Use a special animated microphone emoticon while speaking.', minLevel: 9),
     VipPrivilege(id: 'customer_service', title: 'Exclusive Customer Service', description: 'Dedicated VIP support channel.', minLevel: 9),
     VipPrivilege(id: 'send_pictures', title: 'Send Pictures in Chatroom', description: 'Send picture messages inside chatrooms.', minLevel: 10),
     VipPrivilege(id: 'hide_charm', title: 'Hide Charm Level', description: 'Hide charm level on public surfaces.', minLevel: 10),
@@ -98,7 +100,6 @@ class VipPolicy {
     VipPrivilege(id: 'custom_avatar_frame', title: 'Customized Avatar Frame', description: 'Use a premium customized avatar frame.', minLevel: 16),
     VipPrivilege(id: 'exclusive_mic_effect', title: 'Exclusive Mic Effect', description: 'Premium effect around your mic/avatar while speaking.', minLevel: 16),
     VipPrivilege(id: 'card_background', title: 'Exclusive Card Background', description: 'Use an exclusive VIP profile-card background.', minLevel: 17),
-    VipPrivilege(id: 'customized_vehicles', title: 'Customized Vehicles', description: 'VIP18 receives the highest-tier premium/custom vehicle collection.', minLevel: 18),
     VipPrivilege(id: 'mic_chair', title: 'Mic Chair', description: 'Personal premium chair/effect while on mic.', minLevel: 18),
     VipPrivilege(id: 'anonymous_everywhere', title: 'Anonymous Everywhere', description: 'When enabled, hide your name on game wins, banners, room history and other public activity surfaces.', minLevel: 18),
     VipPrivilege(id: 'honorary_title', title: 'Honorary Title', description: 'Top-tier honorary VIP title.', minLevel: 18),
@@ -113,12 +114,10 @@ class VipPolicy {
   static List<VipPrivilege> unlockedAt(int level) =>
       privileges.where((item) => item.isUnlockedAt(level)).toList(growable: false);
 
-  static int friendBonus(int level) {
-    if (level >= 13) return 1500;
-    if (level >= 9) return 700;
-    if (level >= 4) return 300;
-    return 0;
-  }
+  static int? friendLimit(int level, {required bool active}) => active ? null : 300;
+
+  static int friendBonus(int level) => 0;
+
 
   static int maxRoomSeats(int level) {
     if (level >= 10) return 30;
@@ -127,8 +126,8 @@ class VipPolicy {
   }
 
   static int messageRetentionDays(int level) {
-    if (level >= 12) return 180;
-    if (level >= 8) return 90;
+    if (level >= 12) return 120;
+    if (level >= 8) return 60;
     if (level >= 5) return 30;
     return 0;
   }

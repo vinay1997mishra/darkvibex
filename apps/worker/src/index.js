@@ -1374,16 +1374,21 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureImageTables(db);
+    const vip = await getVipStatus(db, userId, now());
+    const retentionDays = vip.active ? Number(vip.message_retention_days ?? 0) : 0;
+    const cutoff = retentionDays > 0 ? now() - retentionDays * 86400000 : 0;
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
               i.image_key
          FROM direct_messages m
          LEFT JOIN direct_message_images i ON i.message_id = m.id
-        WHERE (m.sender_user_id = ? AND m.receiver_user_id = ?)
-           OR (m.sender_user_id = ? AND m.receiver_user_id = ?)
-        ORDER BY m.created_at ASC
-        LIMIT 200`
-    ).bind(userId, otherId, otherId, userId).all();
+        WHERE ((m.sender_user_id = ? AND m.receiver_user_id = ?)
+           OR (m.sender_user_id = ? AND m.receiver_user_id = ?))
+          AND (? = 0 OR m.created_at >= ?)
+        ORDER BY m.created_at DESC
+        LIMIT ?`
+    ).bind(userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
+    rows.results = (rows.results ?? []).reverse();
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
     ).bind(now(), userId, otherId).run();
@@ -1587,6 +1592,148 @@ async function handleApi(request, env, url) {
     });
   }
 
+  const gameRoomMatch = url.pathname.match(/^\/api\/game-rooms\/([^/]+)(?:\/(join|tap))?$/);
+  if (url.pathname === "/api/game-rooms" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const rows = await db.prepare("SELECT r.id,r.name,r.owner_user_id,u.display_name AS owner_name,r.shared_score,r.created_at,COUNT(m.user_id) AS member_count FROM game_rooms r JOIN users u ON u.id=r.owner_user_id LEFT JOIN game_room_members m ON m.room_id=r.id GROUP BY r.id ORDER BY r.updated_at DESC LIMIT 100").all();
+    return json({ ok: true, rooms: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/game-rooms" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) return json({ ok: false, error: "games_disabled" }, { status: 403 });
+    await ensureUser(db, userId);
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const roomId = id();
+    const ts = now();
+    const name = String(body.name ?? "Party Game Room").trim().slice(0, 48) || "Party Game Room";
+    await db.batch([
+      db.prepare("INSERT INTO game_rooms (id,owner_user_id,name,shared_score,created_at,updated_at) VALUES (?,?,?,0,?,?)").bind(roomId,userId,name,ts,ts),
+      db.prepare("INSERT INTO game_room_members (room_id,user_id,seat_index,joined_at) VALUES (?,?,0,?)").bind(roomId,userId,ts),
+    ]);
+    return json({ ok: true, room_id: roomId }, { status: 201 });
+  }
+
+  if (gameRoomMatch && request.method === "GET") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const room = await db.prepare("SELECT r.id,r.name,r.owner_user_id,u.display_name AS owner_name,r.shared_score,r.created_at FROM game_rooms r JOIN users u ON u.id=r.owner_user_id WHERE r.id=?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "game_room_not_found" }, { status: 404 });
+    const members = await db.prepare("SELECT m.user_id,m.seat_index,u.display_name,u.avatar_key,u.vip_level FROM game_room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=? ORDER BY m.seat_index").bind(roomId).all();
+    return json({ ok: true, room, members: members.results ?? [] });
+  }
+
+  if (gameRoomMatch && gameRoomMatch[2] === "join" && request.method === "POST") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db,userId);
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const exists = await db.prepare("SELECT 1 AS yes FROM game_room_members WHERE room_id=? AND user_id=?").bind(roomId,userId).first();
+    if (exists) return json({ ok: true, already_joined: true });
+    const count = await db.prepare("SELECT COUNT(*) AS total FROM game_room_members WHERE room_id=?").bind(roomId).first();
+    if (Number(count?.total ?? 0) >= 15) return json({ ok: false, error: "game_room_full" }, { status: 409 });
+    const seat = Number(count?.total ?? 0);
+    const result = await db.prepare("INSERT INTO game_room_members (room_id,user_id,seat_index,joined_at) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM game_rooms WHERE id=?)").bind(roomId,userId,seat,now(),roomId).run();
+    const joined = await db.prepare("SELECT 1 AS yes FROM game_room_members WHERE room_id=? AND user_id=?").bind(roomId,userId).first();
+    if (!joined) return json({ ok: false, error: "game_room_not_found" }, { status: 404 });
+    await db.prepare("UPDATE game_rooms SET updated_at=? WHERE id=?").bind(now(),roomId).run();
+    return json({ ok: true, seat_index: seat });
+  }
+
+  if (gameRoomMatch && gameRoomMatch[2] === "tap" && request.method === "POST") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const updated = await db.prepare("UPDATE game_rooms SET shared_score=shared_score+1,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM game_room_members WHERE room_id=? AND user_id=?)").bind(now(),roomId,roomId,userId).run();
+    if (!updated.meta?.changes) return json({ ok: false, error: "join_room_first" }, { status: 403 });
+    const room = await db.prepare("SELECT shared_score FROM game_rooms WHERE id=?").bind(roomId).first();
+    return json({ ok: true, shared_score: Number(room?.shared_score ?? 0) });
+  }
+
+  if (url.pathname === "/api/friends" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    const vip = await getVipStatus(db, userId, now());
+    const friends = await db.prepare("SELECT f.friend_user_id AS id, u.display_name, u.avatar_key, u.vip_level FROM user_friends f JOIN users u ON u.id=f.friend_user_id WHERE f.user_id=? ORDER BY f.created_at DESC").bind(userId).all();
+    return json({ ok: true, friends: friends.results ?? [], friend_limit: vip.active ? null : 300 });
+  }
+
+  if (url.pathname === "/api/friends/add" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const friendId = String(body.friend_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!friendId || friendId === userId) return json({ ok: false, error: "invalid_friend" }, { status: 400 });
+    await ensureUser(db, userId);
+    await ensureUser(db, friendId);
+    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    const vip = await getVipStatus(db, userId, now());
+    const friendVip = await getVipStatus(db, friendId, now());
+    const count = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(userId).first();
+    const friendCount = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(friendId).first();
+    const exists = await db.prepare("SELECT 1 AS yes FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId).first();
+    if (!exists && ((!vip.active && Number(count?.total ?? 0) >= 300) || (!friendVip.active && Number(friendCount?.total ?? 0) >= 300))) {
+      return json({ ok: false, error: "friend_limit_reached", friend_limit: 300 }, { status: 409 });
+    }
+    const ts = now();
+    await db.batch([
+      db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(userId, friendId, ts),
+      db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(friendId, userId, ts),
+    ]);
+    return json({ ok: true, friend_limit: vip.active ? null : 300 });
+  }
+
+  if (url.pathname === "/api/friends/remove" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const friendId = String(body.friend_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    await db.batch([
+      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId),
+      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(friendId, userId),
+    ]);
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/gifts/catalog" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const vip = await getVipStatus(db, userId, now());
+    const gifts = [
+      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0 },
+      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3 },
+      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3 },
+      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3 },
+    ];
+    return json({ ok: true, gifts: gifts.filter(g => g.vip_level === 0 || (vip.active && vip.level >= g.vip_level)) });
+  }
+
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
     const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
     if (giftsFeature.enabled === false) return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
@@ -1596,10 +1743,17 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
     const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
-    const cost = Number(body.coin_cost ?? 0);
-    if (!sender || !receiver || giftId !== "basic-star" || cost !== 5000) {
-      return json({ ok: false, error: "invalid_gift" }, { status: 400 });
-    }
+    const catalog = {
+      "basic-star": { cost: 5000, vip_level: 0 },
+      "vip-rose": { cost: 10000, vip_level: 3 },
+      "vip-crown": { cost: 50000, vip_level: 3 },
+      "vip-phoenix": { cost: 100000, vip_level: 3 },
+    };
+    const gift = catalog[giftId];
+    if (!sender || !receiver || !gift) return json({ ok: false, error: "invalid_gift" }, { status: 400 });
+    const vip = await getVipStatus(db, sender, now());
+    if (gift.vip_level > 0 && (!vip.active || vip.level < gift.vip_level)) return json({ ok: false, error: "vip_required" }, { status: 403 });
+    const cost = gift.cost;
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);

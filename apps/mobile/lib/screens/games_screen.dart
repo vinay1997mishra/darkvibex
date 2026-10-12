@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import 'local_ludo_screen.dart';
+import 'game_room_screen.dart';
 
 class GamesScreen extends StatefulWidget {
   const GamesScreen({super.key, required this.state});
@@ -138,6 +139,18 @@ class _GamesScreenState extends State<GamesScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.groups_2_rounded, size: 32, color: Color(0xFFFFD36A)),
+              title: const Text('Shared Game Room'),
+              subtitle: const Text('Create or join a public room · 15 seats · play together'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.push<void>(context, MaterialPageRoute<void>(
+                builder: (_) => GameRoomLobbyScreen(state: widget.state),
+              )),
             ),
           ),
           const SizedBox(height: 10),
