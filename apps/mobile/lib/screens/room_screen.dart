@@ -1505,13 +1505,25 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                mine
-                                    ? widget.state.displayName
-                                    : (membersBySeat[seat]?['display_name']?.toString() ?? 'Seat ${seat + 1}'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      mine
+                                          ? (widget.state.vipAnonymousEverywhere ? 'Anonymous' : widget.state.displayName)
+                                          : (membersBySeat[seat]?['display_name']?.toString() ?? 'Seat ${seat + 1}'),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                  ),
+                                  if (mine && widget.state.hasVipPrivilege('mic_chair'))
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 3),
+                                      child: Icon(Icons.chair_alt_rounded, size: 13, color: Color(0xFFFFD36A)),
+                                    ),
+                                ],
                               ),
                             ],
                           ),
