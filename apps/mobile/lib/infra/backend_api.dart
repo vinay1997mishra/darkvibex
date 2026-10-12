@@ -500,6 +500,40 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> cosmetics({required String userId}) =>
+      _json('GET', '/api/cosmetics/${Uri.encodeComponent(userId)}');
+
+  Future<Map<String, dynamic>?> purchaseCosmetic({required String userId, required String itemId, String? recipientUserId}) =>
+      _json('POST', '/api/cosmetics/purchase', returnErrorBody: true, body: {
+        'user_id': userId,
+        'item_id': itemId,
+        if (recipientUserId != null) 'recipient_user_id': recipientUserId,
+      });
+
+  Future<Map<String, dynamic>?> equipCosmetic({required String userId, required String itemId}) =>
+      _json('POST', '/api/cosmetics/equip', returnErrorBody: true, body: {'user_id': userId, 'item_id': itemId});
+
+  Future<Map<String, dynamic>?> idLevelStatus({required String userId}) =>
+      _json('GET', '/api/id-level?user_id=${Uri.encodeQueryComponent(userId)}');
+
+  Future<Map<String, dynamic>?> shareRoomForIdLevel({
+    required String userId,
+    required String roomId,
+  }) =>
+      _json('POST', '/api/id-level/room-share', body: {
+        'user_id': userId,
+        'room_id': roomId,
+      }, returnErrorBody: true);
+
+  Future<Map<String, dynamic>?> claimIdLevelReward({
+    required String userId,
+    required int level,
+  }) =>
+      _json('POST', '/api/id-level/rewards/claim', body: {
+        'user_id': userId,
+        'level': level,
+      }, returnErrorBody: true);
+
   Future<Map<String, dynamic>?> vipStatus({
     required String userId,
   }) =>

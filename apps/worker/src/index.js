@@ -1,4 +1,6 @@
 import { normalizeRole } from "./role_policy.js";
+import { awardIdLevelDaily, awardIdLevelGift, claimIdLevelReward, getIdLevelStatus } from "./id_level.js";
+import { COSMETIC_CATALOG, ensureCosmeticsSchema } from "./cosmetics.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
@@ -264,6 +266,20 @@ async function ensureRoomSettingsTable(db) {
   } catch (_) {}
 }
 
+
+async function expireRoomLuckyPouches(db, roomId, ts = now()) {
+  await db.batch([
+    db.prepare("UPDATE room_lucky_pouches SET status='expired_pending' WHERE room_id=? AND status='open' AND expires_at<=?")
+      .bind(roomId, ts),
+    db.prepare("UPDATE users SET coins=coins+(SELECT COALESCE(SUM(p.remaining_coins),0) FROM room_lucky_pouches p WHERE p.room_id=? AND p.owner_user_id=users.id AND p.status='expired_pending'), updated_at=? WHERE id IN (SELECT owner_user_id FROM room_lucky_pouches WHERE room_id=? AND status='expired_pending' AND remaining_coins>0)")
+      .bind(roomId, ts, roomId),
+    db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'room_lucky_pouch_refund',p.remaining_coins,u.coins,p.id,? FROM room_lucky_pouches p JOIN users u ON u.id=p.owner_user_id WHERE p.room_id=? AND p.status='expired_pending' AND p.remaining_coins>0")
+      .bind(id(), ts, roomId),
+    db.prepare("UPDATE room_lucky_pouches SET status='expired_refunded' WHERE room_id=? AND status='expired_pending'")
+      .bind(roomId),
+  ]);
+}
+
 async function ensureRoomLuckyPouchTables(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_pouches (
     id TEXT PRIMARY KEY,
@@ -472,6 +488,89 @@ async function handleApi(request, env, url) {
     return json({ ok: true, items: await publicCatalog(db, kind) });
   }
 
+  if (parts[0] === "api" && parts[1] === "cosmetics" && parts.length === 3 && request.method === "GET") {
+    const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    await ensureCosmeticsSchema(db);
+    const owned = await db.prepare(
+      "SELECT item_id, kind, acquired_at, expires_at, active FROM user_cosmetics WHERE user_id = ? AND expires_at > ? ORDER BY acquired_at DESC"
+    ).bind(userId, now()).all();
+    return json({ ok: true, items: COSMETIC_CATALOG, owned: owned.results ?? [] });
+  }
+
+  if (url.pathname === "/api/cosmetics/purchase" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const recipientId = String(body.recipient_user_id ?? userId).trim();
+    const itemId = String(body.item_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const product = COSMETIC_CATALOG.find((item) => item.id === itemId);
+    if (!product) return json({ ok: false, error: "cosmetic_not_found" }, { status: 404 });
+    await ensureUser(db, userId);
+    if (!recipientId) return json({ ok: false, error: "recipient_required" }, { status: 400 });
+    if (recipientId !== userId) {
+      const recipient = await db.prepare("SELECT id FROM users WHERE id = ?").bind(recipientId).first();
+      if (!recipient) return json({ ok: false, error: "recipient_not_found" }, { status: 404 });
+    }
+    await ensureUserAllowed(db, userId);
+    if (recipientId !== userId) await ensureUserAllowed(db, recipientId);
+    await ensureCosmeticsSchema(db);
+    await ensureVipSchema(db);
+    const ts = now();
+    const vip = await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id = ?").bind(recipientId).first();
+    const vipLevel = Number(vip?.active_until ?? 0) > ts ? Number(vip?.level ?? 0) : 0;
+    if (vipLevel < product.min_vip_level) {
+      return json({ ok: false, error: "vip_level_required", required_level: product.min_vip_level }, { status: 403 });
+    }
+    const expiresAt = ts + product.duration_days * 24 * 60 * 60 * 1000;
+    const result = await db.batch([
+      db.prepare(
+        "UPDATE users SET coins = coins - ?, updated_at = ? WHERE id = ? AND coins >= ? AND NOT EXISTS (SELECT 1 FROM user_cosmetics WHERE user_id = ? AND item_id = ? AND expires_at > ?)"
+      ).bind(product.price_coins, ts, userId, product.price_coins, recipientId, product.id, ts),
+      db.prepare(
+        "INSERT INTO user_cosmetics (user_id,item_id,kind,acquired_at,expires_at,active) SELECT ?,?,?,?,?,0 WHERE changes() = 1 ON CONFLICT(user_id,item_id) DO UPDATE SET kind=excluded.kind, acquired_at=excluded.acquired_at, expires_at=excluded.expires_at, active=0 WHERE user_cosmetics.expires_at <= ?"
+      ).bind(recipientId, product.id, product.kind, ts, expiresAt, ts),
+      db.prepare(
+        "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,id,?, ?,coins,?,? FROM users WHERE id=? AND EXISTS (SELECT 1 FROM user_cosmetics WHERE user_id=? AND item_id=? AND acquired_at=?)"
+      ).bind(id(), recipientId === userId ? "cosmetic_purchase" : "cosmetic_gift", -product.price_coins, product.id, ts, userId, recipientId, product.id, ts),
+    ]);
+    if (Number(result[0]?.meta?.changes ?? 0) !== 1) {
+      const alreadyOwned = await db.prepare("SELECT 1 AS owned FROM user_cosmetics WHERE user_id = ? AND item_id = ? AND expires_at > ?")
+        .bind(recipientId, product.id, ts).first();
+      return json({ ok: false, error: alreadyOwned ? "already_owned" : "insufficient_coins" }, { status: alreadyOwned ? 409 : 400 });
+    }
+    const wallet = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+    return json({ ok: true, item_id: product.id, coin_balance: Number(wallet?.coins ?? 0), expires_at: expiresAt, recipient_user_id: recipientId });
+  }
+
+  if (url.pathname === "/api/cosmetics/equip" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const itemId = String(body.item_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    await ensureCosmeticsSchema(db);
+    await ensureVipSchema(db);
+    const item = COSMETIC_CATALOG.find((product) => product.id === itemId);
+    if (!item) return json({ ok: false, error: "cosmetic_not_found" }, { status: 404 });
+    const vip = await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id = ?").bind(userId).first();
+    if (Number(vip?.active_until ?? 0) <= now() || Number(vip?.level ?? 0) < item.min_vip_level) {
+      return json({ ok: false, error: "vip_level_required", required_level: item.min_vip_level }, { status: 403 });
+    }
+    const owned = await db.prepare("SELECT 1 AS owned FROM user_cosmetics WHERE user_id = ? AND item_id = ? AND expires_at > ?")
+      .bind(userId, itemId, now()).first();
+    if (!owned) return json({ ok: false, error: "cosmetic_not_owned" }, { status: 403 });
+    await db.batch([
+      db.prepare("UPDATE user_cosmetics SET active = 0 WHERE user_id = ? AND kind = ?").bind(userId, item.kind),
+      db.prepare("UPDATE user_cosmetics SET active = 1 WHERE user_id = ? AND item_id = ? AND expires_at > ?").bind(userId, itemId, now()),
+    ]);
+    return json({ ok: true, item_id: itemId });
+  }
+
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
     const body = await bodyJson(request);
     return json({ ok: true, role: normalizeRole(body.role) });
@@ -633,6 +732,7 @@ async function handleApi(request, env, url) {
     const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
       .bind(roomId, userId).first();
     if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    await expireRoomLuckyPouches(db, roomId, now());
 
     if (request.method === "GET") {
       const pouch = await db.prepare(
@@ -670,7 +770,7 @@ async function handleApi(request, env, url) {
       if (!balance || Number(balance.coins ?? 0) < totalCoins) return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
       await db.batch([
         db.prepare("INSERT INTO room_lucky_pouches (id, room_id, owner_user_id, total_coins, total_slots, remaining_coins, remaining_slots, status, request_id, created_at, expires_at) SELECT ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND coins >= ?)")
-          .bind(pouchId, roomId, actorId, totalCoins, slots, totalCoins, slots, requestId, ts, ts + 3600000, actorId, totalCoins),
+          .bind(pouchId, roomId, actorId, totalCoins, slots, totalCoins, slots, requestId, ts, ts + 86400000, actorId, totalCoins),
         db.prepare("UPDATE users SET coins = coins - ?, updated_at = ? WHERE id = ? AND coins >= ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
           .bind(totalCoins, ts, actorId, totalCoins, pouchId),
         db.prepare("INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) SELECT ?, ?, 'room_lucky_pouch_create', ?, coins, ?, ? FROM users WHERE id = ? AND EXISTS (SELECT 1 FROM room_lucky_pouches WHERE id = ?)")
@@ -695,6 +795,7 @@ async function handleApi(request, env, url) {
     const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
       .bind(roomId, userId).first();
     if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    await expireRoomLuckyPouches(db, roomId, now());
     const pouch = await db.prepare(
       "SELECT * FROM room_lucky_pouches WHERE room_id = ? AND status = 'open' AND expires_at > ? ORDER BY created_at DESC LIMIT 1"
     ).bind(roomId, now()).first();
@@ -890,7 +991,8 @@ async function handleApi(request, env, url) {
       "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
     ).bind(roomId, userId, ts, ts).run();
     await recordLampRoomEntry(db, roomId, userId, ts);
-    return json({ ok: true });
+    const idLevelDailyExp = await awardIdLevelDaily(db, userId, "room_entry", ts);
+    return json({ ok: true, id_level_daily_exp: idLevelDailyExp });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "leave" && request.method === "POST") {
@@ -1013,6 +1115,7 @@ async function handleApi(request, env, url) {
     await ensureRoomAdminTable(db);
     if (request.method === "GET") {
       await ensureVipSchema(db);
+      await ensureCosmeticsSchema(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -1031,6 +1134,8 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 14 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.invisible_entry') = 1
                      THEN 1 ELSE 0 END AS invisible_entry,
+                (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
+                (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
                 CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
                 CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin
@@ -1044,7 +1149,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
@@ -1720,6 +1825,40 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  if (url.pathname === "/api/id-level" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    return json({ ok: true, level: await getIdLevelStatus(db, userId) });
+  }
+
+  if (url.pathname === "/api/id-level/room-share" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const roomId = String(body.room_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId || !roomId) return json({ ok: false, error: "user_and_room_required" }, { status: 400 });
+    const member = await db.prepare("SELECT 1 AS joined FROM room_members WHERE room_id=? AND user_id=?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    const awarded = await awardIdLevelDaily(db, userId, "room_share", now());
+    return json({ ok: true, id_level_daily_exp: awarded, level: await getIdLevelStatus(db, userId) });
+  }
+
+  if (url.pathname === "/api/id-level/rewards/claim" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const level = Number(body.level);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    await ensureUser(db, userId);
+    const result = await claimIdLevelReward(db, userId, level, now());
+    return json(result, { status: result.ok ? 200 : 409 });
+  }
+
   if (url.pathname === "/api/gifts/catalog" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
@@ -1766,6 +1905,7 @@ async function handleApi(request, env, url) {
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
     ]);
+    await awardIdLevelGift(db, sender, cost, eventId, now());
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
   }

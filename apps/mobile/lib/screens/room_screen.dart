@@ -15,6 +15,7 @@ import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
 import '../vip/vip_policy.dart';
 import '../widgets/vip_animated_frame.dart';
+import '../widgets/vehicle_entry_effect.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
@@ -54,6 +55,8 @@ class _RoomScreenState extends State<RoomScreen> {
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
   Timer? memberRefreshTimer;
+  Timer? arrivalEffectTimer;
+  Map<String, dynamic>? arrivalEffectMember;
   String? roomAvatarKey;
   String? roomAnnouncement;
   String? roomWelcomeImageKey;
@@ -117,24 +120,17 @@ class _RoomScreenState extends State<RoomScreen> {
       final level = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
       final invisible = member['invisible_entry'] == true || member['invisible_entry']?.toString() == '1';
       if (level < 4 || invisible) continue;
-      final vehicle = level >= 8;
-      final vehicleName = level >= 18 ? 'custom VIP vehicle' : level >= 16 ? 'royal vehicle' : 'premium vehicle';
-      final arrivalIcon = level >= 18 ? Icons.rocket_launch_rounded : vehicle ? Icons.directions_car_filled_rounded : Icons.auto_awesome_rounded;
-      final name = member['display_name']?.toString().trim();
-      if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-        duration: const Duration(milliseconds: 3200),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF281B3F),
-        content: Row(children: [
-          Icon(arrivalIcon, color: const Color(0xFFFFD36A)),
-          const SizedBox(width: 10),
-          Expanded(child: Text(vehicle
-              ? 'VIP$level  ${name?.isNotEmpty == true ? name : 'A VIP member'} arrived in a $vehicleName'
-              : 'VIP$level  ${name?.isNotEmpty == true ? name : 'A VIP member'} entered with an arrival effect')),
-        ]),
-      ));
+      _showArrivalEffect(member);
     }
+  }
+
+  void _showArrivalEffect(Map<String, dynamic> member) {
+    arrivalEffectTimer?.cancel();
+    if (!mounted) return;
+    setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
+    arrivalEffectTimer = Timer(const Duration(milliseconds: 5000), () {
+      if (mounted) setState(() => arrivalEffectMember = null);
+    });
   }
 
   Future<void> _loadRoomMessages() async {
@@ -481,6 +477,7 @@ class _RoomScreenState extends State<RoomScreen> {
         return;
       }
       await _loadRoomSettings();
+      await widget.state.refreshIdLevel(notify: false);
     }
 
     final token = widget.state.sessionToken;
@@ -597,6 +594,7 @@ class _RoomScreenState extends State<RoomScreen> {
   @override
   void dispose() {
     memberRefreshTimer?.cancel();
+    arrivalEffectTimer?.cancel();
     unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
     rtcEvents = null;
@@ -961,9 +959,19 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _shareRoomId() async {
     await Clipboard.setData(ClipboardData(text: widget.room.id));
+    final result = widget.state.backendConnected
+        ? await widget.state.backend.shareRoomForIdLevel(
+            userId: widget.state.userId,
+            roomId: widget.room.id,
+          )
+        : null;
+    await widget.state.refreshIdLevel(notify: false);
     if (!mounted) return;
+    final gained = int.tryParse(result?['id_level_daily_exp']?.toString() ?? '') ?? 0;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Room ID copied. Share it with friends to invite them.')),
+      SnackBar(content: Text(gained > 0
+          ? 'Room ID copied • +$gained ID Level EXP today'
+          : 'Room ID copied. Daily room-share EXP was already claimed.')),
     );
   }
 
@@ -1457,6 +1465,7 @@ class _RoomScreenState extends State<RoomScreen> {
       final remoteBalance = int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
       if (remoteBalance != null) {
         widget.state.setCoinBalance(remoteBalance);
+        await widget.state.refreshIdLevel(notify: false);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins')));
         return;
@@ -1716,10 +1725,20 @@ class _RoomScreenState extends State<RoomScreen> {
                                     final avatar = member?['avatar_key']?.toString();
                                     if (member != null) {
                                       final vipLevel = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
+                                      final activeFrame = member['active_frame_id']?.toString();
+                                      final frameTier = switch (activeFrame) {
+                                        'frame_royal' => 1,
+                                        'frame_king' => 18,
+                                        'frame_phoenix' => 8,
+                                        'frame_sapphire' => 4,
+                                        _ => vipLevel,
+                                      };
                                       final micOn = member['mic_muted'] == 0 || member['mic_muted']?.toString() == '0';
                                       return VipAnimatedFrame(
                                         size: diameter - 2,
-                                        enabled: vipLevel >= 7 || (vipLevel >= 16 && micOn),
+                                        enabled: activeFrame != null || vipLevel >= 7 || (vipLevel >= 16 && micOn),
+                                        level: frameTier,
+                                        styleId: activeFrame,
                                         child: CircleAvatar(
                                           backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders) : null,
                                           child: Stack(alignment: Alignment.bottomRight, children: [
@@ -1877,6 +1896,26 @@ class _RoomScreenState extends State<RoomScreen> {
             top: 112,
             child: _RoomLampButton(onTap: _openLamp),
           ),
+          if (arrivalEffectMember != null)
+            Positioned.fill(
+              child: VehicleEntryEffect(
+                displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
+                    ? arrivalEffectMember!['display_name'].toString()
+                    : 'VIP member',
+                level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
+                showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
+                    arrivalEffectMember?['active_vehicle_id'] != null,
+                customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
+                    (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
+                vehicleLabel: switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
+                  'vehicle_king' => 'KING OF VIP',
+                  'vehicle_phoenix' => 'PHOENIX GT',
+                  'vehicle_royal' => 'ROYAL CHARIOT',
+                  'vehicle_spark' => 'STARLIGHT COUPE',
+                  _ => null,
+                },
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: SafeArea(
