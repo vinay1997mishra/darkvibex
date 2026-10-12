@@ -47,6 +47,8 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String countryCode = '';
+  String gender = '';
   String? avatarKey;
   String? sessionToken;
   String? authProvider;
@@ -238,6 +240,8 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    countryCode = user['country_code']?.toString() ?? countryCode;
+    gender = user['gender']?.toString() ?? gender;
     avatarKey = user['avatar_key']?.toString();
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
@@ -567,6 +571,38 @@ class AppState extends ChangeNotifier {
     if (amount <= 0) return;
     diamonds += amount;
     notifyListeners();
+  }
+
+  Future<bool> saveProfile({
+    required String displayName,
+    required String countryCode,
+    required String gender,
+  }) async {
+    final name = displayName.trim();
+    final country = countryCode.trim().toUpperCase();
+    final normalizedGender = gender.trim().toLowerCase();
+    if (name.isEmpty || !RegExp(r'^[A-Z]{2}
+    if (value < 0) return;
+    coins = value;
+    notifyListeners();
+  }
+}
+).hasMatch(country) ||
+        !const {'male', 'female', 'other'}.contains(normalizedGender)) {
+      return false;
+    }
+    final ok = await backend.updateUserProfile(
+      userId: userId,
+      displayName: name,
+      countryCode: country,
+      gender: normalizedGender,
+    );
+    if (!ok) return false;
+    this.displayName = name;
+    this.countryCode = country;
+    this.gender = normalizedGender;
+    notifyListeners();
+    return true;
   }
 
   void setCoinBalance(int value) {
