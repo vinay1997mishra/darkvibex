@@ -11,6 +11,7 @@ import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
 import 'coin_seller_screen.dart';
 import 'vip_support_screen.dart';
+import 'id_level_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 
@@ -190,7 +191,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'ID ${state.customVipId?.isNotEmpty == true ? state.customVipId : state.userId} • VIP ${state.vipLevel}/18',
+                      'ID ${state.customVipId?.isNotEmpty == true ? state.customVipId : state.userId} • Lv.${state.idLevel} • VIP ${state.vipLevel}/18',
                     ),
                     if (state.hasVipPrivilege('honorary_title'))
                       const Padding(
@@ -244,6 +245,15 @@ class ProfileScreen extends StatelessWidget {
                       builder: (_) => VipScreen(state: state),
                     ),
                   ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.military_tech_rounded, color: Color(0xFFFFD88A)),
+                  title: const Text('ID Level'),
+                  subtitle: Text('Level ${state.idLevel} • ${state.idLevelExp}/${state.idLevelExpToNext} EXP'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => IdLevelScreen(state: state),
+                  )),
                 ),
                 ListTile(
                   leading: const Icon(Icons.people_alt_rounded),
