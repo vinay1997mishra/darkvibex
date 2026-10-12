@@ -1,6 +1,7 @@
 import {
   applyIdLevelExp,
   idLevelRewards,
+  idLevelExpToNext,
   ID_LEVEL_GIFT_COINS_PER_EXP,
   ID_LEVEL_ROOM_ENTRY_EXP_PER_DAY,
   ID_LEVEL_ROOM_SHARE_EXP_PER_DAY,
@@ -170,7 +171,7 @@ export async function getIdLevelStatus(db, userId) {
   return {
     level,
     exp,
-    exp_to_next: (await import('./id_level_policy.js')).idLevelExpToNext(level),
+    exp_to_next: idLevelExpToNext(level),
     total_exp: Number(state?.raw_exp ?? giftExp + dailyExp),
     gift_coins_consumed: giftCoins,
     gift_coins_per_exp: ID_LEVEL_GIFT_COINS_PER_EXP,
