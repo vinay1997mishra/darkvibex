@@ -1825,6 +1825,15 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  const familyLevelForExp = (value) => {
+    const thresholds = [50000000, 240000000, 580000000, 970000000, 1300000000, 1800000000, 2500000000, 3500000000, 6000000000, 15000000000];
+    let level = 1;
+    for (let i = 0; i < thresholds.length; i++) {
+      if (Number(value ?? 0) >= thresholds[i]) level = i + 2;
+      else break;
+    }
+    return level;
+  };
   const communityPath = url.pathname.startsWith("/api/family") || url.pathname.startsWith("/api/cp");
   if (communityPath) {
     await Promise.all([
@@ -1844,6 +1853,7 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const family = await db.prepare("SELECT f.* FROM families f JOIN family_members m ON m.family_id=f.id WHERE m.user_id=? LIMIT 1").bind(userId).first();
     if (!family) return json({ ok: true, family: null, members: [], join_requests: [] });
+    family.level = familyLevelForExp(family.experience);
     const members = await db.prepare("SELECT m.user_id,m.role,m.joined_at,u.display_name,u.avatar_key FROM family_members m JOIN users u ON u.id=m.user_id WHERE m.family_id=? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,m.joined_at ASC").bind(family.id).all();
     const canReview = ["leader","admin"].includes(String((members.results ?? []).find((m) => m.user_id === userId)?.role ?? ""));
     const requests = canReview ? await db.prepare("SELECT r.user_id,r.created_at,u.display_name,u.avatar_key FROM family_join_requests r JOIN users u ON u.id=r.user_id WHERE r.family_id=? ORDER BY r.created_at ASC").bind(family.id).all() : { results: [] };
@@ -1855,7 +1865,7 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
     const rows = await db.prepare("SELECT f.id,f.name,f.tag,f.experience,f.wallet_coins,COUNT(m.user_id) AS member_count FROM families f LEFT JOIN family_members m ON m.family_id=f.id GROUP BY f.id ORDER BY f.experience DESC LIMIT ?").bind(limit).all();
-    return json({ ok: true, families: rows.results ?? [] });
+    return json({ ok: true, families: (rows.results ?? []).map((row) => ({ ...row, level: familyLevelForExp(row.experience) })) });
   }
 
   if (url.pathname === "/api/family/create" && request.method === "POST") {
@@ -1997,12 +2007,13 @@ async function handleApi(request, env, url) {
     const member = await db.prepare("SELECT family_id FROM family_members WHERE user_id=?").bind(userId).first();
     if (!member) return json({ ok: false, error: "family_membership_required" }, { status: 403 });
     const transferId = id();
-    const debited = await db.prepare("UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?").bind(amount,now(),userId,amount).run();
-    if (!debited.meta?.changes) return json({ ok: false, error: "insufficient_balance" }, { status: 409 });
     await db.batch([
-      db.prepare("UPDATE families SET wallet_coins=wallet_coins+? WHERE id=?").bind(amount,member.family_id),
-      db.prepare("INSERT INTO family_wallet_transfers (id,family_id,user_id,amount,created_at) VALUES (?,?,?,?,?)").bind(transferId,member.family_id,userId,amount,now()),
+      db.prepare("INSERT INTO family_wallet_transfers (id,family_id,user_id,amount,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)").bind(transferId,member.family_id,userId,amount,now(),userId,amount),
+      db.prepare("UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)").bind(amount,now(),userId,amount,transferId),
+      db.prepare("UPDATE families SET wallet_coins=wallet_coins+? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)").bind(amount,member.family_id,transferId),
     ]);
+    const transfer = await db.prepare("SELECT id FROM family_wallet_transfers WHERE id=?").bind(transferId).first();
+    if (!transfer) return json({ ok: false, error: "insufficient_balance" }, { status: 409 });
     return json({ ok: true, transfer_id: transferId });
   }
 
@@ -2194,6 +2205,15 @@ async function handleApi(request, env, url) {
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
     ]);
+    await Promise.all([
+      db.prepare("CREATE TABLE IF NOT EXISTS families (id TEXT PRIMARY KEY, name TEXT NOT NULL, tag TEXT NOT NULL UNIQUE, notice TEXT NOT NULL DEFAULT '', experience INTEGER NOT NULL DEFAULT 0, wallet_coins INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL, created_at INTEGER NOT NULL)").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS family_members (family_id TEXT NOT NULL, user_id TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('leader','admin','member')), joined_at INTEGER NOT NULL, PRIMARY KEY(family_id,user_id))").run(),
+    ]);
+    const familyMembership = await db.prepare("SELECT family_id FROM family_members WHERE user_id=?").bind(receiver).first();
+    if (familyMembership) {
+      const familyShare = Math.floor(cost / 100);
+      await db.prepare("UPDATE families SET experience=experience+?,wallet_coins=wallet_coins+? WHERE id=?").bind(cost,familyShare,familyMembership.family_id).run();
+    }
     await awardIdLevelGift(db, sender, cost, eventId, now());
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
