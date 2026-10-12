@@ -19,6 +19,7 @@ class BackendApi {
     String path, {
     Map<String, dynamic>? body,
     String? authToken,
+    bool returnErrorBody = false,
   }) async {
     if (!configured) return null;
     final client = HttpClient();
@@ -48,7 +49,7 @@ class BackendApi {
       }
       final value = jsonDecode(text);
       if (value is! Map<String, dynamic>) return null;
-      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      if (response.statusCode < 200 || response.statusCode >= 300) { return returnErrorBody ? value : null; }
       return value;
     } finally {
       client.close(force: true);
@@ -504,6 +505,7 @@ class BackendApi {
       _json(
         'POST',
         '/api/wallet/coin-seller-transfer',
+        returnErrorBody: true,
         body: <String, dynamic>{
           'seller_user_id': sellerUserId,
           'receiver_user_id': receiverUserId,
