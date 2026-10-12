@@ -15,6 +15,7 @@ import 'cosmetics_shop_screen.dart';
 import 'id_level_screen.dart';
 import 'family_screen.dart';
 import 'cp_screen.dart';
+import 'mine_feature_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 
@@ -282,10 +283,14 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => VipSupportScreen(state: state))),
                   ),
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
+                _item(context, state, Icons.shield_rounded, 'My Guardian', 'Top gift supporters over 30 days'),
+                _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
+                _item(context, state, Icons.task_alt_rounded, 'Task', 'Daily and account tasks'),
+                _item(context, state, Icons.chat_bubble_rounded, 'Feedback', 'Send feedback and view history'),
                 _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
                 _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
                 _item(context, state, Icons.store_rounded, 'Store', 'Frames, vehicles and entry effects'),
-                _item(context, state, Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
+                _item(context, state, Icons.security_rounded, 'Blacklist', 'Blocked profiles and unblock controls'),
                 _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
                 _item(context, state, Icons.description_outlined, 'Terms & Privacy', 'Room rules, terms and privacy notice'),
                 ListTile(
@@ -314,6 +319,25 @@ class ProfileScreen extends StatelessWidget {
           await Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => const AppSettingsScreen(),
           ));
+          return;
+        }
+        if (title == 'My Guardian' || title == 'Feedback' || title == 'Blacklist') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => MineFeatureScreen(state: state, kind: title),
+          ));
+          return;
+        }
+        if (title == 'Medal of Honor' || title == 'Task') {
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(title),
+              content: const Text('This Tinni Star feature is not connected to a DarkVibeX backend yet.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+              ],
+            ),
+          );
           return;
         }
         if (title == 'Terms & Privacy' || title == 'Privacy & Safety') {
