@@ -8,6 +8,7 @@ import 'legal_policy_screen.dart';
 import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
 import 'coin_seller_screen.dart';
+import 'vip_support_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
@@ -223,6 +224,14 @@ class ProfileScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _showVisitors(context),
                 ),
+                if (state.hasVipPrivilege('customer_service'))
+                  ListTile(
+                    leading: const Icon(Icons.support_agent_rounded),
+                    title: const Text('VIP Customer Service'),
+                    subtitle: const Text('Create a private support ticket'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => VipSupportScreen(state: state))),
+                  ),
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
                 _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
                 _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),

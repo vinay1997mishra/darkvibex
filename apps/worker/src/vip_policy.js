@@ -34,6 +34,7 @@ export function vipCapabilities(level, active){
     room_background_enabled: active && level >= 3,
     picture_welcome_enabled: active && level >= 5,
     room_images_enabled: active && level >= 10,
+    customer_service_enabled: active && level >= 9,
     seat_protection_enabled: active && level >= 13,
     kick_protection_enabled: active && level >= 14,
     message_retention_days: active ? (level >= 12 ? 180 : level >= 8 ? 90 : level >= 5 ? 30 : 0) : 0,

@@ -2,6 +2,7 @@ import { normalizeRole } from "./role_policy.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
+import { ensureSupportSchema } from "./support_store.js";
 import {
   acceptPendingLampMicInvite,
   claimLampTask,
@@ -1309,6 +1310,57 @@ async function handleApi(request, env, url) {
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
     return json({ ok: true, vip: await getVipStatus(db, userId) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length >= 4 && parts[3] === "support-tickets") {
+    const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    const vip = await getVipStatus(db, userId);
+    if (!vip.customer_service_enabled) return json({ ok: false, error: "vip9_required_for_support" }, { status: 403 });
+    await ensureSupportSchema(db);
+    if (parts.length === 4 && request.method === "GET") {
+      const rows = await db.prepare("SELECT id,subject,status,created_at,updated_at FROM vip_support_tickets WHERE user_id=? ORDER BY updated_at DESC LIMIT 100").bind(userId).all();
+      return json({ ok: true, tickets: rows.results ?? [] });
+    }
+    if (parts.length === 4 && request.method === "POST") {
+      const body = await bodyJson(request);
+      const subject = String(body.subject ?? "").trim().slice(0, 100);
+      const message = String(body.message ?? "").trim();
+      if (!subject || !message || message.length > 2000) return json({ ok: false, error: "subject_and_message_required" }, { status: 400 });
+      const ticketId = id();
+      const ts = now();
+      await db.batch([
+        db.prepare("INSERT INTO vip_support_tickets (id,user_id,subject,status,created_at,updated_at) VALUES (?,?,?,'open',?,?)").bind(ticketId, userId, subject, ts, ts),
+        db.prepare("INSERT INTO vip_support_messages (id,ticket_id,sender_type,sender_id,body,created_at) VALUES (?,?, 'user',?,?,?)").bind(id(), ticketId, userId, message, ts),
+      ]);
+      return json({ ok: true, ticket_id: ticketId });
+    }
+    if (parts.length === 5 && request.method === "GET") {
+      const ticketId = decodeURIComponent(parts[4]);
+      const ticket = await db.prepare("SELECT id,subject,status,created_at,updated_at FROM vip_support_tickets WHERE id=? AND user_id=?").bind(ticketId, userId).first();
+      if (!ticket) return json({ ok: false, error: "not_found" }, { status: 404 });
+      const rows = await db.prepare("SELECT id,sender_type,body,created_at FROM vip_support_messages WHERE ticket_id=? ORDER BY created_at ASC LIMIT 500").bind(ticketId).all();
+      return json({ ok: true, ticket, messages: rows.results ?? [] });
+    }
+    if (parts.length === 6 && parts[5] === "reply" && request.method === "POST") {
+      const ticketId = decodeURIComponent(parts[4]);
+      const ticket = await db.prepare("SELECT id,status FROM vip_support_tickets WHERE id=? AND user_id=?").bind(ticketId, userId).first();
+      if (!ticket) return json({ ok: false, error: "not_found" }, { status: 404 });
+      if (ticket.status !== "open") return json({ ok: false, error: "ticket_closed" }, { status: 409 });
+      const body = await bodyJson(request);
+      const message = String(body.message ?? "").trim();
+      if (!message || message.length > 2000) return json({ ok: false, error: "message_length_invalid" }, { status: 400 });
+      const ts = now();
+      await db.batch([
+        db.prepare("INSERT INTO vip_support_messages (id,ticket_id,sender_type,sender_id,body,created_at) VALUES (?,?, 'user',?,?,?)").bind(id(), ticketId, userId, message, ts),
+        db.prepare("UPDATE vip_support_tickets SET updated_at=? WHERE id=?").bind(ts, ticketId),
+      ]);
+      return json({ ok: true });
+    }
+    return json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
   if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "preferences" && request.method === "POST") {
