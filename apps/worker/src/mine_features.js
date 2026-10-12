@@ -153,12 +153,18 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
         ORDER BY gift_coins DESC, g.sender_user_id ASC
         LIMIT 50`
     ).bind(userId, now() - windowDays * 24 * 60 * 60 * 1000).all();
-    const supporters = rows.results ?? [];
+    const supporters = (rows.results ?? []).map((row, index) => {
+      const coins = Math.max(0, Number(row.gift_coins ?? 0));
+      return { ...row, rank: index + 1, coins, points: coins, guardian_eligible: coins >= threshold };
+    });
     const first = supporters[0] ?? null;
-    const guardian = first && Number(first.gift_coins ?? 0) >= threshold
-      ? { ...first, threshold, progress: Number(first.gift_coins ?? 0) }
+    const guardian = first?.guardian_eligible
+      ? { ...first, threshold, progress: first.coins }
       : null;
-    return json({ ok: true, guardian, supporters, guardian_threshold: threshold, window_days: windowDays });
+    return json({
+      ok: true, guardian, supporters, candidate_threshold: threshold,
+      guardian_threshold: threshold, guardian_threshold_coins: threshold, window_days: windowDays,
+    });
   }
 
   if (path === "/api/mine/feedback" && request.method === "GET") {
