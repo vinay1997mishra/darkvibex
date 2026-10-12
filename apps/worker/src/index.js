@@ -980,6 +980,14 @@ async function handleApi(request, env, url) {
       "SELECT owner_user_id, locked FROM rooms WHERE id = ?"
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    await db.prepare(`CREATE TABLE IF NOT EXISTS user_blocks (
+      blocker_user_id TEXT NOT NULL, blocked_user_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (blocker_user_id, blocked_user_id)
+    )`).run();
+    const ownerBlock = await db.prepare(
+      "SELECT 1 AS blocked FROM user_blocks WHERE blocker_user_id = ? AND blocked_user_id = ? LIMIT 1"
+    ).bind(String(roomAccess.owner_user_id), userId).first();
+    if (ownerBlock) return json({ ok: false, error: "user_blocked_by_room_owner" }, { status: 403 });
     await ensureRoomSafetyTables(db);
     const roomBan = await db.prepare(
       "SELECT 1 AS blocked FROM room_bans WHERE room_id = ? AND user_id = ?"
@@ -1455,6 +1463,14 @@ async function handleApi(request, env, url) {
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender, { checkMute: true });
     await ensureUserAllowed(db, receiver);
+    await db.prepare(`CREATE TABLE IF NOT EXISTS user_blocks (
+      blocker_user_id TEXT NOT NULL, blocked_user_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (blocker_user_id, blocked_user_id)
+    )`).run();
+    const blockedPair = await db.prepare(
+      "SELECT 1 AS blocked FROM user_blocks WHERE (blocker_user_id = ? AND blocked_user_id = ?) OR (blocker_user_id = ? AND blocked_user_id = ?) LIMIT 1"
+    ).bind(sender, receiver, receiver, sender).first();
+    if (blockedPair) return json({ ok: false, error: "user_blocked" }, { status: 403 });
     const messageId = id();
     await ensureImageTables(db);
     const createdAt = now();
