@@ -92,7 +92,7 @@ class VipPolicy {
     VipPrivilege(id: 'seat_protection', title: 'Remove From Seat Protection', description: 'Protect your occupied seat from forced removal.', minLevel: 13),
     VipPrivilege(id: 'invisible_entry', title: 'Enter Chat Room Invisible', description: 'Enter rooms without a public join notice.', minLevel: 14),
     VipPrivilege(id: 'kick_protection', title: 'Kick Out Protection', description: 'Protection from normal room kick actions.', minLevel: 14),
-    VipPrivilege(id: 'unique_id', title: 'Unique ID', description: 'Customize your ID once per month, plus one extra change after each VIP level-up.', minLevel: 15),
+    VipPrivilege(id: 'unique_id', title: 'Unique ID', description: 'VIP5–VIP18: change once each month and get one extra change after every VIP level-up.', minLevel: 5),
     VipPrivilege(id: 'splash_recommend', title: 'Recommend on Splash', description: 'One-day featured recommendation on the splash surface.', minLevel: 15),
     VipPrivilege(id: 'privacy_protection', title: 'Privacy Protection', description: 'Protect profile/avatar media from ordinary save/screenshot flows where supported.', minLevel: 15),
     VipPrivilege(id: 'custom_avatar_frame', title: 'Customized Avatar Frame', description: 'Use a premium customized avatar frame.', minLevel: 16),
