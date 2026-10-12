@@ -55,7 +55,6 @@ class _CoinSellerScreenState extends State<CoinSellerScreen> {
         final exp = vipAward is Map ? vipAward['awarded_exp'] : null;
         if (mounted) _show('Coins transferred. Receiver earned ${exp ?? 0} VIP EXP.');
       } else {
-        final error = result?['error']?.toString();
         _show('Transfer failed. Check Coin Seller access, user ID, and balance.');
       }
     } catch (_) {
