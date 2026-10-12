@@ -15,6 +15,12 @@ const ensureMineTables = async (db) => {
     created_at INTEGER NOT NULL,
     PRIMARY KEY (blocker_user_id, blocked_user_id)
   )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS user_follows (
+    follower_user_id TEXT NOT NULL,
+    followed_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (follower_user_id, followed_user_id)
+  )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS family_members (
     family_id TEXT NOT NULL, user_id TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL CHECK(role IN ('leader','admin','member')),
@@ -69,7 +75,7 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
     const user = await db.prepare("SELECT display_name,country_code,gender FROM users WHERE id = ?").bind(userId).first();
     if (!user) return json({ ok: false, error: "user_not_found" }, { status: 404 });
     const checks = await Promise.all([
-      db.prepare("SELECT COUNT(*) AS count FROM user_friends WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) AS count FROM user_follows WHERE follower_user_id = ?").bind(userId).first(),
       db.prepare("SELECT COUNT(*) AS count FROM lamp_room_user_first_seen WHERE user_id = ?").bind(userId).first(),
       db.prepare("SELECT COUNT(*) AS count FROM gift_events WHERE sender_user_id = ?").bind(userId).first(),
       db.prepare("SELECT COUNT(*) AS count FROM family_members WHERE user_id = ?").bind(userId).first(),
@@ -193,6 +199,37 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
       "INSERT INTO user_feedback (id,user_id,category,message,status,created_at) VALUES (?,?,?,?,'received',?)"
     ).bind(feedbackId, userId, category, message, createdAt).run();
     return json({ ok: true, feedback: { id: feedbackId, category, message, status: "received", created_at: createdAt } }, { status: 201 });
+  }
+
+  if (path === "/api/mine/follow" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const targetId = String(url.searchParams.get("target_user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!targetId) return json({ ok: false, error: "target_user_id_required" }, { status: 400 });
+    const row = await db.prepare("SELECT 1 AS following FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?")
+      .bind(userId, targetId).first();
+    return json({ ok: true, following: Boolean(row) });
+  }
+
+  if (path === "/api/mine/follow" && request.method === "POST") {
+    const body = await request.json();
+    const userId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const followed = body.followed === true;
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!targetId || targetId === userId) return json({ ok: false, error: "invalid_target" }, { status: 400 });
+    const target = await db.prepare("SELECT 1 AS found FROM users WHERE id = ?").bind(targetId).first();
+    if (!target) return json({ ok: false, error: "user_not_found" }, { status: 404 });
+    if (followed) {
+      await db.prepare("INSERT OR IGNORE INTO user_follows (follower_user_id,followed_user_id,created_at) VALUES (?,?,?)")
+        .bind(userId, targetId, now()).run();
+    } else {
+      await db.prepare("DELETE FROM user_follows WHERE follower_user_id = ? AND followed_user_id = ?")
+        .bind(userId, targetId).run();
+    }
+    return json({ ok: true, following: followed });
   }
 
   if (path === "/api/mine/blocks" && request.method === "GET") {
