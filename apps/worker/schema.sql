@@ -72,6 +72,30 @@ CREATE TABLE IF NOT EXISTS direct_messages (
   FOREIGN KEY (receiver_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS inbox_red_envelopes (
+  id TEXT PRIMARY KEY,
+  sender_user_id TEXT NOT NULL,
+  receiver_user_id TEXT NOT NULL,
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','claimed','expired')),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  claimed_at INTEGER,
+  refund_token TEXT
+);
+
+CREATE TABLE IF NOT EXISTS inbox_red_envelope_claims (
+  envelope_id TEXT PRIMARY KEY,
+  claim_token TEXT NOT NULL UNIQUE,
+  user_id TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  claimed_at INTEGER NOT NULL,
+  FOREIGN KEY (envelope_id) REFERENCES inbox_red_envelopes(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_envelopes_pair_time
+  ON inbox_red_envelopes(sender_user_id, receiver_user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS room_settings (
   room_id TEXT PRIMARY KEY,
   announcement TEXT NOT NULL DEFAULT '',

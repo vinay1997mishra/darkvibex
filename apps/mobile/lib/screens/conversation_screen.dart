@@ -22,8 +22,20 @@ class ConversationScreen extends StatefulWidget {
 class _ConversationScreenState extends State<ConversationScreen> {
   final controller = TextEditingController();
   final List<Map<String, dynamic>> messages = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> envelopes = <Map<String, dynamic>>[];
   bool loading = true;
   bool uploadingImage = false;
+  bool sendingEnvelope = false;
+
+  List<Map<String, dynamic>> get _timeline {
+    final items = <Map<String, dynamic>>[
+      ...messages.map((item) => <String, dynamic>{...item, '_kind': 'message'}),
+      ...envelopes.map((item) => <String, dynamic>{...item, '_kind': 'envelope'}),
+    ];
+    items.sort((a, b) => (int.tryParse(a['created_at']?.toString() ?? '') ?? 0)
+        .compareTo(int.tryParse(b['created_at']?.toString() ?? '') ?? 0));
+    return items;
+  }
 
   @override
   void initState() {
@@ -46,9 +58,70 @@ class _ConversationScreenState extends State<ConversationScreen> {
       messages
         ..clear()
         ..addAll(rows);
+      final envelopeRows = await widget.state.backend.inboxRedEnvelopes(
+        userId: widget.state.userId,
+        otherUserId: widget.otherUserId,
+      );
+      envelopes
+        ..clear()
+        ..addAll(envelopeRows);
     }
     if (!mounted) return;
     setState(() => loading = false);
+  }
+
+  Future<void> _sendEnvelope() async {
+    if (sendingEnvelope || !widget.state.hasVipPrivilege('red_envelope')) return;
+    final amountController = TextEditingController();
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Send to ${widget.otherName}'),
+        content: TextField(
+          controller: amountController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(labelText: 'Coins (you have ${widget.state.coins})'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () {
+            final value = int.tryParse(amountController.text.trim());
+            if (value == null || value < 1 || value > widget.state.coins) return;
+            Navigator.pop(context, value);
+          }, child: const Text('Send envelope')),
+        ],
+      ),
+    );
+    amountController.dispose();
+    if (amount == null || !mounted) return;
+    setState(() => sendingEnvelope = true);
+    final result = await widget.state.backend.sendInboxRedEnvelope(
+      senderUserId: widget.state.userId,
+      receiverUserId: widget.otherUserId,
+      amount: amount,
+    );
+    if (!mounted) return;
+    setState(() => sendingEnvelope = false);
+    if (result?['ok'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Red envelope could not be sent. Check VIP6 and coin balance.')));
+      return;
+    }
+    await widget.state.refreshWallet();
+    await _load();
+  }
+
+  Future<void> _claimEnvelope(String envelopeId) async {
+    final result = await widget.state.backend.claimInboxRedEnvelope(userId: widget.state.userId, envelopeId: envelopeId);
+    if (!mounted) return;
+    if (result?['ok'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This envelope has expired or was already opened.')));
+      return;
+    }
+    await widget.state.refreshWallet();
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('You received ${result?['amount'] ?? 0} coins')));
   }
 
   Future<void> _send() async {
@@ -145,19 +218,56 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.otherName)),
+      appBar: AppBar(
+        title: Text(widget.otherName),
+        actions: [
+          if (widget.state.hasVipPrivilege('red_envelope'))
+            IconButton(
+              tooltip: 'Send red envelope',
+              onPressed: sendingEnvelope ? null : _sendEnvelope,
+              icon: sendingEnvelope ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.redeem_rounded, color: Color(0xFFFF7070)),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
             child: loading
                 ? const Center(child: CircularProgressIndicator())
-                : messages.isEmpty
+                : messages.isEmpty && envelopes.isEmpty
                     ? const Center(child: Text('Start a conversation'))
                     : ListView.builder(
                         padding: const EdgeInsets.all(12),
-                        itemCount: messages.length,
+                        itemCount: _timeline.length,
                         itemBuilder: (context, index) {
-                          final item = messages[index];
+                          final item = _timeline[index];
+                          if (item['_kind'] == 'envelope') {
+                            final mine = item['sender_user_id']?.toString() == widget.state.userId;
+                            final expiresAt = int.tryParse(item['expires_at']?.toString() ?? '') ?? 0;
+                            final canClaim = !mine && item['status'] == 'open' && expiresAt > DateTime.now().millisecondsSinceEpoch;
+                            final claimed = item['claimed_by_me'] == true || item['status'] == 'claimed';
+                            return Align(
+                              alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Card(
+                                color: const Color(0xFF8B202B),
+                                child: SizedBox(width: 230, child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    const Icon(Icons.redeem_rounded, color: Color(0xFFFFD36A), size: 30),
+                                    const SizedBox(height: 6),
+                                    Text(mine ? 'Red envelope sent' : 'Red envelope from ${item['sender_name'] ?? widget.otherName}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    Text(mine
+                                        ? '${item['amount'] ?? 0} coins · ${item['status'] == 'expired' ? 'refunded' : _expiry(expiresAt)}'
+                                        : claimed
+                                            ? '${item['amount'] ?? 0} coins received'
+                                            : 'Open within 24 hours'),
+                                    if (canClaim) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _claimEnvelope(item['id'].toString()), child: const Text('Open'))),
+                                    if (!mine && item['status'] == 'expired') const Text('Expired · sender refunded'),
+                                  ]),
+                                )),
+                              ),
+                            );
+                          }
                           final mine =
                               item['sender_user_id']?.toString() == widget.state.userId;
                           return Align(
@@ -262,4 +372,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ),
     );
   }
+}
+
+String _expiry(int expiresAt) {
+  final left = expiresAt - DateTime.now().millisecondsSinceEpoch;
+  if (left <= 0) return 'expired';
+  final hours = left ~/ 3600000;
+  final minutes = (left % 3600000) ~/ 60000;
+  return 'expires in ${hours}h ${minutes}m';
 }

@@ -294,6 +294,47 @@ async function ensureRoomLuckyPouchTables(db) {
   )`).run();
 }
 
+async function ensureInboxEnvelopeTables(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS inbox_red_envelopes (
+      id TEXT PRIMARY KEY,
+      sender_user_id TEXT NOT NULL,
+      receiver_user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','claimed','expired')),
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      claimed_at INTEGER,
+      refund_token TEXT
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS inbox_red_envelope_claims (
+      envelope_id TEXT PRIMARY KEY,
+      claim_token TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      FOREIGN KEY (envelope_id) REFERENCES inbox_red_envelopes(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_inbox_envelopes_pair_time ON inbox_red_envelopes(sender_user_id,receiver_user_id,created_at DESC)"),
+  ]);
+}
+
+async function expireInboxEnvelopes(db, ts = now()) {
+  await ensureInboxEnvelopeTables(db);
+  const expired = await db.prepare("SELECT id,sender_user_id FROM inbox_red_envelopes WHERE status='open' AND expires_at<=? ORDER BY expires_at LIMIT 500").bind(ts).all();
+  for (const envelope of expired.results ?? []) {
+    const token = id();
+    const createdAt = ts;
+    await db.batch([
+      db.prepare("UPDATE inbox_red_envelopes SET status='expired',refund_token=? WHERE id=? AND status='open' AND expires_at<=?").bind(token, envelope.id, ts),
+      db.prepare("UPDATE users SET coins=coins+(SELECT amount FROM inbox_red_envelopes WHERE id=? AND refund_token=?),updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM inbox_red_envelopes WHERE id=? AND refund_token=?)")
+        .bind(envelope.id, token, createdAt, envelope.sender_user_id, envelope.id, token),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'red_envelope_refund',e.amount,u.coins,e.id,? FROM users u JOIN inbox_red_envelopes e ON e.sender_user_id=u.id WHERE e.id=? AND e.refund_token=?")
+        .bind(id(), createdAt, envelope.id, token),
+    ]);
+  }
+}
+
 async function ensureRoomAdminTable(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS room_admins (
     room_id TEXT NOT NULL,
@@ -1183,6 +1224,97 @@ async function handleApi(request, env, url) {
     }
   }
 
+  if (url.pathname === "/api/messages/red-envelope" && request.method === "POST") {
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
+    const body = await bodyJson(request);
+    const sender = String(body.sender_user_id ?? "").trim();
+    const receiver = String(body.receiver_user_id ?? "").trim();
+    const amount = Number(body.amount);
+    const authError = await requireSession(request, env, sender);
+    if (authError) return authError;
+    if (!sender || !receiver || sender === receiver || !Number.isSafeInteger(amount) || amount < 1) {
+      return json({ ok: false, error: "invalid_red_envelope" }, { status: 400 });
+    }
+    await ensureUserAllowed(db, sender, { checkMute: true });
+    await ensureUserAllowed(db, receiver);
+    const receiverExists = await db.prepare("SELECT 1 AS exists_user FROM users WHERE id=?").bind(receiver).first();
+    if (!receiverExists) return json({ ok: false, error: "receiver_not_found" }, { status: 404 });
+    await ensureVipSchema(db);
+    const vip = await getVipStatus(db, sender);
+    if (!vip.red_envelope_enabled) return json({ ok: false, error: "vip6_required_for_red_envelope" }, { status: 403 });
+    await ensureInboxEnvelopeTables(db);
+    await expireInboxEnvelopes(db);
+    const envelopeId = id();
+    const messageId = id();
+    const ts = now();
+    await db.batch([
+      db.prepare(`INSERT INTO inbox_red_envelopes (id,sender_user_id,receiver_user_id,amount,status,created_at,expires_at)
+        SELECT ?,u.id,?,?,'open',?,? FROM users u JOIN user_vip v ON v.user_id=u.id
+         WHERE u.id=? AND u.coins>=? AND v.level>=6 AND v.active_until>?`)
+        .bind(envelopeId, receiver, amount, ts, ts + 86400000, sender, amount, ts),
+      db.prepare("UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=? AND EXISTS(SELECT 1 FROM inbox_red_envelopes WHERE id=? AND status='open')")
+        .bind(amount, ts, sender, amount, envelopeId),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,id,'red_envelope_sent',-?,coins,?,? FROM users WHERE id=? AND EXISTS(SELECT 1 FROM inbox_red_envelopes WHERE id=?)")
+        .bind(id(), amount, envelopeId, ts, sender, envelopeId),
+      db.prepare("INSERT INTO direct_messages (id,sender_user_id,receiver_user_id,text,created_at,read_at) SELECT ?,?,?, '🎁 Red envelope',?,NULL WHERE EXISTS(SELECT 1 FROM inbox_red_envelopes WHERE id=?)")
+        .bind(messageId, sender, receiver, ts, envelopeId),
+    ]);
+    const created = await db.prepare("SELECT id FROM inbox_red_envelopes WHERE id=?").bind(envelopeId).first();
+    if (!created) return json({ ok: false, error: "insufficient_coins_or_vip_expired" }, { status: 409 });
+    return json({ ok: true, envelope_id: envelopeId, expires_at: ts + 86400000 }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/messages/red-envelopes" && request.method === "GET") {
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const otherId = String(url.searchParams.get("other_user_id") ?? "").trim();
+    if (!userId || !otherId) return json({ ok: false, error: "user_ids_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureInboxEnvelopeTables(db);
+    await expireInboxEnvelopes(db);
+    const rows = await db.prepare(`SELECT e.id,e.sender_user_id,e.receiver_user_id,
+      CASE WHEN e.sender_user_id=? OR EXISTS(SELECT 1 FROM inbox_red_envelope_claims own WHERE own.envelope_id=e.id AND own.user_id=?) THEN e.amount ELSE NULL END AS amount,
+      e.status,e.created_at,e.expires_at,e.claimed_at,
+      s.display_name AS sender_name,r.display_name AS receiver_name,
+      EXISTS(SELECT 1 FROM inbox_red_envelope_claims c WHERE c.envelope_id=e.id AND c.user_id=?) AS claimed_by_me
+      FROM inbox_red_envelopes e LEFT JOIN users s ON s.id=e.sender_user_id LEFT JOIN users r ON r.id=e.receiver_user_id
+      WHERE (e.sender_user_id=? AND e.receiver_user_id=?) OR (e.sender_user_id=? AND e.receiver_user_id=?) ORDER BY e.created_at ASC LIMIT 200`)
+      .bind(userId, userId, userId, userId, otherId, otherId, userId).all();
+    return json({ ok: true, envelopes: rows.results ?? [] });
+  }
+
+  if (parts[0] === "api" && parts[1] === "messages" && parts[2] === "red-envelope" && parts.length === 5 && parts[4] === "claim" && request.method === "POST") {
+    const envelopeId = parts[3];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    await ensureInboxEnvelopeTables(db);
+    await expireInboxEnvelopes(db);
+    const existing = await db.prepare("SELECT amount FROM inbox_red_envelope_claims WHERE envelope_id=? AND user_id=?").bind(envelopeId, userId).first();
+    if (existing) return json({ ok: true, amount: Number(existing.amount), duplicate: true });
+    const claimToken = id();
+    const ts = now();
+    await db.batch([
+      db.prepare(`INSERT OR IGNORE INTO inbox_red_envelope_claims (envelope_id,claim_token,user_id,amount,claimed_at)
+        SELECT id,?,?,amount,? FROM inbox_red_envelopes WHERE id=? AND receiver_user_id=? AND status='open' AND expires_at>?`)
+        .bind(claimToken, userId, ts, envelopeId, userId, ts),
+      db.prepare("UPDATE inbox_red_envelopes SET status='claimed',claimed_at=? WHERE id=? AND status='open' AND expires_at>? AND EXISTS(SELECT 1 FROM inbox_red_envelope_claims WHERE envelope_id=? AND claim_token=? AND user_id=?)")
+        .bind(ts, envelopeId, ts, envelopeId, claimToken, userId),
+      db.prepare("UPDATE users SET coins=coins+(SELECT amount FROM inbox_red_envelope_claims WHERE envelope_id=? AND claim_token=?),updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM inbox_red_envelope_claims WHERE envelope_id=? AND claim_token=? AND user_id=?)")
+        .bind(envelopeId, claimToken, ts, userId, envelopeId, claimToken, userId),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,id,'red_envelope_claim',c.amount,coins,?,? FROM users JOIN inbox_red_envelope_claims c ON c.user_id=users.id WHERE users.id=? AND c.envelope_id=? AND c.claim_token=?")
+        .bind(id(), envelopeId, ts, userId, envelopeId, claimToken),
+    ]);
+    const claim = await db.prepare("SELECT amount FROM inbox_red_envelope_claims WHERE envelope_id=? AND claim_token=?").bind(envelopeId, claimToken).first();
+    if (!claim) return json({ ok: false, error: "envelope_expired_claimed_or_not_for_you" }, { status: 409 });
+    return json({ ok: true, amount: Number(claim.amount) });
+  }
+
   if (url.pathname === "/api/messages/send" && request.method === "POST") {
     const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
@@ -1628,6 +1760,9 @@ async function handleLiveKitToken(request, env) {
 }
 
 export default {
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(expireInboxEnvelopes(requireDb(env)));
+  },
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
     const url = new URL(request.url);

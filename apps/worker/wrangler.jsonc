@@ -23,7 +23,10 @@
       "binding": "FILES",
       "bucket_name": "darkvibex-files"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
 
   // Store these only as Cloudflare Worker secrets/vars, never in Git:
   //   OWNER_ADMIN_TOKEN

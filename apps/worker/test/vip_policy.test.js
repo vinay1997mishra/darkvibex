@@ -7,6 +7,9 @@ test("VIP room and safety entitlements are active-only and level-gated", () => {
   assert.equal(vipCapabilities(3, true).room_background_enabled, true);
   assert.equal(vipCapabilities(4, true).picture_welcome_enabled, false);
   assert.equal(vipCapabilities(5, true).picture_welcome_enabled, true);
+  assert.equal(vipCapabilities(5, true).red_envelope_enabled, false);
+  assert.equal(vipCapabilities(6, true).red_envelope_enabled, true);
+  assert.equal(vipCapabilities(18, false).red_envelope_enabled, false);
   assert.equal(vipCapabilities(8, true).customer_service_enabled, false);
   assert.equal(vipCapabilities(9, true).customer_service_enabled, true);
   assert.equal(vipCapabilities(18, false).customer_service_enabled, false);
