@@ -1592,6 +1592,83 @@ async function handleApi(request, env, url) {
     });
   }
 
+  const gameRoomMatch = url.pathname.match(/^\/api\/game-rooms\/([^/]+)(?:\/(join|tap))?$/);
+  if (url.pathname === "/api/game-rooms" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const rows = await db.prepare("SELECT r.id,r.name,r.owner_user_id,u.display_name AS owner_name,r.shared_score,r.created_at,COUNT(m.user_id) AS member_count FROM game_rooms r JOIN users u ON u.id=r.owner_user_id LEFT JOIN game_room_members m ON m.room_id=r.id GROUP BY r.id ORDER BY r.updated_at DESC LIMIT 100").all();
+    return json({ ok: true, rooms: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/game-rooms" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) return json({ ok: false, error: "games_disabled" }, { status: 403 });
+    await ensureUser(db, userId);
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const roomId = id();
+    const ts = now();
+    const name = String(body.name ?? "Party Game Room").trim().slice(0, 48) || "Party Game Room";
+    await db.batch([
+      db.prepare("INSERT INTO game_rooms (id,owner_user_id,name,shared_score,created_at,updated_at) VALUES (?,?,?,0,?,?)").bind(roomId,userId,name,ts,ts),
+      db.prepare("INSERT INTO game_room_members (room_id,user_id,seat_index,joined_at) VALUES (?,?,0,?)").bind(roomId,userId,ts),
+    ]);
+    return json({ ok: true, room_id: roomId }, { status: 201 });
+  }
+
+  if (gameRoomMatch && request.method === "GET") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const room = await db.prepare("SELECT r.id,r.name,r.owner_user_id,u.display_name AS owner_name,r.shared_score,r.created_at FROM game_rooms r JOIN users u ON u.id=r.owner_user_id WHERE r.id=?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "game_room_not_found" }, { status: 404 });
+    const members = await db.prepare("SELECT m.user_id,m.seat_index,u.display_name,u.avatar_key,u.vip_level FROM game_room_members m JOIN users u ON u.id=m.user_id WHERE m.room_id=? ORDER BY m.seat_index").bind(roomId).all();
+    return json({ ok: true, room, members: members.results ?? [] });
+  }
+
+  if (gameRoomMatch && gameRoomMatch[2] === "join" && request.method === "POST") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db,userId);
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))").run();
+    const exists = await db.prepare("SELECT 1 AS yes FROM game_room_members WHERE room_id=? AND user_id=?").bind(roomId,userId).first();
+    if (exists) return json({ ok: true, already_joined: true });
+    const count = await db.prepare("SELECT COUNT(*) AS total FROM game_room_members WHERE room_id=?").bind(roomId).first();
+    if (Number(count?.total ?? 0) >= 15) return json({ ok: false, error: "game_room_full" }, { status: 409 });
+    const seat = Number(count?.total ?? 0);
+    const result = await db.prepare("INSERT INTO game_room_members (room_id,user_id,seat_index,joined_at) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM game_rooms WHERE id=?)").bind(roomId,userId,seat,now(),roomId).run();
+    const joined = await db.prepare("SELECT 1 AS yes FROM game_room_members WHERE room_id=? AND user_id=?").bind(roomId,userId).first();
+    if (!joined) return json({ ok: false, error: "game_room_not_found" }, { status: 404 });
+    await db.prepare("UPDATE game_rooms SET updated_at=? WHERE id=?").bind(now(),roomId).run();
+    return json({ ok: true, seat_index: seat });
+  }
+
+  if (gameRoomMatch && gameRoomMatch[2] === "tap" && request.method === "POST") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const updated = await db.prepare("UPDATE game_rooms SET shared_score=shared_score+1,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM game_room_members WHERE room_id=? AND user_id=?)").bind(now(),roomId,roomId,userId).run();
+    if (!updated.meta?.changes) return json({ ok: false, error: "join_room_first" }, { status: 403 });
+    const room = await db.prepare("SELECT shared_score FROM game_rooms WHERE id=?").bind(roomId).first();
+    return json({ ok: true, shared_score: Number(room?.shared_score ?? 0) });
+  }
+
   if (url.pathname === "/api/friends" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
