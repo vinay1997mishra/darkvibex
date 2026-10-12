@@ -15,6 +15,11 @@ const ensureMineTables = async (db) => {
     created_at INTEGER NOT NULL,
     PRIMARY KEY (blocker_user_id, blocked_user_id)
   )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS family_members (
+    family_id TEXT NOT NULL, user_id TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL CHECK(role IN ('leader','admin','member')),
+    joined_at INTEGER NOT NULL, PRIMARY KEY(family_id,user_id)
+  )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_task_claims (
     user_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
