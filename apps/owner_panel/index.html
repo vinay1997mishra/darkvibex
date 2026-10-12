@@ -18,6 +18,7 @@
         <button class="nav-btn" data-view="catalog">Content</button>
         <button class="nav-btn" data-view="settings">Settings</button>
         <button class="nav-btn" data-view="announcements">Announcements</button>
+        <button class="nav-btn" data-view="support">VIP Support</button>
         <button class="nav-btn" data-view="staff">Staff</button>
         <button class="nav-btn" data-view="audit">Audit log</button>
       </nav>
@@ -137,6 +138,19 @@
             <div id="newStaffToken" class="secret-once" hidden></div>
           </article>
           <article class="panel"><div id="staffList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="support">
+          <article class="panel">
+            <div class="panel-head"><div><h2>VIP support tickets</h2><p>Reply to active VIP9+ customer-service requests and close resolved tickets.</p></div><select id="supportStatus" aria-label="Ticket status"><option value="all">All tickets</option><option value="open">Open</option><option value="closed">Closed</option></select></div>
+            <div id="supportList" class="stack"></div>
+          </article>
+          <article id="supportThread" class="panel" hidden>
+            <div class="panel-head"><div><h2 id="supportThreadTitle">Ticket</h2><p id="supportThreadMeta" class="muted"></p></div><button id="closeSupportTicket" class="secondary">Close ticket</button></div>
+            <div id="supportMessages" class="stack"></div>
+            <div class="form-grid" style="margin-top:14px"><label class="span-2">Reply<textarea id="supportReply" rows="3" maxlength="2000" placeholder="Write a reply to the VIP user"></textarea></label></div>
+            <button id="sendSupportReply" class="primary">Send reply</button>
+          </article>
         </section>
 
         <section class="view" data-view-panel="audit">
