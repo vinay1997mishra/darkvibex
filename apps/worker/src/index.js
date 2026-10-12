@@ -1041,6 +1041,7 @@ async function handleApi(request, env, url) {
            LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
           WHERE m.room_id = ?
           ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
+                   active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
       ).bind(now(), now(), now(), roomId).all();
