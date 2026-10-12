@@ -1,4 +1,5 @@
 import { normalizeRole } from "./role_policy.js";
+import { ensureSupportSchema } from "./support_store.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -57,6 +58,7 @@ function defaultPermissions(role) {
   if (role === "admin") {
     return [
       "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
+      "support.read", "support.write",
       "rooms.read", "rooms.write", "catalog.read", "catalog.write",
       "settings.read", "settings.write", "announcements.read", "announcements.write",
       "staff.read", "audit.read",
@@ -627,6 +629,58 @@ async function handleAudit(request, db, actor, url) {
   return json({ ok: true, audit: rows.results ?? [] });
 }
 
+async function handleSupportTickets(request, db, actor, url, parts) {
+  await ensureSupportSchema(db);
+  const ticketId = parts[3] ? decodeURIComponent(parts[3]) : "";
+  if (!ticketId && request.method === "GET") {
+    requirePermission(actor, "support.read");
+    const status = String(url.searchParams.get("status") ?? "all");
+    const rows = await db.prepare(
+      `SELECT t.id,t.user_id,t.subject,t.status,t.created_at,t.updated_at,
+              COALESCE(u.display_name,'') AS display_name,u.vip_level,
+              (SELECT body FROM vip_support_messages m WHERE m.ticket_id=t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
+              (SELECT sender_type FROM vip_support_messages m WHERE m.ticket_id=t.id ORDER BY m.created_at DESC LIMIT 1) AS last_sender
+         FROM vip_support_tickets t LEFT JOIN users u ON u.id=t.user_id
+        WHERE (?='all' OR t.status=?) ORDER BY t.updated_at DESC LIMIT 300`
+    ).bind(status, status).all();
+    return json({ ok: true, tickets: rows.results ?? [] });
+  }
+  if (!ticketId) return null;
+  const ticket = await db.prepare(
+    `SELECT t.id,t.user_id,t.subject,t.status,t.created_at,t.updated_at,
+            COALESCE(u.display_name,'') AS display_name,u.vip_level
+       FROM vip_support_tickets t LEFT JOIN users u ON u.id=t.user_id WHERE t.id=?`
+  ).bind(ticketId).first();
+  if (!ticket) return json({ ok: false, error: "not_found" }, { status: 404 });
+  if (request.method === "GET" && parts.length === 4) {
+    requirePermission(actor, "support.read");
+    const rows = await db.prepare("SELECT id,sender_type,sender_id,body,created_at FROM vip_support_messages WHERE ticket_id=? ORDER BY created_at ASC LIMIT 500").bind(ticketId).all();
+    return json({ ok: true, ticket, messages: rows.results ?? [] });
+  }
+  if (request.method === "POST" && parts[4] === "reply") {
+    requirePermission(actor, "support.write");
+    if (ticket.status !== "open") return json({ ok: false, error: "ticket_closed" }, { status: 409 });
+    const body = await bodyJson(request);
+    const message = String(body.message ?? "").trim();
+    if (!message || message.length > 2000) return json({ ok: false, error: "message_length_invalid" }, { status: 400 });
+    const ts = now();
+    await db.batch([
+      db.prepare("INSERT INTO vip_support_messages (id,ticket_id,sender_type,sender_id,body,created_at) VALUES (?,?,?,?,?,?)").bind(id(), ticketId, "staff", actor.id, message, ts),
+      db.prepare("UPDATE vip_support_tickets SET updated_at=? WHERE id=?").bind(ts, ticketId),
+    ]);
+    await audit(db, actor, "support_reply", "vip_support_ticket", ticketId, `reply to ${ticket.user_id}`);
+    return json({ ok: true });
+  }
+  if (request.method === "POST" && parts[4] === "close") {
+    requirePermission(actor, "support.write");
+    const ts = now();
+    await db.prepare("UPDATE vip_support_tickets SET status='closed',updated_at=? WHERE id=?").bind(ts, ticketId).run();
+    await audit(db, actor, "support_close", "vip_support_ticket", ticketId, `closed for ${ticket.user_id}`);
+    return json({ ok: true });
+  }
+  return null;
+}
+
 export async function handleOwnerApi(request, env, url) {
   if (!env.OWNER_ADMIN_TOKEN) {
     return json({ ok: false, error: "owner_token_not_configured" }, { status: 503 });
@@ -647,6 +701,7 @@ export async function handleOwnerApi(request, env, url) {
 
     let response = null;
     if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
+    else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
     else if (parts[2] === "catalog") response = await handleCatalog(request, db, actor, url, parts);
