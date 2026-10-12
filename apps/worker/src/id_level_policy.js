@@ -14,16 +14,16 @@ export function idLevelExpToNext(currentLevel) {
   return next;
 }
 
-export function calculateIdLevel(totalExp) {
-  let remaining = Math.max(0, Math.floor(Number(totalExp) || 0));
-  let level = 0;
-  while (level < 999) {
-    const required = idLevelExpToNext(level);
-    if (remaining < required) return { level, exp: remaining, exp_to_next: required };
-    remaining -= required;
+export function applyIdLevelExp(currentLevel, currentExp, awardedExp) {
+  let level = Math.max(0, Math.floor(Number(currentLevel) || 0));
+  const exp = Math.max(0, Math.floor(Number(currentExp) || 0));
+  const award = Math.max(0, Math.floor(Number(awardedExp) || 0));
+  const required = idLevelExpToNext(level);
+  if (exp + award >= required) {
     level += 1;
+    return { level, exp: 0, exp_to_next: idLevelExpToNext(level) };
   }
-  return { level, exp: remaining, exp_to_next: 0 };
+  return { level, exp: exp + award, exp_to_next: required };
 }
 
 export function idLevelRewards(level) {
