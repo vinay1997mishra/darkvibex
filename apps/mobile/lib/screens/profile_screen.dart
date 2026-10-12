@@ -14,6 +14,38 @@ class ProfileScreen extends StatelessWidget {
 
   final AppState state;
 
+  Future<void> _showVisitors(BuildContext context) async {
+    if (!state.hasVipPrivilege('view_visitors')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Active VIP1 unlocks profile visitors')));
+      return;
+    }
+    final visitors = await state.backend.profileVisitors(userId: state.userId);
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .6,
+          child: visitors.isEmpty
+              ? const Center(child: Text('No visitors yet'))
+              : ListView.builder(
+                  itemCount: visitors.length,
+                  itemBuilder: (context, index) {
+                    final visitor = visitors[index];
+                    final name = visitor['display_name']?.toString() ?? 'User';
+                    return ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
+                      title: Text(name),
+                      subtitle: Text('Visited ${visitor['visit_count'] ?? 1} times'),
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickAvatar(BuildContext context) async {
     final file = await ImagePicker().pickImage(
       source: ImageSource.gallery,
@@ -184,6 +216,13 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.visibility_rounded),
+                  title: const Text('Profile visitors'),
+                  subtitle: Text(state.hasVipPrivilege('view_visitors') ? 'See who viewed your profile' : 'Unlocks at VIP1'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _showVisitors(context),
+                ),
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
                 _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
                 _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
@@ -251,5 +290,93 @@ class ProfileScreen extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class PublicProfileScreen extends StatefulWidget {
+  const PublicProfileScreen({super.key, required this.state, required this.userId});
+
+  final AppState state;
+  final String userId;
+
+  @override
+  State<PublicProfileScreen> createState() => _PublicProfileScreenState();
+}
+
+class _PublicProfileScreenState extends State<PublicProfileScreen> {
+  Map<String, dynamic>? user;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final response = await widget.state.backend.userProfile(userId: widget.userId);
+    if (!mounted) return;
+    setState(() {
+      user = response?['user'] is Map ? Map<String, dynamic>.from(response!['user'] as Map) : null;
+      loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = user?['display_name']?.toString() ?? '';
+    return Scaffold(
+        appBar: AppBar(title: Text(user?['display_name']?.toString() ?? 'Profile')),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : user == null
+                ? const Center(child: Text('Profile could not be loaded'))
+                : Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                          radius: 42,
+                          child: Text(displayName.isEmpty ? 'U' : displayName.substring(0, 1).toUpperCase()),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(user!['display_name']?.toString() ?? 'User', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                        Text('ID ${user!['id']} • VIP ${user!['vip_level'] ?? 0}/18'),
+                        if (widget.state.hasVipPrivilege('free_say_hi'))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 14),
+                            child: FilledButton.icon(
+                              onPressed: widget.state.vipFreeSayHiRemaining > 0
+                                  ? () => _sayHi(context)
+                                  : null,
+                              icon: const Icon(Icons.waving_hand_rounded),
+                              label: Text('Free Say Hi (${widget.state.vipFreeSayHiRemaining} left)'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+      );
+  }
+
+  Future<void> _sayHi(BuildContext context) async {
+    final input = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Free Say Hi'),
+        content: TextField(controller: input, maxLength: 300, maxLines: 3, decoration: const InputDecoration(hintText: 'Up to 30 words')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, input.text.trim()), child: const Text('Send')),
+        ],
+      ),
+    );
+    input.dispose();
+    if (text == null || text.isEmpty || !mounted) return;
+    final ok = await widget.state.sendVipSayHi(receiverUserId: widget.userId, message: text);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Free Say Hi sent' : widget.state.vipError ?? 'Could not send Say Hi')));
+    setState(() {});
   }
 }

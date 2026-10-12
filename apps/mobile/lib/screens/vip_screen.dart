@@ -687,7 +687,7 @@ class VipRulesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'VIP15+ can change the Unique ID once each calendar month. Every VIP level-up grants one additional immediate change, even if the monthly change was already used.',
+            'VIP5+ can change the Unique ID once each calendar month. Every VIP level-up grants one additional immediate change, even if the monthly change was already used.',
             style: TextStyle(color: Colors.white70, height: 1.45),
           ),
         ],

@@ -54,6 +54,13 @@ CREATE TABLE IF NOT EXISTS room_messages (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS room_message_images (
+  message_id TEXT PRIMARY KEY,
+  image_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (message_id) REFERENCES room_messages(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS direct_messages (
   id TEXT PRIMARY KEY,
   sender_user_id TEXT NOT NULL,

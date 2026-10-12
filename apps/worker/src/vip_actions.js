@@ -44,20 +44,34 @@ export async function changeVipUniqueId(db,userId,requestedId,ts=Date.now()){
   return customId;
 }
 
-export async function consumeFreeSayHi(db,userId,message,ts=Date.now()){
+export async function consumeFreeSayHi(db,userId,receiverId,message,ts=Date.now()){
   const row=await readVipRow(db,userId,ts);
   const status=vipPayload(row,ts);
   if(!status.active||status.level<5) throw new Error("vip5_required");
+  if(!receiverId||String(receiverId)===String(userId)) throw new Error("invalid_receiver");
+  const receiver=await readVipRow(db,String(receiverId),ts);
+  if(receiver&&vipPayload(receiver,ts).active&&vipPayload(receiver,ts).level>=8&&
+     parsePrefs(receiver.preferences_json).disable_say_hi===true){
+    throw new Error("say_hi_disabled_by_receiver");
+  }
   const text=String(message??"").trim();
   const words=text?text.split(/\s+/).filter(Boolean):[];
   if(!text||words.length>30) throw new Error("say_hi_max_30_words");
 
   const cycle=String(status.active_until??"");
-  let used=Number(row.free_say_hi_used??0);
-  if(String(row.free_say_hi_cycle??"")!==cycle) used=0;
-  if(used>=4) throw new Error("say_hi_limit_reached");
-  used+=1;
-  await db.prepare("UPDATE user_vip SET free_say_hi_used=?,free_say_hi_cycle=?,updated_at=? WHERE user_id=?")
-    .bind(used,cycle,ts,userId).run();
-  return {used,remaining:Math.max(0,4-used),max_words:30};
+  const update=await db.prepare("UPDATE user_vip SET free_say_hi_used=CASE WHEN free_say_hi_cycle=? THEN free_say_hi_used+1 ELSE 1 END,free_say_hi_cycle=?,updated_at=? WHERE user_id=? AND (free_say_hi_cycle<>? OR free_say_hi_used<4)")
+    .bind(cycle,cycle,ts,userId,cycle).run();
+  if(Number(update.meta?.changes??0)!==1) throw new Error("say_hi_limit_reached");
+  const updated=await db.prepare("SELECT free_say_hi_used FROM user_vip WHERE user_id=?").bind(userId).first();
+  const used=Number(updated?.free_say_hi_used??1);
+  const messageId=crypto.randomUUID();
+  try{
+    await db.prepare("INSERT INTO direct_messages (id,sender_user_id,receiver_user_id,text,created_at,read_at) VALUES (?,?,?,?,?,NULL)")
+      .bind(messageId,userId,String(receiverId),text,ts).run();
+  }catch(error){
+    await db.prepare("UPDATE user_vip SET free_say_hi_used=MAX(0,free_say_hi_used-1),updated_at=? WHERE user_id=? AND free_say_hi_cycle=? AND free_say_hi_used=?")
+      .bind(ts,userId,cycle,used).run();
+    throw error;
+  }
+  return {used,remaining:Math.max(0,4-used),max_words:30,message_id:messageId};
 }

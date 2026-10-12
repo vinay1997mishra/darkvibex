@@ -351,6 +351,13 @@ async function ensureImageTables(db) {
       created_at INTEGER NOT NULL
     )`
   ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_message_images (
+      message_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`
+  ).run();
 }
 
 async function listRooms(db) {
@@ -488,10 +495,47 @@ async function handleApi(request, env, url) {
     return json({ ok: true, avatar_key: imageKey });
   }
 
+  if (parts[0] === "api" && parts[1] === "users" && parts.length === 4 && parts[3] === "visitors" && request.method === "GET") {
+    const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const status = await getVipStatus(db, userId);
+    if (!status.active || status.level < 1) return json({ ok: false, error: "vip_privilege_locked" }, { status: 403 });
+    const rows = await db.prepare(
+      `SELECT v.visitor_user_id AS user_id,
+              CASE WHEN av.level >= 18 AND av.active_until > ?
+                         AND json_extract(av.preferences_json, '$.anonymous_everywhere') = 1
+                   THEN 'Anonymous' ELSE u.display_name END AS display_name,
+              u.avatar_key, v.first_visited_at, v.last_visited_at, v.visit_count
+         FROM profile_visitors v
+         JOIN users u ON u.id = v.visitor_user_id
+         LEFT JOIN user_vip av ON av.user_id = v.visitor_user_id
+        WHERE v.viewed_user_id = ?
+        ORDER BY v.last_visited_at DESC LIMIT 100`
+    ).bind(now(), userId).all();
+    return json({ ok: true, visitors: rows.results ?? [] });
+  }
+
   if (parts[0] === "api" && parts[1] === "users" && parts.length === 3 && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const viewerId = String(session.sub);
+    const viewedUserId = String(parts[2] ?? "").trim();
+    await ensureVipSchema(db);
     const user = await db.prepare(
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
-    ).bind(parts[2]).first();
+    ).bind(viewedUserId).first();
+    if (user && viewerId !== viewedUserId) {
+      const viewerVip = await getVipStatus(db, viewerId);
+      const shouldHide = viewerVip.active && viewerVip.level >= 11 && viewerVip.preferences.hide_visitors === true;
+      if (!shouldHide) {
+        const ts = now();
+        await db.prepare(
+          "INSERT INTO profile_visitors (viewed_user_id,visitor_user_id,first_visited_at,last_visited_at,visit_count) VALUES (?,?,?,?,1) ON CONFLICT(viewed_user_id,visitor_user_id) DO UPDATE SET last_visited_at=excluded.last_visited_at,visit_count=profile_visitors.visit_count+1"
+        ).bind(viewedUserId, viewerId, ts, ts).run();
+      }
+    }
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
@@ -673,6 +717,9 @@ async function handleApi(request, env, url) {
       const allowedThemes = new Set(["dark", "midnight", "rose", "forest", "gold"]);
       const themeId = String(body.theme_id ?? room.theme_id ?? "dark");
       if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
+      if (themeId !== "dark" && themeId !== room.theme_id && !vipStatus.room_background_enabled) {
+        return json({ ok: false, error: "vip3_required_for_room_background" }, { status: 403 });
+      }
       const groupPkEnabled = body.group_pk_enabled === true ? 1 : 0;
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
       const overflow = await db.prepare(
@@ -834,6 +881,7 @@ async function handleApi(request, env, url) {
     const roomId = parts[2];
     if (request.method === "GET") {
       await ensureVipSchema(db);
+      await ensureImageTables(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -846,10 +894,11 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 18 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                      THEN 'Anonymous' ELSE u.display_name END AS display_name,
-                m.text, m.created_at
+                m.text, m.created_at, mi.image_key
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
+           LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC LIMIT 100`
       ).bind(now(), roomId).all();
@@ -866,12 +915,27 @@ async function handleApi(request, env, url) {
       ).bind(roomId, userId).first();
       if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const textValue = String(body.text ?? "").trim().slice(0, 500);
-      if (!userId || !textValue) return json({ ok: false, error: "message_required" }, { status: 400 });
+      const imageKey = String(body.image_key ?? "").trim();
+      if (!userId || (!textValue && !imageKey)) return json({ ok: false, error: "message_required" }, { status: 400 });
+      if (imageKey) {
+        if (!imageKey.startsWith(`messages/${userId}/`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+          return json({ ok: false, error: "invalid_image_key" }, { status: 400 });
+        }
+        const vip = await getVipStatus(db, userId, now());
+        if (!vip.room_images_enabled) return json({ ok: false, error: "vip_required", required_level: 10 }, { status: 403 });
+      }
       const messageId = id();
-      await db.prepare(
+      await ensureImageTables(db);
+      const createdAt = now();
+      const statements = [db.prepare(
         "INSERT INTO room_messages (id, room_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(messageId, roomId, userId, textValue, now()).run();
-      return json({ ok: true, message_id: messageId }, { status: 201 });
+      ).bind(messageId, roomId, userId, textValue, createdAt)];
+      if (imageKey) {
+        statements.push(db.prepare("INSERT INTO room_message_images (message_id, image_key, created_at) VALUES (?, ?, ?)")
+          .bind(messageId, imageKey, createdAt));
+      }
+      await db.batch(statements);
+      return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
     }
   }
 
@@ -926,7 +990,7 @@ async function handleApi(request, env, url) {
       if (!isOwner && actorAdmin && !actorMember) {
         return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       }
-      const targetMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      const targetMember = await db.prepare("SELECT seat_index FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).first();
       if (!targetMember) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
 
@@ -949,6 +1013,14 @@ async function handleApi(request, env, url) {
       if (!isOwner && !actorAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
       if (isTargetOwner || (!isOwner && targetAdmin)) {
         return json({ ok: false, error: "moderation_target_protected" }, { status: 403 });
+      }
+
+      const targetVip = await getVipStatus(db, targetId);
+      if (!isOwner && targetMember.seat_index != null && targetVip.seat_protection_enabled) {
+        return json({ ok: false, error: "vip_seat_protected" }, { status: 403 });
+      }
+      if (!isOwner && targetVip.kick_protection_enabled) {
+        return json({ ok: false, error: "vip_kick_protected" }, { status: 403 });
       }
 
       await ensureRoomSafetyTables(db);
@@ -1244,9 +1316,13 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     const body = await bodyJson(request);
+    const receiverId = String(body.receiver_user_id ?? "").trim();
+    if (!receiverId || receiverId === userId) return json({ ok: false, error: "invalid_receiver" }, { status: 400 });
     await ensureUser(db, userId);
+    await ensureUser(db, receiverId);
     await ensureUserAllowed(db, userId, { checkMute: true });
-    const usage = await consumeFreeSayHi(db, userId, body.message);
+    await ensureUserAllowed(db, receiverId);
+    const usage = await consumeFreeSayHi(db, userId, receiverId, body.message);
     return json({ ok: true, usage });
   }
 

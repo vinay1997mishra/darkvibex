@@ -17,6 +17,7 @@ import '../vip/vip_policy.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
+import 'profile_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -44,7 +45,10 @@ class _RoomScreenState extends State<RoomScreen> {
   bool cameraPublished = false;
   bool followingRoom = false;
   bool followBusy = false;
-  final List<String> chat = <String>['Welcome to the room 👋'];
+  final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
+    <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
+  ];
+  bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   Timer? memberRefreshTimer;
   String? roomAvatarKey;
@@ -103,13 +107,9 @@ class _RoomScreenState extends State<RoomScreen> {
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
-    if (!mounted || rows.isEmpty && chat.length == 1 && chat.first == 'Welcome to the room 👋') return;
-    final next = rows.map((message) {
-      final name = message['display_name']?.toString().trim();
-      final text = message['text']?.toString() ?? '';
-      return '${name == null || name.isEmpty ? 'User' : name}: $text';
-    }).where((message) => !message.endsWith(': ')).toList();
-    if (!mounted || next.join('\n') == chat.join('\n')) return;
+    if (!mounted || rows.isEmpty && chat.length == 1 && chat.first['text'] == 'Welcome to the room 👋') return;
+    final next = rows.map((message) => Map<String, dynamic>.from(message)).toList();
+    if (!mounted || next.toString() == chat.toString()) return;
     setState(() {
       chat
         ..clear()
@@ -200,7 +200,9 @@ class _RoomScreenState extends State<RoomScreen> {
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
     final seatOptions = <int>[8, 9, 10, ...List<int>.generate(31, (index) => index + 12)]
-        .where((count) => count <= VipPolicy.maxRoomSeats(widget.state.vipLevel))
+        .where((count) => count <= VipPolicy.maxRoomSeats(
+              widget.state.vipIsActive ? widget.state.vipLevel : 0,
+            ))
         .toList();
     if (!seatOptions.contains(roomSeatCount)) seatOptions.add(roomSeatCount);
     seatOptions.sort();
@@ -240,7 +242,12 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
                 DropdownButtonFormField<String>(
                   value: themeId,
-                  decoration: const InputDecoration(labelText: 'Room theme (visible to everyone)'),
+                  decoration: InputDecoration(
+                    labelText: 'Room theme (visible to everyone)',
+                    helperText: widget.state.hasVipPrivilege('room_background')
+                        ? 'VIP room background unlocked'
+                        : 'VIP3 unlocks custom room backgrounds',
+                  ),
                   items: const [
                     DropdownMenuItem(value: 'dark', child: Text('Dark')),
                     DropdownMenuItem(value: 'midnight', child: Text('Midnight')),
@@ -248,7 +255,9 @@ class _RoomScreenState extends State<RoomScreen> {
                     DropdownMenuItem(value: 'forest', child: Text('Forest')),
                     DropdownMenuItem(value: 'gold', child: Text('Gold')),
                   ],
-                  onChanged: (value) { if (value != null) setDialogState(() => themeId = value); },
+                  onChanged: widget.state.hasVipPrivilege('room_background')
+                      ? (value) { if (value != null) setDialogState(() => themeId = value); }
+                      : null,
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -716,7 +725,20 @@ class _RoomScreenState extends State<RoomScreen> {
                           final seat = int.tryParse(member['seat_index']?.toString() ?? '');
                           final isSelf = userId == widget.state.userId;
                           final isOwner = userId == widget.room.ownerUserId;
+                          final canModerate = !isSelf && !isOwner &&
+                              ((isRoomHost) || (isRoomAdmin && member['is_admin'] != true && member['is_admin']?.toString() != '1'));
                           return ListTile(
+                            onTap: isSelf
+                                ? null
+                                : () {
+                                    Navigator.pop(sheetContext);
+                                    Future<void>.delayed(Duration.zero, () {
+                                      if (!mounted) return;
+                                      Navigator.of(this.context).push(MaterialPageRoute<void>(
+                                        builder: (_) => PublicProfileScreen(state: widget.state, userId: userId),
+                                      ));
+                                    });
+                                  },
                             leading: CircleAvatar(
                               backgroundImage: avatar != null && avatar.isNotEmpty
                                   ? NetworkImage(widget.state.backend.fileUrl(avatar))
@@ -727,9 +749,18 @@ class _RoomScreenState extends State<RoomScreen> {
                             ),
                             title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}'),
                             subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
-                            trailing: !isSelf && !isOwner && (
-                                    (isRoomHost) || (isRoomAdmin && member['is_admin'] != true && member['is_admin']?.toString() != '1'))
-                                ? PopupMenuButton<String>(
+                            trailing: !isSelf && (widget.state.hasVipPrivilege('free_say_hi') || canModerate)
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (widget.state.hasVipPrivilege('free_say_hi') && widget.state.vipFreeSayHiRemaining > 0)
+                                        IconButton(
+                                          tooltip: 'Free Say Hi (${widget.state.vipFreeSayHiRemaining} left)',
+                                          icon: const Icon(Icons.waving_hand_rounded, color: Color(0xFFFFD36A)),
+                                          onPressed: () => _composeVipSayHi(context, userId, name?.isNotEmpty == true ? name! : 'User'),
+                                        ),
+                                      if (canModerate)
+                                        PopupMenuButton<String>(
                                     tooltip: 'Member actions',
                                     onSelected: (action) async {
                                       Navigator.pop(sheetContext);
@@ -750,6 +781,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                       const PopupMenuItem(value: 'remove', child: Text('Remove from room')),
                                       const PopupMenuItem(value: 'block', child: Text('Block from room')),
                                     ],
+                                        ),
+                                    ],
                                   )
                                 : null,
                           );
@@ -761,6 +794,42 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _composeVipSayHi(BuildContext context, String receiverId, String receiverName) async {
+    final controller = TextEditingController();
+    final message = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Free Say Hi to $receiverName'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: const InputDecoration(hintText: 'Write up to 30 words'),
+            ),
+            Text('${widget.state.vipFreeSayHiRemaining} free messages remaining'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Send')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (message == null || message.isEmpty || !mounted) return;
+    final sent = await widget.state.sendVipSayHi(receiverUserId: receiverId, message: message);
+    if (!mounted || !context.mounted) return;
+    final reason = widget.state.vipError;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(sent ? 'Free Say Hi sent' : (reason == 'say_hi_disabled_by_receiver' ? 'This user has disabled Say Hi' : reason ?? 'Say Hi could not be sent')),
+    ));
   }
 
   Future<void> _leaveRoom() async {
@@ -1333,7 +1402,61 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     if (!mounted) return;
-    setState(() => chat.add('${widget.state.displayName}: $value'));
+    setState(() => chat.add(<String, dynamic>{'display_name': widget.state.displayName, 'text': value}));
+  }
+
+  Future<void> _sendRoomImage() async {
+    if (!widget.state.hasVipPrivilege('send_pictures')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room photo messages unlock at VIP10.')),
+      );
+      return;
+    }
+    if (!widget.state.backendConnected || uploadingRoomImage) return;
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 82,
+      maxWidth: 1440,
+      maxHeight: 1440,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final contentType = switch (ext) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => null,
+    };
+    if (contentType == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a JPG, PNG or WebP image.')),
+      );
+      return;
+    }
+    setState(() => uploadingRoomImage = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final normalizedExt = ext == 'jpeg' ? 'jpg' : ext;
+      final key = await widget.state.backend.uploadImage(
+        key: 'messages/${widget.state.userId}/room-${widget.room.id}-${DateTime.now().microsecondsSinceEpoch}.$normalizedExt',
+        bytes: bytes,
+        contentType: contentType,
+      );
+      if (key == null) throw StateError('upload_failed');
+      final sent = await widget.state.backend.sendRoomMessage(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        imageKey: key,
+      );
+      if (!sent) throw StateError('send_failed');
+      await _loadRoomMessages();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Photo could not be sent. Check your connection and try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => uploadingRoomImage = false);
+    }
   }
 
   Widget _videoStage() {
@@ -1567,10 +1690,40 @@ class _RoomScreenState extends State<RoomScreen> {
                   Expanded(
                     child: ListView.builder(
                       itemCount: chat.length,
-                      itemBuilder: (context, index) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Text(chat[index]),
-                      ),
+                      itemBuilder: (context, index) {
+                        final message = chat[index];
+                        final name = message['display_name']?.toString().trim();
+                        final text = message['text']?.toString() ?? '';
+                        final imageKey = message['image_key']?.toString();
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (text.isNotEmpty)
+                                Text('${name == null || name.isEmpty ? 'User' : name}: $text'),
+                              if (imageKey != null && imageKey.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4, left: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      widget.state.backend.fileUrl(imageKey),
+                                      width: 210,
+                                      height: 160,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const SizedBox(
+                                        width: 210,
+                                        height: 64,
+                                        child: Center(child: Text('Photo unavailable')),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -1606,6 +1759,14 @@ class _RoomScreenState extends State<RoomScreen> {
               IconButton.filledTonal(
                 onPressed: _sendMessage,
                 icon: const Icon(Icons.chat_rounded),
+              ),
+              const SizedBox(width: 4),
+              IconButton.filledTonal(
+                onPressed: uploadingRoomImage ? null : _sendRoomImage,
+                tooltip: 'Send room photo (VIP10)',
+                icon: uploadingRoomImage
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.image_rounded),
               ),
               const SizedBox(width: 8),
               IconButton.filledTonal(

@@ -42,6 +42,8 @@ jobs:
       - name: Safe hierarchy policy
         working-directory: .
         run: node tools/check-no-legacy-hierarchy.mjs
+      - name: Worker policy tests
+        run: npm test
       - name: Wrangler dry run
         run: npx wrangler deploy --dry-run --outdir /tmp/darkvibex-worker
 

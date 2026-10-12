@@ -90,6 +90,16 @@ class BackendApi {
   Future<Map<String, dynamic>?> googleAuthConfig() =>
       _json('GET', '/api/auth/config');
 
+  Future<Map<String, dynamic>?> userProfile({required String userId}) =>
+      _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
+
+  Future<List<Map<String, dynamic>>> profileVisitors({required String userId}) async {
+    final value = await _json('GET', '/api/users/${Uri.encodeComponent(userId)}/visitors');
+    final rows = value?['visitors'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
   Future<Map<String, dynamic>?> startGoogleSession({
     required String idToken,
   }) =>
@@ -317,7 +327,8 @@ class BackendApi {
   Future<bool> sendRoomMessage({
     required String roomId,
     required String userId,
-    required String text,
+    String text = '',
+    String? imageKey,
   }) async {
     final value = await _json(
       'POST',
@@ -325,6 +336,7 @@ class BackendApi {
       body: <String, dynamic>{
         'user_id': userId,
         'text': text,
+        if (imageKey != null) 'image_key': imageKey,
       },
     );
     return value?['ok'] == true;
@@ -432,6 +444,20 @@ class BackendApi {
         '/api/vip/${Uri.encodeComponent(userId)}/unique-id',
         body: <String, dynamic>{
           'custom_id': customId,
+        },
+      );
+
+  Future<Map<String, dynamic>?> sendVipSayHi({
+    required String userId,
+    required String receiverUserId,
+    required String message,
+  }) =>
+      _json(
+        'POST',
+        '/api/vip/${Uri.encodeComponent(userId)}/say-hi',
+        body: <String, dynamic>{
+          'receiver_user_id': receiverUserId,
+          'message': message,
         },
       );
 

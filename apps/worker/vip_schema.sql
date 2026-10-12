@@ -29,3 +29,17 @@ CREATE TABLE IF NOT EXISTS vip_events (
 
 CREATE INDEX IF NOT EXISTS idx_user_vip_level ON user_vip(level, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_vip_events_user_time ON vip_events(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS profile_visitors (
+  viewed_user_id TEXT NOT NULL,
+  visitor_user_id TEXT NOT NULL,
+  first_visited_at INTEGER NOT NULL,
+  last_visited_at INTEGER NOT NULL,
+  visit_count INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (viewed_user_id, visitor_user_id),
+  FOREIGN KEY (viewed_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (visitor_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_visitors_viewed
+  ON profile_visitors(viewed_user_id, last_visited_at DESC);
