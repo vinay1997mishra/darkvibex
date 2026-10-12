@@ -351,6 +351,13 @@ async function ensureImageTables(db) {
       created_at INTEGER NOT NULL
     )`
   ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_message_images (
+      message_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`
+  ).run();
 }
 
 async function listRooms(db) {
@@ -874,6 +881,7 @@ async function handleApi(request, env, url) {
     const roomId = parts[2];
     if (request.method === "GET") {
       await ensureVipSchema(db);
+      await ensureImageTables(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -886,10 +894,11 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 18 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                      THEN 'Anonymous' ELSE u.display_name END AS display_name,
-                m.text, m.created_at
+                m.text, m.created_at, mi.image_key
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
+           LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC LIMIT 100`
       ).bind(now(), roomId).all();
@@ -906,12 +915,25 @@ async function handleApi(request, env, url) {
       ).bind(roomId, userId).first();
       if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const textValue = String(body.text ?? "").trim().slice(0, 500);
-      if (!userId || !textValue) return json({ ok: false, error: "message_required" }, { status: 400 });
+      const imageKey = String(body.image_key ?? "").trim();
+      if (!userId || (!textValue && !imageKey)) return json({ ok: false, error: "message_required" }, { status: 400 });
+      if (imageKey) {
+        if (!imageKey.startsWith(`messages/${userId}/`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+          return json({ ok: false, error: "invalid_image_key" }, { status: 400 });
+        }
+        const vip = await getVipStatus(db, userId, now());
+        if (!vip.room_images_enabled) return json({ ok: false, error: "vip_required", required_level: 10 }, { status: 403 });
+      }
       const messageId = id();
+      await ensureImageTables(db);
       await db.prepare(
         "INSERT INTO room_messages (id, room_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)"
       ).bind(messageId, roomId, userId, textValue, now()).run();
-      return json({ ok: true, message_id: messageId }, { status: 201 });
+      if (imageKey) {
+        await db.prepare("INSERT INTO room_message_images (message_id, image_key, created_at) VALUES (?, ?, ?)")
+          .bind(messageId, imageKey, now()).run();
+      }
+      return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
     }
   }
 
