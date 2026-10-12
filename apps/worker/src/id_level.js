@@ -105,8 +105,11 @@ export async function claimIdLevelReward(db, userId, level, ts = Date.now()) {
   }
   const reward = status.rewards.find(item => item.level === rewardLevel);
   if (!reward || reward.claimed) return { ok: false, error: 'id_level_reward_claimed' };
-  await db.prepare(
-    'INSERT INTO user_id_level_claims (user_id,level,claimed_at) VALUES (?,?,?)'
+  const result = await db.prepare(
+    'INSERT OR IGNORE INTO user_id_level_claims (user_id,level,claimed_at) VALUES (?,?,?)'
   ).bind(String(userId), rewardLevel, Number(ts)).run();
+  if (Number(result?.meta?.changes ?? 0) === 0) {
+    return { ok: false, error: 'id_level_reward_claimed' };
+  }
   return { ok: true, reward };
 }
