@@ -167,6 +167,21 @@ class BackendApi {
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
+  Future<bool> isFollowing({required String userId, required String targetUserId}) async {
+    final value = await _json(
+      'GET',
+      '/api/mine/follow?user_id=${Uri.encodeQueryComponent(userId)}&target_user_id=${Uri.encodeQueryComponent(targetUserId)}',
+    );
+    return value?['following'] == true;
+  }
+
+  Future<bool> setFollowing({required String userId, required String targetUserId, required bool followed}) async {
+    final value = await _json('POST', '/api/mine/follow', body: {
+      'user_id': userId, 'target_user_id': targetUserId, 'followed': followed,
+    });
+    return value?['ok'] == true;
+  }
+
   Future<bool> setMineBlock({required String userId, required String targetUserId, required bool blocked}) async {
     final value = await _json('POST', '/api/mine/blocks', body: {
       'user_id': userId, 'target_user_id': targetUserId, 'blocked': blocked,
