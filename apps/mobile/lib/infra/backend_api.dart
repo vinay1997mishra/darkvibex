@@ -459,6 +459,82 @@ class BackendApi {
   Future<Map<String, dynamic>?> tapGameRoom({required String roomId, required String userId}) =>
       _json('POST', '/api/game-rooms/${Uri.encodeComponent(roomId)}/tap', body: {'user_id': userId}, returnErrorBody: true);
 
+  Future<Map<String, dynamic>?> familyState({required String userId}) =>
+      _json('GET', '/api/family?user_id=\${Uri.encodeQueryComponent(userId)}');
+
+  Future<List<Map<String, dynamic>>> familyList({int limit = 50}) async {
+    final value = await _json('GET', '/api/family/list?limit=$limit');
+    final rows = value?['families'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> createFamily({required String userId, required String name, required String tag}) =>
+      _json('POST', '/api/family/create', body: {'user_id': userId, 'name': name, 'tag': tag});
+
+  Future<Map<String, dynamic>?> requestFamilyJoin({required String userId, required String familyId}) =>
+      _json('POST', '/api/family/join-request', body: {'user_id': userId, 'family_id': familyId});
+
+  Future<Map<String, dynamic>?> resolveFamilyJoin({required String userId, required String targetUserId, required bool approve}) =>
+      _json('POST', '/api/family/join-request/resolve', body: {'user_id': userId, 'target_user_id': targetUserId, 'approve': approve});
+
+  Future<Map<String, dynamic>?> setFamilyAdmin({required String userId, required String targetUserId, required bool admin}) =>
+      _json('POST', '/api/family/admin', body: {'user_id': userId, 'target_user_id': targetUserId, 'admin': admin});
+
+  Future<Map<String, dynamic>?> removeFamilyMember({required String userId, required String targetUserId}) =>
+      _json('POST', '/api/family/member/remove', body: {'user_id': userId, 'target_user_id': targetUserId});
+
+  Future<Map<String, dynamic>?> leaveFamily({required String userId}) =>
+      _json('POST', '/api/family/leave', body: {'user_id': userId});
+
+  Future<Map<String, dynamic>?> familyCheckIn({required String userId}) =>
+      _json('POST', '/api/family/check-in', body: {'user_id': userId});
+
+  Future<Map<String, dynamic>?> updateFamilyNotice({required String userId, required String notice}) =>
+      _json('POST', '/api/family/notice', body: {'user_id': userId, 'notice': notice});
+
+  Future<Map<String, dynamic>?> sendFamilyCoins({required String userId, required int amount}) =>
+      _json('POST', '/api/family/wallet/send', body: {'user_id': userId, 'amount': amount});
+
+  Future<List<Map<String, dynamic>>> familyWalletTransfers({required String userId}) async {
+    final value = await _json('GET', '/api/family/wallet/transfers?user_id=\${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['transfers'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> cpState({required String userId}) =>
+      _json('GET', '/api/cp?user_id=\${Uri.encodeQueryComponent(userId)}');
+
+  Future<List<Map<String, dynamic>>> cpRanking({int limit = 50}) async {
+    final value = await _json('GET', '/api/cp/ranking?limit=$limit');
+    final rows = value?['ranking'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> cpRequest({required String userId, required String targetUserId}) =>
+      _json('POST', '/api/cp/request', body: {'user_id': userId, 'target_user_id': targetUserId});
+
+  Future<Map<String, dynamic>?> cpRespond({required String userId, required bool accept}) =>
+      _json('POST', '/api/cp/respond', body: {'user_id': userId, 'accept': accept});
+
+  Future<Map<String, dynamic>?> cpDisconnect({required String userId}) =>
+      _json('POST', '/api/cp/disconnect', body: {'user_id': userId});
+
+  Future<Map<String, dynamic>?> cpUpdate({required String userId, required String action, String? ringId}) =>
+      _json('POST', '/api/cp/update', body: {'user_id': userId, 'action': action, if (ringId != null) 'ring_id': ringId});
+
+  Future<List<Map<String, dynamic>>> cpMemories({required String userId}) async {
+    final value = await _json('GET', '/api/cp/memories?user_id=\${Uri.encodeQueryComponent(userId)}');
+    final rows = value?['memories'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> cpAddMemory({required String userId, required String text}) =>
+      _json('POST', '/api/cp/memories', body: {'user_id': userId, 'text': text});
+
   Future<List<Map<String, dynamic>>> friends({required String userId}) async {
     final value = await _json('GET', '/api/friends?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['friends'];
