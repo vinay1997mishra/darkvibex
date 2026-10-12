@@ -6,7 +6,22 @@ const parsed=(value)=>{try{return JSON.parse(String(value??"{}"))||{};}catch(_){
 export async function ensureVipSchema(db){
   await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta INTEGER NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS vip_seller_exp_grants (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, seller_user_id TEXT NOT NULL, transfer_id TEXT NOT NULL UNIQUE, month_key TEXT NOT NULL, grant_number INTEGER NOT NULL CHECK (grant_number BETWEEN 1 AND 2), coin_amount INTEGER NOT NULL, exp_awarded INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE(user_id, month_key, grant_number))").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
+}
+
+function monthKey(ts){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Kolkata",year:"numeric",month:"2-digit"}).formatToParts(new Date(ts));
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}`;
+}
+
+export async function sellerVipExpMonthlyUsage(db,userId,ts=Date.now()){
+  await ensureVipSchema(db);
+  const key=monthKey(ts);
+  const row=await db.prepare("SELECT COUNT(*) AS grant_count FROM vip_seller_exp_grants WHERE user_id=? AND month_key=?").bind(userId,key).first();
+  const count=Number(row?.grant_count??0);
+  return {month_key:key,grant_count:count,remaining:Math.max(0,2-count)};
 }
 
 async function logEvent(db,userId,kind,coins,exp,before,after,ts){
@@ -77,9 +92,11 @@ export async function getVipStatus(db,userId,ts=Date.now()){
   return payload(row,ts);
 }
 
-export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
+export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now(),{sellerUserId="",transferId=crypto.randomUUID()}={}){
   const coins=Number(coinAmount??0);
   if(!Number.isSafeInteger(coins)||coins<=0) throw new Error("invalid_coin_amount");
+  const usage=await sellerVipExpMonthlyUsage(db,userId,ts);
+  if(usage.remaining<=0) throw new Error("vip_exp_monthly_limit_reached");
   let row=await ensureRow(db,userId,ts);
   row=await settle(db,row,ts);
   let level=Number(row.level??0);
@@ -88,7 +105,7 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   let until=row.active_until==null?null:Number(row.active_until);
   const active=level>0&&until!=null&&until>ts;
   const multiplier=active&&level>=17?1.5:1;
-  const awarded=Math.floor(coins*multiplier);
+  const awarded=Math.min(10000,Math.floor(coins*multiplier));
   const before=level;
   exp+=awarded;
   total+=coins;
@@ -100,6 +117,9 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
     until=ts+next.days*DAY_MS;
   }
   const changed=level!==before;
+  const grant=await db.prepare("INSERT OR IGNORE INTO vip_seller_exp_grants (id,user_id,seller_user_id,transfer_id,month_key,grant_number,coin_amount,exp_awarded,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+    .bind(crypto.randomUUID(),userId,sellerUserId,transferId,usage.month_key,usage.grant_count+1,coins,awarded,ts).run();
+  if(Number(grant?.meta?.changes??0)!==1) throw new Error("vip_exp_monthly_limit_reached");
   await db.batch([
     db.prepare("UPDATE user_vip SET level=?,exp_balance=?,total_received_coins=?,active_until=?,free_say_hi_used=CASE WHEN ? THEN 0 ELSE free_say_hi_used END,free_say_hi_cycle=CASE WHEN ? THEN ? ELSE free_say_hi_cycle END,updated_at=? WHERE user_id=?")
       .bind(level,exp,total,until,changed?1:0,changed?1:0,String(until??""),ts,userId),
@@ -107,7 +127,7 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   ]);
   await logEvent(db,userId,"coin_seller_received",coins,awarded,before,level,ts);
   const updated=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();
-  return {vip:payload(updated,ts),awarded_exp:awarded,multiplier,level_up:changed,previous_level:before,new_level:level};
+  return {vip:payload(updated,ts),awarded_exp:awarded,multiplier,monthly_grants:usage.grant_count+1,monthly_grants_remaining:Math.max(0,usage.remaining-1),level_up:changed,previous_level:before,new_level:level};
 }
 
 export async function readVipRow(db,userId,ts=Date.now()){
