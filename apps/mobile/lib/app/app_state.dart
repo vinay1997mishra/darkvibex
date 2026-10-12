@@ -63,6 +63,7 @@ class AppState extends ChangeNotifier {
   int vipLevel = 0;
   int vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
+  int vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
   DateTime? vipActiveUntil;
   String? customVipId;
   String? vipError;
@@ -320,6 +321,7 @@ class AppState extends ChangeNotifier {
     vipLevel = 0;
     vipExpBalance = 0;
     vipTotalReceivedCoins = 0;
+    vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
     vipActiveUntil = null;
     customVipId = null;
     vipError = null;
@@ -368,6 +370,7 @@ class AppState extends ChangeNotifier {
           : DateTime.fromMillisecondsSinceEpoch(activeUntilMs);
       customVipId = vip['custom_id']?.toString();
       final prefs = vip['preferences'];
+      vipFreeSayHiRemaining = int.tryParse(vip['free_say_hi_remaining']?.toString() ?? '') ?? vipFreeSayHiRemaining;
       if (prefs is Map) {
         vipPreferences
           ..clear()
@@ -406,6 +409,32 @@ class AppState extends ChangeNotifier {
       return false;
     }
     vipPreferences[key] = enabled;
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> sendVipSayHi({required String receiverUserId, required String message}) async {
+    vipError = null;
+    if (!backendConnected || !hasVipPrivilege('free_say_hi')) {
+      vipError = 'Active VIP5 is required for Free Say Hi.';
+      notifyListeners();
+      return false;
+    }
+    final result = await backend.sendVipSayHi(
+      userId: userId,
+      receiverUserId: receiverUserId,
+      message: message,
+    );
+    if (result?['ok'] != true) {
+      vipError = result?['error']?.toString() ?? 'Free Say Hi could not be sent.';
+      notifyListeners();
+      return false;
+    }
+    final usage = result?['usage'];
+    if (usage is Map) {
+      vipFreeSayHiRemaining = int.tryParse(usage['remaining']?.toString() ?? '') ?? vipFreeSayHiRemaining;
+    }
+    await refreshInbox(notify: false);
     notifyListeners();
     return true;
   }
