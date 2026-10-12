@@ -327,7 +327,8 @@ class BackendApi {
   Future<bool> sendRoomMessage({
     required String roomId,
     required String userId,
-    required String text,
+    String text = '',
+    String? imageKey,
   }) async {
     final value = await _json(
       'POST',
@@ -335,6 +336,7 @@ class BackendApi {
       body: <String, dynamic>{
         'user_id': userId,
         'text': text,
+        if (imageKey != null) 'image_key': imageKey,
       },
     );
     return value?['ok'] == true;
