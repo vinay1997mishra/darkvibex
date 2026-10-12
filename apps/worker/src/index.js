@@ -1,4 +1,5 @@
 import { normalizeRole } from "./role_policy.js";
+import { awardIdLevelDaily, awardIdLevelGift, claimIdLevelReward, getIdLevelStatus } from "./id_level.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
@@ -890,7 +891,8 @@ async function handleApi(request, env, url) {
       "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
     ).bind(roomId, userId, ts, ts).run();
     await recordLampRoomEntry(db, roomId, userId, ts);
-    return json({ ok: true });
+    const idLevelDailyExp = await awardIdLevelDaily(db, userId, "room_entry", ts);
+    return json({ ok: true, id_level_daily_exp: idLevelDailyExp });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "leave" && request.method === "POST") {
@@ -1720,6 +1722,40 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  if (url.pathname === "/api/id-level" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    return json({ ok: true, level: await getIdLevelStatus(db, userId) });
+  }
+
+  if (url.pathname === "/api/id-level/room-share" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const roomId = String(body.room_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId || !roomId) return json({ ok: false, error: "user_and_room_required" }, { status: 400 });
+    const member = await db.prepare("SELECT 1 AS joined FROM room_members WHERE room_id=? AND user_id=?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    const awarded = await awardIdLevelDaily(db, userId, "room_share", now());
+    return json({ ok: true, id_level_daily_exp: awarded, level: await getIdLevelStatus(db, userId) });
+  }
+
+  if (url.pathname === "/api/id-level/rewards/claim" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const level = Number(body.level);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    await ensureUser(db, userId);
+    const result = await claimIdLevelReward(db, userId, level, now());
+    return json(result, { status: result.ok ? 200 : 409 });
+  }
+
   if (url.pathname === "/api/gifts/catalog" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
@@ -1766,6 +1802,7 @@ async function handleApi(request, env, url) {
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
     ]);
+    await awardIdLevelGift(db, sender, cost, eventId, now());
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
   }
