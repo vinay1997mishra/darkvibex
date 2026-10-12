@@ -1,6 +1,13 @@
 import { getIdLevelStatus } from "./id_level.js";
 import { getVipStatus } from "./vip_store.js";
 
+const ensureProfileFields = async (db) => {
+  const rows = await db.prepare("PRAGMA table_info(users)").all();
+  const columns = new Set((rows.results ?? []).map((row) => String(row.name)));
+  if (!columns.has("country_code")) await db.prepare("ALTER TABLE users ADD COLUMN country_code TEXT NOT NULL DEFAULT ''").run();
+  if (!columns.has("gender")) await db.prepare("ALTER TABLE users ADD COLUMN gender TEXT NOT NULL DEFAULT ''").run();
+};
+
 const ensureMineTables = async (db) => {
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_blocks (
     blocker_user_id TEXT NOT NULL,
@@ -50,10 +57,11 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
   }
 
   if (path === "/api/mine/tasks" && request.method === "GET") {
+    await ensureProfileFields(db);
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    const user = await db.prepare("SELECT display_name,avatar_key FROM users WHERE id = ?").bind(userId).first();
+    const user = await db.prepare("SELECT display_name,country_code,gender FROM users WHERE id = ?").bind(userId).first();
     if (!user) return json({ ok: false, error: "user_not_found" }, { status: 404 });
     const checks = await Promise.all([
       db.prepare("SELECT COUNT(*) AS count FROM user_friends WHERE user_id = ?").bind(userId).first(),
@@ -63,7 +71,7 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
       db.prepare("SELECT task_id FROM user_task_claims WHERE user_id = ?").bind(userId).all(),
     ]);
     const completed = [
-      Boolean(String(user.display_name ?? "").trim() && String(user.avatar_key ?? "").trim()),
+      Boolean(String(user.display_name ?? "").trim() && String(user.country_code ?? "").trim() && String(user.gender ?? "").trim()),
       Number(checks[0].count ?? 0) > 0,
       Number(checks[1].count ?? 0) > 0,
       Number(checks[2].count ?? 0) > 0,
