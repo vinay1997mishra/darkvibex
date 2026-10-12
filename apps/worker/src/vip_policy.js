@@ -1,6 +1,6 @@
-// Each upgrade amount is a per-level target based on the supplied USD schedule
-// at 5,000,000 coins/USD and 400 coins per VIP EXP. Total coins remain cumulative.
-// Legacy maintenance targets are kept at the same coin cost and converted to EXP.
+// Each upgrade amount uses 5,000,000 coins/USD and 400 coins per VIP EXP.
+// Total coins are cumulative; upgrade EXP is required separately at each level.
+// Legacy maintenance targets keep their original coin cost, converted to EXP.
 export const VIP_LEVELS = Object.freeze([
   [1,35000000,87500,75,30],[2,135000000,250000,75,30],
   [3,335000000,500000,225,30],[4,735000000,1000000,1250,30],
@@ -32,7 +32,12 @@ export function vipRule(level){
 export function vipCapabilities(level, active){
   return {
     exp_multiplier: 1,
-    friend_bonus: active ? (level >= 13 ? 1500 : level >= 9 ? 700 : level >= 4 ? 300 : 0) : 0,
+    friend_bonus: 0,
+    friend_limit: active ? null : 300,
+    friends_unlimited: active,
+    exclusive_gifts_enabled: active && level >= 3,
+    exclusive_mic_emoticon_enabled: active && level >= 9,
+    honorary_title_enabled: active && level >= 18,
     room_seat_limit: active ? (level >= 10 ? 30 : level >= 7 ? 20 : 12) : 12,
     room_background_enabled: active && level >= 3,
     picture_welcome_enabled: active && level >= 5,
@@ -48,3 +53,4 @@ export function vipCapabilities(level, active){
     validity_days: level >= 18 ? 45 : 30,
   };
 }
+
