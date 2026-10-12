@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +11,8 @@ import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
 import 'coin_seller_screen.dart';
 import 'vip_support_screen.dart';
+import '../widgets/vip_animated_frame.dart';
+import '../infra/privacy_screen_protection.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.state});
@@ -113,37 +117,24 @@ class ProfileScreen extends StatelessWidget {
                   : null,
               child: Row(
                 children: [
-              Container(
-                width: 76,
-                height: 76,
-                padding: EdgeInsets.all(
-                  state.hasVipPrivilege('headframe') ? 4 : 0,
-                ),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: state.hasVipPrivilege('headframe')
-                      ? Border.all(
-                          color: const Color(0xFFFFD36A),
-                          width: 3,
-                        )
-                      : null,
-                  boxShadow: state.hasVipPrivilege('exclusive_mic_effect')
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x66FFD36A),
-                            blurRadius: 18,
-                            spreadRadius: 2,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: CircleAvatar(
-                  backgroundImage: state.avatarKey == null
-                      ? null
-                      : NetworkImage(state.backend.fileUrl(state.avatarKey!)),
-                  child: state.avatarKey == null
-                      ? const Icon(Icons.person_rounded, size: 40)
-                      : null,
+              VipAnimatedFrame(
+                size: 76,
+                enabled: state.hasVipPrivilege('dynamic_avatar'),
+                child: Container(
+                  padding: EdgeInsets.all(state.hasVipPrivilege('headframe') ? 3 : 0),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: state.hasVipPrivilege('headframe')
+                        ? Border.all(color: const Color(0xFFFFD36A), width: 2)
+                        : null,
+                    boxShadow: state.hasVipPrivilege('exclusive_mic_effect')
+                        ? const [BoxShadow(color: Color(0x66FFD36A), blurRadius: 18, spreadRadius: 2)]
+                        : null,
+                  ),
+                  child: CircleAvatar(
+                    backgroundImage: state.avatarKey == null ? null : NetworkImage(state.backend.fileUrl(state.avatarKey!), headers: state.backend.fileHeaders),
+                    child: state.avatarKey == null ? const Icon(Icons.person_rounded, size: 40) : null,
+                  ),
                 ),
               ),
               const SizedBox(width: 14),
@@ -313,6 +304,7 @@ class PublicProfileScreen extends StatefulWidget {
 }
 
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
+  final Object _privacyScope = Object();
   Map<String, dynamic>? user;
   bool loading = true;
 
@@ -329,6 +321,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       user = response?['user'] is Map ? Map<String, dynamic>.from(response!['user'] as Map) : null;
       loading = false;
     });
+    await PrivacyScreenProtection.setProtected(
+      _privacyScope,
+      user?['privacy_protection_enabled'] == true,
+    );
+  }
+
+  @override
+  void dispose() {
+    unawaited(PrivacyScreenProtection.setProtected(_privacyScope, false));
+    super.dispose();
   }
 
   @override
@@ -344,9 +346,18 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircleAvatar(
-                          radius: 42,
-                          child: Text(displayName.isEmpty ? 'U' : displayName.substring(0, 1).toUpperCase()),
+                        VipAnimatedFrame(
+                          size: 88,
+                          enabled: (int.tryParse(user!['active_vip_level']?.toString() ?? '') ?? 0) >= 7,
+                          child: CircleAvatar(
+                            radius: 40,
+                            backgroundImage: user!['avatar_key']?.toString().isNotEmpty == true
+                                ? NetworkImage(widget.state.backend.fileUrl(user!['avatar_key'].toString()), headers: widget.state.backend.fileHeaders)
+                                : null,
+                            child: user!['avatar_key']?.toString().isNotEmpty == true
+                                ? null
+                                : Text(displayName.isEmpty ? 'U' : displayName.substring(0, 1).toUpperCase()),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Text(user!['display_name']?.toString() ?? 'User', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
