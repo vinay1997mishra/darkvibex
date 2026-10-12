@@ -90,6 +90,16 @@ class BackendApi {
   Future<Map<String, dynamic>?> googleAuthConfig() =>
       _json('GET', '/api/auth/config');
 
+  Future<Map<String, dynamic>?> userProfile({required String userId}) =>
+      _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
+
+  Future<List<Map<String, dynamic>>> profileVisitors({required String userId}) async {
+    final value = await _json('GET', '/api/users/${Uri.encodeComponent(userId)}/visitors');
+    final rows = value?['visitors'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
   Future<Map<String, dynamic>?> startGoogleSession({
     required String idToken,
   }) =>
