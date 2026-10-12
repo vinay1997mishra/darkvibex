@@ -82,7 +82,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   );
 
   Widget _home() {
-    final myMember = members.where((m) => m['user_id']?.toString() == widget.state.userId).firstOrNull;
+    final myMember = members.cast<Map<String, dynamic>?>().firstWhere((m) => m?['user_id']?.toString() == widget.state.userId, orElse: () => null);
     final role = myMember?['role']?.toString() ?? 'member';
     final exp = int.tryParse(family?['experience']?.toString() ?? '') ?? 0;
     return RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(16), children: [
