@@ -435,6 +435,20 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> sendVipSayHi({
+    required String userId,
+    required String receiverUserId,
+    required String message,
+  }) =>
+      _json(
+        'POST',
+        '/api/vip/${Uri.encodeComponent(userId)}/say-hi',
+        body: <String, dynamic>{
+          'receiver_user_id': receiverUserId,
+          'message': message,
+        },
+      );
+
   Future<Map<String, dynamic>?> coinSellerTransfer({
     required String sellerUserId,
     required String receiverUserId,
