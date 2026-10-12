@@ -414,6 +414,19 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> inboxRedEnvelopes({required String userId, required String otherUserId}) async {
+    final value = await _json('GET', '/api/messages/red-envelopes?user_id=${Uri.encodeQueryComponent(userId)}&other_user_id=${Uri.encodeQueryComponent(otherUserId)}');
+    final rows = value?['envelopes'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>?> sendInboxRedEnvelope({required String senderUserId, required String receiverUserId, required int amount}) =>
+      _json('POST', '/api/messages/red-envelope', body: {'sender_user_id': senderUserId, 'receiver_user_id': receiverUserId, 'amount': amount});
+
+  Future<Map<String, dynamic>?> claimInboxRedEnvelope({required String userId, required String envelopeId}) =>
+      _json('POST', '/api/messages/red-envelope/${Uri.encodeComponent(envelopeId)}/claim', body: {'user_id': userId});
+
   Future<Map<String, dynamic>?> wallet({
     required String userId,
   }) =>
