@@ -183,6 +183,13 @@ CREATE TABLE IF NOT EXISTS user_friends (
   FOREIGN KEY (friend_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS user_follows (
+  follower_user_id TEXT NOT NULL,
+  followed_user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (follower_user_id, followed_user_id)
+);
+
 CREATE TABLE IF NOT EXISTS user_blocks (
   blocker_user_id TEXT NOT NULL,
   blocked_user_id TEXT NOT NULL,
