@@ -488,7 +488,7 @@ async function handleApi(request, env, url) {
     return json({ ok: false, error: "maintenance", message: String(maintenance.message ?? "") }, { status: 503 });
   }
 
-  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange });
+  const mineResponse = await handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange, verifyGoogleIdToken });
   if (mineResponse) return mineResponse;
 
   if (url.pathname === "/api/config" && request.method === "GET") {
@@ -609,11 +609,24 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: code }, { status });
     }
 
-    const userId = "g_" + String(claims.sub);
+    await db.prepare(`CREATE TABLE IF NOT EXISTS account_identities (
+      user_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      email TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (provider, subject),
+      UNIQUE (user_id, provider)
+    )`).run();
+    const linked = await db.prepare("SELECT user_id FROM account_identities WHERE provider = 'google' AND subject = ?")
+      .bind(String(claims.sub)).first();
+    const userId = linked?.user_id ? String(linked.user_id) : "g_" + String(claims.sub);
     const displayName = String(
       claims.name ?? claims.given_name ?? claims.email ?? "DarkVibeX User"
     ).trim().slice(0, 60);
     const user = await ensureUser(db, userId, displayName);
+    await db.prepare("INSERT OR IGNORE INTO account_identities (user_id,provider,subject,email,created_at) VALUES (?,'google',?,?,?)")
+      .bind(userId, String(claims.sub), String(claims.email ?? ""), now()).run();
     await ensureUserAllowed(db, userId);
     const token = await createSessionToken(env, userId, user.display_name);
     return json({ ok: true, token, user, provider: "google" });
