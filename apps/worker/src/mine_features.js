@@ -15,6 +15,15 @@ const ensureMineTables = async (db) => {
     created_at INTEGER NOT NULL,
     PRIMARY KEY (blocker_user_id, blocked_user_id)
   )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS account_identities (
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    email TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, subject),
+    UNIQUE (user_id, provider)
+  )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_follows (
     follower_user_id TEXT NOT NULL,
     followed_user_id TEXT NOT NULL,
@@ -43,7 +52,7 @@ const ensureMineTables = async (db) => {
   )`).run();
 };
 
-export async function handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange }) {
+export async function handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange, verifyGoogleIdToken }) {
   const path = url.pathname;
   if (!path.startsWith("/api/mine/")) return null;
   await ensureMineTables(db);
@@ -199,6 +208,43 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
       "INSERT INTO user_feedback (id,user_id,category,message,status,created_at) VALUES (?,?,?,?,'received',?)"
     ).bind(feedbackId, userId, category, message, createdAt).run();
     return json({ ok: true, feedback: { id: feedbackId, category, message, status: "received", created_at: createdAt } }, { status: 201 });
+  }
+
+  if (path === "/api/mine/account-identities" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const result = await db.prepare(
+      "SELECT provider,subject,email,created_at FROM account_identities WHERE user_id = ? ORDER BY created_at"
+    ).bind(userId).all();
+    return json({ ok: true, identities: result.results ?? [] });
+  }
+
+  if (path === "/api/mine/account-identities/google" && request.method === "POST") {
+    const body = await request.json();
+    const userId = String(body.user_id ?? "").trim();
+    const idToken = String(body.id_token ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    let claims;
+    try {
+      claims = await verifyGoogleIdToken(idToken, env.GOOGLE_WEB_CLIENT_ID);
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      const status = code === "google_auth_not_configured" ? 503 : 401;
+      return json({ ok: false, error: code }, { status });
+    }
+    const subject = String(claims.sub ?? "");
+    const existing = await db.prepare("SELECT user_id FROM account_identities WHERE provider = 'google' AND subject = ?")
+      .bind(subject).first();
+    if (existing && String(existing.user_id) !== userId) {
+      return json({ ok: false, error: "google_account_already_linked" }, { status: 409 });
+    }
+    await db.prepare("INSERT OR IGNORE INTO account_identities (user_id,provider,subject,email,created_at) VALUES (?,'google',?,?,?)")
+      .bind(userId, subject, String(claims.email ?? ""), now()).run();
+    const result = await db.prepare("SELECT provider,subject,email,created_at FROM account_identities WHERE user_id = ? ORDER BY created_at")
+      .bind(userId).all();
+    return json({ ok: true, identities: result.results ?? [] });
   }
 
   if (path === "/api/mine/follow" && request.method === "GET") {
