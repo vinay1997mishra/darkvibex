@@ -14,6 +14,13 @@ class BackendApi {
 
   bool get configured => origin.trim().isNotEmpty;
 
+  Map<String, String> get fileHeaders {
+    final bearer = sessionToken;
+    return bearer == null || bearer.trim().isEmpty
+        ? const <String, String>{}
+        : <String, String>{HttpHeaders.authorizationHeader: 'Bearer ${bearer.trim()}'};
+  }
+
   Future<Map<String, dynamic>?> _json(
     String method,
     String path, {
