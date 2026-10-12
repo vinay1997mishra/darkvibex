@@ -460,7 +460,7 @@ class BackendApi {
       _json('POST', '/api/game-rooms/${Uri.encodeComponent(roomId)}/tap', body: {'user_id': userId}, returnErrorBody: true);
 
   Future<Map<String, dynamic>?> familyState({required String userId}) =>
-      _json('GET', '/api/family?user_id=\${Uri.encodeQueryComponent(userId)}');
+      _json('GET', '/api/family?user_id=${Uri.encodeQueryComponent(userId)}');
 
   Future<List<Map<String, dynamic>>> familyList({int limit = 50}) async {
     final value = await _json('GET', '/api/family/list?limit=$limit');
@@ -497,14 +497,14 @@ class BackendApi {
       _json('POST', '/api/family/wallet/send', body: {'user_id': userId, 'amount': amount});
 
   Future<List<Map<String, dynamic>>> familyWalletTransfers({required String userId}) async {
-    final value = await _json('GET', '/api/family/wallet/transfers?user_id=\${Uri.encodeQueryComponent(userId)}');
+    final value = await _json('GET', '/api/family/wallet/transfers?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['transfers'];
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
   Future<Map<String, dynamic>?> cpState({required String userId}) =>
-      _json('GET', '/api/cp?user_id=\${Uri.encodeQueryComponent(userId)}');
+      _json('GET', '/api/cp?user_id=${Uri.encodeQueryComponent(userId)}');
 
   Future<List<Map<String, dynamic>>> cpRanking({int limit = 50}) async {
     final value = await _json('GET', '/api/cp/ranking?limit=$limit');
@@ -526,7 +526,7 @@ class BackendApi {
       _json('POST', '/api/cp/update', body: {'user_id': userId, 'action': action, if (ringId != null) 'ring_id': ringId});
 
   Future<List<Map<String, dynamic>>> cpMemories({required String userId}) async {
-    final value = await _json('GET', '/api/cp/memories?user_id=\${Uri.encodeQueryComponent(userId)}');
+    final value = await _json('GET', '/api/cp/memories?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['memories'];
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
