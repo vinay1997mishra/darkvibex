@@ -1,3 +1,6 @@
+import { getIdLevelStatus } from "./id_level.js";
+import { getVipStatus } from "./vip_store.js";
+
 const ensureMineTables = async (db) => {
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_blocks (
     blocker_user_id TEXT NOT NULL,
@@ -22,7 +25,7 @@ const ensureMineTables = async (db) => {
   )`).run();
 };
 
-export async function handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id }) {
+export async function handleMineFeatureApi({ request, env, url, db, requireSession, json, now, id, walletChange }) {
   const path = url.pathname;
   if (!path.startsWith("/api/mine/")) return null;
   await ensureMineTables(db);
