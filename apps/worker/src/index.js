@@ -488,10 +488,47 @@ async function handleApi(request, env, url) {
     return json({ ok: true, avatar_key: imageKey });
   }
 
+  if (parts[0] === "api" && parts[1] === "users" && parts.length === 4 && parts[3] === "visitors" && request.method === "GET") {
+    const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const status = await getVipStatus(db, userId);
+    if (!status.active || status.level < 1) return json({ ok: false, error: "vip_privilege_locked" }, { status: 403 });
+    const rows = await db.prepare(
+      `SELECT v.visitor_user_id AS user_id,
+              CASE WHEN av.level >= 18 AND av.active_until > ?
+                         AND json_extract(av.preferences_json, '$.anonymous_everywhere') = 1
+                   THEN 'Anonymous' ELSE u.display_name END AS display_name,
+              u.avatar_key, v.first_visited_at, v.last_visited_at, v.visit_count
+         FROM profile_visitors v
+         JOIN users u ON u.id = v.visitor_user_id
+         LEFT JOIN user_vip av ON av.user_id = v.visitor_user_id
+        WHERE v.viewed_user_id = ?
+        ORDER BY v.last_visited_at DESC LIMIT 100`
+    ).bind(now(), userId).all();
+    return json({ ok: true, visitors: rows.results ?? [] });
+  }
+
   if (parts[0] === "api" && parts[1] === "users" && parts.length === 3 && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const viewerId = String(session.sub);
+    const viewedUserId = String(parts[2] ?? "").trim();
+    await ensureVipSchema(db);
     const user = await db.prepare(
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
-    ).bind(parts[2]).first();
+    ).bind(viewedUserId).first();
+    if (user && viewerId !== viewedUserId) {
+      const viewerVip = await getVipStatus(db, viewerId);
+      const shouldHide = viewerVip.active && viewerVip.level >= 11 && viewerVip.preferences.hide_visitors === true;
+      if (!shouldHide) {
+        const ts = now();
+        await db.prepare(
+          "INSERT INTO profile_visitors (viewed_user_id,visitor_user_id,first_visited_at,last_visited_at,visit_count) VALUES (?,?,?,?,1) ON CONFLICT(viewed_user_id,visitor_user_id) DO UPDATE SET last_visited_at=excluded.last_visited_at,visit_count=profile_visitors.visit_count+1"
+        ).bind(viewedUserId, viewerId, ts, ts).run();
+      }
+    }
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
