@@ -82,6 +82,21 @@ class BackendApi {
     } catch (_) { return null; } finally { client.close(force: true); }
   }
 
+  Future<bool> updateUserProfile({
+    required String userId,
+    required String displayName,
+    required String countryCode,
+    required String gender,
+  }) async {
+    final value = await _json('POST', '/api/users/profile', body: {
+      'user_id': userId,
+      'display_name': displayName,
+      'country_code': countryCode,
+      'gender': gender,
+    });
+    return value?['ok'] == true;
+  }
+
   Future<bool> setUserAvatar({required String userId, required String avatarKey}) async {
     final value = await _json('POST', '/api/users/avatar', body: {'user_id': userId, 'avatar_key': avatarKey});
     return value?['ok'] == true;
