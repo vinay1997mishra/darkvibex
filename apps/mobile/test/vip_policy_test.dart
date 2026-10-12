@@ -9,7 +9,7 @@ void main() {
     expect(VipPolicy.ruleFor(18)?.validityDays, 45);
   });
 
-  test('VIP17 gets 150 percent EXP while active', () {
+  test('Coin Seller VIP EXP stays one-to-one at every VIP level', () {
     expect(VipPolicy.expMultiplier(16, active: true), 1.0);
     expect(VipPolicy.expMultiplier(17, active: true), 1.0);
     expect(VipPolicy.expMultiplier(18, active: true), 1.0);
@@ -31,8 +31,8 @@ void main() {
     expect(VipPolicy.showIdStyleLevel(14), 14);
     expect(VipPolicy.showIdStyleLevel(18), 14);
     final uniqueId = VipPolicy.privileges.firstWhere((p) => p.id == 'unique_id');
-    expect(uniqueId.isUnlockedAt(4), false);
-    expect(uniqueId.isUnlockedAt(5), true);
+    expect(uniqueId.isUnlockedAt(14), false);
+    expect(uniqueId.isUnlockedAt(15), true);
     expect(uniqueId.isUnlockedAt(18), true);
   });
 
