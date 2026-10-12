@@ -14,6 +14,7 @@ import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
 import '../vip/vip_policy.dart';
+import '../widgets/vip_animated_frame.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
@@ -50,6 +51,8 @@ class _RoomScreenState extends State<RoomScreen> {
   ];
   bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
+  final Set<String> knownRoomMembers = <String>{};
+  bool memberListInitialized = false;
   Timer? memberRefreshTimer;
   String? roomAvatarKey;
   String? roomAnnouncement;
@@ -88,6 +91,13 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMembers(roomId: widget.room.id);
     final next = <int, Map<String, dynamic>>{};
+    final presentIds = rows.map((member) => member['user_id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
+    final arrivals = memberListInitialized
+        ? rows.where((member) => !knownRoomMembers.contains(member['user_id']?.toString() ?? '')).toList()
+        : const <Map<String, dynamic>>[];
+    knownRoomMembers.removeWhere((id) => !presentIds.contains(id));
+    knownRoomMembers.addAll(presentIds);
+    memberListInitialized = true;
     for (final member in rows) {
       final seat = int.tryParse(member['seat_index']?.toString() ?? '');
       if (seat != null) next[seat] = member;
@@ -103,6 +113,28 @@ class _RoomScreenState extends State<RoomScreen> {
         amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
+    for (final member in arrivals) {
+      final level = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
+      final invisible = member['invisible_entry'] == true || member['invisible_entry']?.toString() == '1';
+      if (level < 4 || invisible) continue;
+      final vehicle = level >= 8;
+      final vehicleName = level >= 18 ? 'custom VIP vehicle' : level >= 16 ? 'royal vehicle' : 'premium vehicle';
+      final arrivalIcon = level >= 18 ? Icons.rocket_launch_rounded : vehicle ? Icons.directions_car_filled_rounded : Icons.auto_awesome_rounded;
+      final name = member['display_name']?.toString().trim();
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        duration: const Duration(milliseconds: 3200),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF281B3F),
+        content: Row(children: [
+          Icon(arrivalIcon, color: const Color(0xFFFFD36A)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(vehicle
+              ? 'VIP$level  ${name?.isNotEmpty == true ? name : 'A VIP member'} arrived in a $vehicleName'
+              : 'VIP$level  ${name?.isNotEmpty == true ? name : 'A VIP member'} entered with an arrival effect')),
+        ]),
+      ));
+    }
   }
 
   Future<void> _loadRoomMessages() async {
@@ -810,13 +842,14 @@ class _RoomScreenState extends State<RoomScreen> {
                                       ));
                                     });
                                   },
-                            leading: CircleAvatar(
-                              backgroundImage: avatar != null && avatar.isNotEmpty
-                                  ? NetworkImage(widget.state.backend.fileUrl(avatar))
-                                  : null,
-                              child: avatar == null || avatar.isEmpty
-                                  ? const Icon(Icons.person_rounded)
-                                  : null,
+                            leading: VipAnimatedFrame(
+                              size: 44,
+                              enabled: (int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 7,
+                              child: CircleAvatar(
+                                radius: 18,
+                                backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders) : null,
+                                child: avatar == null || avatar.isEmpty ? const Icon(Icons.person_rounded, size: 20) : null,
+                              ),
                             ),
                             title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}'),
                             subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
@@ -1589,7 +1622,7 @@ class _RoomScreenState extends State<RoomScreen> {
               radius: 19,
               backgroundImage: roomAvatarKey == null
                   ? null
-                  : NetworkImage(widget.state.backend.fileUrl(roomAvatarKey!)),
+                  : NetworkImage(widget.state.backend.fileUrl(roomAvatarKey!), headers: widget.state.backend.fileHeaders),
               child: roomAvatarKey == null ? const Icon(Icons.mic_rounded, size: 18) : null,
             ),
             const SizedBox(width: 9),
@@ -1675,16 +1708,18 @@ class _RoomScreenState extends State<RoomScreen> {
                                   builder: (context) {
                                     final member = membersBySeat[seat];
                                     final avatar = member?['avatar_key']?.toString();
-                                    if (member != null && avatar != null && avatar.isNotEmpty) {
-                                      return CircleAvatar(
-                                        backgroundImage: NetworkImage(widget.state.backend.fileUrl(avatar)),
-                                        child: Align(
-                                          alignment: Alignment.bottomRight,
-                                          child: Icon(
-                                            member['mic_muted'] == 1 ? Icons.mic_off_rounded : Icons.mic_rounded,
-                                            size: 13,
-                                            color: Colors.white,
-                                          ),
+                                    if (member != null) {
+                                      final vipLevel = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
+                                      final micOn = member['mic_muted'] == 0 || member['mic_muted']?.toString() == '0';
+                                      return VipAnimatedFrame(
+                                        size: diameter - 2,
+                                        enabled: vipLevel >= 7 || (vipLevel >= 16 && micOn),
+                                        child: CircleAvatar(
+                                          backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders) : null,
+                                          child: Stack(alignment: Alignment.bottomRight, children: [
+                                            if (avatar == null || avatar.isEmpty) const Center(child: Icon(Icons.person_rounded)),
+                                            Icon(micOn ? Icons.mic_rounded : Icons.mic_off_rounded, size: 13, color: Colors.white),
+                                          ]),
                                         ),
                                       );
                                     }
