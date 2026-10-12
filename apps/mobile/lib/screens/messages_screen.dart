@@ -31,7 +31,7 @@ class MessagesScreen extends StatelessWidget {
                 leading: CircleAvatar(
                   backgroundImage: item.avatarKey == null
                       ? null
-                      : NetworkImage(state.backend.fileUrl(item.avatarKey!)),
+                      : NetworkImage(state.backend.fileUrl(item.avatarKey!), headers: state.backend.fileHeaders),
                   child: item.avatarKey == null
                       ? Text(item.name.isEmpty ? '?' : item.name.substring(0, 1))
                       : null,
