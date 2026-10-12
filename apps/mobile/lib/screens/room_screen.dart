@@ -52,12 +52,14 @@ class _RoomScreenState extends State<RoomScreen> {
   late String roomName;
   late int roomSeatCount;
   bool roomLocked = false;
+  bool amRoomAdmin = false;
   String roomThemeId = 'dark';
   bool groupPkEnabled = false;
   bool effectsEnabled = true;
   final KtvService roomMusic = KtvService();
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
+  bool get isRoomAdmin => isRoomHost || amRoomAdmin;
 
   @override
   void initState() {
@@ -93,6 +95,7 @@ class _RoomScreenState extends State<RoomScreen> {
       final own = rows.where((member) => member['user_id']?.toString() == widget.state.userId);
       if (own.isNotEmpty) {
         mySeat = int.tryParse(own.first['seat_index']?.toString() ?? '');
+        amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
   }
@@ -196,7 +199,7 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!isRoomHost) return;
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
-    final seatOptions = [8, 10, 12, 15, 20, 25, 30, 35, 42]
+    final seatOptions = <int>[8, 9, 10, ...List<int>.generate(31, (index) => index + 12)]
         .where((count) => count <= VipPolicy.maxRoomSeats(widget.state.vipLevel))
         .toList();
     if (!seatOptions.contains(roomSeatCount)) seatOptions.add(roomSeatCount);
@@ -596,10 +599,10 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _removeRoomMember(String targetUserId, {bool ban = false}) async {
-    if (!isRoomHost || targetUserId == widget.state.userId) return;
+    if (!isRoomAdmin || targetUserId == widget.state.userId || targetUserId == widget.room.ownerUserId) return;
     final ok = await widget.state.backend.removeRoomMember(
       roomId: widget.room.id,
-      ownerUserId: widget.state.userId,
+      actorUserId: widget.state.userId,
       targetUserId: targetUserId,
       ban: ban,
     );
@@ -614,6 +617,21 @@ class _RoomScreenState extends State<RoomScreen> {
       SnackBar(content: Text(ban ? 'Member blocked from this room' : 'Member removed from this room')),
     );
     await _loadRoomMembers();
+  }
+
+  Future<void> _setRoomAdmin(String targetUserId, {required bool admin}) async {
+    if (!isRoomHost || targetUserId == widget.state.userId || targetUserId == widget.room.ownerUserId) return;
+    final ok = await widget.state.backend.setRoomAdmin(
+      roomId: widget.room.id,
+      actorUserId: widget.state.userId,
+      targetUserId: targetUserId,
+      admin: admin,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? (admin ? 'Room admin added' : 'Room admin removed') : 'Could not update room admin'),
+    ));
+    if (ok) await _loadRoomMembers();
   }
 
   Future<void> _reportRoom() async {
@@ -707,18 +725,30 @@ class _RoomScreenState extends State<RoomScreen> {
                                   ? const Icon(Icons.person_rounded)
                                   : null,
                             ),
-                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : ''}'),
+                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}'),
                             subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
-                            trailing: isRoomHost && !isSelf
+                            trailing: !isSelf && !isOwner && (
+                                    (isRoomHost) || (isRoomAdmin && member['is_admin'] != true && member['is_admin']?.toString() != '1'))
                                 ? PopupMenuButton<String>(
                                     tooltip: 'Member actions',
                                     onSelected: (action) async {
                                       Navigator.pop(sheetContext);
-                                      await _removeRoomMember(userId, ban: action == 'block');
+                                      if (action == 'set_admin') {
+                                        await _setRoomAdmin(userId, admin: true);
+                                      } else if (action == 'remove_admin') {
+                                        await _setRoomAdmin(userId, admin: false);
+                                      } else {
+                                        await _removeRoomMember(userId, ban: action == 'block');
+                                      }
                                     },
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem(value: 'remove', child: Text('Remove from room')),
-                                      PopupMenuItem(value: 'block', child: Text('Block from room')),
+                                    itemBuilder: (_) => [
+                                      if (isRoomHost)
+                                        PopupMenuItem(
+                                          value: (member['is_admin'] == true || member['is_admin']?.toString() == '1') ? 'remove_admin' : 'set_admin',
+                                          child: Text((member['is_admin'] == true || member['is_admin']?.toString() == '1') ? 'Remove admin role' : 'Make room admin'),
+                                        ),
+                                      const PopupMenuItem(value: 'remove', child: Text('Remove from room')),
+                                      const PopupMenuItem(value: 'block', child: Text('Block from room')),
                                     ],
                                   )
                                 : null,

@@ -289,6 +289,17 @@ async function ensureRoomLuckyPouchTables(db) {
   )`).run();
 }
 
+async function ensureRoomAdminTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_admins (
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    added_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (room_id, user_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+  )`).run();
+}
+
 async function ensureRoomSafetyTables(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_bans (
@@ -644,7 +655,7 @@ async function handleApi(request, env, url) {
       if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
       const name = String(body.name ?? "").trim().slice(0, 80);
       const requestedSeatCount = Number(body.seat_count ?? room.seat_count);
-      if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
+      if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42 || requestedSeatCount === 11) {
         return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
       }
       const vipStatus = await getVipStatus(db, userId);
@@ -711,8 +722,11 @@ async function handleApi(request, env, url) {
     const name = String(body.name ?? "").trim().slice(0, 80);
     const authError = await requireSession(request, env, ownerId);
     if (authError) return authError;
-    const requestedSeatCount = Math.max(8, Math.min(42, Number(body.seat_count ?? 12)));
+    const requestedSeatCount = Number(body.seat_count ?? 12);
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
+    if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42 || requestedSeatCount === 11) {
+      return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
+    }
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, ownerId);
     const vipStatus = await getVipStatus(db, ownerId);
@@ -775,22 +789,37 @@ async function handleApi(request, env, url) {
     const roomId = parts[2];
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
-    await ensureUserAllowed(db, userId);
     const seatIndex = body.seat_index == null ? null : Number(body.seat_index);
     const muted = body.mic_muted === false ? 0 : 1;
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    const room = await db.prepare("SELECT seat_count FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+      .bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    if (seatIndex != null && (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(room.seat_count))) {
+      return json({ ok: false, error: "invalid_seat_index" }, { status: 400 });
+    }
     await sampleLampMicProgress(db, roomId, now());
-    if (seatIndex != null) {
-      const occupied = await db.prepare(
-        "SELECT user_id FROM room_members WHERE room_id = ? AND seat_index = ? AND user_id <> ? LIMIT 1"
+    const result = await db.prepare(
+      `UPDATE room_members
+          SET seat_index = ?, mic_muted = ?, updated_at = ?
+        WHERE room_id = ? AND user_id = ?
+          AND (? IS NULL OR NOT EXISTS (
+            SELECT 1 FROM room_members other
+             WHERE other.room_id = ? AND other.seat_index = ? AND other.user_id <> ?
+          ))`
+    ).bind(seatIndex, muted, now(), roomId, userId, seatIndex, roomId, seatIndex, userId).run();
+    if (Number(result.meta?.changes ?? 0) === 0) {
+      const occupied = seatIndex == null ? null : await db.prepare(
+        "SELECT 1 AS occupied FROM room_members WHERE room_id = ? AND seat_index = ? AND user_id <> ?"
       ).bind(roomId, seatIndex, userId).first();
       if (occupied) return json({ ok: false, error: "seat_occupied" }, { status: 409 });
+      return json({ ok: false, error: "room_membership_required" }, { status: 403 });
     }
-    await db.prepare(
-      "UPDATE room_members SET seat_index = ?, mic_muted = ?, updated_at = ? WHERE room_id = ? AND user_id = ?"
-    ).bind(seatIndex, muted, now(), roomId, userId).run();
     if (seatIndex != null) await acceptPendingLampMicInvite(db, roomId, userId, now());
     return json({ ok: true, seat_index: seatIndex, mic_muted: Boolean(muted) });
   }
@@ -838,34 +867,74 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members") {
     const roomId = parts[2];
+    await ensureRoomAdminTable(db);
     if (request.method === "GET") {
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const actorId = String(session.sub);
       const member = await db.prepare(
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, String(session.sub)).first();
+      ).bind(roomId, actorId).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const rows = await db.prepare(
-        `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at
+        `SELECT m.user_id, u.display_name, u.avatar_key, m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
+                CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
+                CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin
            FROM room_members m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN rooms r ON r.id = m.room_id
+           LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
           WHERE m.room_id = ?
-          ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
+          ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
+                   CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
       ).bind(roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
-      const ownerId = String(body.user_id ?? "").trim();
+      const actorId = String(body.user_id ?? "").trim();
       const targetId = String(body.target_user_id ?? "").trim();
-      const authError = await requireSession(request, env, ownerId);
+      const action = String(body.action ?? "").trim();
+      const authError = await requireSession(request, env, actorId);
       if (authError) return authError;
-      if (!targetId || targetId === ownerId) return json({ ok: false, error: "invalid_target" }, { status: 400 });
+      if (!targetId || targetId === actorId) return json({ ok: false, error: "invalid_target" }, { status: 400 });
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
       if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
-      if (room.owner_user_id !== ownerId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+      const isOwner = room.owner_user_id === actorId;
+      const actorAdmin = await db.prepare("SELECT 1 AS active FROM room_admins WHERE room_id = ? AND user_id = ?")
+        .bind(roomId, actorId).first();
+      const actorMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+        .bind(roomId, actorId).first();
+      if (!isOwner && actorAdmin && !actorMember) {
+        return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      }
+      const targetMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+        .bind(roomId, targetId).first();
+      if (!targetMember) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
+
+      if (action === "set_admin" || action === "remove_admin") {
+        if (!isOwner) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+        if (room.owner_user_id === targetId) return json({ ok: false, error: "owner_role_fixed" }, { status: 400 });
+        if (action === "set_admin") {
+          await db.prepare("INSERT INTO room_admins (room_id, user_id, added_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id, user_id) DO NOTHING")
+            .bind(roomId, targetId, actorId, now()).run();
+          return json({ ok: true, is_admin: true });
+        }
+        const result = await db.prepare("DELETE FROM room_admins WHERE room_id = ? AND user_id = ?")
+          .bind(roomId, targetId).run();
+        return json({ ok: true, is_admin: false, changed: Number(result.meta?.changes ?? 0) > 0 });
+      }
+
+      const isTargetOwner = room.owner_user_id === targetId;
+      const targetAdmin = await db.prepare("SELECT 1 AS active FROM room_admins WHERE room_id = ? AND user_id = ?")
+        .bind(roomId, targetId).first();
+      if (!isOwner && !actorAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
+      if (isTargetOwner || (!isOwner && targetAdmin)) {
+        return json({ ok: false, error: "moderation_target_protected" }, { status: 403 });
+      }
+
       await ensureRoomSafetyTables(db);
       const shouldBan = body.ban === true;
       if (env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
@@ -875,7 +944,7 @@ async function handleApi(request, env, url) {
           { alg: "HS256", typ: "JWT" },
           {
             iss: String(env.LIVEKIT_API_KEY),
-            sub: ownerId,
+            sub: actorId,
             nbf: seconds - 5,
             exp: seconds + 60,
             video: { room: roomId, roomAdmin: true },
@@ -912,11 +981,13 @@ async function handleApi(request, env, url) {
       if (shouldBan) {
         await db.prepare(
           "INSERT INTO room_bans (room_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(room_id, user_id) DO UPDATE SET banned_by = excluded.banned_by, created_at = excluded.created_at"
-        ).bind(roomId, targetId, ownerId, now()).run();
+        ).bind(roomId, targetId, actorId, now()).run();
       }
-      const result = await db.prepare(
-        "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, targetId).run();
+      if (isOwner) {
+        await db.prepare("DELETE FROM room_admins WHERE room_id = ? AND user_id = ?").bind(roomId, targetId).run();
+      }
+      const result = await db.prepare("DELETE FROM room_members WHERE room_id = ? AND user_id = ?")
+        .bind(roomId, targetId).run();
       return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
