@@ -1825,6 +1825,295 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  const communityPath = url.pathname.startsWith("/api/family") || url.pathname.startsWith("/api/cp");
+  if (communityPath) {
+    await Promise.all([
+      db.prepare("CREATE TABLE IF NOT EXISTS families (id TEXT PRIMARY KEY, name TEXT NOT NULL, tag TEXT NOT NULL UNIQUE, notice TEXT NOT NULL DEFAULT '', experience INTEGER NOT NULL DEFAULT 0, wallet_coins INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL, created_at INTEGER NOT NULL)").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS family_members (family_id TEXT NOT NULL, user_id TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('leader','admin','member')), joined_at INTEGER NOT NULL, PRIMARY KEY(family_id,user_id))").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS family_join_requests (family_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(family_id,user_id))").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS family_checkins (family_id TEXT NOT NULL, user_id TEXT NOT NULL, day TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(family_id,user_id,day))").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS family_wallet_transfers (id TEXT PRIMARY KEY, family_id TEXT NOT NULL, user_id TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount > 0), created_at INTEGER NOT NULL)").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS cp_relationships (id TEXT PRIMARY KEY, user_a TEXT NOT NULL, user_b TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','accepted','rejected','ended')), requested_by TEXT NOT NULL, intimacy INTEGER NOT NULL DEFAULT 0, level INTEGER NOT NULL DEFAULT 1, ring_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run(),
+      db.prepare("CREATE TABLE IF NOT EXISTS cp_memories (id TEXT PRIMARY KEY, relationship_id TEXT NOT NULL, user_id TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL)").run(),
+    ]);
+  }
+
+  if (url.pathname === "/api/family" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const family = await db.prepare("SELECT f.* FROM families f JOIN family_members m ON m.family_id=f.id WHERE m.user_id=? LIMIT 1").bind(userId).first();
+    if (!family) return json({ ok: true, family: null, members: [], join_requests: [] });
+    const members = await db.prepare("SELECT m.user_id,m.role,m.joined_at,u.display_name,u.avatar_key FROM family_members m JOIN users u ON u.id=m.user_id WHERE m.family_id=? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,m.joined_at ASC").bind(family.id).all();
+    const canReview = ["leader","admin"].includes(String((members.results ?? []).find((m) => m.user_id === userId)?.role ?? ""));
+    const requests = canReview ? await db.prepare("SELECT r.user_id,r.created_at,u.display_name,u.avatar_key FROM family_join_requests r JOIN users u ON u.id=r.user_id WHERE r.family_id=? ORDER BY r.created_at ASC").bind(family.id).all() : { results: [] };
+    return json({ ok: true, family, members: members.results ?? [], join_requests: requests.results ?? [] });
+  }
+
+  if (url.pathname === "/api/family/list" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+    const rows = await db.prepare("SELECT f.id,f.name,f.tag,f.experience,f.wallet_coins,COUNT(m.user_id) AS member_count FROM families f LEFT JOIN family_members m ON m.family_id=f.id GROUP BY f.id ORDER BY f.experience DESC LIMIT ?").bind(limit).all();
+    return json({ ok: true, families: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/family/create" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const name = String(body.name ?? "").trim().slice(0, 40);
+    const tag = String(body.tag ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (name.length < 3 || tag.length < 2) return json({ ok: false, error: "family_name_and_tag_required" }, { status: 400 });
+    const member = await db.prepare("SELECT 1 AS yes FROM family_members WHERE user_id=?").bind(userId).first();
+    if (member) return json({ ok: false, error: "already_in_family" }, { status: 409 });
+    const familyId = id();
+    const ts = now();
+    try {
+      await db.batch([
+        db.prepare("INSERT INTO families (id,name,tag,created_by,created_at) VALUES (?,?,?,?,?)").bind(familyId,name,tag,userId,ts),
+        db.prepare("INSERT INTO family_members (family_id,user_id,role,joined_at) VALUES (?,?,?,?)").bind(familyId,userId,"leader",ts),
+      ]);
+    } catch (_) {
+      return json({ ok: false, error: "family_tag_taken" }, { status: 409 });
+    }
+    return json({ ok: true, family_id: familyId }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/family/join-request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const familyId = String(body.family_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!familyId) return json({ ok: false, error: "family_id_required" }, { status: 400 });
+    const already = await db.prepare("SELECT 1 AS yes FROM family_members WHERE user_id=?").bind(userId).first();
+    if (already) return json({ ok: false, error: "already_in_family" }, { status: 409 });
+    const family = await db.prepare("SELECT 1 AS yes FROM families WHERE id=?").bind(familyId).first();
+    if (!family) return json({ ok: false, error: "family_not_found" }, { status: 404 });
+    await db.prepare("INSERT OR IGNORE INTO family_join_requests (family_id,user_id,created_at) VALUES (?,?,?)").bind(familyId,userId,now()).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/family/join-request/resolve" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const actorId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const approve = body.approve === true;
+    const authError = await requireSession(request, env, actorId);
+    if (authError) return authError;
+    const actor = await db.prepare("SELECT family_id,role FROM family_members WHERE user_id=?").bind(actorId).first();
+    if (!actor || !["leader","admin"].includes(String(actor.role))) return json({ ok: false, error: "family_permission_denied" }, { status: 403 });
+    const pending = await db.prepare("SELECT 1 AS yes FROM family_join_requests WHERE family_id=? AND user_id=?").bind(actor.family_id,targetId).first();
+    if (!pending) return json({ ok: false, error: "join_request_not_found" }, { status: 404 });
+    const statements = [db.prepare("DELETE FROM family_join_requests WHERE family_id=? AND user_id=?").bind(actor.family_id,targetId)];
+    if (approve) {
+      const existing = await db.prepare("SELECT 1 AS yes FROM family_members WHERE user_id=?").bind(targetId).first();
+      if (existing) return json({ ok: false, error: "already_in_family" }, { status: 409 });
+      statements.push(db.prepare("INSERT INTO family_members (family_id,user_id,role,joined_at) VALUES (?,?,?,?)").bind(actor.family_id,targetId,"member",now()));
+    }
+    await db.batch(statements);
+    return json({ ok: true, approved: approve });
+  }
+
+  if (url.pathname === "/api/family/check-in" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT family_id FROM family_members WHERE user_id=?").bind(userId).first();
+    if (!member) return json({ ok: false, error: "family_membership_required" }, { status: 403 });
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    try {
+      await db.batch([
+        db.prepare("INSERT INTO family_checkins (family_id,user_id,day,created_at) VALUES (?,?,?,?)").bind(member.family_id,userId,day,now()),
+        db.prepare("UPDATE families SET experience=experience+100 WHERE id=?").bind(member.family_id),
+      ]);
+    } catch (_) {
+      return json({ ok: false, error: "already_checked_in_today" }, { status: 409 });
+    }
+    return json({ ok: true, family_exp: 100 });
+  }
+
+  if (url.pathname === "/api/family/notice" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const notice = String(body.notice ?? "").trim().slice(0, 500);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT family_id,role FROM family_members WHERE user_id=?").bind(userId).first();
+    if (!member || !["leader","admin"].includes(String(member.role))) return json({ ok: false, error: "family_permission_denied" }, { status: 403 });
+    await db.prepare("UPDATE families SET notice=? WHERE id=?").bind(notice,member.family_id).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/family/admin" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const makeAdmin = body.admin === true;
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const actor = await db.prepare("SELECT family_id,role FROM family_members WHERE user_id=?").bind(userId).first();
+    const target = await db.prepare("SELECT role FROM family_members WHERE family_id=? AND user_id=?").bind(actor?.family_id ?? "",targetId).first();
+    if (!actor || actor.role !== "leader" || !target || target.role === "leader" || targetId === userId) return json({ ok: false, error: "family_permission_denied" }, { status: 403 });
+    await db.prepare("UPDATE family_members SET role=? WHERE family_id=? AND user_id=?").bind(makeAdmin ? "admin" : "member",actor.family_id,targetId).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/family/member/remove" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const actor = await db.prepare("SELECT family_id,role FROM family_members WHERE user_id=?").bind(userId).first();
+    const target = await db.prepare("SELECT role FROM family_members WHERE family_id=? AND user_id=?").bind(actor?.family_id ?? "",targetId).first();
+    if (!actor || !target || target.role === "leader" || userId === targetId || (actor.role !== "leader" && (actor.role !== "admin" || target.role !== "member"))) return json({ ok: false, error: "family_permission_denied" }, { status: 403 });
+    await db.prepare("DELETE FROM family_members WHERE family_id=? AND user_id=?").bind(actor.family_id,targetId).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/family/leave" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT family_id,role FROM family_members WHERE user_id=?").bind(userId).first();
+    if (!member) return json({ ok: false, error: "family_membership_required" }, { status: 403 });
+    if (member.role === "leader") return json({ ok: false, error: "leader_must_transfer_or_disband" }, { status: 409 });
+    await db.prepare("DELETE FROM family_members WHERE family_id=? AND user_id=?").bind(member.family_id,userId).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/family/wallet/send" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const amount = Math.floor(Number(body.amount));
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!Number.isSafeInteger(amount) || amount <= 0) return json({ ok: false, error: "invalid_amount" }, { status: 400 });
+    const member = await db.prepare("SELECT family_id FROM family_members WHERE user_id=?").bind(userId).first();
+    if (!member) return json({ ok: false, error: "family_membership_required" }, { status: 403 });
+    const transferId = id();
+    const debited = await db.prepare("UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?").bind(amount,now(),userId,amount).run();
+    if (!debited.meta?.changes) return json({ ok: false, error: "insufficient_balance" }, { status: 409 });
+    await db.batch([
+      db.prepare("UPDATE families SET wallet_coins=wallet_coins+? WHERE id=?").bind(amount,member.family_id),
+      db.prepare("INSERT INTO family_wallet_transfers (id,family_id,user_id,amount,created_at) VALUES (?,?,?,?,?)").bind(transferId,member.family_id,userId,amount,now()),
+    ]);
+    return json({ ok: true, transfer_id: transferId });
+  }
+
+  if (url.pathname === "/api/family/wallet/transfers" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT family_id FROM family_members WHERE user_id=?").bind(userId).first();
+    if (!member) return json({ ok: false, error: "family_membership_required" }, { status: 403 });
+    const rows = await db.prepare("SELECT t.*,u.display_name FROM family_wallet_transfers t JOIN users u ON u.id=t.user_id WHERE t.family_id=? ORDER BY t.created_at DESC LIMIT 100").bind(member.family_id).all();
+    return json({ ok: true, transfers: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/cp" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await db.prepare("SELECT * FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state IN ('pending','accepted') ORDER BY created_at DESC LIMIT 1").bind(userId,userId).first();
+    return json({ ok: true, cp: cp ?? null });
+  }
+
+  if (url.pathname === "/api/cp/request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!targetId || targetId === userId) return json({ ok: false, error: "invalid_target" }, { status: 400 });
+    const active = await db.prepare("SELECT 1 AS yes FROM cp_relationships WHERE (user_a IN (?,?) OR user_b IN (?,?)) AND state IN ('pending','accepted') LIMIT 1").bind(userId,targetId,userId,targetId).first();
+    if (active) return json({ ok: false, error: "cp_flow_already_active" }, { status: 409 });
+    const createdAt = now();
+    const cpId = id();
+    await db.prepare("INSERT INTO cp_relationships (id,user_a,user_b,state,requested_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").bind(cpId,userId,targetId,"pending",userId,createdAt,createdAt).run();
+    return json({ ok: true, cp: { id: cpId, user_a:userId,user_b:targetId,state:"pending",requested_by:userId,created_at:createdAt } }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/cp/respond" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const accept = body.accept === true;
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await db.prepare("SELECT * FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state='pending' AND requested_by<>? ORDER BY created_at DESC LIMIT 1").bind(userId,userId,userId).first();
+    if (!cp) return json({ ok: false, error: "pending_cp_not_found" }, { status: 404 });
+    const state = accept ? "accepted" : "rejected";
+    await db.prepare("UPDATE cp_relationships SET state=?,updated_at=? WHERE id=? AND state='pending'").bind(state,now(),cp.id).run();
+    return json({ ok: true, cp: { ...cp, state } });
+  }
+
+  if (url.pathname === "/api/cp/disconnect" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await db.prepare("SELECT id FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state='accepted' ORDER BY created_at DESC LIMIT 1").bind(userId,userId).first();
+    if (!cp) return json({ ok: false, error: "active_cp_not_found" }, { status: 404 });
+    await db.prepare("UPDATE cp_relationships SET state='ended',updated_at=? WHERE id=?").bind(now(),cp.id).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/cp/update" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await db.prepare("SELECT id FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state='accepted' ORDER BY created_at DESC LIMIT 1").bind(userId,userId).first();
+    if (!cp) return json({ ok: false, error: "active_cp_not_found" }, { status: 404 });
+    if (body.action === "ring") {
+      const ringId = String(body.ring_id ?? "").trim().slice(0,100);
+      if (!ringId) return json({ ok: false, error: "ring_id_required" }, { status: 400 });
+      await db.prepare("UPDATE cp_relationships SET ring_id=?,updated_at=? WHERE id=?").bind(ringId,now(),cp.id).run();
+    } else if (body.action === "intimacy") {
+      return json({ ok: false, error: "intimacy_requires_server_gift_event" }, { status: 403 });
+    } else {
+      return json({ ok: false, error: "unsupported_cp_action" }, { status: 400 });
+    }
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/cp/memories" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await db.prepare("SELECT id FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state='accepted' ORDER BY created_at DESC LIMIT 1").bind(userId,userId).first();
+    if (!cp) return json({ ok: true, memories: [] });
+    const rows = await db.prepare("SELECT m.id,m.user_id,m.text,m.created_at,u.display_name FROM cp_memories m JOIN users u ON u.id=m.user_id WHERE m.relationship_id=? ORDER BY m.created_at DESC LIMIT 100").bind(cp.id).all();
+    return json({ ok: true, memories: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/cp/memories" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const text = String(body.text ?? "").trim().slice(0,500);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!text) return json({ ok: false, error: "memory_text_required" }, { status: 400 });
+    const cp = await db.prepare("SELECT id FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state='accepted' ORDER BY created_at DESC LIMIT 1").bind(userId,userId).first();
+    if (!cp) return json({ ok: false, error: "active_cp_not_found" }, { status: 403 });
+    await db.prepare("INSERT INTO cp_memories (id,relationship_id,user_id,text,created_at) VALUES (?,?,?,?,?)").bind(id(),cp.id,userId,text,now()).run();
+    return json({ ok: true });
+  }
+
+  if (url.pathname === "/api/cp/ranking" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+    const rows = await db.prepare("SELECT c.id,c.user_a,c.user_b,c.intimacy,c.level,c.created_at,a.display_name AS user_a_name,b.display_name AS user_b_name FROM cp_relationships c JOIN users a ON a.id=c.user_a JOIN users b ON b.id=c.user_b WHERE c.state='accepted' ORDER BY c.intimacy DESC,c.created_at ASC LIMIT ?").bind(limit).all();
+    return json({ ok: true, ranking: rows.results ?? [] });
+  }
+
+
   if (url.pathname === "/api/id-level" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
