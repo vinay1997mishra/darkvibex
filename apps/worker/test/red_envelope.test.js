@@ -116,3 +116,26 @@ test("expired unclaimed envelope is refunded exactly once and cannot be claimed"
   assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, 2500000);
   sqlite.close();
 });
+
+test("inactive VIP6 and insufficient wallet cannot create an envelope", async () => {
+  const { sqlite, request } = await fixture();
+  sqlite.prepare("UPDATE users SET coins=100 WHERE id='sender'").run();
+  const insufficient = await request("/api/messages/red-envelope", {
+    method: "POST", userId: "sender",
+    body: { sender_user_id: "sender", receiver_user_id: "receiver", amount: 101 },
+  });
+  assert.equal(insufficient.status, 409);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM inbox_red_envelopes").get().n, 0);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='sender'").get().coins, 100);
+
+  sqlite.prepare("UPDATE users SET coins=1000 WHERE id='sender'").run();
+  sqlite.prepare("UPDATE user_vip SET active_until=? WHERE user_id='sender'").run(Date.now() - 1);
+  const expiredVip = await request("/api/messages/red-envelope", {
+    method: "POST", userId: "sender",
+    body: { sender_user_id: "sender", receiver_user_id: "receiver", amount: 101 },
+  });
+  assert.equal(expiredVip.status, 403);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM inbox_red_envelopes").get().n, 0);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='sender'").get().coins, 1000);
+  sqlite.close();
+});
