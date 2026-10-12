@@ -63,6 +63,9 @@ class AppState extends ChangeNotifier {
   int vipLevel = 0;
   int vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
+  Map<String, dynamic> idLevelState = <String, dynamic>{};
+  String? activeFrameId;
+  String? activeVehicleId;
   int vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
   DateTime? vipActiveUntil;
   String? customVipId;
@@ -246,6 +249,8 @@ class AppState extends ChangeNotifier {
   Future<void> _loadRemoteData() async {
     await refreshWallet(notify: false);
     await refreshVip(notify: false);
+    await refreshCosmetics(notify: false);
+    await refreshIdLevel(notify: false);
 
     final remoteRooms = await backend.listRooms();
     if (remoteRooms.isNotEmpty) {
@@ -321,6 +326,9 @@ class AppState extends ChangeNotifier {
     vipLevel = 0;
     vipExpBalance = 0;
     vipTotalReceivedCoins = 0;
+    idLevelState = <String, dynamic>{};
+    activeFrameId = null;
+    activeVehicleId = null;
     vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
     vipActiveUntil = null;
     customVipId = null;
@@ -348,6 +356,22 @@ class AppState extends ChangeNotifier {
               .whereType<Map>()
               .map((row) => Map<String, dynamic>.from(row)),
         );
+    }
+    if (notify) notifyListeners();
+  }
+
+  Future<void> refreshCosmetics({bool notify = true}) async {
+    if (!backendConnected) return;
+    final value = await backend.cosmetics(userId: userId);
+    final rows = value?['owned'];
+    if (rows is List) {
+      activeFrameId = null;
+      activeVehicleId = null;
+      for (final row in rows.whereType<Map>()) {
+        if (row['active'] != true && row['active']?.toString() != '1') continue;
+        if (row['kind']?.toString() == 'frame') activeFrameId = row['item_id']?.toString();
+        if (row['kind']?.toString() == 'vehicle') activeVehicleId = row['item_id']?.toString();
+      }
     }
     if (notify) notifyListeners();
   }
@@ -386,6 +410,14 @@ class AppState extends ChangeNotifier {
           );
       }
     }
+    if (notify) notifyListeners();
+  }
+
+  Future<void> refreshIdLevel({bool notify = true}) async {
+    if (!backendConnected) return;
+    final value = await backend.idLevelStatus(userId: userId);
+    final row = value?['id_level'];
+    if (row is Map) idLevelState = Map<String, dynamic>.from(row);
     if (notify) notifyListeners();
   }
 

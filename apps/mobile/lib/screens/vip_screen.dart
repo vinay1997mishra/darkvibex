@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
+import 'id_level_screen.dart';
 
 class VipScreen extends StatelessWidget {
   const VipScreen({super.key, required this.state});
@@ -66,6 +67,18 @@ class VipScreen extends StatelessWidget {
                   target: target,
                   progress: progress,
                   activeUntil: state.vipActiveUntil,
+                ),
+                Card(
+                  color: const Color(0xFF151515),
+                  child: ListTile(
+                    leading: const Icon(Icons.trending_up_rounded, color: Color(0xFF67D9FF)),
+                    title: const Text('ID Level'),
+                    subtitle: Text('Level ${state.idLevelState['level'] ?? 0}/100 • earn EXP to level up'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => IdLevelScreen(state: state),
+                    )),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Text(
