@@ -19,6 +19,43 @@ class ProfileScreen extends StatelessWidget {
 
   final AppState state;
 
+  Future<void> _showFriends(BuildContext context) async {
+    final friends = await state.backend.friends(userId: state.userId);
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .65,
+          child: friends.isEmpty
+              ? const Center(child: Text('No friends yet'))
+              : ListView.builder(
+                  itemCount: friends.length,
+                  itemBuilder: (context, index) {
+                    final friend = friends[index];
+                    final id = friend['id']?.toString() ?? '';
+                    return ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
+                      title: Text(friend['display_name']?.toString() ?? 'User'),
+                      subtitle: Text('ID $id'),
+                      trailing: IconButton(
+                        tooltip: 'Remove friend',
+                        icon: const Icon(Icons.person_remove_alt_1_rounded),
+                        onPressed: () async {
+                          final ok = await state.backend.removeFriend(userId: state.userId, friendUserId: id);
+                          if (!sheetContext.mounted) return;
+                          if (ok) Navigator.pop(sheetContext);
+                        },
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showVisitors(BuildContext context) async {
     if (!state.hasVipPrivilege('view_visitors')) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Active VIP1 unlocks profile visitors')));
@@ -209,6 +246,13 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 ListTile(
+                  leading: const Icon(Icons.people_alt_rounded),
+                  title: const Text('Friends'),
+                  subtitle: const Text('300 without VIP • unlimited with active VIP'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _showFriends(context),
+                ),
+                ListTile(
                   leading: const Icon(Icons.visibility_rounded),
                   title: const Text('Profile visitors'),
                   subtitle: Text(state.hasVipPrivilege('view_visitors') ? 'See who viewed your profile' : 'Unlocks at VIP1'),
@@ -307,6 +351,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final Object _privacyScope = Object();
   Map<String, dynamic>? user;
   bool loading = true;
+  bool isFriend = false;
 
   @override
   void initState() {
@@ -316,10 +361,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   Future<void> _load() async {
     final response = await widget.state.backend.userProfile(userId: widget.userId);
+    final friends = await widget.state.backend.friends(userId: widget.state.userId);
+    final friendStatus = friends.any((row) => row['id']?.toString() == widget.userId);
     if (!mounted) return;
     setState(() {
       user = response?['user'] is Map ? Map<String, dynamic>.from(response!['user'] as Map) : null;
       loading = false;
+      isFriend = friendStatus;
     });
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
@@ -362,6 +410,24 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         const SizedBox(height: 12),
                         Text(user!['display_name']?.toString() ?? 'User', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                         Text('ID ${user!['id']} • VIP ${user!['vip_level'] ?? 0}/18'),
+                        if ((int.tryParse(user!['active_vip_level']?.toString() ?? user!['vip_level']?.toString() ?? '') ?? 0) >= 18)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 5),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.military_tech_rounded, size: 16, color: Color(0xFFFFD36A)),
+                              SizedBox(width: 4),
+                              Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
+                            ]),
+                          ),
+                        if (widget.userId != widget.state.userId)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 14),
+                            child: FilledButton.icon(
+                              onPressed: isFriend ? null : _addFriend,
+                              icon: Icon(isFriend ? Icons.check_rounded : Icons.person_add_alt_1_rounded),
+                              label: Text(isFriend ? 'Friend' : 'Add friend'),
+                            ),
+                          ),
                         if (widget.state.hasVipPrivilege('free_say_hi'))
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
@@ -377,6 +443,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     ),
                   ),
       );
+  }
+
+  Future<void> _addFriend() async {
+    final result = await widget.state.backend.addFriend(userId: widget.state.userId, friendUserId: widget.userId);
+    if (!mounted) return;
+    if (result?['ok'] == true) {
+      setState(() => isFriend = true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Friend added')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not add friend. The 300-friend base limit may be full.')));
+    }
   }
 
   Future<void> _sayHi(BuildContext context) async {
