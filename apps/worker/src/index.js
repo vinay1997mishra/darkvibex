@@ -438,6 +438,7 @@ async function ensureImageTables(db) {
 async function listRooms(db) {
   await ensureImageTables(db);
   await ensureVipSchema(db);
+  await ensureUserProfileColumns(db);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
             ri.image_key AS avatar_key,
