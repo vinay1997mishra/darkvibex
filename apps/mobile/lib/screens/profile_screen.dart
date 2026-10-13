@@ -1,19 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import 'vip_screen.dart';
-import 'legal_policy_screen.dart';
 import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
-import 'coin_seller_screen.dart';
-import 'vip_support_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'id_level_screen.dart';
-import 'games_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 import '../ui/tinni_style.dart';
@@ -453,25 +448,6 @@ class ProfileScreen extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showFriends(context),
               ),
-              ListTile(
-                leading: const Icon(
-                  Icons.visibility_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: const Text('Visitors'),
-                subtitle: const Text('See who viewed your profile'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _showVisitors(context),
-              ),
-              _item(
-                context,
-                state,
-                Icons.badge_rounded,
-                'Unique ID',
-                state.customVipId?.isNotEmpty == true
-                    ? state.customVipId!
-                    : state.userId,
-              ),
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
@@ -479,60 +455,10 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 state,
                 Icons.store_rounded,
-                'Store',
+                'Shop',
                 'Frames, vehicles and entry effects',
               ),
-              ListTile(
-                leading: const Icon(
-                  Icons.sports_esports_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: const Text('Games'),
-                subtitle: const Text('Game center'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => GamesScreen(state: state),
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.storefront_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: const Text('Coin Seller'),
-                subtitle: const Text('Coin seller tools'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => CoinSellerScreen(state: state),
-                  ),
-                ),
-              ),
             ]),
-            if (state.hasVipPrivilege('customer_service')) ...[
-              const SizedBox(height: 9),
-              _mineMenuGroup([
-                ListTile(
-                  leading: const Icon(
-                    Icons.support_agent_rounded,
-                    color: TinniPalette.gold,
-                  ),
-                  title: const Text('VIP Customer Service'),
-                  subtitle: const Text('Create a private support ticket'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => VipSupportScreen(state: state),
-                    ),
-                  ),
-                ),
-              ]),
-            ],
             const SizedBox(height: 9),
             _mineMenuGroup([
               _item(
@@ -546,15 +472,8 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 state,
                 Icons.favorite_rounded,
-                'CP',
+                'CP Nest',
                 'Relationship level and gifts',
-              ),
-              _item(
-                context,
-                state,
-                Icons.security_rounded,
-                'Privacy & Safety',
-                'Block, report and controls',
               ),
             ]),
             const SizedBox(height: 9),
@@ -563,29 +482,8 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 state,
                 Icons.settings_rounded,
-                'Settings',
-                'Language, account and app settings',
-              ),
-              _item(
-                context,
-                state,
-                Icons.description_outlined,
-                'Terms & Privacy',
-                'Room rules, terms and privacy notice',
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.logout_rounded,
-                  color: Colors.redAccent,
-                ),
-                title: const Text('Sign out'),
-                subtitle: Text(
-                  state.authProvider == 'google'
-                      ? 'Google account'
-                      : 'Guest session',
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: state.signOut,
+                'Setting',
+                'Language, account, privacy and app settings',
               ),
             ]),
           ],
@@ -691,30 +589,13 @@ class ProfileScreen extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () async {
-        if (title == 'Settings') {
+        if (title == 'Setting') {
           await Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => const AppSettingsScreen(),
+            builder: (_) => AppSettingsScreen(state: state),
           ));
           return;
         }
-        if (title == 'Terms & Privacy' || title == 'Privacy & Safety') {
-          await Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => const LegalPolicyScreen(),
-          ));
-          return;
-        }
-        if (title == 'Unique ID') {
-          final currentId = state.customVipId?.isNotEmpty == true
-              ? state.customVipId!
-              : state.userId;
-          await Clipboard.setData(ClipboardData(text: currentId));
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Unique ID copied')),
-          );
-          return;
-        }
-        if (title == 'Store') {
+        if (title == 'Shop') {
           await Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => CosmeticsShopScreen(state: state),
           ));
