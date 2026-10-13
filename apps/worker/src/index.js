@@ -7,6 +7,13 @@ import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_act
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
 import {
+  roleWalletDetail,
+  setRoleWalletCredential,
+  verifyRoleWalletCredential,
+  transferRoleCoins,
+  requestRoleDollarWithdrawal,
+} from "./role_wallets.js";
+import {
   ensureTinniSocialSchema,
   profileStats,
   followUser,
@@ -3108,48 +3115,151 @@ async function handleApi(request, env, url) {
     return json({ ok: true, usage });
   }
 
+  if (url.pathname === "/api/wallet/role-detail" && request.method === "GET") {
+    const userId=String(url.searchParams.get("user_id") ?? "").trim();
+    const walletType=String(url.searchParams.get("wallet_type") ?? "").trim();
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    try{
+      return json({
+        ok:true,
+        wallet:await roleWalletDetail(db,userId,walletType,200,now()),
+      });
+    }catch(error){
+      const code=String(error?.message ?? error);
+      return json({ok:false,error:code},{status:code.endsWith("_role_required")?403:400});
+    }
+  }
+
+  if (url.pathname === "/api/wallet/role-credential" && request.method === "POST") {
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim();
+    const walletType=String(body.wallet_type ?? "").trim();
+    const credential=String(body.credential ?? "");
+    const oldCredential=String(body.old_credential ?? "");
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    const valid=walletType==="coin_seller"
+      ? /^\d{4}$/.test(credential)
+      : credential.length>=6 && credential.length<=32;
+    if(!valid){
+      return json({
+        ok:false,
+        error:walletType==="coin_seller"
+          ?"coin_seller_pin_must_be_4_digits"
+          :"merchant_credential_invalid",
+      },{status:400});
+    }
+    try{
+      const detail=await roleWalletDetail(db,userId,walletType,1,now());
+      if(detail.credential_set){
+        if(!oldCredential) return json({ok:false,error:"old_credential_required"},{status:403});
+        const oldHash=await sha256Hex(
+          String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+oldCredential
+        );
+        await verifyRoleWalletCredential(db,userId,walletType,oldHash,now());
+      }
+      const hash=await sha256Hex(
+        String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+credential
+      );
+      await setRoleWalletCredential(db,userId,walletType,hash,now());
+      return json({ok:true,wallet_type:walletType});
+    }catch(error){
+      const code=String(error?.message ?? error);
+      return json({ok:false,error:code},{status:403});
+    }
+  }
+
+  if (url.pathname === "/api/wallet/role-coins/transfer" && request.method === "POST") {
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim();
+    const receiverId=String(body.receiver_user_id ?? "").trim();
+    const walletType=String(body.wallet_type ?? "").trim();
+    const credential=String(body.credential ?? "");
+    const amount=Number(body.coins ?? 0);
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    await ensureUserAllowed(db,userId);
+    await ensureUserAllowed(db,receiverId);
+    const hash=await sha256Hex(
+      String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+credential
+    );
+    try{
+      const result=await transferRoleCoins(db,{
+        senderUserId:userId,
+        walletType,
+        receiverUserId:receiverId,
+        coins:amount,
+        credentialHash:hash,
+        ts:now(),
+      });
+      let vipAward=null;
+      if(walletType==="coin_seller"){
+        vipAward=await awardSellerVipExp(db,receiverId,amount,now());
+      }
+      return json({ok:true,...result,vip_award:vipAward});
+    }catch(error){
+      const code=String(error?.message ?? error);
+      const status=["invalid_wallet_credential","wallet_credential_not_set"].includes(code)?403:400;
+      return json({ok:false,error:code},{status});
+    }
+  }
+
+  if (url.pathname === "/api/wallet/role-dollars/withdraw" && request.method === "POST") {
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim();
+    const walletType=String(body.wallet_type ?? "").trim();
+    const credential=String(body.credential ?? "");
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    const hash=await sha256Hex(
+      String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+credential
+    );
+    try{
+      const result=await requestRoleDollarWithdrawal(db,{
+        userId,
+        walletType,
+        destinationType:String(body.destination_type ?? ""),
+        destinationValue:String(body.destination_value ?? ""),
+        amountUsdCents:Number(body.amount_usd_cents ?? 0),
+        credentialHash:hash,
+        ts:now(),
+      });
+      return json({ok:true,...result});
+    }catch(error){
+      const code=String(error?.message ?? error);
+      return json({ok:false,error:code},{status:400});
+    }
+  }
+
   if (url.pathname === "/api/wallet/coin-seller-transfer" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const sellerId = String(body.seller_user_id ?? "").trim();
-    const receiverId = String(body.receiver_user_id ?? "").trim();
-    const authError = await requireSession(request, env, sellerId);
-    if (authError) return authError;
-    const amount = Number(body.coins ?? 0);
-    if (!sellerId || !receiverId || sellerId === receiverId || !Number.isSafeInteger(amount) || amount <= 0) {
-      return json({ ok: false, error: "invalid_coin_seller_transfer" }, { status: 400 });
+    const body=await bodyJson(request);
+    const sellerId=String(body.seller_user_id ?? "").trim();
+    const receiverId=String(body.receiver_user_id ?? "").trim();
+    const pin=String(body.pin ?? "");
+    const authError=await requireSession(request,env,sellerId);
+    if(authError) return authError;
+    if(!/^\d{4}$/.test(pin)){
+      return json({ok:false,error:"coin_seller_pin_required"},{status:403});
     }
-    await ensureUser(db, sellerId);
-    await ensureUser(db, receiverId);
-    await ensureUserAllowed(db, sellerId);
-    await ensureUserAllowed(db, receiverId);
-    const seller = await db.prepare("SELECT role, coins FROM users WHERE id = ?").bind(sellerId).first();
-    const receiver = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(receiverId).first();
-    if (seller?.role !== "coin_seller") {
-      return json({ ok: false, error: "coin_seller_required" }, { status: 403 });
+    const hash=await sha256Hex(
+      String(env.SESSION_SECRET ?? "")+"|"+sellerId+"|coin_seller|"+pin
+    );
+    try{
+      const result=await transferRoleCoins(db,{
+        senderUserId:sellerId,
+        walletType:"coin_seller",
+        receiverUserId:receiverId,
+        coins:Number(body.coins ?? 0),
+        credentialHash:hash,
+        ts:now(),
+      });
+      const vipAward=await awardSellerVipExp(db,receiverId,Number(body.coins ?? 0),now());
+      return json({ok:true,...result,vip_award:vipAward});
+    }catch(error){
+      const code=String(error?.message ?? error);
+      return json({ok:false,error:code},{status:400});
     }
-    const sellerBefore = Number(seller.coins ?? 0);
-    const receiverBefore = Number(receiver?.coins ?? 0);
-    if (sellerBefore < amount) {
-      return json({ ok: false, error: "insufficient_coins" }, { status: 400 });
-    }
-    const transferId = id();
-    const ts = now();
-    const sellerAfter = sellerBefore - amount;
-    const receiverAfter = receiverBefore + amount;
-    await db.batch([
-      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(sellerAfter, ts, sellerId),
-      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(receiverAfter, ts, receiverId),
-      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(id(), sellerId, "coin_seller_transfer_sent", -amount, sellerAfter, transferId, ts),
-      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,?,?,?,?,?)").bind(id(), receiverId, "coin_seller_received", amount, receiverAfter, transferId, ts),
-    ]);
-    const vipAward = await awardSellerVipExp(db, receiverId, amount, ts);
-    return json({
-      ok: true,
-      transfer_id: transferId,
-      seller_coin_balance: sellerAfter,
-      receiver_coin_balance: receiverAfter,
-      vip_award: vipAward,
-    });
   }
 
   const gameRoomMatch = url.pathname.match(/^\/api\/game-rooms\/([^/]+)(?:\/(join|tap))?$/);
