@@ -2304,7 +2304,7 @@ class _RoomScreenState extends State<RoomScreen> {
                       final amount = int.tryParse(result?['amount']?.toString() ?? '');
                       final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
                       if (balance != null) widget.state.setCoinBalance(balance);
-                      if (amount != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lucky Pouch: +$amount coins')));
+                      if (amount != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Red Pocket (LP): +$amount coins')));
                       pouch = await refreshPouch();
                       refresh(() {});
                     },
