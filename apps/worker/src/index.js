@@ -526,6 +526,18 @@ async function ensureRoomLuckyPouchTables(db) {
   )`).run();
 }
 
+async function ensureProfileMediaTable(db) {
+  await ensureUsersSchema(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS profile_media (
+    user_id TEXT NOT NULL,
+    slot TEXT NOT NULL,
+    asset_key TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id,slot),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+}
+
 async function ensureRoomLuckyNumberTable(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_numbers (
     id TEXT PRIMARY KEY,
@@ -1818,6 +1830,106 @@ async function handleApi(request, env, url) {
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  if (url.pathname === "/api/profile-media" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    await ensureProfileMediaTable(db);
+    const targetId = String(
+      url.searchParams.get("user_id") ?? session.sub ?? "",
+    ).trim();
+    if (!targetId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    const user = await db.prepare(
+      "SELECT id,avatar_key FROM users WHERE id=? LIMIT 1"
+    ).bind(targetId).first();
+    if (!user) return json({ ok:false,error:"user_not_found" }, { status:404 });
+    const rows = await db.prepare(
+      "SELECT slot,asset_key,updated_at FROM profile_media WHERE user_id=?"
+    ).bind(targetId).all();
+    const media = {
+      avatar: user.avatar_key ? String(user.avatar_key) : null,
+      cover: null,
+      life_1: null,
+      life_2: null,
+      life_3: null,
+      travel: null,
+    };
+    for (const row of rows.results ?? []) {
+      const slot = String(row.slot ?? "");
+      if (Object.prototype.hasOwnProperty.call(media, slot)) {
+        media[slot] = String(row.asset_key ?? "") || null;
+      }
+    }
+    return json({ ok:true,user_id:targetId,media });
+  }
+
+  if (url.pathname === "/api/profile-media" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const actorId = String(session.sub);
+    const body = await bodyJson(request);
+    const slot = String(body.slot ?? "").trim();
+    const assetKey = String(body.asset_key ?? "").trim();
+    const allowed = new Set(["cover","life_1","life_2","life_3","travel"]);
+    if (!allowed.has(slot)) {
+      return json({ ok:false,error:"invalid_profile_media_slot" }, { status:400 });
+    }
+    if (!assetKey.startsWith(`users/${actorId}/profile-media-`) ||
+        !/\.(jpg|jpeg|png|webp)$/i.test(assetKey)) {
+      return json({ ok:false,error:"invalid_profile_media_key" }, { status:400 });
+    }
+    await ensureProfileMediaTable(db);
+    const previous = await db.prepare(
+      "SELECT asset_key FROM profile_media WHERE user_id=? AND slot=?"
+    ).bind(actorId,slot).first();
+    await db.prepare(
+      `INSERT INTO profile_media(user_id,slot,asset_key,updated_at)
+       VALUES(?,?,?,?)
+       ON CONFLICT(user_id,slot) DO UPDATE SET
+         asset_key=excluded.asset_key,updated_at=excluded.updated_at`
+    ).bind(actorId,slot,assetKey,now()).run();
+    const oldKey = String(previous?.asset_key ?? "");
+    if (oldKey && oldKey !== assetKey && env.FILES) {
+      try { await env.FILES.delete(oldKey); } catch (_) {}
+    }
+    return json({ ok:true,slot,asset_key:assetKey });
+  }
+
+  if (url.pathname === "/api/profile-media" && request.method === "DELETE") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const actorId = String(session.sub);
+    const body = await bodyJson(request);
+    const slot = String(body.slot ?? "").trim();
+    const allowed = new Set(["cover","life_1","life_2","life_3","travel"]);
+    if (!allowed.has(slot) || body.confirm_remove !== true) {
+      return json({ ok:false,error:"profile_media_remove_confirmation_required" }, { status:400 });
+    }
+    await ensureProfileMediaTable(db);
+    const previous = await db.prepare(
+      "SELECT asset_key FROM profile_media WHERE user_id=? AND slot=?"
+    ).bind(actorId,slot).first();
+    await db.prepare(
+      "DELETE FROM profile_media WHERE user_id=? AND slot=?"
+    ).bind(actorId,slot).run();
+    const oldKey = String(previous?.asset_key ?? "");
+    if (oldKey && env.FILES) {
+      try { await env.FILES.delete(oldKey); } catch (_) {}
+    }
+    return json({ ok:true,slot });
   }
 
   if (url.pathname === "/api/profile/trends" && request.method === "GET") {
