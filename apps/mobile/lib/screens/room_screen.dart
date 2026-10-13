@@ -11,6 +11,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
+import '../background/room_foreground_service.dart';
+import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
 import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
@@ -111,6 +113,10 @@ class _RoomScreenState extends State<RoomScreen> {
   Map<String, dynamic>? activeGiftEffect;
   Timer? giftEffectTimer;
   final KtvService roomMusic = KtvService();
+  final RoomForegroundServiceBridge roomForegroundService =
+      const RoomForegroundServiceBridge();
+  final RoomPermissionBridge roomPermissions = const RoomPermissionBridge();
+  bool roomForegroundServiceStarted = false;
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
   bool get isRoomAdmin => isRoomHost || amRoomAdmin;
@@ -1143,6 +1149,24 @@ class _RoomScreenState extends State<RoomScreen> {
     return result;
   }
 
+  Future<bool> _ensureRoomVoicePermission({
+    bool request = true,
+  }) async {
+    var granted = await roomPermissions.hasVoiceRoomPermissions();
+    if (!granted && request) {
+      granted = await roomPermissions.requestVoiceRoomPermissions();
+    }
+    if (granted && !roomForegroundServiceStarted) {
+      final started = await roomForegroundService.start();
+      if (mounted) {
+        setState(() => roomForegroundServiceStarted = started);
+      } else {
+        roomForegroundServiceStarted = started;
+      }
+    }
+    return granted;
+  }
+
   Future<void> _connectVoice() async {
     if (!await _ensureLegalAgreement()) return;
     if (widget.state.backendConnected) {
@@ -1190,6 +1214,14 @@ class _RoomScreenState extends State<RoomScreen> {
       await widget.state.refreshIdLevel(notify: false);
     }
 
+    final voicePermissionGranted =
+        await _ensureRoomVoicePermission(request: true);
+    if (!voicePermissionGranted && mounted) {
+      setState(() {
+        voiceStatus = 'Listen-only • allow microphone for voice';
+      });
+    }
+
     final token = widget.state.sessionToken;
     RtcAdapter candidate;
 
@@ -1214,9 +1246,11 @@ class _RoomScreenState extends State<RoomScreen> {
       }
       if (!mounted) return;
       setState(() {
-        voiceStatus = candidate is LiveKitRtcAdapter
-            ? 'Voice/video connected'
-            : 'Local voice mode';
+        voiceStatus = !voicePermissionGranted
+            ? 'Listening • microphone permission needed'
+            : candidate is LiveKitRtcAdapter
+                ? 'Voice/video connected'
+                : 'Local voice mode';
       });
     } catch (_) {
       if (candidate is LiveKitRtcAdapter) candidate.dispose();
@@ -1309,6 +1343,8 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
     rtcEvents = null;
+    unawaited(roomForegroundService.stop());
+    roomForegroundServiceStarted = false;
     final current = rtc;
     if (current != null) {
       unawaited(
@@ -1420,6 +1456,18 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     final enable = muted;
+    if (enable) {
+      final permission = await _ensureRoomVoicePermission(request: true);
+      if (!permission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Allow microphone access to speak on a seat'),
+          ),
+        );
+        return;
+      }
+    }
     try {
       await rtc?.setMicPublished(enable);
       if (widget.state.backendConnected && mySeat != null) {
@@ -2121,6 +2169,10 @@ class _RoomScreenState extends State<RoomScreen> {
     try {
       await rtc?.leave();
     } catch (_) {}
+    try {
+      await roomForegroundService.stop();
+      roomForegroundServiceStarted = false;
+    } catch (_) {}
   }
 
   Future<void> _minimizeRoom() async {
@@ -2166,6 +2218,10 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     }
     await roomMusic.stopRoomPlayback();
+    try {
+      await roomForegroundService.stop();
+      roomForegroundServiceStarted = false;
+    } catch (_) {}
     if (mounted) Navigator.of(context).pop();
   }
 
