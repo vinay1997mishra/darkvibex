@@ -314,227 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
           FilledButton(
             onPressed: () {
               final value = otpController.text.trim();
-              if (RegExp(r'^\d{6}
-    if (!_validateProfile() || state.signingIn || _savingProfile) return;
-    final ok = await state.continueAsGuest();
-    if (ok) await _finishProfile();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final busy = state.signingIn || _savingProfile;
-
-    return Scaffold(
-      backgroundColor: TinniPalette.black,
-      body: TinniBackground(
-        child: SafeArea(
-          child: AnimatedBuilder(
-            animation: state,
-            builder: (context, _) => Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'DarkVibeX',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -.6,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Create your profile and enter the vibe',
-                        style: TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      GestureDetector(
-                        onTap: busy ? null : _pickAvatar,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 98,
-                              height: 98,
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: TinniPalette.brightGold,
-                                  width: 2,
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x55D09A0A),
-                                    blurRadius: 16,
-                                  ),
-                                ],
-                              ),
-                              child: CircleAvatar(
-                                backgroundColor: TinniPalette.panel2,
-                                backgroundImage: _avatarBytes == null
-                                    ? null
-                                    : MemoryImage(_avatarBytes!),
-                                child: _avatarBytes == null
-                                    ? const Icon(
-                                        Icons.person_rounded,
-                                        size: 46,
-                                        color: TinniPalette.gold,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            const Positioned(
-                              right: -2,
-                              bottom: 2,
-                              child: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: TinniPalette.gold,
-                                child: Icon(
-                                  Icons.camera_alt_rounded,
-                                  size: 17,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Tap to add DP',
-                        style: TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      TinniPanel(
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _nameController,
-                              textInputAction: TextInputAction.next,
-                              maxLength: 60,
-                              decoration: const InputDecoration(
-                                labelText: 'Name',
-                                prefixIcon: Icon(Icons.badge_rounded),
-                                counterText: '',
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            InkWell(
-                              onTap: busy ? null : _pickDateOfBirth,
-                              borderRadius: BorderRadius.circular(12),
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Date of birth',
-                                  prefixIcon: Icon(Icons.cake_rounded),
-                                  suffixIcon: Icon(Icons.calendar_month_rounded),
-                                ),
-                                child: Text(
-                                  _dobLabel,
-                                  style: TextStyle(
-                                    color: _dateOfBirth == null
-                                        ? TinniPalette.muted
-                                        : TinniPalette.cream,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: FilledButton.icon(
-                          onPressed: busy ? null : _googleLogin,
-                          icon: busy
-                              ? const SizedBox.square(
-                                  dimension: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.black,
-                                  ),
-                                )
-                              : const Icon(Icons.login_rounded),
-                          label: const Text('Continue with Google'),
-                        ),
-                      ),
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          key: const Key('email-login-button'),
-                          onPressed: busy ? null : _emailLogin,
-                          icon: const Icon(Icons.email_rounded),
-                          label: const Text('Email / Gmail Login'),
-                        ),
-                      ),
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          onPressed: busy ? null : _guestLogin,
-                          icon: const Icon(Icons.person_outline_rounded),
-                          label: const Text('Continue as guest'),
-                        ),
-                      ),
-                      if (state.authError != null) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(13),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: TinniPalette.danger.withValues(alpha: .14),
-                            border: Border.all(
-                              color: TinniPalette.danger.withValues(alpha: .55),
-                            ),
-                          ),
-                          child: Text(
-                            state.authError!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Color(0xFFFF8D8D),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 18),
-                      const Text(
-                        'By continuing, you agree to use DarkVibeX responsibly.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-).hasMatch(value)) {
+              if (RegExp(r'^\d{6}$').hasMatch(value)) {
                 Navigator.pop(dialogContext, value);
               }
             },
@@ -773,6 +553,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 )
                               : const Icon(Icons.login_rounded),
                           label: const Text('Continue with Google'),
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          key: const Key('email-login-button'),
+                          onPressed: busy ? null : _emailLogin,
+                          icon: const Icon(Icons.email_rounded),
+                          label: const Text('Email / Gmail Login'),
                         ),
                       ),
                       const SizedBox(height: 11),
