@@ -1665,6 +1665,36 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> familyWalletTransfers({
+    int limit = 100,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/family/wallet/transfers?limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['transfers'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> sendFamilyCoins({
+    required String receiverUserId,
+    required int coins,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/wallet/send',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'receiver_user_id': receiverUserId,
+          'coins': coins,
+        },
+      );
+
   Future<Map<String, dynamic>?> familyCheckIn({
     required String userId,
   }) =>
