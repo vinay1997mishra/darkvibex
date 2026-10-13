@@ -1,3 +1,5 @@
 DarkVibeX isolated final APK build
 base_main=dce0546b87335c24f7f38a003842bc9e9c2ee701
 trigger=2026-10-14T01:42:00+05:30
+
+stop_old_isolated_build=latest_main_apk_already_published
