@@ -138,15 +138,6 @@ class VipScreen extends StatelessWidget {
                   ),
                   if (level >= 8)
                     _TogglePrivilege(
-                      title: 'Hide Country',
-                      subtitle: 'Hide country information from your profile.',
-                      value: state.vipPreference('hide_country'),
-                      enabled: active,
-                      onChanged: (value) =>
-                          state.setVipPreference('hide_country', value),
-                    ),
-                  if (level >= 8)
-                    _TogglePrivilege(
                       title: 'Disable Say Hi',
                       subtitle: 'Stop other users from starting Say Hi with you.',
                       value: state.vipPreference('disable_say_hi'),
