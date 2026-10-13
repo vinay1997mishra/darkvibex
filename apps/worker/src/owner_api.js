@@ -442,16 +442,11 @@ async function handleUsers(request, db, actor, url, parts) {
         body.role_coin_delta ?? 0,
         -900000000000000,900000000000000,0,
       );
-      const roleUsdDelta=clampInt(
-        body.role_usd_cents_delta ?? 0,
-        -900000000000000,900000000000000,0,
-      );
       try{
         roleWallet=await adjustRoleWallet(db,{
           userId,
           walletType,
           coinDelta:roleCoinDelta,
-          usdCentsDelta:roleUsdDelta,
           referenceId:"owner:"+actor.id,
           ts,
         });
@@ -562,7 +557,6 @@ async function handleCatalog(request, db, actor, url, parts) {
     const enabled = body.enabled === false ? 0 : 1;
     const sortOrder = clampInt(body.sort_order ?? 0, -100000, 100000, 0);
     const priceCoins = clampInt(body.price_coins ?? 0, 0, 900000000000000, 0);
-    const country = String(body.country ?? "").trim().slice(0, 20);
     const data = body.data && typeof body.data === "object" ? body.data : {};
     await db.prepare(
       `INSERT INTO owner_catalog (kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
@@ -570,7 +564,7 @@ async function handleCatalog(request, db, actor, url, parts) {
        ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled,
          sort_order=excluded.sort_order, price_coins=excluded.price_coins, country=excluded.country,
          json_data=excluded.json_data, updated_at=excluded.updated_at`
-    ).bind(itemKind, itemId, name, enabled, sortOrder, priceCoins, country, JSON.stringify(data), now()).run();
+    ).bind(itemKind, itemId, name, enabled, sortOrder, priceCoins, "", JSON.stringify(data), now()).run();
     await audit(db, actor, "catalog_upsert", itemKind, itemId, name);
     return json({ ok: true, id: itemId });
   }
@@ -589,7 +583,7 @@ async function handleAnnouncements(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "announcements.read");
     const rows = await db.prepare(
-      "SELECT id,title,body,enabled,starts_at,ends_at,country,created_at,updated_at FROM owner_announcements ORDER BY updated_at DESC LIMIT 200"
+      "SELECT id,title,body,enabled,starts_at,ends_at,created_at,updated_at FROM owner_announcements ORDER BY updated_at DESC LIMIT 200"
     ).all();
     return json({ ok: true, announcements: rows.results ?? [] });
   }
@@ -609,7 +603,7 @@ async function handleAnnouncements(request, db, actor, parts) {
     ).bind(
       announcementId, title, message, body.enabled === false ? 0 : 1,
       body.starts_at == null ? null : Number(body.starts_at), body.ends_at == null ? null : Number(body.ends_at),
-      String(body.country ?? "").trim().slice(0, 20), ts, ts,
+      "", ts, ts,
     ).run();
     await audit(db, actor, "announcement_upsert", "announcement", announcementId, title);
     return json({ ok: true, id: announcementId });
