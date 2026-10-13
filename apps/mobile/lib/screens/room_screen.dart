@@ -4553,7 +4553,8 @@ class _RoomScreenState extends State<RoomScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Card(
+                  if (roomNoticesEnabled)
+                    Card(
                     color: const Color(0xFF2A1F12),
                     child: Padding(
                       padding: const EdgeInsets.all(10),
@@ -4672,7 +4673,8 @@ class _RoomScreenState extends State<RoomScreen> {
                 backgroundColor: const Color(0xFF5D1E65),
               ),
             ),
-          Positioned(
+          if (rocketDrawNoticeEnabled && effectsEnabled)
+            Positioned(
             key: const Key('room-game-floating-position'),
             right: 8,
             bottom: 138,
@@ -4722,7 +4724,60 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
           ),
-          if (arrivalEffectMember != null)
+          if (activeGiftEffect != null && effectsEnabled && giftEffectsEnabled)
+            Positioned(
+              left: 24,
+              right: 24,
+              bottom: 154,
+              child: IgnorePointer(
+                child: Container(
+                  key: const Key('room-gift-effect'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color(0xEE25102F),
+                        Color(0xEE5A2D65),
+                        Color(0xEE1A1022),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: TinniPalette.gold),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x55FFD45A),
+                        blurRadius: 18,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        activeGiftEffect?['emoji']?.toString() ?? '🎁',
+                        style: const TextStyle(fontSize: 34),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          activeGiftEffect?['name']?.toString() ?? 'Gift',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: TinniPalette.cream,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (arrivalEffectMember != null && effectsEnabled && carEffectsEnabled)
             Positioned.fill(
               child: VehicleEntryEffect(
                 displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
