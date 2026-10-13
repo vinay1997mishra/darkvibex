@@ -6,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../app/app_state.dart';
 import 'vip_screen.dart';
 import 'app_settings_screen.dart';
-import 'wallet_screen.dart';
+import 'recharge_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'mine_social_screens.dart';
 import 'conversation_screen.dart';
@@ -567,7 +567,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => WalletScreen(state: state),
+                  builder: (_) => RechargeScreen(state: state),
                 ),
               ),
               child: Row(
@@ -602,13 +602,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        '${state.diamonds} diamonds',
-                        style: const TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 10,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A0804),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: TinniPalette.deepGold),
+                        ),
+                        child: const Text(
+                          'First Recharge',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
+                      const SizedBox(height: 2),
                       const Text(
                         'Wallet',
                         style: TextStyle(
