@@ -13,12 +13,14 @@ class RoomSummary {
     required this.online,
     this.seatCount = 12,
     this.avatarKey,
+    this.ownerCountryCode = '',
   });
 
   final String id;
   final String name;
   final String ownerName;
   final String ownerUserId;
+  final String ownerCountryCode;
   final int online;
   final int seatCount;
   final String? avatarKey;
@@ -93,6 +95,7 @@ class AppState extends ChangeNotifier {
 
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
 
+  final List<Map<String, dynamic>> publicAnnouncements = <Map<String, dynamic>>[];
   final List<RoomSummary> rooms = <RoomSummary>[
     const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
     const RoomSummary(id: '100002', name: 'Music Night', ownerName: 'Mika', ownerUserId: '92000002', online: 9, seatCount: 10),
@@ -257,6 +260,7 @@ class AppState extends ChangeNotifier {
     await refreshVip(notify: false);
     await refreshIdLevel(notify: false);
     await refreshCosmetics(notify: false);
+    await refreshPublicConfig(notify: false);
 
     final remoteRooms = await backend.listRooms();
     if (remoteRooms.isNotEmpty) {
@@ -270,10 +274,22 @@ class AppState extends ChangeNotifier {
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
+              ownerCountryCode: row['owner_country_code']?.toString() ?? '',
             )));
     }
 
     await refreshInbox(notify: false);
+  }
+
+  Future<void> refreshPublicConfig({bool notify = true}) async {
+    final value = await backend.publicConfig();
+    final raw = value?['announcements'];
+    if (raw is List) {
+      publicAnnouncements
+        ..clear()
+        ..addAll(raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)));
+    }
+    if (notify) notifyListeners();
   }
 
   Future<void> refreshRooms({bool notify = true}) async {
@@ -290,6 +306,7 @@ class AppState extends ChangeNotifier {
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
+              ownerCountryCode: row['owner_country_code']?.toString() ?? '',
             )));
     }
     if (notify) notifyListeners();
