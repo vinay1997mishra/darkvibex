@@ -80,6 +80,9 @@ class AppState extends ChangeNotifier {
   int idLevelExpToNext = 10000;
   String? activeFrameId;
   String? activeVehicleId;
+  final Map<String, String> activeCosmetics = <String, String>{};
+
+  String? activeCosmetic(String kind) => activeCosmetics[kind];
   int vipLevel = 0;
   int vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
@@ -549,6 +552,7 @@ class AppState extends ChangeNotifier {
     vipTotalReceivedCoins = 0;
     activeFrameId = null;
     activeVehicleId = null;
+    activeCosmetics.clear();
     vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
     vipActiveUntil = null;
     customVipId = null;
@@ -587,10 +591,17 @@ class AppState extends ChangeNotifier {
     if (rows is List) {
       activeFrameId = null;
       activeVehicleId = null;
+      activeCosmetics.clear();
       for (final row in rows.whereType<Map>()) {
-        if (row['active'] != true && row['active']?.toString() != '1') continue;
-        if (row['kind']?.toString() == 'frame') activeFrameId = row['item_id']?.toString();
-        if (row['kind']?.toString() == 'vehicle') activeVehicleId = row['item_id']?.toString();
+        if (row['active'] != true && row['active']?.toString() != '1') {
+          continue;
+        }
+        final kind = row['kind']?.toString() ?? '';
+        final itemId = row['item_id']?.toString() ?? '';
+        if (kind.isEmpty || itemId.isEmpty) continue;
+        activeCosmetics[kind] = itemId;
+        if (kind == 'frame') activeFrameId = itemId;
+        if (kind == 'vehicle') activeVehicleId = itemId;
       }
     }
     if (notify) notifyListeners();
