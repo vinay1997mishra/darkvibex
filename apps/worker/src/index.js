@@ -869,6 +869,88 @@ async function walletChange(db, userId, amount, kind, referenceId = null) {
   return next;
 }
 
+async function settleDirectCallBilling(db, callId, ts = now()) {
+  await ensureDirectCallTable(db);
+  const call = await db.prepare(
+    "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
+  ).bind(callId).first();
+  if (!call || call.state !== "active" || call.answered_at == null) {
+    return call ? directCallRow(db, callId) : null;
+  }
+  const perMinuteCost = Number(call.cost_coins_per_minute ?? 0);
+  if (perMinuteCost <= 0) return directCallRow(db, callId);
+  const targetMinutes =
+      1 + Math.max(0, Math.floor((ts - Number(call.answered_at)) / 60000));
+  const billedMinutes = Number(call.billed_minutes ?? 0);
+  const dueMinutes = targetMinutes - billedMinutes;
+  if (dueMinutes <= 0) return directCallRow(db, callId);
+
+  const caller = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(call.caller_user_id).first();
+  const affordableMinutes = Math.min(
+    dueMinutes,
+    Math.floor(Number(caller?.coins ?? 0) / perMinuteCost),
+  );
+  if (affordableMinutes > 0) {
+    const callerCost = affordableMinutes * perMinuteCost;
+    const rewardPerMinute =
+        Number(call.receiver_earning_eligible ?? 0) === 1
+          ? Number(call.receiver_diamonds_per_minute ?? 0)
+          : 0;
+    const receiverReward = affordableMinutes * rewardPerMinute;
+    await walletChange(
+      db,
+      String(call.caller_user_id),
+      -callerCost,
+      "call_charge",
+      callId,
+    );
+    const statements = [
+      db.prepare(
+        `UPDATE direct_calls
+            SET billed_minutes=billed_minutes+?,
+                caller_cost_coins=caller_cost_coins+?,
+                receiver_reward_diamonds=receiver_reward_diamonds+?,
+                updated_at=?
+          WHERE id=?`
+      ).bind(affordableMinutes, callerCost, receiverReward, ts, callId),
+    ];
+    if (receiverReward > 0) {
+      statements.push(
+        db.prepare(
+          "UPDATE users SET diamonds=diamonds+?,updated_at=? WHERE id=?"
+        ).bind(receiverReward, ts, call.receiver_user_id),
+      );
+    }
+    await db.batch(statements);
+  }
+
+  if (affordableMinutes < dueMinutes) {
+    await db.prepare(
+      "UPDATE direct_calls SET state='ended',ended_at=?,end_reason='insufficient_coins',updated_at=? WHERE id=? AND state='active'"
+    ).bind(ts, ts, callId).run();
+  }
+  return directCallRow(db, callId);
+}
+
+async function recordRandomCallCompletion(db, callId, ts = now()) {
+  await ensureCallVerificationSchema(db);
+  const call = await db.prepare(
+    "SELECT call_kind,receiver_user_id,billed_minutes FROM direct_calls WHERE id=? LIMIT 1"
+  ).bind(callId).first();
+  if (!call || String(call.call_kind ?? "") !== "random") return;
+  await db.prepare(
+    `INSERT INTO random_call_stats
+      (user_id,offers,answered,completed_calls,total_minutes,last_offer_at,updated_at)
+     VALUES (?,0,0,1,?,NULL,?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       completed_calls=completed_calls+1,
+       total_minutes=total_minutes+excluded.total_minutes,
+       updated_at=excluded.updated_at`
+  ).bind(call.receiver_user_id, Number(call.billed_minutes ?? 0), ts).run();
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
