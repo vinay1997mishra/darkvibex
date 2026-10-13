@@ -10,6 +10,8 @@ import 'messages_screen.dart';
 import 'mine_social_screens.dart';
 import 'profile_screen.dart';
 import 'ranking_screen.dart';
+import 'gifts_screen.dart';
+import 'vip_screen.dart';
 import 'room_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -495,7 +497,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Widget _topTabs() {
-    const labels = <String>['Mine', 'Party', 'Events', 'Country'];
+    const labels = <String>['Mine', 'Party', 'Events'];
     return Row(
       children: [
         Expanded(
@@ -742,74 +744,134 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Widget _buildEventsPage() {
-    final rooms = state.rooms
-        .where((room) => room.partyMode == 'Event hosting mode')
-        .toList(growable: false);
+    final events = <(String, String, IconData, VoidCallback)>[
+      (
+        'Weekly CP',
+        'Couple ranking, intimacy and heartbeat activities',
+        Icons.favorite_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => CpRankingScreen(state: state),
+          ),
+        ),
+      ),
+      (
+        'Gift Festival',
+        'Popular, luxury, CP, VS and backpack gift collections',
+        Icons.card_giftcard_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => GiftsScreen(state: state),
+          ),
+        ),
+      ),
+      (
+        'VIP Celebration',
+        'VIP privileges, entry status and royal rewards',
+        Icons.workspace_premium_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => VipScreen(state: state),
+          ),
+        ),
+      ),
+      (
+        'Family Party',
+        'Family sign-in, contribution and group activities',
+        Icons.groups_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => FamilyRankingScreen(state: state),
+          ),
+        ),
+      ),
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
       children: [
-        const Text(
-          'Events',
-          style: TextStyle(
-            color: TinniPalette.gold,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
+        const TinniPanel(
+          child: Row(
+            children: [
+              TinniGlowIcon(
+                icon: Icons.celebration_rounded,
+                size: 30,
+                boxSize: 56,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Royal Events',
+                      style: TextStyle(
+                        color: TinniPalette.gold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      'DarkVibeX events and social activities.',
+                      style: TextStyle(color: TinniPalette.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        if (rooms.isEmpty)
-          const TinniPanel(
-            child: Text(
-              'No event rooms are live right now.',
-              style: TextStyle(color: TinniPalette.muted),
-            ),
-          )
-        else
-          for (final room in rooms)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: _RoomCard(
-                state: state,
-                room: room,
-                onTap: () => _openRoom(room),
+        const SizedBox(height: 14),
+        for (final item in events)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: TinniPanel(
+              onTap: item.$4,
+              child: Row(
+                children: [
+                  TinniGlowIcon(
+                    icon: item.$3,
+                    size: 26,
+                    boxSize: 50,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.$1,
+                          style: const TextStyle(
+                            color: TinniPalette.cream,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          item.$2,
+                          style: const TextStyle(
+                            color: TinniPalette.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: TinniPalette.gold,
+                  ),
+                ],
               ),
             ),
-      ],
-    );
-  }
-
-  Widget _buildCountryPage() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
-        const Text(
-          'Country',
-          style: TextStyle(
-            color: TinniPalette.gold,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Rooms by country',
-          style: TextStyle(color: TinniPalette.muted),
-        ),
-        const SizedBox(height: 12),
-        for (final room in state.rooms)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: _RoomCard(
-              state: state,
-              room: room,
-              onTap: () => _openRoom(room),
-            ),
           ),
       ],
     );
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
@@ -825,7 +887,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   _buildHomeMinePage(),
                   _buildPartyPage(context),
                   _buildEventsPage(),
-                  _buildCountryPage(),
                 ],
               ),
             ),
