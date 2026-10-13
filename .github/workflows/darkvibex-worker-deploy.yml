@@ -54,3 +54,5 @@ jobs:
           echo
           curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/api/auth/config" |
             node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s);if(!c.ok||!c.google_web_client_id){console.error("Google auth config is missing.");process.exit(1)}console.log("Google auth config is present.")})'
+          auth_probe="$(curl --silent --show-error --request POST "$base/api/session/google" -H 'content-type: application/json' --data '{"id_token":""}')"
+          AUTH_PROBE="$auth_probe" node -e 'const c=JSON.parse(process.env.AUTH_PROBE||"{}");if(c.error!=="google_id_token_required"){console.error("Google session endpoint is not ready:",c.error||"unknown_error");process.exit(1)}console.log("Google session endpoint and SESSION_SECRET are ready.")'

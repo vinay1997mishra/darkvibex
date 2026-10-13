@@ -137,6 +137,7 @@ class BackendApi {
         body: <String, dynamic>{
           'id_token': idToken,
         },
+        returnErrorBody: true,
       );
 
   Future<Map<String, dynamic>?> startGuestSession({

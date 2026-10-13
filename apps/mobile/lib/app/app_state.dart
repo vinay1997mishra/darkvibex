@@ -211,6 +211,25 @@ class AppState extends ChangeNotifier {
     }
 
     final session = await backend.startGoogleSession(idToken: idToken);
+    final backendError = session?['error']?.toString().trim() ?? '';
+    if (backendError.isNotEmpty) {
+      debugPrint('DarkVibeX Google session rejected: $backendError');
+      authError = switch (backendError) {
+        'session_secret_not_configured' =>
+          'Login server setup is incomplete. Please try again after the server update.',
+        'google_auth_not_configured' =>
+          'Google Login is not configured on the server yet.',
+        'invalid_google_audience' =>
+          'Google Login configuration does not match this app build.',
+        'invalid_google_token' =>
+          'Google sign-in token was rejected. Please sign in again.',
+        'google_email_not_verified' =>
+          'This Google account email is not verified.',
+        _ => 'Google Login reached the server, but the session could not be created.',
+      };
+      if (notify) notifyListeners();
+      return false;
+    }
     return _applySession(session, provider: 'google', notify: notify);
   }
 
