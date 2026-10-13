@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../ui/tinni_style.dart';
 import 'local_ludo_screen.dart';
 import 'game_room_screen.dart';
 
@@ -114,10 +115,11 @@ class _GamesScreenState extends State<GamesScreen> {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: widget.state,
-      builder: (context, _) => ListView(
+      builder: (context, _) => TinniBackground(
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Games', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+          const Text('Games', style: TextStyle(color: TinniPalette.gold, fontSize: 27, fontWeight: FontWeight.w900)),
           const SizedBox(height: 18),
           Card(
             child: Padding(
@@ -164,6 +166,7 @@ class _GamesScreenState extends State<GamesScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
