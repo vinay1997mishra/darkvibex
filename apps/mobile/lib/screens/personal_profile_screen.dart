@@ -25,6 +25,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   String avatarExtension = 'jpg';
   String avatarContentType = 'image/jpeg';
   bool saving = false;
+  bool loadingMedia = true;
+  String? uploadingSlot;
+  Map<String, String?> media = const <String, String?>{};
 
   @override
   void initState() {
@@ -33,6 +36,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
         TextEditingController(text: widget.state.displayName);
     final raw = widget.state.dateOfBirth?.trim() ?? '';
     dob = raw.isEmpty ? null : DateTime.tryParse(raw);
+    _loadMedia();
   }
 
   @override
@@ -131,6 +135,229 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     });
   }
 
+  Future<void> _loadMedia() async {
+    final value = await widget.state.backend.profileMedia(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    setState(() {
+      media = value;
+      loadingMedia = false;
+    });
+  }
+
+  ImageProvider<Object>? _mediaProvider(String? key) {
+    final value = key?.trim() ?? '';
+    if (value.isEmpty) return null;
+    return NetworkImage(
+      widget.state.backend.fileUrl(value),
+      headers: widget.state.backend.fileHeaders,
+    );
+  }
+
+  Future<ImageSource?> _chooseMediaSource() => showModalBottomSheet<ImageSource>(
+        context: context,
+        backgroundColor: TinniPalette.nearBlack,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded),
+                title: const Text('Select from phone album'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  ImageSource.gallery,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_rounded),
+                title: const Text('Take photo'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  ImageSource.camera,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Future<void> _uploadMedia(String slot) async {
+    if (uploadingSlot != null || saving) return;
+    final source = await _chooseMediaSource();
+    if (source == null) return;
+    final file = await picker.pickImage(
+      source: source,
+      imageQuality: 84,
+      maxWidth: slot == 'cover' ? 1600 : 1280,
+      maxHeight: slot == 'cover' ? 1000 : 1600,
+    );
+    if (file == null) return;
+
+    final ext = file.name.split('.').last.toLowerCase();
+    final normalized = ext == 'jpeg' ? 'jpg' : ext;
+    final type = switch (normalized) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' => 'image/jpeg',
+      _ => null,
+    };
+    if (type == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Choose a JPG, PNG or WebP photo'),
+          ),
+        );
+      }
+      return;
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.length > 5 * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Choose a photo smaller than 5 MB'),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => uploadingSlot = slot);
+    final key = await widget.state.backend.uploadImage(
+      key:
+          'users/${widget.state.userId}/profile-media-$slot-${DateTime.now().microsecondsSinceEpoch}.$normalized',
+      bytes: bytes,
+      contentType: type,
+    );
+    final ok = key != null &&
+        await widget.state.backend.saveProfileMedia(
+          slot: slot,
+          assetKey: key,
+        );
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        media = <String, String?>{...media, slot: key};
+        uploadingSlot = null;
+      });
+      return;
+    }
+    setState(() => uploadingSlot = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Profile photo could not be saved')),
+    );
+  }
+
+  Future<void> _removeMedia(String slot) async {
+    if (uploadingSlot != null || media[slot] == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(slot == 'cover' ? 'Remove cover photo?' : 'Remove photo?'),
+        content: const Text(
+          'This removes the photo from your profile.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => uploadingSlot = slot);
+    final ok = await widget.state.backend.deleteProfileMedia(slot: slot);
+    if (!mounted) return;
+    setState(() {
+      if (ok) media = <String, String?>{...media, slot: null};
+      uploadingSlot = null;
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photo could not be removed')),
+      );
+    }
+  }
+
+  Widget _mediaTile(String slot, String label) {
+    final image = _mediaProvider(media[slot]);
+    final busy = uploadingSlot == slot;
+    return InkWell(
+      key: Key('profile-media-$slot'),
+      borderRadius: BorderRadius.circular(14),
+      onTap: busy ? null : () => _uploadMedia(slot),
+      child: Container(
+        height: 132,
+        decoration: BoxDecoration(
+          color: TinniPalette.panel2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: TinniPalette.bronze),
+          image: image == null
+              ? null
+              : DecorationImage(image: image, fit: BoxFit.cover),
+        ),
+        child: Stack(
+          children: [
+            if (image == null)
+              const Center(
+                child: Icon(
+                  Icons.add_photo_alternate_rounded,
+                  color: TinniPalette.gold,
+                  size: 32,
+                ),
+              ),
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 7,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: .62),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  busy ? 'Uploading…' : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: TinniPalette.cream,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            if (image != null && !busy)
+              Positioned(
+                top: 3,
+                right: 3,
+                child: IconButton(
+                  tooltip: 'Remove photo',
+                  onPressed: () => _removeMedia(slot),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            if (busy)
+              const Center(child: CircularProgressIndicator()),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> save() async {
     if (saving) return;
     final name = nameController.text.trim();
@@ -181,6 +408,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final avatar = currentAvatar();
+    final cover = _mediaProvider(media['cover']);
     return Scaffold(
       backgroundColor: TinniPalette.black,
       appBar: AppBar(
@@ -196,6 +424,86 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 30),
           children: [
+            InkWell(
+              key: const Key('profile-cover-photo'),
+              borderRadius: BorderRadius.circular(16),
+              onTap: uploadingSlot == null ? () => _uploadMedia('cover') : null,
+              child: Container(
+                height: 155,
+                decoration: BoxDecoration(
+                  color: TinniPalette.panel2,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: TinniPalette.bronze),
+                  image: cover == null
+                      ? null
+                      : DecorationImage(
+                          image: cover,
+                          fit: BoxFit.cover,
+                        ),
+                ),
+                child: Stack(
+                  children: [
+                    if (cover == null)
+                      const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.add_photo_alternate_rounded,
+                              color: TinniPalette.gold,
+                              size: 38,
+                            ),
+                            SizedBox(height: 5),
+                            Text('Add cover photo'),
+                          ],
+                        ),
+                      ),
+                    Positioned(
+                      left: 9,
+                      bottom: 9,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: .62),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Text(
+                          uploadingSlot == 'cover'
+                              ? 'Uploading…'
+                              : cover == null
+                                  ? 'Add cover'
+                                  : 'Change cover',
+                          style: const TextStyle(
+                            color: TinniPalette.cream,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (cover != null && uploadingSlot != 'cover')
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: IconButton(
+                          key: const Key('profile-cover-remove'),
+                          tooltip: 'Remove cover',
+                          onPressed: () => _removeMedia('cover'),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    if (uploadingSlot == 'cover')
+                      const Center(child: CircularProgressIndicator()),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Center(
               child: GestureDetector(
                 key: const Key('personal-profile-avatar'),
@@ -278,6 +586,33 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            const Text(
+              'Photos',
+              style: TextStyle(
+                color: TinniPalette.gold,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (loadingMedia)
+              const Center(child: CircularProgressIndicator())
+            else
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 9,
+                mainAxisSpacing: 9,
+                childAspectRatio: 1.15,
+                children: [
+                  _mediaTile('life_1', 'Photos of life'),
+                  _mediaTile('travel', 'Travel photo'),
+                  _mediaTile('life_2', 'Life photo'),
+                  _mediaTile('life_3', 'Add another life photo'),
+                ],
+              ),
             const SizedBox(height: 12),
             TinniPanel(
               padding: EdgeInsets.zero,
