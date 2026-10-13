@@ -286,7 +286,6 @@ class ProfileScreen extends StatelessWidget {
                 _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
                 _item(context, state, Icons.edit_rounded, 'Edit Profile', 'Name, country and gender'),
                 _item(context, state, Icons.diamond_rounded, 'Wealth Level', 'Lifetime gift spending level'),
-                _item(context, state, Icons.shield_rounded, 'My Guardian', 'Top gift supporters over 30 days'),
                 _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
                 _item(context, state, Icons.task_alt_rounded, 'Task', 'Daily and account tasks'),
                 _item(context, state, Icons.chat_bubble_rounded, 'Feedback', 'Send feedback and view history'),
@@ -330,7 +329,7 @@ class ProfileScreen extends StatelessWidget {
           ));
           return;
         }
-        if (title == 'Wealth Level' || title == 'My Guardian' || title == 'Feedback' || title == 'Blacklist' || title == 'Task' || title == 'Medal of Honor') {
+        if (title == 'Wealth Level' || title == 'Feedback' || title == 'Blacklist' || title == 'Task' || title == 'Medal of Honor') {
           await Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => MineFeatureScreen(state: state, kind: title),
           ));
