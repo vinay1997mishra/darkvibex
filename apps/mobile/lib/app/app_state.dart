@@ -657,7 +657,7 @@ class AppState extends ChangeNotifier {
     if (!backendConnected) {
       throw StateError('Server connection is required to create a room.');
     }
-    final roomId = await backend.createRoom(
+    final result = await backend.createRoomResult(
       ownerUserId: userId,
       ownerName: displayName,
       name: cleanName,
@@ -665,8 +665,27 @@ class AppState extends ChangeNotifier {
       partyMode: partyMode,
       roomMode: roomMode,
     );
-    if (roomId == null || roomId.isEmpty) {
-      throw StateError('The server could not create this room.');
+    final roomId = result?['room_id']?.toString() ?? '';
+    if (roomId.isEmpty) {
+      final code = result?['error']?.toString().trim() ?? '';
+      final message = switch (code) {
+        'unauthorized' || 'forbidden' =>
+          'Your login session expired. Sign in again and create the room.',
+        'room_creation_disabled' =>
+          'Room creation is disabled on the server.',
+        'invalid_seat_count' =>
+          'Choose a room size between 8 and 42 seats.',
+        'invalid_create_room_mode' =>
+          'Choose Voice Room or Live Room.',
+        'owner_and_name_required' =>
+          'Room name is required.',
+        'user_banned' || 'user_suspended' =>
+          'This account cannot create a room right now.',
+        _ => code.isEmpty
+            ? 'The server did not return a room ID. Please try again.'
+            : 'The server could not create this room ($code).',
+      };
+      throw StateError(message);
     }
 
     final room = RoomSummary(
