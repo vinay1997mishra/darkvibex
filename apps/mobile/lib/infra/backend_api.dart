@@ -331,6 +331,39 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> saveRoomSettingsResult({
+    required String roomId,
+    required String userId,
+    required String name,
+    required int seatCount,
+    required bool locked,
+    required String announcement,
+    String themeId = 'dark',
+    bool groupPkEnabled = false,
+    String welcomeImageKey = '',
+    String partyMode = 'Friends-making Party',
+    String roomMode = 'voice',
+    String seatThemeId = 'royal-gold',
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/settings',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'name': name,
+          'seat_count': seatCount,
+          'locked': locked,
+          'announcement': announcement,
+          'theme_id': themeId,
+          'group_pk_enabled': groupPkEnabled,
+          'welcome_image_key': welcomeImageKey,
+          'party_mode': partyMode,
+          'room_mode': roomMode,
+          'seat_theme_id': seatThemeId,
+        },
+      );
+
   Future<bool> saveRoomSettings({
     required String roomId,
     required String userId,
@@ -344,25 +377,20 @@ class BackendApi {
     String partyMode = 'Friends-making Party',
     String roomMode = 'voice',
     String seatThemeId = 'royal-gold',
-    String? lockPassword,
   }) async {
-    final value = await _json(
-      'POST',
-      '/api/rooms/${Uri.encodeComponent(roomId)}/settings',
-      body: {
-        'user_id': userId,
-        'name': name,
-        'seat_count': seatCount,
-        'locked': locked,
-        'announcement': announcement,
-        'theme_id': themeId,
-        'group_pk_enabled': groupPkEnabled,
-        'welcome_image_key': welcomeImageKey,
-        'party_mode': partyMode,
-        'room_mode': roomMode,
-        'seat_theme_id': seatThemeId,
-        if (lockPassword != null) 'lock_password': lockPassword,
-      },
+    final value = await saveRoomSettingsResult(
+      roomId: roomId,
+      userId: userId,
+      name: name,
+      seatCount: seatCount,
+      locked: locked,
+      announcement: announcement,
+      themeId: themeId,
+      groupPkEnabled: groupPkEnabled,
+      welcomeImageKey: welcomeImageKey,
+      partyMode: partyMode,
+      roomMode: roomMode,
+      seatThemeId: seatThemeId,
     );
     return value?['ok'] == true;
   }
