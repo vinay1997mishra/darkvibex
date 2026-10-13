@@ -291,6 +291,7 @@ async function ensureRoomSettingsTable(db) {
       theme_id TEXT NOT NULL DEFAULT 'dark',
       group_pk_enabled INTEGER NOT NULL DEFAULT 0,
       welcome_image_key TEXT NOT NULL DEFAULT '',
+      party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
@@ -303,6 +304,9 @@ async function ensureRoomSettingsTable(db) {
   } catch (_) {}
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN welcome_image_key TEXT NOT NULL DEFAULT ''").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN party_mode TEXT NOT NULL DEFAULT 'Friends-making Party'").run();
   } catch (_) {}
 }
 
@@ -464,10 +468,12 @@ async function ensureImageTables(db) {
 
 async function listRooms(db) {
   await ensureImageTables(db);
+  await ensureRoomSettingsTable(db);
   await ensureVipSchema(db);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
             ri.image_key AS avatar_key,
+            COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
             CASE WHEN ov.level >= 18 AND ov.active_until > ?
                        AND json_extract(ov.preferences_json, '$.anonymous_everywhere') = 1
                  THEN 'Anonymous' ELSE COALESCE(u.display_name, '') END AS owner_name,
@@ -476,6 +482,7 @@ async function listRooms(db) {
        LEFT JOIN users u ON u.id = r.owner_user_id
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
+       LEFT JOIN room_settings rs ON rs.room_id = r.id
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).bind(now()).all();
@@ -922,6 +929,7 @@ async function handleApi(request, env, url) {
     const room = await db.prepare(
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
               COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled,
+              COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
               CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
          LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
@@ -975,6 +983,8 @@ async function handleApi(request, env, url) {
         return json({ ok: false, error: "vip3_required_for_room_background" }, { status: 403 });
       }
       const groupPkEnabled = body.group_pk_enabled === true ? 1 : 0;
+      const requestedPartyMode = String(body.party_mode ?? room.party_mode ?? "Friends-making Party").trim();
+      const partyMode = requestedPartyMode === "Event hosting mode" ? "Event hosting mode" : "Friends-making Party";
       if (!name) return json({ ok: false, error: "room_name_required" }, { status: 400 });
       const overflow = await db.prepare(
         "SELECT COUNT(*) AS total FROM room_members WHERE room_id = ? AND seat_index >= ?"
@@ -987,10 +997,10 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey } });
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey, party_mode: partyMode } });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
@@ -1028,6 +1038,8 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, ownerId);
     if (authError) return authError;
     const requestedSeatCount = Number(body.seat_count ?? 12);
+    const requestedPartyMode = String(body.party_mode ?? "Friends-making Party").trim();
+    const partyMode = requestedPartyMode === "Event hosting mode" ? "Event hosting mode" : "Friends-making Party";
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
     if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42 || requestedSeatCount === 11) {
       return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
@@ -1041,10 +1053,14 @@ async function handleApi(request, env, url) {
     await db.prepare(
       "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
     ).bind(roomId, ownerId, name, seatCount, ts, ts).run();
+    await ensureRoomSettingsTable(db);
+    await db.prepare(
+      "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, updated_at = excluded.updated_at"
+    ).bind(roomId, partyMode, ts).run();
     await db.prepare(
       "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
     ).bind(roomId, ownerId, ts, ts).run();
-    return json({ ok: true, room_id: roomId }, { status: 201 });
+    return json({ ok: true, room_id: roomId, party_mode: partyMode }, { status: 201 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "join" && request.method === "POST") {
