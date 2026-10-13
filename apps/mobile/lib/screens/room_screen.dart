@@ -2222,7 +2222,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _showLuckyPouch() async {
     if (!widget.state.backendConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the room server to use Lucky Pouch')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the room server to use Red Pocket (LP)')));
       return;
     }
     Future<Map<String, dynamic>?> refreshPouch() async {
@@ -2243,10 +2243,10 @@ class _RoomScreenState extends State<RoomScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Lucky Pouch', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                const Text('Red Pocket (LP)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
                 if (pouch == null) ...[
-                  const Text('No active pouch. Members can create one using their coins.'),
+                  const Text('No active Red Pocket. Members can create one using their coins.'),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: () async {
@@ -2256,7 +2256,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           var coins = 5000;
                           var slots = 10;
                           return StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
-                            title: const Text('Create Lucky Pouch'),
+                            title: const Text('Create Red Pocket (LP)'),
                             content: Column(mainAxisSize: MainAxisSize.min, children: [
                               DropdownButtonFormField<int>(
                                 value: coins,
@@ -3229,7 +3229,7 @@ class _RoomScreenState extends State<RoomScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: label == 'Lucky Bag'
+            colors: label == 'Red Pocket (LP)'
                 ? const [Color(0xFF5B0710), Color(0xFF220204)]
                 : const [Color(0xFF120D04), Color(0xFF030303)],
           ),
@@ -3286,8 +3286,8 @@ class _RoomScreenState extends State<RoomScreen> {
         true,
       ),
       (
-        'Lucky Bag',
-        Icons.shopping_bag_rounded,
+        'Red Pocket (LP)',
+        Icons.card_giftcard_rounded,
         _showLuckyPouch,
         true,
       ),
