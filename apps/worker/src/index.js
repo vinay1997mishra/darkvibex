@@ -230,14 +230,41 @@ async function publicCatalog(db, kind) {
 }
 
 async function ensureUsersSchema(db) {
-  // D1 schema files are not applied automatically by a Worker deploy. Keep
-  // login compatible with databases created before avatar support was added.
-  try {
-    await db.prepare("ALTER TABLE users ADD COLUMN avatar_key TEXT").run();
-  } catch (error) {
-    const message = String(error?.message ?? error).toLowerCase();
-    if (!message.includes("duplicate column") && !message.includes("already exists")) {
-      throw error;
+  // Worker deploys do not automatically apply schema.sql to D1. Make the
+  // authentication path self-healing so an older/empty database cannot block
+  // Google login.
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL DEFAULT '',
+      avatar_key TEXT,
+      role TEXT NOT NULL DEFAULT 'user',
+      coins INTEGER NOT NULL DEFAULT 0,
+      diamonds INTEGER NOT NULL DEFAULT 0,
+      vip_level INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`
+  ).run();
+
+  const additions = [
+    ["display_name", "TEXT NOT NULL DEFAULT ''"],
+    ["avatar_key", "TEXT"],
+    ["role", "TEXT NOT NULL DEFAULT 'user'"],
+    ["coins", "INTEGER NOT NULL DEFAULT 0"],
+    ["diamonds", "INTEGER NOT NULL DEFAULT 0"],
+    ["vip_level", "INTEGER NOT NULL DEFAULT 0"],
+    ["created_at", "INTEGER NOT NULL DEFAULT 0"],
+    ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
+  ];
+  for (const [name, definition] of additions) {
+    try {
+      await db.prepare(`ALTER TABLE users ADD COLUMN ${name} ${definition}`).run();
+    } catch (error) {
+      const message = String(error?.message ?? error).toLowerCase();
+      if (!message.includes("duplicate column") && !message.includes("already exists")) {
+        throw error;
+      }
     }
   }
 }
@@ -611,9 +638,33 @@ async function handleApi(request, env, url) {
     const displayName = String(
       claims.name ?? claims.given_name ?? claims.email ?? "DarkVibeX User"
     ).trim().slice(0, 60);
-    const user = await ensureUser(db, userId, displayName);
-    await ensureUserAllowed(db, userId);
-    const token = await createSessionToken(env, userId, user.display_name);
+
+    let user;
+    try {
+      user = await ensureUser(db, userId, displayName);
+    } catch (error) {
+      console.error("Google session user storage failed", error);
+      return json({ ok: false, error: "google_session_storage_failed" }, { status: 503 });
+    }
+
+    try {
+      await ensureUserAllowed(db, userId);
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      if (code === "user_banned" || code === "user_suspended") {
+        return json({ ok: false, error: code }, { status: 403 });
+      }
+      console.error("Google session user policy failed", error);
+      return json({ ok: false, error: "google_session_policy_failed" }, { status: 503 });
+    }
+
+    let token;
+    try {
+      token = await createSessionToken(env, userId, user.display_name);
+    } catch (error) {
+      console.error("Google session token creation failed", error);
+      return json({ ok: false, error: "google_session_token_failed" }, { status: 503 });
+    }
     return json({ ok: true, token, user, provider: "google" });
   }
 
