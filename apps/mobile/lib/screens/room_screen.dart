@@ -2230,7 +2230,16 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _openGames() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => GamesScreen(state: widget.state)),
+      MaterialPageRoute<void>(
+        builder: (_) => GamesScreen(
+          state: widget.state,
+          roomId: widget.room.id,
+          roomOwnerUserId: widget.room.ownerUserId,
+          onToggleMic: _toggleMic,
+          micOn: () => mySeat != null && !muted,
+          hasMicSeat: () => mySeat != null,
+        ),
+      ),
     );
   }
 
