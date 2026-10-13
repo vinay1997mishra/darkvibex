@@ -786,6 +786,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Shop',
                 'Frames, vehicles and entry effects',
               ),
+              ListTile(
+                leading: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Trends'),
+                subtitle: const Text(
+                  'Profile posts and updates',
+                  style: TextStyle(
+                    color: TinniPalette.muted,
+                    fontSize: 10,
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TrendsScreen(state: state),
+                  ),
+                ),
+              ),
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
