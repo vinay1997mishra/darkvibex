@@ -110,6 +110,9 @@ class BackendApi {
   Future<Map<String, dynamic>?> health() =>
       _json('GET', '/health');
 
+  Future<Map<String, dynamic>?> publicConfig() =>
+      _json('GET', '/api/config');
+
   Future<Map<String, dynamic>?> googleAuthConfig() =>
       _json('GET', '/api/auth/config');
 
