@@ -445,6 +445,42 @@ async function ensureRoomSettingsTable(db) {
 }
 
 
+async function ensureRoomCustomThemeTable(db) {
+  await ensureRoomCoreSchema(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_custom_themes (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    asset_key TEXT NOT NULL,
+    price_coins INTEGER NOT NULL DEFAULT 10000000,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_room_custom_themes_room_expiry ON room_custom_themes(room_id, expires_at)"
+  ).run();
+}
+
+async function expireRoomCustomThemes(db, roomId, ts = now()) {
+  await ensureRoomCustomThemeTable(db);
+  const expired = await db.prepare(
+    "SELECT id FROM room_custom_themes WHERE room_id=? AND expires_at IS NOT NULL AND expires_at<=?"
+  ).bind(roomId, ts).all();
+  const ids = (expired.results ?? []).map((row) => String(row.id ?? "")).filter(Boolean);
+  if (ids.length === 0) return;
+  for (const themeId of ids) {
+    await db.batch([
+      db.prepare("UPDATE room_settings SET theme_id='dark',updated_at=? WHERE room_id=? AND theme_id=?")
+        .bind(ts, roomId, themeId),
+      db.prepare("DELETE FROM room_custom_themes WHERE id=? AND room_id=?")
+        .bind(themeId, roomId),
+    ]);
+  }
+}
+
 async function expireRoomLuckyPouches(db, roomId, ts = now()) {
   await db.batch([
     db.prepare("UPDATE room_lucky_pouches SET status='expired_pending' WHERE room_id=? AND status='open' AND expires_at<=?")
@@ -2638,9 +2674,97 @@ async function handleApi(request, env, url) {
     return json({ ok:true, approved:body.approved===true });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "themes") {
+    const roomId = parts[2];
+    await ensureRoomCustomThemeTable(db);
+    await ensureRoomSettingsTable(db);
+    await expireRoomCustomThemes(db, roomId, now());
+    const room = await db.prepare(
+      "SELECT owner_user_id FROM rooms WHERE id=? LIMIT 1"
+    ).bind(roomId).first();
+    if (!room) return json({ ok:false,error:"room_not_found" }, { status:404 });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const actorId = String(session.sub);
+
+    if (request.method === "GET") {
+      const rows = await db.prepare(
+        `SELECT id,name,asset_key,price_coins,created_at,expires_at
+           FROM room_custom_themes
+          WHERE room_id=? AND (expires_at IS NULL OR expires_at>?)
+          ORDER BY created_at DESC
+          LIMIT 100`
+      ).bind(roomId, now()).all();
+      return json({
+        ok:true,
+        user_price_coins:10000000,
+        user_duration_days:7,
+        themes:rows.results ?? [],
+      });
+    }
+
+    if (request.method === "POST") {
+      if (String(room.owner_user_id) !== actorId) {
+        return json({ ok:false,error:"room_owner_required" }, { status:403 });
+      }
+      const body = await bodyJson(request);
+      const name = String(body.name ?? "").trim().slice(0, 60);
+      const assetKey = String(body.asset_key ?? "").trim();
+      if (!name) return json({ ok:false,error:"theme_name_required" }, { status:400 });
+      if (body.policy_confirmed !== true) {
+        return json({ ok:false,error:"theme_policy_confirmation_required" }, { status:400 });
+      }
+      if (!assetKey.startsWith(`room-themes/${actorId}/`) ||
+          !/\.(jpg|jpeg|png|webp)$/i.test(assetKey)) {
+        return json({ ok:false,error:"invalid_theme_asset" }, { status:400 });
+      }
+      const actor = await db.prepare(
+        "SELECT role,coins FROM users WHERE id=? LIMIT 1"
+      ).bind(actorId).first();
+      if (!actor) return json({ ok:false,error:"user_not_found" }, { status:404 });
+      const platformOwner = String(actor.role ?? "") === "platform_owner";
+      const price = platformOwner ? 0 : 10000000;
+      if (Number(actor.coins ?? 0) < price) {
+        return json({ ok:false,error:"insufficient_coins",required_coins:price }, { status:409 });
+      }
+      const themeId = "room-theme-" + id();
+      const ts = now();
+      const permanent = platformOwner && body.permanent === true;
+      const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
+      const expiresAt = permanent ? null : ts + requestedDays * 86400000;
+      const after = Number(actor.coins ?? 0) - price;
+      const statements = [
+        db.prepare(
+          `INSERT INTO room_custom_themes(
+            id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at
+          ) VALUES(?,?,?,?,?,?,?,?)`
+        ).bind(themeId,roomId,actorId,name,assetKey,price,ts,expiresAt),
+      ];
+      if (price > 0) {
+        statements.push(
+          db.prepare("UPDATE users SET coins=?,updated_at=? WHERE id=? AND coins>=?")
+            .bind(after,ts,actorId,price),
+          db.prepare(
+            "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+          ).bind(id(),actorId,"room_theme_purchase",-price,after,themeId,ts),
+        );
+      }
+      await db.batch(statements);
+      const created = await db.prepare(
+        "SELECT id,name,asset_key,price_coins,created_at,expires_at FROM room_custom_themes WHERE id=?"
+      ).bind(themeId).first();
+      return json({ ok:true,theme:created,coin_balance:after }, { status:201 });
+    }
+
+    return json({ ok:false,error:"method_not_allowed" }, { status:405 });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
     await ensureRoomSettingsTable(db);
+    await ensureRoomCustomThemeTable(db);
+    await expireRoomCustomThemes(db, roomId, now());
     await ensureVipSchema(db);
     const room = await db.prepare(
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
@@ -2648,13 +2772,16 @@ async function handleApi(request, env, url) {
               COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
               COALESCE(s.room_mode, 'voice') AS room_mode,
               COALESCE(s.seat_theme_id, 'royal-gold') AS seat_theme_id,
+              COALESCE(ct.asset_key, '') AS theme_asset_key,
               COALESCE(s.lock_password_code, '') AS lock_password_code,
               CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
               CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
          LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
+         LEFT JOIN room_custom_themes ct ON ct.id = s.theme_id
+          AND ct.room_id = r.id AND (ct.expires_at IS NULL OR ct.expires_at > ?)
         WHERE r.id = ?`
-    ).bind(now(), roomId).first();
+    ).bind(now(), now(), roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     if (request.method === "GET") {
       const authError = await requireSession(request, env);
@@ -2731,8 +2858,17 @@ async function handleApi(request, env, url) {
       const themeId = actorIsOwner
         ? String(body.theme_id ?? room.theme_id ?? "dark")
         : String(room.theme_id ?? "dark");
-      if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
-      if (themeId !== "dark" && themeId !== room.theme_id && !vipStatus.room_background_enabled) {
+      let customTheme = null;
+      if (!allowedThemes.has(themeId)) {
+        customTheme = await db.prepare(
+          "SELECT id FROM room_custom_themes WHERE id=? AND room_id=? AND (expires_at IS NULL OR expires_at>?) LIMIT 1"
+        ).bind(themeId,roomId,now()).first();
+        if (!customTheme) return json({ ok:false,error:"invalid_or_expired_theme" }, { status:400 });
+      }
+      if (allowedThemes.has(themeId) &&
+          themeId !== "dark" &&
+          themeId !== room.theme_id &&
+          !vipStatus.room_background_enabled) {
         return json({ ok: false, error: "vip3_required_for_room_background" }, { status: 403 });
       }
       const groupPkEnabled = actorIsOwner
@@ -4662,7 +4798,11 @@ async function handleApi(request, env, url) {
     const userPrefix = `users/${actor}/`;
     const messagePrefix = `messages/${actor}/`;
     const customGiftPrefix = `custom-gifts/${actor}/`;
-    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix) || key.startsWith(customGiftPrefix);
+    const roomThemePrefix = `room-themes/${actor}/`;
+    let authorizedKey = key.startsWith(userPrefix) ||
+      key.startsWith(messagePrefix) ||
+      key.startsWith(customGiftPrefix) ||
+      key.startsWith(roomThemePrefix);
     const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
     if (roomMatch) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
@@ -4805,7 +4945,7 @@ export default {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|room-themes)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {
