@@ -3779,6 +3779,108 @@ async function handleApi(request, env, url) {
     }, { status: 201 });
   }
 
+  if (url.pathname === "/api/calls/random" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const callerId = String(body.user_id ?? "").trim();
+    const gender = String(body.gender ?? "").trim().toLowerCase();
+    const authError = await requireSession(request, env, callerId);
+    if (authError) return authError;
+    if (!["female", "male"].includes(gender)) {
+      return json({ ok: false, error: "invalid_gender" }, { status: 400 });
+    }
+    await ensureDirectCallTable(db);
+    await ensureCallVerificationSchema(db);
+    await expireDirectCalls(db);
+    const caller = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(callerId).first();
+    const randomCost = 500000;
+    if (Number(caller?.coins ?? 0) < randomCost) {
+      return json(
+        { ok: false, error: "insufficient_coins", required_coins: randomCost },
+        { status: 409 },
+      );
+    }
+    const candidates = await db.prepare(
+      `SELECT u.id,u.display_name,u.avatar_key,u.gender,
+              COALESCE(s.offers,0) AS offers,
+              COALESCE(s.answered,0) AS answered,
+              COALESCE(s.completed_calls,0) AS completed_calls,
+              COALESCE(s.total_minutes,0) AS total_minutes,
+              COALESCE(s.last_offer_at,0) AS last_offer_at
+         FROM users u
+         LEFT JOIN random_call_stats s ON s.user_id=u.id
+        WHERE u.id<>?
+          AND u.call_verified=1
+          AND lower(u.gender)=?
+          AND NOT EXISTS(
+            SELECT 1 FROM direct_calls c
+             WHERE c.state IN ('ringing','active')
+               AND (c.caller_user_id=u.id OR c.receiver_user_id=u.id)
+          )
+        ORDER BY
+          (COALESCE(s.completed_calls,0)*100 +
+           COALESCE(s.answered,0)*20 +
+           COALESCE(s.total_minutes,0)) DESC,
+          COALESCE(s.last_offer_at,0) ASC
+        LIMIT 30`
+    ).bind(callerId, gender).all();
+
+    let candidate = null;
+    for (const row of candidates.results ?? []) {
+      if (!(await usersBlockedEitherWay(db, callerId, String(row.id)))) {
+        candidate = row;
+        break;
+      }
+    }
+    if (!candidate) {
+      return json({
+        ok: false,
+        error: gender === "female"
+          ? "no_verified_available_girl"
+          : "no_verified_available_boy",
+      }, { status: 404 });
+    }
+
+    const receiverId = String(candidate.id);
+    const receiverReward = gender === "female" ? 400000 : 0;
+    const callId = id();
+    const ts = now();
+    await db.batch([
+      db.prepare(
+        `INSERT INTO direct_calls
+          (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
+           call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
+           receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
+         VALUES (?,?,?,'ringing',?,NULL,NULL?,'random',?,?,?,0,0,0)`
+      ),
+    ]);
+    await db.prepare(
+      `INSERT INTO direct_calls
+        (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
+         call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
+         receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
+       VALUES (?,?,?,'ringing',?,NULL,NULL,?,'random',?,?,?,0,0,0)`
+    ).bind(
+      callId,
+      callerId,
+      receiverId,
+      ts,
+      ts,
+      randomCost,
+      receiverReward,
+      gender === "female" ? 1 : 0,
+    ).run();
+    await db.prepare(
+      `INSERT INTO random_call_stats
+        (user_id,offers,answered,completed_calls,total_minutes,last_offer_at,updated_at)
+       VALUES (?,1,0,0,0,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         offers=offers+1,last_offer_at=excluded.last_offer_at,updated_at=excluded.updated_at`
+    ).bind(receiverId, ts, ts).run();
+    return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
+  }
+
   if (url.pathname === "/api/calls/start" && request.method === "POST") {
     const body = await bodyJson(request);
     const callerId = String(body.user_id ?? "").trim();
@@ -3789,6 +3891,7 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "invalid_call_target" }, { status: 400 });
     }
     await ensureDirectCallTable(db);
+    await ensureCallVerificationSchema(db);
     await expireDirectCalls(db);
     if (await usersBlockedEitherWay(db, callerId, receiverId)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
@@ -3809,11 +3912,50 @@ async function handleApi(request, env, url) {
         LIMIT 1`
     ).bind(callerId,receiverId,callerId,receiverId).first();
     if (busy) return json({ ok: false, error: "user_busy" }, { status: 409 });
+
+    const caller = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(callerId).first();
+    const directCost = 400000;
+    if (Number(caller?.coins ?? 0) < directCost) {
+      return json(
+        { ok: false, error: "insufficient_coins", required_coins: directCost },
+        { status: 409 },
+      );
+    }
+    const receiver = await db.prepare(
+      "SELECT gender,call_verified FROM users WHERE id=? LIMIT 1"
+    ).bind(receiverId).first();
+    const femaleVerified =
+      String(receiver?.gender ?? "").toLowerCase() === "female" &&
+      Number(receiver?.call_verified ?? 0) === 1;
+    const receiverReward = femaleVerified ? 320000 : 0;
+
     const callId = id();
     const createdAt = now();
     await db.prepare(
-      "INSERT INTO direct_calls(id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at) VALUES(?,?,?,'ringing',?,NULL,NULL,?)"
-    ).bind(callId,callerId,receiverId,createdAt,createdAt).run();
+      `INSERT INTO direct_calls
+        (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
+         call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
+         receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
+       VALUES(?,?,?,'ringing',?,NULL,NULL?,'direct',?,?,?,0,0,0)`
+    );
+    await db.prepare(
+      `INSERT INTO direct_calls
+        (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
+         call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
+         receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
+       VALUES(?,?,?,'ringing',?,NULL,NULL,?,'direct',?,?,?,0,0,0)`
+    ).bind(
+      callId,
+      callerId,
+      receiverId,
+      createdAt,
+      createdAt,
+      directCost,
+      receiverReward,
+      femaleVerified ? 1 : 0,
+    ).run();
     return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
   }
 
@@ -3841,6 +3983,7 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureDirectCallTable(db);
+    await ensureCallVerificationSchema(db);
     const call = await db.prepare(
       "SELECT * FROM direct_calls WHERE id=? AND receiver_user_id=? LIMIT 1"
     ).bind(callId,userId).first();
@@ -3855,6 +3998,19 @@ async function handleApi(request, env, url) {
         ? "UPDATE direct_calls SET state='active',answered_at=?,updated_at=? WHERE id=? AND state='ringing'"
         : "UPDATE direct_calls SET state='declined',ended_at=?,updated_at=? WHERE id=? AND state='ringing'"
     ).bind(ts,ts,callId).run();
+    if (accepted) {
+      if (String(call.call_kind ?? "") === "random") {
+        await db.prepare(
+          `INSERT INTO random_call_stats
+            (user_id,offers,answered,completed_calls,total_minutes,last_offer_at,updated_at)
+           VALUES (?,0,1,0,0,NULL,?)
+           ON CONFLICT(user_id) DO UPDATE SET
+             answered=answered+1,updated_at=excluded.updated_at`
+        ).bind(userId, ts).run();
+      }
+      const billed = await settleDirectCallBilling(db, callId, ts);
+      return json({ ok: true, call: billed });
+    }
     return json({ ok:true,call:await directCallRow(db,callId) });
   }
 
@@ -3864,9 +4020,12 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await expireDirectCalls(db);
-    const call = await directCallRow(db,callId);
+    let call = await directCallRow(db,callId);
     if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
       return json({ ok:false,error:"call_not_found" }, { status:404 });
+    }
+    if (call.state === "active") {
+      call = await settleDirectCallBilling(db, callId, now());
     }
     return json({ ok:true,call });
   }
@@ -3878,17 +4037,26 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureDirectCallTable(db);
-    const call = await db.prepare(
+    let call = await db.prepare(
       "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
     ).bind(callId).first();
     if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
       return json({ ok:false,error:"call_not_found" }, { status:404 });
     }
     const ts = now();
+    if (call.state === "active") {
+      await settleDirectCallBilling(db, callId, ts);
+      call = await db.prepare(
+        "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
+      ).bind(callId).first();
+    }
     await db.prepare(
       "UPDATE direct_calls SET state='ended',ended_at=?,updated_at=? WHERE id=? AND state IN ('ringing','active')"
     ).bind(ts,ts,callId).run();
-    return json({ ok:true });
+    if (String(call?.call_kind ?? "") === "random") {
+      await recordRandomCallCompletion(db, callId, ts);
+    }
+    return json({ ok:true, call:await directCallRow(db,callId) });
   }
 
   if (url.pathname === "/api/friends" && request.method === "GET") {
