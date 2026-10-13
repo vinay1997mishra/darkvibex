@@ -24,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   DateTime? _dateOfBirth;
   Country? _selectedCountry;
+  String? _selectedGender;
   String _selectedLanguage = 'English';
   Uint8List? _avatarBytes;
   String _avatarExtension = 'jpg';
@@ -156,6 +157,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return false;
     }
+    if (_selectedGender == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select male or female')),
+      );
+      return false;
+    }
     if (!darkVibeXIsSupportedLanguage(_selectedLanguage)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select a supported language')),
@@ -175,6 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
         countryCodeValue: country.countryCode,
         countryNameValue: country.name,
         flagEmojiValue: country.flagEmoji,
+        genderValue: _selectedGender,
         languageValue: _selectedLanguage,
         avatarBytes: _avatarBytes,
         avatarExtension: _avatarExtension,
@@ -592,6 +600,36 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ChoiceChip(
+                                    key: const Key('create-id-gender-male'),
+                                    label: const Text('Male'),
+                                    selected: _selectedGender == 'male',
+                                    onSelected: busy
+                                        ? null
+                                        : (_) => setState(
+                                              () => _selectedGender = 'male',
+                                            ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ChoiceChip(
+                                    key: const Key('create-id-gender-female'),
+                                    label: const Text('Female'),
+                                    selected: _selectedGender == 'female',
+                                    onSelected: busy
+                                        ? null
+                                        : (_) => setState(
+                                              () => _selectedGender = 'female',
+                                            ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<String>(
