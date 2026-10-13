@@ -70,6 +70,12 @@ class _RoomScreenState extends State<RoomScreen> {
   String roomThemeId = 'dark';
   late String roomPartyMode;
   bool groupPkEnabled = false;
+  String roomMicMode = 'free';
+  bool publicScreenEnabled = true;
+  bool chatBanned = false;
+  final Set<int> lockedSeats = <int>{};
+  final Set<int> roomMutedSeats = <int>{};
+  List<Map<String, dynamic>> seatRequests = <Map<String, dynamic>>[];
   bool effectsEnabled = true;
   final KtvService roomMusic = KtvService();
 
@@ -87,10 +93,12 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
+    unawaited(_loadRoomControls());
     memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       unawaited(_loadRoomMembers());
       unawaited(_loadRoomMessages());
       unawaited(_loadRoomSettings());
+      unawaited(_loadRoomControls());
     });
     unawaited(_loadRoomMessages());
   }
@@ -212,6 +220,46 @@ class _RoomScreenState extends State<RoomScreen> {
       );
     }
     return true;
+  }
+
+  Future<void> _loadRoomControls() async {
+    if (!widget.state.backendConnected) return;
+    final value = await widget.state.backend.roomControls(roomId: widget.room.id);
+    if (!mounted || value?['ok'] != true) return;
+    final rawSeatControls = value?['seat_controls'];
+    final nextLocked = <int>{};
+    final nextMuted = <int>{};
+    if (rawSeatControls is List) {
+      for (final raw in rawSeatControls.whereType<Map>()) {
+        final row = Map<String, dynamic>.from(raw);
+        final seat = int.tryParse(row['seat_index']?.toString() ?? '');
+        if (seat == null) continue;
+        if (row['locked'] == true || row['locked']?.toString() == '1') {
+          nextLocked.add(seat);
+        }
+        if (row['room_muted'] == true || row['room_muted']?.toString() == '1') {
+          nextMuted.add(seat);
+        }
+      }
+    }
+    final rawRequests = value?['seat_requests'];
+    setState(() {
+      roomMicMode = value?['mic_mode']?.toString() == 'apply' ? 'apply' : 'free';
+      publicScreenEnabled = value?['public_screen_enabled'] != false;
+      chatBanned = value?['chat_banned'] == true;
+      lockedSeats
+        ..clear()
+        ..addAll(nextLocked);
+      roomMutedSeats
+        ..clear()
+        ..addAll(nextMuted);
+      seatRequests = rawRequests is List
+          ? rawRequests
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+          : <Map<String, dynamic>>[];
+    });
   }
 
   Future<void> _loadRoomSettings() async {
