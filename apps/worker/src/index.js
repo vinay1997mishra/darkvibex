@@ -250,6 +250,7 @@ async function ensureUsersSchema(db) {
   const additions = [
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
+    ["date_of_birth", "TEXT"],
     ["role", "TEXT NOT NULL DEFAULT 'user'"],
     ["coins", "INTEGER NOT NULL DEFAULT 0"],
     ["diamonds", "INTEGER NOT NULL DEFAULT 0"],
@@ -280,7 +281,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
   return db.prepare(
-    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
+    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -688,6 +689,28 @@ async function handleApi(request, env, url) {
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const user = await ensureUser(db, userId, String(body.display_name ?? "").trim());
     await ensureUserAllowed(db, userId);
+    return json({ ok: true, user });
+  }
+
+  if (url.pathname === "/api/users/profile" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const displayName = String(body.display_name ?? "").trim().slice(0, 60);
+    const dateOfBirth = String(body.date_of_birth ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    if (!displayName) return json({ ok: false, error: "display_name_required" }, { status: 400 });
+    if (dateOfBirth && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+      return json({ ok: false, error: "invalid_date_of_birth" }, { status: 400 });
+    }
+    await ensureUsersSchema(db);
+    await db.prepare(
+      "UPDATE users SET display_name = ?, date_of_birth = ?, updated_at = ? WHERE id = ?"
+    ).bind(displayName, dateOfBirth || null, now(), userId).run();
+    const user = await db.prepare(
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
+    ).bind(userId).first();
     return json({ ok: true, user });
   }
 
