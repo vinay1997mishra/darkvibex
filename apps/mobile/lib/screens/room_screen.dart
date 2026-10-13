@@ -3027,105 +3027,173 @@ class _RoomScreenState extends State<RoomScreen> {
             flex: 5,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final diameter = spec.seatDiameter(constraints.maxWidth - 24);
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(12),
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 14,
-                    children: List<Widget>.generate(roomSeatCount, (seat) {
-                      final mine = mySeat == seat;
-                      return SizedBox(
-                        width: diameter + 26,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () => unawaited(_tapSeat(seat)),
-                          onLongPress: isRoomAdmin
-                              ? () => unawaited(_showSeatControls(seat))
-                              : null,
-                          child: Column(
-                            children: [
-                              Container(
-                                width: diameter,
-                                height: diameter,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    width: mine ? 3 : 1,
-                                    color: mine ? TinniPalette.brightGold : (effectsEnabled ? TinniPalette.deepGold : TinniPalette.bronze),
-                                  ),
-                                ),
-                                child: Builder(
-                                  builder: (context) {
-                                    final member = membersBySeat[seat];
-                                    final avatar = member?['avatar_key']?.toString();
-                                    if (member != null) {
-                                      final vipLevel = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
-                                      final activeFrame = member['active_frame_id']?.toString();
-                                      final frameTier = switch (activeFrame) {
-                                        'frame_royal' => 1,
-                                        'frame_king' => 18,
-                                        'frame_phoenix' => 8,
-                                        'frame_sapphire' => 4,
-                                        _ => vipLevel,
-                                      };
-                                      final micOn = member['mic_muted'] == 0 || member['mic_muted']?.toString() == '0';
-                                      return VipAnimatedFrame(
-                                        size: diameter - 2,
-                                        enabled: activeFrame != null || vipLevel >= 7 || (vipLevel >= 16 && micOn),
-                                        level: frameTier,
-                                        styleId: activeFrame,
-                                        child: CircleAvatar(
-                                          backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders) : null,
-                                          child: Stack(alignment: Alignment.bottomRight, children: [
-                                            if (avatar == null || avatar.isEmpty) const Center(child: Icon(Icons.person_rounded)),
-                                            Icon(micOn ? Icons.mic_rounded : Icons.mic_off_rounded, size: 13, color: Colors.white),
-                                          ]),
-                                        ),
-                                      );
-                                    }
-                                    return Icon(
-                                      member != null
-                                          ? Icons.person_rounded
-                                          : lockedSeats.contains(seat)
-                                              ? Icons.lock_rounded
-                                              : mine
-                                                  ? (muted ? Icons.mic_off_rounded : Icons.mic_rounded)
-                                                  : Icons.add_rounded,
-                                      color: lockedSeats.contains(seat)
-                                          ? Colors.orangeAccent
-                                          : null,
-                                    );
-                                  },
-                                ),
+                final diameter =
+                    spec.seatDiameter(constraints.maxWidth - 8);
+
+                Widget seatTile(int seat) {
+                  final mine = mySeat == seat;
+                  final member = membersBySeat[seat];
+                  final avatar = member?['avatar_key']?.toString();
+                  final vipLevel = int.tryParse(
+                        member?['active_vip_level']?.toString() ?? '',
+                      ) ??
+                      0;
+                  final activeFrame = member?['active_frame_id']?.toString();
+                  final frameTier = switch (activeFrame) {
+                    'frame_royal' => 1,
+                    'frame_king' => 18,
+                    'frame_phoenix' => 8,
+                    'frame_sapphire' => 4,
+                    _ => vipLevel,
+                  };
+                  final micOn = member != null &&
+                      (member['mic_muted'] == 0 ||
+                          member['mic_muted']?.toString() == '0');
+
+                  return SizedBox(
+                    width: diameter + 12,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => unawaited(_tapSeat(seat)),
+                      onLongPress: isRoomAdmin
+                          ? () => unawaited(_showSeatControls(seat))
+                          : null,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: diameter,
+                            height: diameter,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                width: mine ? 3 : 1.2,
+                                color: mine
+                                    ? TinniPalette.brightGold
+                                    : effectsEnabled
+                                        ? _seatThemeAccent
+                                        : TinniPalette.bronze,
                               ),
-                              const SizedBox(height: 4),
-                              Row(
+                              boxShadow: effectsEnabled
+                                  ? [
+                                      BoxShadow(
+                                        color: _seatThemeAccent
+                                            .withValues(alpha: .18),
+                                        blurRadius: 9,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: member != null
+                                ? VipAnimatedFrame(
+                                    size: diameter - 2,
+                                    enabled: activeFrame != null ||
+                                        vipLevel >= 7 ||
+                                        (vipLevel >= 16 && micOn),
+                                    level: frameTier,
+                                    styleId: activeFrame,
+                                    child: CircleAvatar(
+                                      backgroundImage:
+                                          avatar != null && avatar.isNotEmpty
+                                              ? NetworkImage(
+                                                  widget.state.backend
+                                                      .fileUrl(avatar),
+                                                  headers: widget.state.backend
+                                                      .fileHeaders,
+                                                )
+                                              : null,
+                                      child: Stack(
+                                        alignment: Alignment.bottomRight,
+                                        children: [
+                                          if (avatar == null || avatar.isEmpty)
+                                            const Center(
+                                              child:
+                                                  Icon(Icons.person_rounded),
+                                            ),
+                                          Icon(
+                                            micOn
+                                                ? Icons.mic_rounded
+                                                : Icons.mic_off_rounded,
+                                            size: diameter < 48 ? 11 : 13,
+                                            color: Colors.white,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    lockedSeats.contains(seat)
+                                        ? Icons.lock_rounded
+                                        : mine
+                                            ? (muted
+                                                ? Icons.mic_off_rounded
+                                                : Icons.mic_rounded)
+                                            : Icons.add_rounded,
+                                    size: diameter < 48 ? 17 : 22,
+                                    color: lockedSeats.contains(seat)
+                                        ? Colors.orangeAccent
+                                        : TinniPalette.cream,
+                                  ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            mine
+                                ? (widget.state.vipAnonymousEverywhere
+                                    ? 'Anonymous'
+                                    : widget.state.displayName)
+                                : (member?['display_name']?.toString() ??
+                                    'No.${seat + 1}'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: diameter < 48 ? 9 : 11,
+                              color: TinniPalette.cream,
+                            ),
+                          ),
+                          if (mine &&
+                              widget.state.hasVipPrivilege('mic_chair'))
+                            const Icon(
+                              Icons.chair_alt_rounded,
+                              size: 12,
+                              color: TinniPalette.brightGold,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+                  child: Column(
+                    children: [
+                      for (var row = 0; row < spec.rows; row++)
+                        Builder(
+                          builder: (context) {
+                            final range = spec.rangeForRow(row);
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                bottom: diameter < 48 ? 6 : 10,
+                              ),
+                              child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Flexible(
-                                    child: Text(
-                                      mine
-                                          ? (widget.state.vipAnonymousEverywhere ? 'Anonymous' : widget.state.displayName)
-                                          : (membersBySeat[seat]?['display_name']?.toString() ?? 'Seat ${seat + 1}'),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                  ),
-                                  if (mine && widget.state.hasVipPrivilege('mic_chair'))
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 3),
-                                      child: Icon(Icons.chair_alt_rounded, size: 13, color: Color(0xFFFFD36A)),
+                                  for (var seat = range.$1;
+                                      seat < range.$2;
+                                      seat++)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 2,
+                                      ),
+                                      child: seatTile(seat),
                                     ),
                                 ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    }),
+                    ],
                   ),
                 );
               },
