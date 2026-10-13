@@ -49,6 +49,8 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+    userRole = 'user';
+  String userRole = 'user';
   String countryCode = '';
   String gender = '';
   String? avatarKey;
@@ -243,6 +245,7 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    userRole = (user['role']?.toString() ?? userRole).toLowerCase();
     countryCode = user['country_code']?.toString() ?? countryCode;
     gender = user['gender']?.toString() ?? gender;
     avatarKey = user['avatar_key']?.toString();
