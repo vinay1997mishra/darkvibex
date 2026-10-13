@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -21,6 +22,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   final ImagePicker picker = ImagePicker();
 
   DateTime? dob;
+  late String countryCode;
+  late String countryName;
+  late String flagEmoji;
+  late String gender;
   Uint8List? avatarBytes;
   String avatarExtension = 'jpg';
   String avatarContentType = 'image/jpeg';
@@ -36,6 +41,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
         TextEditingController(text: widget.state.displayName);
     final raw = widget.state.dateOfBirth?.trim() ?? '';
     dob = raw.isEmpty ? null : DateTime.tryParse(raw);
+    countryCode = widget.state.countryCode;
+    countryName = widget.state.countryName;
+    flagEmoji = widget.state.flagEmoji;
+    gender = widget.state.gender;
     _loadMedia();
   }
 
@@ -74,6 +83,23 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     if (selected != null && mounted) {
       setState(() => dob = selected);
     }
+  }
+
+  void pickCountry() {
+    if (widget.state.countryChangesRemaining <= 0) return;
+    showCountryPicker(
+      context: context,
+      showPhoneCode: true,
+      useSafeArea: true,
+      onSelect: (country) {
+        if (!mounted) return;
+        setState(() {
+          countryCode = country.countryCode;
+          countryName = country.name;
+          flagEmoji = country.flagEmoji;
+        });
+      },
+    );
   }
 
   Future<void> pickAvatar() async {
@@ -361,10 +387,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   Future<void> save() async {
     if (saving) return;
     final name = nameController.text.trim();
-    if (name.isEmpty || dob == null) {
+    if (name.isEmpty || dob == null || countryCode.isEmpty || gender.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Name and date of birth are required'),
+          content: Text('Name, age, country and gender are required'),
         ),
       );
       return;
@@ -373,6 +399,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     final ok = await widget.state.completeLoginProfile(
       name: name,
       dateOfBirthValue: dobApiValue,
+      countryCodeValue: countryCode,
+      countryNameValue: countryName,
+      flagEmojiValue: flagEmoji,
+      genderValue: gender,
       avatarBytes: avatarBytes,
       avatarExtension: avatarExtension,
       avatarContentType: avatarContentType,
@@ -578,19 +608,77 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.cake_rounded),
-                    title: const Text('Date of birth'),
-                    subtitle: Text(dobLabel),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: saving ? null : pickDob,
+                    title: const Text('Age / Date of birth'),
+                    subtitle: Text(
+                      '$dobLabel • ${widget.state.ageChangesRemaining} changes left',
+                    ),
+                    trailing: Icon(
+                      widget.state.ageChangesRemaining > 0
+                          ? Icons.chevron_right_rounded
+                          : Icons.lock_rounded,
+                    ),
+                    onTap: saving || widget.state.ageChangesRemaining <= 0
+                        ? null
+                        : pickDob,
                   ),
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.public_rounded),
                     title: const Text('Country'),
                     subtitle: Text(
-                      widget.state.countryName.isEmpty
+                      countryName.isEmpty
                           ? 'Not selected'
-                          : '${widget.state.flagEmoji} ${widget.state.countryName}'.trim(),
+                          : '$flagEmoji $countryName • ${widget.state.countryChangesRemaining} changes left',
+                    ),
+                    trailing: Icon(
+                      widget.state.countryChangesRemaining > 0
+                          ? Icons.chevron_right_rounded
+                          : Icons.lock_rounded,
+                    ),
+                    onTap: saving || widget.state.countryChangesRemaining <= 0
+                        ? null
+                        : pickCountry,
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gender • ${widget.state.genderChangesRemaining} changes left',
+                          style: const TextStyle(
+                            color: TinniPalette.cream,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ChoiceChip(
+                                label: const Text('Male'),
+                                selected: gender == 'male',
+                                onSelected: saving ||
+                                        widget.state.genderChangesRemaining <= 0
+                                    ? null
+                                    : (_) => setState(() => gender = 'male'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ChoiceChip(
+                                label: const Text('Female'),
+                                selected: gender == 'female',
+                                onSelected: saving ||
+                                        widget.state.genderChangesRemaining <= 0
+                                    ? null
+                                    : (_) => setState(() => gender = 'female'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   const Divider(height: 1),
