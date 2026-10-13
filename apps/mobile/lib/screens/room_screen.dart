@@ -2099,51 +2099,6 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  Future<void> _sendMessage() async {
-    final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Room message'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 200,
-          decoration: const InputDecoration(hintText: 'Say something…'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (value == null || value.isEmpty) return;
-    if (widget.state.backendConnected) {
-      final sent = await widget.state.backend.sendRoomMessage(
-        roomId: widget.room.id,
-        userId: widget.state.userId,
-        text: value,
-      );
-      if (!sent && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message was not sent. Check your connection.')),
-        );
-        return;
-      }
-      await _loadRoomMessages();
-      return;
-    }
-    if (!mounted) return;
-    setState(() => chat.add(<String, dynamic>{'display_name': widget.state.displayName, 'text': value}));
-  }
-
   Future<void> _sendRoomImage() async {
     if (!widget.state.hasVipPrivilege('send_pictures')) {
       ScaffoldMessenger.of(context).showSnackBar(
