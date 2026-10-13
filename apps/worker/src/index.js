@@ -287,6 +287,22 @@ async function publicCatalog(db, kind) {
   }
 }
 
+const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
+  "English",
+  "Hindi",
+  "Urdu",
+  "Arabic",
+  "Bengali",
+  "Malayalam",
+  "Filipino (Tagalog)",
+  "Persian (Farsi)",
+  "Kurdish",
+  "Baluchi",
+  "Chinese (Simplified)",
+  "Chinese (Traditional)",
+  "Korean",
+]);
+
 async function ensureUsersSchema(db) {
   // Worker deploys do not automatically apply schema.sql to D1. Make the
   // authentication path self-healing without issuing duplicate ALTER writes.
@@ -296,6 +312,10 @@ async function ensureUsersSchema(db) {
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
       date_of_birth TEXT,
+      country_code TEXT,
+      country_name TEXT,
+      flag_emoji TEXT,
+      language TEXT NOT NULL DEFAULT 'English',
       role TEXT NOT NULL DEFAULT 'user',
       coins INTEGER NOT NULL DEFAULT 0,
       diamonds INTEGER NOT NULL DEFAULT 0,
@@ -313,6 +333,10 @@ async function ensureUsersSchema(db) {
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
     ["date_of_birth", "TEXT"],
+    ["country_code", "TEXT"],
+    ["country_name", "TEXT"],
+    ["flag_emoji", "TEXT"],
+    ["language", "TEXT NOT NULL DEFAULT 'English'"],
     ["role", "TEXT NOT NULL DEFAULT 'user'"],
     ["coins", "INTEGER NOT NULL DEFAULT 0"],
     ["diamonds", "INTEGER NOT NULL DEFAULT 0"],
@@ -337,7 +361,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
   return db.prepare(
-    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
+    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -2864,6 +2888,10 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     const displayName = String(body.display_name ?? "").trim().slice(0, 60);
     const dateOfBirth = String(body.date_of_birth ?? "").trim();
+    const countryCode = String(body.country_code ?? "").trim().toUpperCase();
+    const countryName = String(body.country_name ?? "").trim().slice(0, 80);
+    const flagEmoji = String(body.flag_emoji ?? "").trim().slice(0, 24);
+    const language = String(body.language ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
@@ -2871,16 +2899,58 @@ async function handleApi(request, env, url) {
     if (dateOfBirth && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
       return json({ ok: false, error: "invalid_date_of_birth" }, { status: 400 });
     }
+    if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) {
+      return json({ ok: false, error: "invalid_country_code" }, { status: 400 });
+    }
+    if ((countryCode && !countryName) || (!countryCode && countryName)) {
+      return json({ ok: false, error: "country_incomplete" }, { status: 400 });
+    }
+    if (language && !DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
+      return json({ ok: false, error: "unsupported_language" }, { status: 400 });
+    }
     await ensureUsersSchema(db);
     await db.prepare(
-      "UPDATE users SET display_name = ?, date_of_birth = ?, updated_at = ? WHERE id = ?"
-    ).bind(displayName, dateOfBirth || null, now(), userId).run();
+      `UPDATE users
+          SET display_name = ?,
+              date_of_birth = ?,
+              country_code = CASE WHEN ? <> '' THEN ? ELSE country_code END,
+              country_name = CASE WHEN ? <> '' THEN ? ELSE country_name END,
+              flag_emoji = CASE WHEN ? <> '' THEN ? ELSE flag_emoji END,
+              language = CASE WHEN ? <> '' THEN ? ELSE language END,
+              updated_at = ?
+        WHERE id = ?`
+    ).bind(
+      displayName,
+      dateOfBirth || null,
+      countryCode, countryCode,
+      countryName, countryName,
+      flagEmoji, flagEmoji,
+      language, language,
+      now(),
+      userId,
+    ).run();
     const user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, language FROM users WHERE id = ?"
     ).bind(userId).first();
     return json({ ok: true, user });
   }
 
+  if (url.pathname === "/api/users/language" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const language = String(body.language ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    if (!DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
+      return json({ ok:false,error:"unsupported_language" }, { status:400 });
+    }
+    await ensureUsersSchema(db);
+    await db.prepare(
+      "UPDATE users SET language=?,updated_at=? WHERE id=?"
+    ).bind(language,now(),userId).run();
+    return json({ ok:true, language });
+  }
   if (url.pathname === "/api/users/avatar" && request.method === "POST") {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
@@ -2923,11 +2993,11 @@ async function handleApi(request, env, url) {
     await ensureVipSchema(db);
     let viewedUserId = requestedUserId;
     let user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, language FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (!user && requestedUserId) {
       const byPublicId = await db.prepare(
-        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth
+        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.language
            FROM user_vip v
            JOIN users u ON u.id=v.user_id
           WHERE v.custom_id=?
