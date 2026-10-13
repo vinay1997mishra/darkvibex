@@ -4,9 +4,10 @@ import '../app/app_state.dart';
 import 'vip_screen.dart';
 
 class MineCharmVisitorsStrip extends StatefulWidget {
-  const MineCharmVisitorsStrip({super.key, required this.state});
+  const MineCharmVisitorsStrip({super.key, required this.state, required this.onOpenProfile});
 
   final AppState state;
+  final ValueChanged<String> onOpenProfile;
 
   @override
   State<MineCharmVisitorsStrip> createState() => _MineCharmVisitorsStripState();
@@ -75,7 +76,7 @@ class _MineCharmVisitorsStripState extends State<MineCharmVisitorsStrip> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => ProfileVisitorsScreen(state: widget.state),
+                  builder: (_) => ProfileVisitorsScreen(state: widget.state, onOpenProfile: widget.onOpenProfile),
                 ),
               ),
               child: Padding(
@@ -106,9 +107,10 @@ class _MineCharmVisitorsStripState extends State<MineCharmVisitorsStrip> {
 }
 
 class ProfileVisitorsScreen extends StatefulWidget {
-  const ProfileVisitorsScreen({super.key, required this.state});
+  const ProfileVisitorsScreen({super.key, required this.state, required this.onOpenProfile});
 
   final AppState state;
+  final ValueChanged<String> onOpenProfile;
 
   @override
   State<ProfileVisitorsScreen> createState() => _ProfileVisitorsScreenState();
@@ -157,6 +159,26 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
   String _initial(String name) {
     final value = name.trim();
     return value.isEmpty ? '?' : value.characters.first.toUpperCase();
+  }
+
+  String _visitedAtLabel(BuildContext context, Object? raw) {
+    DateTime? date;
+    if (raw is num) {
+      date = DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+    } else {
+      final value = raw?.toString();
+      if (value != null && value.isNotEmpty) {
+        final milliseconds = int.tryParse(value);
+        date = milliseconds == null
+            ? DateTime.tryParse(value)
+            : DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true);
+      }
+    }
+    if (date == null) return 'Visit time unavailable';
+    final local = date.toLocal();
+    final day = MaterialLocalizations.of(context).formatMediumDate(local);
+    final time = MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(local));
+    return 'Last visited $day • $time';
   }
 
   @override
@@ -225,12 +247,24 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
                                       );
                                 return Card(
                                   child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundImage: avatar,
-                                      child: avatar == null ? Text(_initial(name)) : null,
+                                    leading: InkWell(
+                                      onTap: userId.isEmpty ? null : () => widget.onOpenProfile(userId),
+                                      customBorder: const CircleBorder(),
+                                      child: CircleAvatar(
+                                        backgroundImage: avatar,
+                                        child: avatar == null ? Text(_initial(name)) : null,
+                                      ),
                                     ),
                                     title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    subtitle: Text('${_visitedLabel(visitor['visit_count'])} • ID $userId'),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(_visitedLabel(visitor['visit_count'])),
+                                        Text(_visitedAtLabel(context, visitor['last_visited_at'])),
+                                        Text('ID $userId'),
+                                      ],
+                                    ),
                                     trailing: const Icon(Icons.person_outline_rounded),
                                   ),
                                 );
