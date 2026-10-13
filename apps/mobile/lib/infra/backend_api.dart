@@ -1012,6 +1012,39 @@ class BackendApi {
     return value?['ok'] == true && value?['following'] == follow;
   }
 
+  Future<List<Map<String, dynamic>>> blockedUsers({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/social/blocked?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
+    final rows = value?['blocked'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<bool> setUserBlocked({
+    required String userId,
+    required String targetUserId,
+    required bool blocked,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/social/block',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'target_user_id': targetUserId,
+        'blocked': blocked,
+      },
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true && value?['blocked'] == blocked;
+  }
+
   Future<List<Map<String, dynamic>>> followers({
     required String userId,
   }) async {
