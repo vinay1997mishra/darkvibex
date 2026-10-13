@@ -6,6 +6,12 @@ const parsed=(value)=>{try{return JSON.parse(String(value??"{}"))||{};}catch(_){
 export async function ensureVipSchema(db){
   await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
   try {
+    await db.prepare("SELECT custom_id_expires_at FROM user_vip LIMIT 1").first();
+  } catch (error) {
+    if (!/no such column/i.test(String(error?.message ?? error))) throw error;
+    await db.prepare("ALTER TABLE user_vip ADD COLUMN custom_id_expires_at INTEGER").run();
+  }
+  try {
     await db.prepare("SELECT exp_rate_version FROM user_vip LIMIT 1").first();
   } catch (error) {
     if (!/no such column/i.test(String(error?.message ?? error))) throw error;
@@ -34,6 +40,12 @@ async function ensureRow(db,userId,ts=Date.now()){
 }
 
 async function settle(db,row,ts=Date.now()){
+  const customExpiry=row.custom_id_expires_at==null?null:Number(row.custom_id_expires_at);
+  if(row.custom_id && customExpiry!=null && customExpiry>0 && customExpiry<=ts){
+    await db.prepare("UPDATE user_vip SET custom_id=NULL,custom_id_expires_at=NULL,updated_at=? WHERE user_id=?")
+      .bind(ts,row.user_id).run();
+    row={...row,custom_id:null,custom_id_expires_at:null};
+  }
   let level=Number(row.level??0);
   let exp=Number(row.exp_balance??0);
   let until=row.active_until==null?null:Number(row.active_until);
@@ -71,6 +83,7 @@ function payload(row,ts=Date.now()){
     active_until:until,
     active,
     custom_id:row.custom_id??null,
+    custom_id_expires_at:row.custom_id_expires_at==null?null:Number(row.custom_id_expires_at),
     preferences:parsed(row.preferences_json),
     free_say_hi_remaining:Math.max(0,4-Number(row.free_say_hi_used??0)),
     free_say_hi_max_words:30,
