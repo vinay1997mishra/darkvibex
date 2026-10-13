@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../ui/tinni_style.dart';
 import 'coin_seller_screen.dart';
 
 class WalletScreen extends StatelessWidget {
@@ -12,7 +13,8 @@ class WalletScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
-      builder: (context, _) => ListView(
+      builder: (context, _) => TinniBackground(
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Row(
@@ -20,7 +22,7 @@ class WalletScreen extends StatelessWidget {
               const Expanded(
                 child: Text(
                   'Wallet',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+                  style: TextStyle(color: TinniPalette.gold, fontSize: 27, fontWeight: FontWeight.w900),
                 ),
               ),
               IconButton(
@@ -96,6 +98,7 @@ class WalletScreen extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -117,7 +120,8 @@ class _BalanceCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        gradient: const LinearGradient(colors: [Color(0xFF120D04), Color(0xFF050402)]),
+        border: Border.all(color: TinniPalette.deepGold),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
