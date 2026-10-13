@@ -624,6 +624,109 @@ class BackendApi {
   Future<Map<String, dynamic>?> claimInboxRedEnvelope({required String userId, required String envelopeId}) =>
       _json('POST', '/api/messages/red-envelope/${Uri.encodeComponent(envelopeId)}/claim', body: {'user_id': userId});
 
+  Future<Map<String, dynamic>?> coinsHistory({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/wallet/coins/history?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> diamondsHistory({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/wallet/diamonds/history?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> convertDiamonds({
+    required String userId,
+    required int diamonds,
+  }) =>
+      _json(
+        'POST',
+        '/api/wallet/diamonds/convert',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'diamonds': diamonds,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> roleWalletDetail({
+    required String userId,
+    required String walletType,
+  }) =>
+      _json(
+        'GET',
+        '/api/wallet/role-detail?user_id=${Uri.encodeQueryComponent(userId)}'
+        '&wallet_type=${Uri.encodeQueryComponent(walletType)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> setRoleWalletCredential({
+    required String userId,
+    required String walletType,
+    required String credential,
+    String? oldCredential,
+  }) =>
+      _json(
+        'POST',
+        '/api/wallet/role-credential',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'wallet_type': walletType,
+          'credential': credential,
+          if (oldCredential != null) 'old_credential': oldCredential,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> roleWalletCoinTransfer({
+    required String userId,
+    required String walletType,
+    required String receiverUserId,
+    required int coins,
+    required String credential,
+  }) =>
+      _json(
+        'POST',
+        '/api/wallet/role-coins/transfer',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'wallet_type': walletType,
+          'receiver_user_id': receiverUserId,
+          'coins': coins,
+          'credential': credential,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> roleWalletDollarWithdrawal({
+    required String userId,
+    required String walletType,
+    required String destinationType,
+    required int amountUsdCents,
+    required String credential,
+    String destinationValue = '',
+  }) =>
+      _json(
+        'POST',
+        '/api/wallet/role-dollars/withdraw',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'wallet_type': walletType,
+          'destination_type': destinationType,
+          'destination_value': destinationValue,
+          'amount_usd_cents': amountUsdCents,
+          'credential': credential,
+        },
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> wallet({
     required String userId,
   }) =>
@@ -798,6 +901,7 @@ class BackendApi {
     required String sellerUserId,
     required String receiverUserId,
     required int coins,
+    required String pin,
   }) =>
       _json(
         'POST',
