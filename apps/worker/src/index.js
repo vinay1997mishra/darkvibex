@@ -6,6 +6,37 @@ import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureSupportSchema } from "./support_store.js";
 import {
+  ensureTinniSocialSchema,
+  profileStats,
+  followUser,
+  followStatus,
+  listFollowers,
+  listFollowing,
+  taskState,
+  claimTask as claimMineTask,
+  feedbackHistory,
+  submitFeedback,
+  medalState,
+  familyList,
+  familyCreate,
+  familyState,
+  familyRequestJoin,
+  familyResolveJoin,
+  familySetAdmin,
+  familyRemoveMember,
+  familyLeave,
+  familyUpdateNotice,
+  familyCheckIn,
+  cpState,
+  cpRequest,
+  cpRespond,
+  cpDisconnect,
+  cpAddMemory,
+  cpMemories,
+  cpRanking,
+} from "./tinni_social.js";
+
+import {
   acceptPendingLampMicInvite,
   claimLampTask,
   createLampMicInvite,
@@ -612,6 +643,293 @@ async function handleApi(request, env, url) {
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  if (url.pathname === "/api/social/stats" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const targetId = userId || String(session.sub);
+    await ensureTinniSocialSchema(db);
+    return json({ ok: true, stats: await profileStats(db, targetId) });
+  }
+
+  if (url.pathname === "/api/social/follow" && request.method === "GET") {
+    const actor = String(url.searchParams.get("user_id") ?? "").trim();
+    const target = String(url.searchParams.get("target_user_id") ?? "").trim();
+    const authError = await requireSession(request, env, actor);
+    if (authError) return authError;
+    return json({ ok: true, following: await followStatus(db, actor, target) });
+  }
+
+  if (url.pathname === "/api/social/follow" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const actor = String(body.user_id ?? "").trim();
+    const target = String(body.target_user_id ?? "").trim();
+    const authError = await requireSession(request, env, actor);
+    if (authError) return authError;
+    try {
+      return json(await followUser(db, actor, target, body.follow !== false));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/social/followers" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const targetId = userId || String(session.sub);
+    return json({ ok: true, followers: await listFollowers(db, targetId) });
+  }
+
+  if (url.pathname === "/api/social/following" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const targetId = userId || String(session.sub);
+    return json({ ok: true, following: await listFollowing(db, targetId) });
+  }
+
+  if (url.pathname === "/api/tasks" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, tasks: await taskState(db, userId) });
+  }
+
+  if (url.pathname === "/api/tasks/claim" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await claimMineTask(db, userId, body.task_id));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/feedback" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, feedback: await feedbackHistory(db, userId) });
+  }
+
+  if (url.pathname === "/api/feedback" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await submitFeedback(db, userId, body.category, body.message), { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/medals" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, medals: await medalState(db, userId) });
+  }
+
+  if (url.pathname === "/api/family/list" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    return json({
+      ok: true,
+      families: await familyList(db, url.searchParams.get("limit") ?? 100),
+    });
+  }
+
+  if (url.pathname === "/api/family" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, ...(await familyState(db, userId)) });
+  }
+
+  if (url.pathname === "/api/family/create" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyCreate(db, userId, body.name, body.tag), { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/join-request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyRequestJoin(db, userId, String(body.family_id ?? "")));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/join-request/resolve" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyResolveJoin(
+        db,
+        userId,
+        String(body.target_user_id ?? ""),
+        body.approve === true,
+      ));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/admin" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familySetAdmin(
+        db,
+        userId,
+        String(body.target_user_id ?? ""),
+        body.admin === true,
+      ));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/member/remove" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyRemoveMember(
+        db,
+        userId,
+        String(body.target_user_id ?? ""),
+      ));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/leave" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyLeave(db, userId));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/notice" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyUpdateNotice(db, userId, body.notice));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/check-in" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyCheckIn(db, userId));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/cp/ranking" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    return json({
+      ok: true,
+      ranking: await cpRanking(db, url.searchParams.get("limit") ?? 100),
+    });
+  }
+
+  if (url.pathname === "/api/cp" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, cp: await cpState(db, userId) });
+  }
+
+  if (url.pathname === "/api/cp/request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok: true, cp: await cpRequest(db, userId, String(body.target_user_id ?? "")) }, { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/cp/respond" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok: true, cp: await cpRespond(db, userId, body.accept === true) });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/cp/disconnect" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json(await cpDisconnect(db, userId));
+  }
+
+  if (url.pathname === "/api/cp/memories" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, memories: await cpMemories(db, userId) });
+  }
+
+  if (url.pathname === "/api/cp/memories" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok: true, memory: await cpAddMemory(db, userId, body.text) }, { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
   }
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
