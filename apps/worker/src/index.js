@@ -638,6 +638,18 @@ async function ensureLegalConsentTable(db) {
   ).run();
 }
 
+async function ensureDiamondConversionTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS diamond_conversions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    diamonds INTEGER NOT NULL CHECK(diamonds>0),
+    coins INTEGER NOT NULL CHECK(coins>=0),
+    rate REAL NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+}
+
 async function ensureAuthIdentityTable(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_auth_identities (
     provider TEXT NOT NULL,
@@ -3113,6 +3125,110 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, receiverId);
     const usage = await consumeFreeSayHi(db, userId, receiverId, body.message);
     return json({ ok: true, usage });
+  }
+
+  if (url.pathname === "/api/wallet/coins/history" && request.method === "GET") {
+    const userId=String(url.searchParams.get("user_id") ?? "").trim();
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    const user=await ensureUser(db,userId);
+    const gifts=await db.prepare(
+      `SELECT g.id,g.gift_id,
+              COALESCE(u.display_name,g.receiver_user_id) AS receiver_name,
+              g.receiver_user_id,g.coin_cost AS coins,g.created_at
+         FROM gift_events g
+         LEFT JOIN users u ON u.id=g.receiver_user_id
+        WHERE g.sender_user_id=?
+        ORDER BY g.created_at DESC LIMIT 200`
+    ).bind(userId).all();
+    const sellerReceived=await db.prepare(
+      `SELECT l.id,l.kind,l.amount AS coins,l.reference_id,l.created_at,
+              CASE WHEN l.kind='merchant_received' THEN 'merchant' ELSE 'coin_seller' END AS wallet_type
+         FROM wallet_ledger l
+        WHERE l.user_id=? AND l.kind IN ('coin_seller_received','merchant_received')
+        ORDER BY l.created_at DESC LIMIT 200`
+    ).bind(userId).all();
+    return json({
+      ok:true,
+      current_coins:Number(user?.coins ?? 0),
+      gifts:gifts.results ?? [],
+      seller_received:sellerReceived.results ?? [],
+    });
+  }
+
+  if (url.pathname === "/api/wallet/diamonds/history" && request.method === "GET") {
+    const userId=String(url.searchParams.get("user_id") ?? "").trim();
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    await ensureDiamondConversionTable(db);
+    const user=await ensureUser(db,userId);
+    const gifts=await db.prepare(
+      `SELECT g.id,g.gift_id,
+              COALESCE(u.display_name,g.sender_user_id) AS sender_name,
+              g.sender_user_id,g.coin_cost AS diamonds,g.created_at
+         FROM gift_events g
+         LEFT JOIN users u ON u.id=g.sender_user_id
+        WHERE g.receiver_user_id=?
+        ORDER BY g.created_at DESC LIMIT 200`
+    ).bind(userId).all();
+    const conversions=await db.prepare(
+      "SELECT id,diamonds,coins,rate,created_at FROM diamond_conversions WHERE user_id=? ORDER BY created_at DESC LIMIT 200"
+    ).bind(userId).all();
+    return json({
+      ok:true,
+      current_diamonds:Number(user?.diamonds ?? 0),
+      gifts:gifts.results ?? [],
+      conversions:conversions.results ?? [],
+    });
+  }
+
+  if (url.pathname === "/api/wallet/diamonds/convert" && request.method === "POST") {
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim();
+    const diamonds=Number(body.diamonds ?? 0);
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    if(!Number.isSafeInteger(diamonds)||diamonds<=0){
+      return json({ok:false,error:"invalid_diamond_amount"},{status:400});
+    }
+    await ensureDiamondConversionTable(db);
+    const user=await ensureUser(db,userId);
+    if(Number(user?.diamonds ?? 0)<diamonds){
+      return json({ok:false,error:"insufficient_diamonds"},{status:409});
+    }
+    const policy=await ownerSetting(
+      db,
+      "economy.diamond_conversion",
+      {coins_per_diamond:1},
+    );
+    const rate=Math.max(0,Number(policy?.coins_per_diamond ?? 1));
+    const coins=Math.floor(diamonds*rate);
+    if(!Number.isSafeInteger(coins)||coins<0){
+      return json({ok:false,error:"invalid_conversion_policy"},{status:500});
+    }
+    const nextDiamonds=Number(user.diamonds)-diamonds;
+    const nextCoins=Number(user.coins ?? 0)+coins;
+    const conversionId=id();
+    const ts=now();
+    await db.batch([
+      db.prepare("UPDATE users SET diamonds=?,coins=?,updated_at=? WHERE id=?")
+        .bind(nextDiamonds,nextCoins,ts,userId),
+      db.prepare(
+        "INSERT INTO diamond_conversions(id,user_id,diamonds,coins,rate,created_at) VALUES(?,?,?,?,?,?)"
+      ).bind(conversionId,userId,diamonds,coins,rate,ts),
+      db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+      ).bind(id(),userId,"diamond_conversion",coins,nextCoins,conversionId,ts),
+    ]);
+    return json({
+      ok:true,
+      conversion_id:conversionId,
+      diamonds,
+      coins,
+      current_diamonds:nextDiamonds,
+      current_coins:nextCoins,
+      rate,
+    });
   }
 
   if (url.pathname === "/api/wallet/role-detail" && request.method === "GET") {
