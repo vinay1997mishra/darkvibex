@@ -42,6 +42,7 @@ import {
   cpAddMemory,
   cpMemories,
   cpRanking,
+  recordCpGiftProgress,
   vsState,
   vsRequest,
   vsRespond,
@@ -4050,8 +4051,19 @@ async function handleApi(request, env, url) {
     ]);
     await awardIdLevelGift(db, sender, cost, eventId, now());
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
+    let cpProgress = null;
     let vsProgress = null;
-    if (String(gift.category ?? "").toLowerCase() === "vs") {
+    const giftCategory = String(gift.category ?? "").toLowerCase();
+    if (giftCategory === "cp" && giftId !== "cp-invite") {
+      cpProgress = await recordCpGiftProgress(
+        db,
+        sender,
+        receiver,
+        cost,
+        eventId,
+      );
+    }
+    if (giftCategory === "vs") {
       vsProgress = await recordVsGiftProgress(
         db,
         sender,
@@ -4064,6 +4076,8 @@ async function handleApi(request, env, url) {
       ok: true,
       event_id: eventId,
       sender_coin_balance: balance,
+      cp_progress: Number(cpProgress?.progress ?? 0),
+      cp_state: cpProgress?.cp ?? null,
       vs_progress: Number(vsProgress?.progress ?? 0),
       vs_state: vsProgress?.vs ?? null,
     });
