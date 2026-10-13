@@ -1568,6 +1568,20 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> cpSetRing({
+    required String userId,
+    String? ringId,
+  }) =>
+      _json(
+        'POST',
+        '/api/cp/ring',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'ring_id': ringId ?? '',
+        },
+        returnErrorBody: true,
+      );
+
   Future<List<Map<String, dynamic>>> cpMemories({
     required String userId,
   }) async {
