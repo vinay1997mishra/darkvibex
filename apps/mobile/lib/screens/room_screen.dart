@@ -73,6 +73,7 @@ class _RoomScreenState extends State<RoomScreen> {
   String roomThemeId = 'dark';
   String roomSeatThemeId = 'royal-gold';
   late String roomPartyMode;
+  late String roomMode;
   bool groupPkEnabled = false;
   String roomMicMode = 'free';
   bool publicScreenEnabled = true;
@@ -95,6 +96,7 @@ class _RoomScreenState extends State<RoomScreen> {
     roomName = widget.room.name;
     roomSeatCount = widget.room.seatCount;
     roomPartyMode = widget.room.partyMode;
+    roomMode = widget.room.roomMode;
     unawaited(roomMusic.loadLocalSongs());
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
@@ -493,6 +495,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
       roomSeatThemeId = settings['seat_theme_id']?.toString() ?? roomSeatThemeId;
       roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
+      roomMode = settings['room_mode']?.toString() ?? roomMode;
       groupPkEnabled = settings['group_pk_enabled'] == true || settings['group_pk_enabled']?.toString() == '1';
       final text = settings['announcement']?.toString().trim() ?? '';
       roomAnnouncement = text.isEmpty ? null : text;
@@ -515,6 +518,7 @@ class _RoomScreenState extends State<RoomScreen> {
     var locked = roomLocked;
     var themeId = roomThemeId;
     var partyMode = roomPartyMode;
+    var selectedRoomMode = roomMode;
     var pkEnabled = groupPkEnabled;
     var welcomeImageKey = roomWelcomeImageKey ?? '';
     var welcomeUploading = false;
@@ -536,6 +540,24 @@ class _RoomScreenState extends State<RoomScreen> {
                       .toList(),
                   onChanged: (value) { if (value != null) setDialogState(() => seatCount = value); },
                 ),
+                DropdownButtonFormField<String>(
+                  value: selectedRoomMode,
+                  decoration: const InputDecoration(
+                    labelText: 'Room type',
+                    helperText: 'Voice, Game or Live mode',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'voice', child: Text('Voice Room')),
+                    DropdownMenuItem(value: 'game', child: Text('Game Room')),
+                    DropdownMenuItem(value: 'live', child: Text('Live Room')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => selectedRoomMode = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: partyMode,
                   decoration: const InputDecoration(labelText: 'Party mode'),
@@ -718,6 +740,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   'announcement': announcement.text.trim(),
                   'theme_id': themeId,
                   'party_mode': partyMode,
+                  'room_mode': selectedRoomMode,
                   'group_pk_enabled': pkEnabled,
                   'welcome_image_key': welcomeImageKey,
                 });
@@ -741,6 +764,7 @@ class _RoomScreenState extends State<RoomScreen> {
       announcement: result['announcement'] as String,
       themeId: result['theme_id'] as String,
       partyMode: result['party_mode'] as String,
+      roomMode: result['room_mode'] as String,
       groupPkEnabled: result['group_pk_enabled'] as bool,
       welcomeImageKey: result['welcome_image_key'] as String,
       seatThemeId: roomSeatThemeId,
@@ -758,6 +782,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomPasswordSet = roomLocked;
       roomThemeId = result['theme_id'] as String;
       roomPartyMode = result['party_mode'] as String;
+      roomMode = result['room_mode'] as String;
       groupPkEnabled = result['group_pk_enabled'] as bool;
       final welcomeKey = result['welcome_image_key'] as String;
       roomWelcomeImageKey = welcomeKey.isEmpty ? null : welcomeKey;
@@ -2253,6 +2278,7 @@ class _RoomScreenState extends State<RoomScreen> {
     bool? groupPk,
     bool? locked,
     String? partyMode,
+    String? nextRoomMode,
   }) async {
     final ok = await widget.state.backend.saveRoomSettings(
       roomId: widget.room.id,
@@ -2263,6 +2289,7 @@ class _RoomScreenState extends State<RoomScreen> {
       announcement: roomAnnouncement ?? '',
       themeId: themeId ?? roomThemeId,
       partyMode: partyMode ?? roomPartyMode,
+      roomMode: nextRoomMode ?? roomMode,
       groupPkEnabled: groupPk ?? groupPkEnabled,
       welcomeImageKey: roomWelcomeImageKey ?? '',
       seatThemeId: seatThemeId ?? roomSeatThemeId,
@@ -2276,6 +2303,7 @@ class _RoomScreenState extends State<RoomScreen> {
         if (groupPk != null) groupPkEnabled = groupPk;
         if (locked != null) roomLocked = locked;
         if (partyMode != null) roomPartyMode = partyMode;
+        if (nextRoomMode != null) roomMode = nextRoomMode;
       });
       await widget.state.refreshRooms();
     }
@@ -2592,7 +2620,7 @@ class _RoomScreenState extends State<RoomScreen> {
                               leading: const Icon(Icons.settings_rounded),
                               title: const Text('More room settings'),
                               subtitle: const Text(
-                                'Name, notice, welcome picture and party mode',
+                                'Room type, name, notice, welcome picture and party mode',
                               ),
                               trailing:
                                   const Icon(Icons.chevron_right_rounded),
@@ -3168,7 +3196,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 children: [
                   Text(roomName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
-                    'ID ${widget.room.id} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
+                    'ID ${widget.room.id} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
