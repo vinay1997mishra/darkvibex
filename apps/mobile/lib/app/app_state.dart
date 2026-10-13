@@ -869,4 +869,10 @@ class AppState extends ChangeNotifier {
     coins = value;
     notifyListeners();
   }
+
+  void setDiamondBalance(int value) {
+    if (value < 0) return;
+    diamonds = value;
+    notifyListeners();
+  }
 }
