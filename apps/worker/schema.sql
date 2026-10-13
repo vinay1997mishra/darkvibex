@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS room_settings (
   room_id TEXT PRIMARY KEY,
   announcement TEXT NOT NULL DEFAULT '',
   welcome_image_key TEXT NOT NULL DEFAULT '',
+  party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
 );
