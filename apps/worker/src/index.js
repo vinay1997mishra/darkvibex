@@ -488,6 +488,22 @@ async function ensureRoomLuckyPouchTables(db) {
   )`).run();
 }
 
+async function ensureRoomLuckyNumberTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_numbers (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    number_value INTEGER NOT NULL CHECK(number_value BETWEEN 1 AND 100),
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_room_lucky_numbers_room_time ON room_lucky_numbers(room_id, created_at DESC)"
+  ).run();
+}
+
 async function ensureInboxEnvelopeTables(db) {
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS inbox_red_envelopes (
@@ -2284,6 +2300,84 @@ async function handleApi(request, env, url) {
     }
     const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
     return json({ ok: true, amount: Number(claim.amount), coin_balance: Number(balance?.coins ?? 0) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "lucky-number") {
+    const roomId = parts[2];
+    await ensureRoomCoreSchema(db);
+    await ensureRoomLuckyNumberTable(db);
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const userId = String(session.sub);
+    const room = await db.prepare("SELECT id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+
+    if (request.method === "GET") {
+      const rows = await db.prepare(
+        `SELECT id,user_id,display_name,number_value AS number,created_at
+           FROM room_lucky_numbers
+          WHERE room_id = ?
+          ORDER BY created_at DESC
+          LIMIT 50`
+      ).bind(roomId).all();
+      return json({ ok: true, events: rows.results ?? [] });
+    }
+
+    if (request.method === "POST") {
+      const user = await db.prepare(
+        "SELECT display_name FROM users WHERE id = ? LIMIT 1"
+      ).bind(userId).first();
+      const max = 0x100000000;
+      const accepted = Math.floor(max / 100) * 100;
+      const raw = new Uint32Array(1);
+      do {
+        crypto.getRandomValues(raw);
+      } while (raw[0] >= accepted);
+      const number = Number(raw[0] % 100) + 1;
+      const eventId = "lucky-" + id();
+      const ts = now();
+      const displayName = String(user?.display_name ?? "User").trim() || "User";
+      await db.batch([
+        db.prepare(
+          "INSERT INTO room_lucky_numbers(id,room_id,user_id,display_name,number_value,created_at) VALUES(?,?,?,?,?,?)"
+        ).bind(eventId, roomId, userId, displayName, number, ts),
+        db.prepare(
+          `DELETE FROM room_lucky_numbers
+            WHERE room_id = ?
+              AND id NOT IN (
+                SELECT id FROM room_lucky_numbers
+                 WHERE room_id = ?
+                 ORDER BY created_at DESC
+                 LIMIT 100
+              )`
+        ).bind(roomId, roomId),
+      ]);
+      const rows = await db.prepare(
+        `SELECT id,user_id,display_name,number_value AS number,created_at
+           FROM room_lucky_numbers
+          WHERE room_id = ?
+          ORDER BY created_at DESC
+          LIMIT 50`
+      ).bind(roomId).all();
+      return json({
+        ok: true,
+        event: {
+          id: eventId,
+          user_id: userId,
+          display_name: displayName,
+          number,
+          created_at: ts,
+        },
+        events: rows.results ?? [],
+      }, { status: 201 });
+    }
+
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "controls") {
