@@ -262,7 +262,7 @@ class _ProfileVisitorsScreenState extends State<ProfileVisitorsScreen> {
                                       children: [
                                         Text(_visitedLabel(visitor['visit_count'])),
                                         Text(_visitedAtLabel(context, visitor['last_visited_at'])),
-                                        Text('ID $userId'),
+                                        if (userId.isNotEmpty) Text('ID $userId') else const Text('Visitor details hidden'),
                                       ],
                                     ),
                                     trailing: const Icon(Icons.person_outline_rounded),
