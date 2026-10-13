@@ -630,6 +630,30 @@ async function ensureLegalConsentTable(db) {
   ).run();
 }
 
+async function ensureUserBlockTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS user_blocks (
+    user_id TEXT NOT NULL,
+    blocked_user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, blocked_user_id),
+    CHECK (user_id <> blocked_user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (blocked_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+}
+
+async function usersBlockedEitherWay(db, firstUserId, secondUserId) {
+  await ensureUserBlockTable(db);
+  const row = await db.prepare(
+    `SELECT 1 AS blocked
+       FROM user_blocks
+      WHERE (user_id=? AND blocked_user_id=?)
+         OR (user_id=? AND blocked_user_id=?)
+      LIMIT 1`
+  ).bind(firstUserId, secondUserId, secondUserId, firstUserId).first();
+  return Boolean(row);
+}
+
 async function ensureDirectCallTable(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS direct_calls (
     id TEXT PRIMARY KEY,
@@ -782,6 +806,57 @@ async function handleApi(request, env, url) {
     return json({ ok: true, stats: await profileStats(db, targetId) });
   }
 
+  if (url.pathname === "/api/social/blocked" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserBlockTable(db);
+    const rows = await db.prepare(
+      `SELECT b.blocked_user_id AS user_id,
+              COALESCE(u.display_name,'User') AS display_name,
+              u.avatar_key,
+              b.created_at
+         FROM user_blocks b
+         LEFT JOIN users u ON u.id=b.blocked_user_id
+        WHERE b.user_id=?
+        ORDER BY b.created_at DESC`
+    ).bind(userId).all();
+    return json({ ok: true, blocked: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/social/block" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId || !targetId || userId === targetId) {
+      return json({ ok:false,error:"invalid_block_target" }, { status:400 });
+    }
+    await ensureUser(db, userId);
+    await ensureUser(db, targetId);
+    await ensureUserBlockTable(db);
+    if (body.blocked === false) {
+      await db.prepare(
+        "DELETE FROM user_blocks WHERE user_id=? AND blocked_user_id=?"
+      ).bind(userId,targetId).run();
+      return json({ ok:true, blocked:false });
+    }
+    await db.prepare(
+      `INSERT INTO user_blocks(user_id,blocked_user_id,created_at)
+       VALUES(?,?,?)
+       ON CONFLICT(user_id,blocked_user_id)
+       DO UPDATE SET created_at=excluded.created_at`
+    ).bind(userId,targetId,now()).run();
+    await db.batch([
+      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?")
+        .bind(userId,targetId),
+      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?")
+        .bind(targetId,userId),
+    ]);
+    return json({ ok:true, blocked:true });
+  }
+
   if (url.pathname === "/api/social/follow" && request.method === "GET") {
     const actor = String(url.searchParams.get("user_id") ?? "").trim();
     const target = String(url.searchParams.get("target_user_id") ?? "").trim();
@@ -796,6 +871,9 @@ async function handleApi(request, env, url) {
     const target = String(body.target_user_id ?? "").trim();
     const authError = await requireSession(request, env, actor);
     if (authError) return authError;
+    if (await usersBlockedEitherWay(db, actor, target)) {
+      return json({ ok:false,error:"blocked_user" }, { status:403 });
+    }
     try {
       return json(await followUser(db, actor, target, body.follow !== false));
     } catch (error) {
@@ -2652,6 +2730,9 @@ async function handleApi(request, env, url) {
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender, { checkMute: true });
     await ensureUserAllowed(db, receiver);
+    if (await usersBlockedEitherWay(db, sender, receiver)) {
+      return json({ ok:false,error:"blocked_user" }, { status:403 });
+    }
     const messageId = id();
     await ensureImageTables(db);
     const createdAt = now();
@@ -2986,6 +3067,9 @@ async function handleApi(request, env, url) {
     }
     await ensureDirectCallTable(db);
     await expireDirectCalls(db);
+    if (await usersBlockedEitherWay(db, callerId, receiverId)) {
+      return json({ ok:false,error:"blocked_user" }, { status:403 });
+    }
     const mutual = await db.prepare(
       `SELECT
          EXISTS(SELECT 1 FROM user_friends WHERE user_id=? AND friend_user_id=?) AS a,
