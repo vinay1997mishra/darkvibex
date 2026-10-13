@@ -1203,9 +1203,11 @@ class _RoomScreenState extends State<RoomScreen> {
           final error = joined?['error']?.toString() ?? '';
           final message = error == 'room_blocked'
               ? 'You are blocked from this room'
-              : error == 'room_locked'
-                  ? 'This locked room has no usable password yet'
-                  : 'This room is unavailable';
+              : error == 'room_country_mismatch'
+                  ? 'Only rooms from your selected country are available'
+                  : error == 'room_locked'
+                      ? 'This locked room has no usable password yet'
+                      : 'This room is unavailable';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(message)),
           );
