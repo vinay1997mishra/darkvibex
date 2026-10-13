@@ -23,6 +23,7 @@ import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
+import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
 
@@ -2097,6 +2098,60 @@ class _RoomScreenState extends State<RoomScreen> {
     ));
   }
 
+  Future<void> _cleanupMinimizedRoom() async {
+    if (widget.state.backendConnected) {
+      try {
+        await widget.state.backend.leaveRoom(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+        );
+      } catch (_) {}
+    }
+    try {
+      await roomMusic.stopRoomPlayback();
+    } catch (_) {}
+    try {
+      await rtc?.setMicPublished(false);
+    } catch (_) {}
+    try {
+      if (cameraPublished && rtc is LiveKitRtcAdapter) {
+        await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+      }
+    } catch (_) {}
+    try {
+      await rtc?.leave();
+    } catch (_) {}
+  }
+
+  Future<void> _minimizeRoom() async {
+    if (!mounted) return;
+    final displayRoom = RoomSummary(
+      id: widget.room.id,
+      name: roomName,
+      ownerName: widget.room.ownerName,
+      ownerUserId: widget.room.ownerUserId,
+      online: roomMembers.length,
+      seatCount: roomSeatCount,
+      avatarKey: roomAvatarKey,
+      partyMode: roomPartyMode,
+      roomMode: roomMode,
+    );
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => HomeShell(
+          state: widget.state,
+          minimizedRoom: displayRoom,
+          onResumeRoom: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+          onCloseMinimizedRoom: _cleanupMinimizedRoom,
+        ),
+      ),
+    );
+  }
+
   Future<void> _leaveRoom() async {
     if (widget.state.backendConnected) {
       final ok = await widget.state.backend.leaveRoom(
@@ -4165,6 +4220,12 @@ class _RoomScreenState extends State<RoomScreen> {
     return Scaffold(
       backgroundColor: _roomThemeColor,
       appBar: AppBar(
+        leading: IconButton(
+          key: const Key('room-minimize-button'),
+          tooltip: 'Minimize room',
+          onPressed: _minimizeRoom,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+        ),
         title: Row(
           children: [
             CircleAvatar(
