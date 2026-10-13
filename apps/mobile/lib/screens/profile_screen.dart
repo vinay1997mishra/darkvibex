@@ -116,6 +116,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _showPeopleList(
+    BuildContext context, {
+    required String title,
+    required Future<List<Map<String, dynamic>>> Function() load,
+  }) async {
+    final rows = await load();
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .68,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Text('${rows.length}'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: rows.isEmpty
+                    ? Center(child: Text('No $title yet'))
+                    : ListView.builder(
+                        itemCount: rows.length,
+                        itemBuilder: (itemContext, index) {
+                          final row = rows[index];
+                          final id = (row['id'] ??
+                                  row['user_id'] ??
+                                  row['target_user_id'] ??
+                                  row['follower_id'])
+                              ?.toString() ??
+                              '';
+                          final avatarKey =
+                              row['avatar_key']?.toString() ?? '';
+                          final name =
+                              row['display_name']?.toString().trim();
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: TinniPalette.panel2,
+                              backgroundImage: avatarKey.isEmpty
+                                  ? null
+                                  : NetworkImage(
+                                      state.backend.fileUrl(avatarKey),
+                                      headers: state.backend.fileHeaders,
+                                    ),
+                              child: avatarKey.isEmpty
+                                  ? const Icon(Icons.person_rounded)
+                                  : null,
+                            ),
+                            title: Text(
+                              name == null || name.isEmpty
+                                  ? (id.isEmpty ? 'User' : 'User $id')
+                                  : name,
+                            ),
+                            subtitle:
+                                id.isEmpty ? null : Text('ID $id'),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: id.isEmpty
+                                ? null
+                                : () => Navigator.of(sheetContext).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => PublicProfileScreen(
+                                          state: state,
+                                          userId: id,
+                                        ),
+                                      ),
+                                    ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showVisitors(BuildContext context) async {
     final visitors = await state.backend.profileVisitors(userId: state.userId);
     if (!context.mounted) return;
@@ -345,11 +438,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _mineCount(
                   (socialStats['following_count'] ?? 0).toString(),
                   'Follow',
+                  onTap: () => _showPeopleList(
+                    context,
+                    title: 'Following',
+                    load: () => state.backend.following(
+                      userId: state.userId,
+                    ),
+                  ),
                 ),
                 const _MineDivider(),
                 _mineCount(
                   (socialStats['followers_count'] ?? 0).toString(),
                   'Fans',
+                  onTap: () => _showPeopleList(
+                    context,
+                    title: 'Followers',
+                    load: () => state.backend.followers(
+                      userId: state.userId,
+                    ),
+                  ),
                 ),
                 const _MineDivider(),
                 _mineCount(
@@ -675,25 +782,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _mineCount(String value, String label) => Expanded(
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                color: TinniPalette.gold,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
+  Widget _mineCount(
+    String value,
+    String label, {
+    VoidCallback? onTap,
+  }) =>
+      Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Column(
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: TinniPalette.gold,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: TinniPalette.muted,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
             ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: TinniPalette.muted,
-                fontSize: 10,
-              ),
-            ),
-          ],
+          ),
         ),
       );
 
