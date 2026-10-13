@@ -82,6 +82,22 @@ class BackendApi {
     } catch (_) { return null; } finally { client.close(force: true); }
   }
 
+  Future<Map<String, dynamic>?> saveUserProfile({
+    required String userId,
+    required String displayName,
+    required String dateOfBirth,
+  }) =>
+      _json(
+        'POST',
+        '/api/users/profile',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'display_name': displayName,
+          'date_of_birth': dateOfBirth,
+        },
+        returnErrorBody: true,
+      );
+
   Future<bool> setUserAvatar({required String userId, required String avatarKey}) async {
     final value = await _json('POST', '/api/users/avatar', body: {'user_id': userId, 'avatar_key': avatarKey});
     return value?['ok'] == true;
