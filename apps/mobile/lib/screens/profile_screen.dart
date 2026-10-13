@@ -231,15 +231,7 @@ class ProfileScreen extends StatelessWidget {
                     builder: (_) => WalletScreen(state: state),
                   )),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.storefront_rounded),
-                  title: const Text('Coin Seller'),
-                  subtitle: const Text('Coin seller tools'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
-                    builder: (_) => CoinSellerScreen(state: state),
-                  )),
-                ),
+                _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
                 ListTile(
                   leading: const Icon(Icons.workspace_premium_rounded),
                   title: const Text('VIP'),
@@ -247,11 +239,17 @@ class ProfileScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => VipScreen(state: state),
-                    ),
+                    MaterialPageRoute<void>(builder: (_) => VipScreen(state: state)),
                   ),
                 ),
+                _item(context, state, Icons.diamond_rounded, 'Wealth Level', 'Lifetime gift spending level'),
+                _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
+                _item(context, state, Icons.store_rounded, 'Store', 'Frames, vehicles and entry effects'),
+                _item(context, state, Icons.task_alt_rounded, 'Task', 'Daily and account tasks'),
+                _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
+                _item(context, state, Icons.chat_bubble_rounded, 'Feedback', 'Send feedback and view history'),
+                _item(context, state, Icons.edit_rounded, 'Edit Profile', 'Name, country and gender'),
+                _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
                 ListTile(
                   leading: const Icon(Icons.military_tech_rounded, color: Color(0xFFFFD88A)),
                   title: const Text('ID Level'),
@@ -275,6 +273,16 @@ class ProfileScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _showVisitors(context),
                 ),
+                _item(context, state, Icons.security_rounded, 'Blacklist', 'Blocked profiles and unblock controls'),
+                ListTile(
+                  leading: const Icon(Icons.storefront_rounded),
+                  title: const Text('Coin Seller'),
+                  subtitle: const Text('Coin seller tools'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => CoinSellerScreen(state: state),
+                  )),
+                ),
                 if (state.hasVipPrivilege('customer_service'))
                   ListTile(
                     leading: const Icon(Icons.support_agent_rounded),
@@ -283,16 +291,6 @@ class ProfileScreen extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => VipSupportScreen(state: state))),
                   ),
-                _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
-                _item(context, state, Icons.edit_rounded, 'Edit Profile', 'Name, country and gender'),
-                _item(context, state, Icons.diamond_rounded, 'Wealth Level', 'Lifetime gift spending level'),
-                _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
-                _item(context, state, Icons.task_alt_rounded, 'Task', 'Daily and account tasks'),
-                _item(context, state, Icons.chat_bubble_rounded, 'Feedback', 'Send feedback and view history'),
-                _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
-                _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
-                _item(context, state, Icons.store_rounded, 'Store', 'Frames, vehicles and entry effects'),
-                _item(context, state, Icons.security_rounded, 'Blacklist', 'Blocked profiles and unblock controls'),
                 _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
                 _item(context, state, Icons.description_outlined, 'Terms & Privacy', 'Room rules, terms and privacy notice'),
                 ListTile(
