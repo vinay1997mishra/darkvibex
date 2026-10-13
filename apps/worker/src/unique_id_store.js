@@ -1,4 +1,4 @@
-import { ensureVipSchema } from "./vip_store.js";
+import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 
 const seeds = [
   { public_id: "1111", price_coins: 500000, duration_days: 30 },
@@ -73,6 +73,7 @@ export async function uniqueIdCatalog(db, ts=Date.now()) {
 
 export async function purchaseUniqueId(db,userId,publicId,ts=Date.now()) {
   await ensureUniqueIdStoreSchema(db);
+  await getVipStatus(db,userId,ts);
   const requested=String(publicId ?? "").trim();
   if(!/^\d{4,8}$/.test(requested)) throw new Error("invalid_unique_id");
   const item=await db.prepare(
