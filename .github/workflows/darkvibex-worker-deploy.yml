@@ -1,0 +1,56 @@
+name: DarkVibeX Worker Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/worker/**"
+      - "apps/owner_panel/**"
+      - ".github/workflows/darkvibex-worker-deploy.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Cloudflare deploy credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare deploy blocked: add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to this GitHub repository's Actions secrets."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Worker dependencies
+        working-directory: apps/worker
+        run: npm install --no-audit --no-fund
+
+      - name: Verify Worker tests
+        working-directory: apps/worker
+        run: npm test
+
+      - name: Deploy Worker
+        working-directory: apps/worker
+        run: npx wrangler deploy
+
+      - name: Verify deployed Worker and Google auth config
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://darkvibex-api.mishrajii7991.workers.dev"
+          curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/health"
+          echo
+          curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/api/auth/config" |
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s);if(!c.ok||!c.google_web_client_id){console.error("Google auth config is missing.");process.exit(1)}console.log("Google auth config is present.")})'
