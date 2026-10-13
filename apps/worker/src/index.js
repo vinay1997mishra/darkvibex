@@ -3036,6 +3036,14 @@ async function handleApi(request, env, url) {
       await db.prepare(
         "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=?"
       ).bind(nextCountry,ts,userId).run();
+      await db.prepare(
+        `DELETE FROM room_members
+          WHERE user_id=?
+            AND room_id IN (
+              SELECT id FROM rooms
+               WHERE country_code<>? AND owner_user_id<>?
+            )`
+      ).bind(userId,nextCountry,userId).run();
     } else if (nextCountry && !oldCountry) {
       await db.prepare(
         "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=? AND COALESCE(country_code,'')=''"
