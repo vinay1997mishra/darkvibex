@@ -2309,6 +2309,19 @@ class _RoomScreenState extends State<RoomScreen> {
     );
     if (!mounted) return ok;
     if (ok) {
+      if (nextRoomMode != null &&
+          nextRoomMode != 'live' &&
+          cameraPublished &&
+          rtc is LiveKitRtcAdapter) {
+        try {
+          await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+          if (mounted) {
+            cameraPublished = false;
+            localVideoTrack = null;
+          }
+        } catch (_) {}
+      }
+      if (!mounted) return ok;
       setState(() {
         if (seatCount != null) roomSeatCount = seatCount;
         if (themeId != null) roomThemeId = themeId;
@@ -2438,6 +2451,62 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!mounted || ok) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Room theme could not be changed')),
+    );
+  }
+
+  Future<void> _showRoomModeSelector() async {
+    if (!isRoomHost) return;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.meeting_room_rounded),
+              title: Text(
+                'Room Mode',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text('Choose how this room is used'),
+            ),
+            for (final entry in const <(String, String, IconData)>[
+              ('voice', 'Voice Room', Icons.mic_rounded),
+              ('game', 'Game Room', Icons.sports_esports_rounded),
+              ('live', 'Live Room', Icons.videocam_rounded),
+            ])
+              ListTile(
+                leading: Icon(entry.$3),
+                title: Text(entry.$2),
+                trailing: roomMode == entry.$1
+                    ? const Icon(
+                        Icons.check_circle_rounded,
+                        color: TinniPalette.gold,
+                      )
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, entry.$1),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || selected == roomMode) return;
+    final ok = await _saveRoomConfiguration(nextRoomMode: selected);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Room changed to ${switch (selected) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }}.'
+              : 'Room mode could not be changed.',
+        ),
+      ),
     );
   }
 
@@ -2571,6 +2640,30 @@ class _RoomScreenState extends State<RoomScreen> {
                       ListView(
                         padding: const EdgeInsets.all(12),
                         children: [
+                          if (isRoomHost)
+                            ListTile(
+                              leading: Icon(
+                                switch (roomMode) {
+                                  'game' => Icons.sports_esports_rounded,
+                                  'live' => Icons.videocam_rounded,
+                                  _ => Icons.mic_rounded,
+                                },
+                              ),
+                              title: const Text('Room Mode'),
+                              subtitle: Text(
+                                switch (roomMode) {
+                                  'game' => 'Game Room',
+                                  'live' => 'Live Room',
+                                  _ => 'Voice Room',
+                                },
+                              ),
+                              trailing:
+                                  const Icon(Icons.chevron_right_rounded),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _showRoomModeSelector();
+                              },
+                            ),
                           ListTile(
                             leading: const Icon(Icons.event_seat_rounded),
                             title: const Text('Room Seats'),
