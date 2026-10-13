@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -48,6 +49,7 @@ class AppState extends ChangeNotifier {
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
   String? avatarKey;
+  String? dateOfBirth;
   String? sessionToken;
   String? authProvider;
   bool backendConnected = false;
@@ -307,6 +309,7 @@ class AppState extends ChangeNotifier {
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
     avatarKey = user['avatar_key']?.toString();
+    dateOfBirth = user['date_of_birth']?.toString();
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
@@ -567,6 +570,51 @@ class AppState extends ChangeNotifier {
     }
     customVipId = result?['custom_id']?.toString() ?? clean;
     await refreshVip(notify: false);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> completeLoginProfile({
+    required String name,
+    required String dateOfBirthValue,
+    Uint8List? avatarBytes,
+    String avatarExtension = 'jpg',
+    String avatarContentType = 'image/jpeg',
+  }) async {
+    if (!isAuthenticated || !backendConnected) return false;
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return false;
+
+    final profile = await backend.saveUserProfile(
+      userId: userId,
+      displayName: cleanName,
+      dateOfBirth: dateOfBirthValue.trim(),
+    );
+    if (profile?['ok'] != true) {
+      authError = 'Profile details could not be saved.';
+      notifyListeners();
+      return false;
+    }
+
+    displayName = cleanName;
+    dateOfBirth = dateOfBirthValue.trim();
+
+    if (avatarBytes != null && avatarBytes.isNotEmpty) {
+      final ext = avatarExtension.toLowerCase() == 'jpeg'
+          ? 'jpg'
+          : avatarExtension.toLowerCase();
+      final key = await backend.uploadImage(
+        key: 'users/$userId/avatar-${DateTime.now().microsecondsSinceEpoch}.$ext',
+        bytes: avatarBytes,
+        contentType: avatarContentType,
+      );
+      if (key != null &&
+          await backend.setUserAvatar(userId: userId, avatarKey: key)) {
+        avatarKey = key;
+      }
+    }
+
+    authError = null;
     notifyListeners();
     return true;
   }
