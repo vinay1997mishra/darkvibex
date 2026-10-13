@@ -13,7 +13,6 @@ import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
-import '../vip/vip_policy.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/vehicle_entry_effect.dart';
@@ -2384,49 +2383,6 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  Future<void> _showMicThemeSelector() async {
-    if (!isRoomHost) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: TinniPalette.nearBlack,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              leading: Icon(Icons.auto_awesome_rounded),
-              title: Text(
-                'Mic Theme',
-                style: TextStyle(
-                  color: TinniPalette.gold,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            for (final entry in const <(String, String)>[
-              ('royal-gold', 'Royal Gold'),
-              ('neon-blue', 'Neon Blue'),
-              ('rose-glow', 'Rose Glow'),
-            ])
-              RadioListTile<String>(
-                value: entry.$1,
-                groupValue: roomSeatThemeId,
-                title: Text(entry.$2),
-                onChanged: (value) => Navigator.pop(sheetContext, value),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (selected == null || selected == roomSeatThemeId) return;
-    final ok = await _saveRoomConfiguration(seatThemeId: selected);
-    if (!mounted || ok) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Mic theme could not be changed')),
-    );
-  }
-
   Future<void> _toggleGroupPk() async {
     if (!isRoomHost) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2698,6 +2654,30 @@ class _RoomScreenState extends State<RoomScreen> {
         'Room Type',
         Icons.dashboard_customize_rounded,
         _showRoomTypePanel,
+        isRoomAdmin,
+      ),
+      (
+        'Games',
+        Icons.sports_esports_rounded,
+        _openGames,
+        true,
+      ),
+      (
+        'Photo',
+        Icons.image_rounded,
+        _sendRoomImage,
+        !uploadingRoomImage,
+      ),
+      (
+        cameraPublished ? 'Camera On' : 'Camera',
+        cameraPublished ? Icons.videocam_rounded : Icons.videocam_outlined,
+        _toggleCamera,
+        mySeat != null,
+      ),
+      (
+        'Blacklist',
+        Icons.block_rounded,
+        _showRoomBlacklist,
         isRoomAdmin,
       ),
       (
