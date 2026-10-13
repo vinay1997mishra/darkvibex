@@ -1012,6 +1012,35 @@ class PublicProfileScreen extends StatefulWidget {
   State<PublicProfileScreen> createState() => _PublicProfileScreenState();
 }
 
+class _PublicStat extends StatelessWidget {
+  const _PublicStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: TinniPalette.gold,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: TinniPalette.muted,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      );
+}
+
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final Object _privacyScope = Object();
   Map<String, dynamic>? user;
