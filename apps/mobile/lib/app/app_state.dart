@@ -49,7 +49,6 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
-    userRole = 'user';
   String userRole = 'user';
   String countryCode = '';
   String gender = '';
