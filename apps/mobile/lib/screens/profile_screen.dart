@@ -288,6 +288,7 @@ class ProfileScreen extends StatelessWidget {
                   onTap: () => _showVisitors(context),
                 ),
                 _item(context, state, Icons.security_rounded, 'Blacklist', 'Blocked profiles and unblock controls'),
+                if (state.userRole == 'coin_seller')
                 ListTile(
                   leading: const Icon(Icons.storefront_rounded),
                   title: const Text('Coin Seller'),
