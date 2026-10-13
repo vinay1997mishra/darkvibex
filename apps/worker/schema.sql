@@ -5,6 +5,10 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL DEFAULT '',
   avatar_key TEXT,
   date_of_birth TEXT,
+  country_code TEXT,
+  country_name TEXT,
+  flag_emoji TEXT,
+  language TEXT NOT NULL DEFAULT 'English',
   role TEXT NOT NULL DEFAULT 'user'
     CHECK (role IN (
       'user',
