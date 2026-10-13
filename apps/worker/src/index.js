@@ -3168,6 +3168,85 @@ async function handleApi(request, env, url) {
     return json(result, { status: result.ok ? 200 : 409 });
   }
 
+  if (url.pathname === "/api/rankings" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const kind = String(url.searchParams.get("kind") ?? "send").trim().toLowerCase();
+    const period = String(url.searchParams.get("period") ?? "day").trim().toLowerCase();
+    const windowMs = period === "month"
+      ? 30 * 24 * 60 * 60 * 1000
+      : period === "week"
+        ? 7 * 24 * 60 * 60 * 1000
+        : 24 * 60 * 60 * 1000;
+    const cutoff = now() - windowMs;
+    let rows;
+    if (kind === "room") {
+      rows = await db.prepare(
+        `SELECT r.id AS room_id,
+                r.name AS room_name,
+                r.owner_user_id,
+                COALESCE(u.display_name,'Owner') AS owner_name,
+                u.avatar_key,
+                r.seat_count,
+                COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
+                COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
+           FROM rooms r
+           LEFT JOIN users u ON u.id=r.owner_user_id
+          ORDER BY score DESC, online DESC, r.updated_at DESC
+          LIMIT 100`
+      ).bind(cutoff).all();
+    } else if (kind === "charm") {
+      rows = await db.prepare(
+        `SELECT u.id AS user_id,
+                COALESCE(u.display_name,'User') AS display_name,
+                u.avatar_key,
+                COALESCE(SUM(g.coin_cost),0) AS score,
+                COUNT(*) AS gift_count
+           FROM gift_events g
+           JOIN users u ON u.id=g.receiver_user_id
+          WHERE g.created_at>=?
+          GROUP BY u.id,u.display_name,u.avatar_key
+          ORDER BY score DESC,gift_count DESC
+          LIMIT 100`
+      ).bind(cutoff).all();
+    } else if (kind === "game") {
+      rows = await db.prepare(
+        `SELECT u.id AS user_id,
+                COALESCE(u.display_name,'User') AS display_name,
+                u.avatar_key,
+                COALESCE(SUM(b.payout),0) AS score,
+                COALESCE(SUM(b.stake),0) AS wagered,
+                COUNT(*) AS bet_count
+           FROM game_bets b
+           JOIN users u ON u.id=b.user_id
+          WHERE b.created_at>=?
+          GROUP BY u.id,u.display_name,u.avatar_key
+          ORDER BY score DESC,bet_count DESC
+          LIMIT 100`
+      ).bind(cutoff).all();
+    } else {
+      rows = await db.prepare(
+        `SELECT u.id AS user_id,
+                COALESCE(u.display_name,'User') AS display_name,
+                u.avatar_key,
+                COALESCE(SUM(g.coin_cost),0) AS score,
+                COUNT(*) AS gift_count
+           FROM gift_events g
+           JOIN users u ON u.id=g.sender_user_id
+          WHERE g.created_at>=?
+          GROUP BY u.id,u.display_name,u.avatar_key
+          ORDER BY score DESC,gift_count DESC
+          LIMIT 100`
+      ).bind(cutoff).all();
+    }
+    return json({
+      ok: true,
+      kind,
+      period,
+      ranking: rows?.results ?? [],
+    });
+  }
+
   if (url.pathname === "/api/gifts/catalog" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
