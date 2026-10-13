@@ -232,6 +232,76 @@ class AppState extends ChangeNotifier {
     await prefs.remove(_sessionDateOfBirthKey);
   }
 
+  Future<bool> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    if (signingIn) return false;
+    signingIn = true;
+    authError = null;
+    notifyListeners();
+    try {
+      final session = await backend.startEmailSession(
+        email: email,
+        password: password,
+      );
+      final code = session?['error']?.toString();
+      if (session?['ok'] != true) {
+        authError = switch (code) {
+          'invalid_email_or_password' => 'Email or DarkVibeX password is incorrect.',
+          'user_banned' => 'This account is banned.',
+          'user_suspended' => 'This account is suspended.',
+          _ => 'Email login could not be completed.',
+        };
+        return false;
+      }
+      return _applySession(session, provider: 'email');
+    } catch (_) {
+      authError = 'Email login could not connect to DarkVibeX.';
+      return false;
+    } finally {
+      signingIn = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> completeEmailSignup({
+    required String setupToken,
+    required String password,
+    required String name,
+    required String dateOfBirthValue,
+  }) async {
+    if (signingIn) return false;
+    signingIn = true;
+    authError = null;
+    notifyListeners();
+    try {
+      final session = await backend.completeEmailPassword(
+        setupToken: setupToken,
+        password: password,
+        displayName: name,
+        dateOfBirth: dateOfBirthValue,
+      );
+      final code = session?['error']?.toString();
+      if (session?['ok'] != true) {
+        authError = switch (code) {
+          'setup_token_expired' => 'Email verification expired. Verify the OTP again.',
+          'email_already_registered' => 'This email already has a DarkVibeX ID.',
+          'password_length' => 'Password must be at least 8 characters.',
+          _ => 'Email account could not be created.',
+        };
+        return false;
+      }
+      return _applySession(session, provider: 'email');
+    } catch (_) {
+      authError = 'Email account could not be created.';
+      return false;
+    } finally {
+      signingIn = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> signInWithGoogle() async {
     if (signingIn) return false;
     signingIn = true;
