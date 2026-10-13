@@ -148,6 +148,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
             : null,
         partyMode:
             row['party_mode']?.toString() ?? 'Friends-making Party',
+        roomMode: row['room_mode']?.toString() ?? 'voice',
       );
     }).where((room) => room.id.isNotEmpty).toList(growable: false);
     if (!mounted) return;
@@ -241,6 +242,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
         draft.title,
         seatCount: draft.seatCount,
         partyMode: draft.partyMode,
+        roomMode: draft.roomMode,
       );
 
       RoomSummary room = created;
@@ -266,6 +268,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
             seatCount: created.seatCount,
             avatarKey: key,
             partyMode: created.partyMode,
+            roomMode: created.roomMode,
           );
         }
       }
@@ -1227,6 +1230,7 @@ class _CreateRoomDraft {
     required this.title,
     required this.seatCount,
     required this.partyMode,
+    required this.roomMode,
     this.avatarBytes,
     this.avatarExtension = 'jpg',
     this.avatarContentType = 'image/jpeg',
@@ -1235,6 +1239,7 @@ class _CreateRoomDraft {
   final String title;
   final int seatCount;
   final String partyMode;
+  final String roomMode;
   final Uint8List? avatarBytes;
   final String avatarExtension;
   final String avatarContentType;
@@ -1253,6 +1258,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
   final ImagePicker _picker = ImagePicker();
   int _seatCount = 12;
   String _partyMode = 'Friends-making Party';
+  String _roomMode = 'voice';
   Uint8List? _avatarBytes;
   String _avatarExtension = 'jpg';
   String _avatarContentType = 'image/jpeg';
@@ -1339,6 +1345,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
         title: name,
         seatCount: _seatCount,
         partyMode: _partyMode,
+        roomMode: _roomMode,
         avatarBytes: _avatarBytes,
         avatarExtension: _avatarExtension,
         avatarContentType: _avatarContentType,
@@ -1413,6 +1420,38 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                   ],
                 ),
               ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Room type',
+              style: TextStyle(
+                color: TinniPalette.cream,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final mode in const ['voice', 'live'])
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        avatar: Icon(
+                          mode == 'voice'
+                              ? Icons.mic_rounded
+                              : Icons.videocam_rounded,
+                          size: 18,
+                        ),
+                        label: Text(
+                          mode == 'voice' ? 'Voice Room' : 'Live Room',
+                        ),
+                        selected: _roomMode == mode,
+                        onSelected: (_) => setState(() => _roomMode = mode),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             const Text(
