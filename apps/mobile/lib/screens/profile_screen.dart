@@ -36,18 +36,43 @@ class ProfileScreen extends StatelessWidget {
               ? const Center(child: Text('No friends yet'))
               : ListView.builder(
                   itemCount: friends.length,
-                  itemBuilder: (context, index) {
+                  itemBuilder: (itemContext, index) {
                     final friend = friends[index];
                     final id = friend['id']?.toString() ?? '';
+                    final avatarKey = friend['avatar_key']?.toString() ?? '';
+                    final name = friend['display_name']?.toString() ?? 'User';
                     return ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
-                      title: Text(friend['display_name']?.toString() ?? 'User'),
+                      leading: CircleAvatar(
+                        backgroundImage: avatarKey.isEmpty
+                            ? null
+                            : NetworkImage(
+                                state.backend.fileUrl(avatarKey),
+                                headers: state.backend.fileHeaders,
+                              ),
+                        child: avatarKey.isEmpty
+                            ? const Icon(Icons.person_rounded)
+                            : null,
+                      ),
+                      title: Text(name),
                       subtitle: Text('ID $id'),
+                      onTap: id.isEmpty
+                          ? null
+                          : () => Navigator.of(sheetContext).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => PublicProfileScreen(
+                                    state: state,
+                                    userId: id,
+                                  ),
+                                ),
+                              ),
                       trailing: IconButton(
                         tooltip: 'Remove friend',
                         icon: const Icon(Icons.person_remove_alt_1_rounded),
                         onPressed: () async {
-                          final ok = await state.backend.removeFriend(userId: state.userId, friendUserId: id);
+                          final ok = await state.backend.removeFriend(
+                            userId: state.userId,
+                            friendUserId: id,
+                          );
                           if (!sheetContext.mounted) return;
                           if (ok) Navigator.pop(sheetContext);
                         },
@@ -61,10 +86,6 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _showVisitors(BuildContext context) async {
-    if (!state.hasVipPrivilege('view_visitors')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Active VIP1 unlocks profile visitors')));
-      return;
-    }
     final visitors = await state.backend.profileVisitors(userId: state.userId);
     if (!context.mounted) return;
     await showModalBottomSheet<void>(
@@ -72,24 +93,72 @@ class ProfileScreen extends StatelessWidget {
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .6,
+          height: MediaQuery.sizeOf(sheetContext).height * .65,
           child: visitors.isEmpty
               ? const Center(child: Text('No visitors yet'))
               : ListView.builder(
                   itemCount: visitors.length,
-                  itemBuilder: (context, index) {
+                  itemBuilder: (itemContext, index) {
                     final visitor = visitors[index];
+                    final userId = visitor['user_id']?.toString() ?? '';
                     final name = visitor['display_name']?.toString() ?? 'User';
+                    final avatarKey = visitor['avatar_key']?.toString() ?? '';
+                    final count =
+                        int.tryParse(visitor['visit_count']?.toString() ?? '') ?? 1;
                     return ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
+                      leading: CircleAvatar(
+                        backgroundImage: avatarKey.isEmpty
+                            ? null
+                            : NetworkImage(
+                                state.backend.fileUrl(avatarKey),
+                                headers: state.backend.fileHeaders,
+                              ),
+                        child: avatarKey.isEmpty
+                            ? const Icon(Icons.person_rounded)
+                            : null,
+                      ),
                       title: Text(name),
-                      subtitle: Text('Visited ${visitor['visit_count'] ?? 1} times'),
+                      subtitle: Text(
+                        '${_formatVisitTime(visitor['last_visited_at'])} • '
+                        '${count == 1 ? '1 visit' : '$count visits'}',
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: userId.isEmpty
+                          ? null
+                          : () => Navigator.of(sheetContext).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => PublicProfileScreen(
+                                    state: state,
+                                    userId: userId,
+                                  ),
+                                ),
+                              ),
                     );
                   },
                 ),
         ),
       ),
     );
+  }
+
+  String _formatVisitTime(dynamic raw) {
+    DateTime? value;
+    final numeric = raw is num
+        ? raw.toInt()
+        : int.tryParse(raw?.toString() ?? '');
+    if (numeric != null && numeric > 0) {
+      final millis = numeric < 100000000000 ? numeric * 1000 : numeric;
+      value = DateTime.fromMillisecondsSinceEpoch(millis).toLocal();
+    } else {
+      final parsed = DateTime.tryParse(raw?.toString() ?? '');
+      value = parsed?.toLocal();
+    }
+    if (value == null) return 'Recently';
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$day/$month/${value.year} $hour:$minute';
   }
 
   Future<void> _pickAvatar(BuildContext context) async {
