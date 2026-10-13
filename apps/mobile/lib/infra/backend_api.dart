@@ -763,6 +763,21 @@ class BackendApi {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> followedRooms({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/following?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
+    final rows = value?['rooms'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
   Future<bool> roomFollowStatus({
     required String roomId,
     required String userId,
