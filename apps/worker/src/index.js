@@ -39,6 +39,8 @@ import {
   vsRespond,
   vsDisconnect,
   vsRanking,
+  officialNotices,
+  activityFeed,
 } from "./tinni_social.js";
 
 import {
@@ -648,6 +650,19 @@ async function handleApi(request, env, url) {
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  if (url.pathname === "/api/messages/official" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    return json({ ok: true, notices: await officialNotices(db) });
+  }
+
+  if (url.pathname === "/api/messages/activity" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, activity: await activityFeed(db, userId) });
   }
 
   if (url.pathname === "/api/social/stats" && request.method === "GET") {
