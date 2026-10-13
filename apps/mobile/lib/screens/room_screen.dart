@@ -447,9 +447,9 @@ class _RoomScreenState extends State<RoomScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Mic invitation'),
+        title: const Text('Seat Invite'),
         content: Text(
-          '${inviter == null || inviter.isEmpty ? 'Room owner/admin' : inviter} invited you to Seat ${seat + 1}.',
+          '${inviter == null || inviter.isEmpty ? 'Owner/Admin' : inviter} invites you to Seat No. ${seat + 1}.',
         ),
         actions: [
           TextButton(
@@ -1378,6 +1378,191 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<void> _inviteOffSeatMemberToSeat(int seat) async {
+    if (!isRoomAdmin || !widget.state.backendConnected) return;
+    await _loadRoomMembers();
+    await _loadRoomControls();
+    if (!mounted) return;
+    if (seat < 0 ||
+        seat >= roomSeatCount ||
+        membersBySeat.containsKey(seat) ||
+        lockedSeats.contains(seat)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Seat ${seat + 1} is not available')),
+      );
+      return;
+    }
+
+    final eligible = roomMembers
+        .where((member) {
+          final userId = member['user_id']?.toString() ?? '';
+          final memberSeat =
+              int.tryParse(member['seat_index']?.toString() ?? '');
+          return userId.isNotEmpty &&
+              userId != widget.state.userId &&
+              memberSeat == null;
+        })
+        .map((member) => Map<String, dynamic>.from(member))
+        .toList(growable: false);
+
+    if (eligible.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No off-seat users are available to invite')),
+      );
+      return;
+    }
+
+    final searchController = TextEditingController();
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: TinniPalette.nearBlack,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, refresh) {
+            final query = searchController.text.trim();
+            final visible = query.isEmpty
+                ? eligible
+                : eligible
+                    .where(
+                      (member) =>
+                          (member['user_id']?.toString() ?? '').contains(query),
+                    )
+                    .toList(growable: false);
+
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.sizeOf(sheetContext).height * .62,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Invite to Seat No. ${seat + 1}',
+                              style: const TextStyle(
+                                color: TinniPalette.gold,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Text('${eligible.length} available'),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                      child: TextField(
+                        controller: searchController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.search_rounded),
+                          hintText: 'Search ID in this room',
+                        ),
+                        onChanged: (_) => refresh(() {}),
+                      ),
+                    ),
+                    Expanded(
+                      child: visible.isEmpty
+                          ? const Center(
+                              child: Text('No matching off-seat user in this room'),
+                            )
+                          : ListView.builder(
+                              itemCount: visible.length,
+                              itemBuilder: (context, index) {
+                                final member = visible[index];
+                                final userId =
+                                    member['user_id']?.toString() ?? '';
+                                final rawName =
+                                    member['display_name']?.toString().trim();
+                                final name =
+                                    rawName == null || rawName.isEmpty
+                                        ? 'User $userId'
+                                        : rawName;
+                                final avatar =
+                                    member['avatar_key']?.toString();
+                                final isAdmin =
+                                    member['is_admin'] == true ||
+                                        member['is_admin']?.toString() == '1';
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: TinniPalette.panel2,
+                                    backgroundImage:
+                                        avatar != null && avatar.isNotEmpty
+                                            ? NetworkImage(
+                                                widget.state.backend
+                                                    .fileUrl(avatar),
+                                                headers: widget
+                                                    .state.backend.fileHeaders,
+                                              )
+                                            : null,
+                                    child: avatar == null || avatar.isEmpty
+                                        ? const Icon(Icons.person_rounded)
+                                        : null,
+                                  ),
+                                  title: Text(
+                                    '$name${isAdmin ? ' • Admin' : ''}',
+                                  ),
+                                  subtitle: Text('ID $userId • Audience'),
+                                  trailing: TextButton(
+                                    key: Key(
+                                      'room-seat-$seat-invite-user-$userId',
+                                    ),
+                                    onPressed: () async {
+                                      final result = await widget.state.backend
+                                          .setRoomControl(
+                                        roomId: widget.room.id,
+                                        userId: widget.state.userId,
+                                        action: 'seat_invite',
+                                        targetUserId: userId,
+                                        seatIndex: seat,
+                                      );
+                                      if (!sheetContext.mounted) return;
+                                      if (result?['ok'] == true) {
+                                        Navigator.pop(sheetContext);
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(this.context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Invite sent to $name for Seat No. ${seat + 1}',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } else {
+                                        ScaffoldMessenger.of(sheetContext)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Seat invite could not be sent',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Invite'),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      searchController.dispose();
+    }
+  }
+
   Future<void> _showRoomBlacklist() async {
     if (!isRoomAdmin) return;
     var rows =
@@ -1526,13 +1711,37 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                             ),
                             title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
-                            subtitle: Text(
-                              (seat == null
-                                  ? 'Audience'
-                                  : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}') +
-                              ((member['chat_banned'] == true || member['chat_banned']?.toString() == '1')
-                                  ? ' • Chat banned'
-                                  : ''),
+                            subtitle: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'ID $userId • ' +
+                                        (seat == null
+                                            ? 'Audience'
+                                            : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}') +
+                                        ((member['chat_banned'] == true || member['chat_banned']?.toString() == '1')
+                                            ? ' • Chat banned'
+                                            : ''),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (!isSelf && seat == null && isRoomAdmin)
+                                  TextButton(
+                                    key: Key('room-member-invite-$userId'),
+                                    onPressed: () {
+                                      Navigator.pop(sheetContext);
+                                      Future<void>.delayed(Duration.zero, () {
+                                        if (!mounted) return;
+                                        _inviteMemberToMic(
+                                          userId,
+                                          name?.isNotEmpty == true ? name! : 'User',
+                                        );
+                                      });
+                                    },
+                                    child: const Text('Invite'),
+                                  ),
+                              ],
                             ),
                             trailing: !isSelf && (widget.state.hasVipPrivilege('free_say_hi') || canModerate)
                                 ? Row(
@@ -2113,6 +2322,29 @@ class _RoomScreenState extends State<RoomScreen> {
                     : (member['display_name']?.toString() ?? 'Occupied'),
               ),
             ),
+            if (member == null && !locked)
+              ListTile(
+                key: Key('room-seat-invite-$seat'),
+                leading: const Icon(
+                  Icons.person_add_alt_1_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Invite'),
+                subtitle: Text(
+                  'Invite an in-room off-seat user/admin to Seat No. ${seat + 1}.',
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future<void>.delayed(
+                    const Duration(milliseconds: 180),
+                    () {
+                      if (mounted) {
+                        unawaited(_inviteOffSeatMemberToSeat(seat));
+                      }
+                    },
+                  );
+                },
+              ),
             ListTile(
               leading: Icon(
                 locked ? Icons.lock_open_rounded : Icons.lock_rounded,
@@ -3411,6 +3643,8 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                 ),
                 const Spacer(),
+                _RoomLampButton(onTap: _openLamp),
+                const SizedBox(width: 6),
                 TinniPanel(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                   onTap: _openRoomMembers,
@@ -3430,20 +3664,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 Positioned(
                                   left: index * 17.0,
                                   child: GestureDetector(
-                                    onTap: () {
-                                      final id =
-                                          roomMembers[index]['user_id']?.toString() ??
-                                              '';
-                                      if (id.isEmpty) return;
-                                      Navigator.of(context).push<void>(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) => PublicProfileScreen(
-                                            state: widget.state,
-                                            userId: id,
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                    onTap: _openRoomMembers,
                                     child: CircleAvatar(
                                       radius: 13,
                                       backgroundColor: TinniPalette.panel2,
@@ -3812,11 +4033,6 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
             ),
           ),
-          Positioned(
-            right: 10,
-            top: 112,
-            child: _RoomLampButton(onTap: _openLamp),
-          ),
           if (arrivalEffectMember != null)
             Positioned.fill(
               child: VehicleEntryEffect(
@@ -3937,54 +4153,20 @@ class _RoomLampButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          width: 82,
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 7),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: const LinearGradient(
-              colors: <Color>[
-                Color(0xFF4F178D),
-                Color(0xFF8729E9),
-              ],
+    return Tooltip(
+      message: 'Aladdin\'s Lamp',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: const SizedBox(
+            width: 42,
+            height: 36,
+            child: Padding(
+              padding: EdgeInsets.all(3),
+              child: CustomPaint(painter: _MiniLampPainter()),
             ),
-            border: Border.all(
-              color: const Color(0xFFFFDF54),
-              width: 1.3,
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: const Color(0xFFFFD54A).withOpacity(.28),
-                blurRadius: 16,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 52,
-                height: 34,
-                child: CustomPaint(painter: _MiniLampPainter()),
-              ),
-              SizedBox(height: 3),
-              Text(
-                'Aladdin\'s\nLamp',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFFFFEA83),
-                  fontSize: 10,
-                  height: 1.05,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
           ),
         ),
       ),
