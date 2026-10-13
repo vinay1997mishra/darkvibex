@@ -3700,6 +3700,85 @@ async function handleApi(request, env, url) {
     return json({ ok: true, shared_score: Number(room?.shared_score ?? 0) });
   }
 
+  if (url.pathname === "/api/call-verifications/status" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallVerificationSchema(db);
+    const user = await db.prepare(
+      "SELECT gender,call_verified,call_verification_status,call_verified_at,call_verification_revoked_at FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    const latest = await db.prepare(
+      "SELECT id,status,system_passed,created_at,reviewed_at,review_note FROM call_verification_submissions WHERE user_id=? ORDER BY created_at DESC LIMIT 1"
+    ).bind(userId).first();
+    return json({
+      ok: true,
+      verification: {
+        gender: String(user?.gender ?? ""),
+        verified: Number(user?.call_verified ?? 0) === 1,
+        status: String(user?.call_verification_status ?? "unverified"),
+        verified_at: user?.call_verified_at ?? null,
+        revoked_at: user?.call_verification_revoked_at ?? null,
+        latest_submission: latest ?? null,
+      },
+    });
+  }
+
+  if (url.pathname === "/api/call-verifications" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const gender = String(body.gender ?? "").trim().toLowerCase();
+    const photos = Array.isArray(body.photo_keys)
+      ? body.photo_keys.map((value) => String(value ?? "").trim()).filter(Boolean)
+      : [];
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!["male", "female"].includes(gender)) {
+      return json({ ok: false, error: "gender_required" }, { status: 400 });
+    }
+    if (photos.length !== 3 ||
+        photos.some((key) =>
+          !key.startsWith(`call-verifications/${userId}/`) ||
+          !/\.(jpg|jpeg|png|webp)$/i.test(key))) {
+      return json({ ok: false, error: "three_live_photos_required" }, { status: 400 });
+    }
+    await ensureCallVerificationSchema(db);
+    const current = await db.prepare(
+      "SELECT call_verified FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    if (Number(current?.call_verified ?? 0) === 1) {
+      return json({ ok: true, already_verified: true, status: "verified" });
+    }
+    const submissionId = "verify-" + id();
+    const ts = now();
+    const systemPassed = body.system_passed === true ? 1 : 0;
+    await db.batch([
+      db.prepare(
+        `INSERT INTO call_verification_submissions
+          (id,user_id,status,system_passed,photo_front_key,photo_left_key,photo_right_key,created_at,reviewed_at,review_note)
+         VALUES (?,?,'pending_owner',?,?,?,?,?,NULL,NULL)`
+      ).bind(
+        submissionId,
+        userId,
+        systemPassed,
+        photos[0],
+        photos[1],
+        photos[2],
+        ts,
+      ),
+      db.prepare(
+        "UPDATE users SET gender=?,call_verified=0,call_verification_status='pending_owner',updated_at=? WHERE id=?"
+      ).bind(gender, ts, userId),
+    ]);
+    return json({
+      ok: true,
+      already_verified: false,
+      submission_id: submissionId,
+      status: "pending_owner",
+      system_passed: systemPassed === 1,
+    }, { status: 201 });
+  }
+
   if (url.pathname === "/api/calls/start" && request.method === "POST") {
     const body = await bodyJson(request);
     const callerId = String(body.user_id ?? "").trim();
