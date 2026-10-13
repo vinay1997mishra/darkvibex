@@ -291,11 +291,6 @@ async function ensureUsersSchema(db) {
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
       date_of_birth TEXT,
-      gender TEXT NOT NULL DEFAULT '',
-      call_verified INTEGER NOT NULL DEFAULT 0,
-      call_verification_status TEXT NOT NULL DEFAULT 'unverified',
-      call_verified_at INTEGER,
-      call_verification_revoked_at INTEGER,
       role TEXT NOT NULL DEFAULT 'user',
       coins INTEGER NOT NULL DEFAULT 0,
       diamonds INTEGER NOT NULL DEFAULT 0,
@@ -313,11 +308,6 @@ async function ensureUsersSchema(db) {
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
     ["date_of_birth", "TEXT"],
-    ["gender", "TEXT NOT NULL DEFAULT ''"],
-    ["call_verified", "INTEGER NOT NULL DEFAULT 0"],
-    ["call_verification_status", "TEXT NOT NULL DEFAULT 'unverified'"],
-    ["call_verified_at", "INTEGER"],
-    ["call_verification_revoked_at", "INTEGER"],
     ["role", "TEXT NOT NULL DEFAULT 'user'"],
     ["coins", "INTEGER NOT NULL DEFAULT 0"],
     ["diamonds", "INTEGER NOT NULL DEFAULT 0"],
@@ -734,36 +724,6 @@ async function ensureDirectCallTable(db) {
   }
 }
 
-async function ensureCallVerificationSchema(db) {
-  await ensureUsersSchema(db);
-  await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS call_verification_submissions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending_owner',
-      system_passed INTEGER NOT NULL DEFAULT 0,
-      photo_front_key TEXT NOT NULL,
-      photo_left_key TEXT NOT NULL,
-      photo_right_key TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      reviewed_at INTEGER,
-      review_note TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )`),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_call_verify_status_time ON call_verification_submissions(status,created_at DESC)"),
-    db.prepare(`CREATE TABLE IF NOT EXISTS random_call_stats (
-      user_id TEXT PRIMARY KEY,
-      offers INTEGER NOT NULL DEFAULT 0,
-      answered INTEGER NOT NULL DEFAULT 0,
-      completed_calls INTEGER NOT NULL DEFAULT 0,
-      total_minutes INTEGER NOT NULL DEFAULT 0,
-      last_offer_at INTEGER,
-      updated_at INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )`),
-  ]);
-}
-
 async function expireDirectCalls(db, ts = now()) {
   await ensureDirectCallTable(db);
   await db.prepare(
@@ -932,23 +892,6 @@ async function settleDirectCallBilling(db, callId, ts = now()) {
     ).bind(ts, ts, callId).run();
   }
   return directCallRow(db, callId);
-}
-
-async function recordRandomCallCompletion(db, callId, ts = now()) {
-  await ensureCallVerificationSchema(db);
-  const call = await db.prepare(
-    "SELECT call_kind,receiver_user_id,billed_minutes FROM direct_calls WHERE id=? LIMIT 1"
-  ).bind(callId).first();
-  if (!call || String(call.call_kind ?? "") !== "random") return;
-  await db.prepare(
-    `INSERT INTO random_call_stats
-      (user_id,offers,answered,completed_calls,total_minutes,last_offer_at,updated_at)
-     VALUES (?,0,0,1,?,NULL,?)
-     ON CONFLICT(user_id) DO UPDATE SET
-       completed_calls=completed_calls+1,
-       total_minutes=total_minutes+excluded.total_minutes,
-       updated_at=excluded.updated_at`
-  ).bind(call.receiver_user_id, Number(call.billed_minutes ?? 0), ts).run();
 }
 
 async function handleApi(request, env, url) {
@@ -3700,178 +3643,6 @@ async function handleApi(request, env, url) {
     return json({ ok: true, shared_score: Number(room?.shared_score ?? 0) });
   }
 
-  if (url.pathname === "/api/call-verifications/status" && request.method === "GET") {
-    const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    await ensureCallVerificationSchema(db);
-    const user = await db.prepare(
-      "SELECT gender,call_verified,call_verification_status,call_verified_at,call_verification_revoked_at FROM users WHERE id=? LIMIT 1"
-    ).bind(userId).first();
-    const latest = await db.prepare(
-      "SELECT id,status,system_passed,created_at,reviewed_at,review_note FROM call_verification_submissions WHERE user_id=? ORDER BY created_at DESC LIMIT 1"
-    ).bind(userId).first();
-    return json({
-      ok: true,
-      verification: {
-        gender: String(user?.gender ?? ""),
-        verified: Number(user?.call_verified ?? 0) === 1,
-        status: String(user?.call_verification_status ?? "unverified"),
-        verified_at: user?.call_verified_at ?? null,
-        revoked_at: user?.call_verification_revoked_at ?? null,
-        latest_submission: latest ?? null,
-      },
-    });
-  }
-
-  if (url.pathname === "/api/call-verifications" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const gender = String(body.gender ?? "").trim().toLowerCase();
-    const photos = Array.isArray(body.photo_keys)
-      ? body.photo_keys.map((value) => String(value ?? "").trim()).filter(Boolean)
-      : [];
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    if (!["male", "female"].includes(gender)) {
-      return json({ ok: false, error: "gender_required" }, { status: 400 });
-    }
-    if (photos.length !== 3 ||
-        photos.some((key) =>
-          !key.startsWith(`call-verifications/${userId}/`) ||
-          !/\.(jpg|jpeg|png|webp)$/i.test(key))) {
-      return json({ ok: false, error: "three_live_photos_required" }, { status: 400 });
-    }
-    await ensureCallVerificationSchema(db);
-    const current = await db.prepare(
-      "SELECT call_verified FROM users WHERE id=? LIMIT 1"
-    ).bind(userId).first();
-    if (Number(current?.call_verified ?? 0) === 1) {
-      return json({ ok: true, already_verified: true, status: "verified" });
-    }
-    const submissionId = "verify-" + id();
-    const ts = now();
-    const systemPassed = body.system_passed === true ? 1 : 0;
-    await db.batch([
-      db.prepare(
-        `INSERT INTO call_verification_submissions
-          (id,user_id,status,system_passed,photo_front_key,photo_left_key,photo_right_key,created_at,reviewed_at,review_note)
-         VALUES (?,?,'pending_owner',?,?,?,?,?,NULL,NULL)`
-      ).bind(
-        submissionId,
-        userId,
-        systemPassed,
-        photos[0],
-        photos[1],
-        photos[2],
-        ts,
-      ),
-      db.prepare(
-        "UPDATE users SET gender=?,call_verified=0,call_verification_status='pending_owner',updated_at=? WHERE id=?"
-      ).bind(gender, ts, userId),
-    ]);
-    return json({
-      ok: true,
-      already_verified: false,
-      submission_id: submissionId,
-      status: "pending_owner",
-      system_passed: systemPassed === 1,
-    }, { status: 201 });
-  }
-
-  if (url.pathname === "/api/calls/random" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const callerId = String(body.user_id ?? "").trim();
-    const gender = String(body.gender ?? "").trim().toLowerCase();
-    const authError = await requireSession(request, env, callerId);
-    if (authError) return authError;
-    if (!["female", "male"].includes(gender)) {
-      return json({ ok: false, error: "invalid_gender" }, { status: 400 });
-    }
-    await ensureDirectCallTable(db);
-    await ensureCallVerificationSchema(db);
-    await expireDirectCalls(db);
-    const caller = await db.prepare(
-      "SELECT coins FROM users WHERE id=? LIMIT 1"
-    ).bind(callerId).first();
-    const randomCost = 500000;
-    if (Number(caller?.coins ?? 0) < randomCost) {
-      return json(
-        { ok: false, error: "insufficient_coins", required_coins: randomCost },
-        { status: 409 },
-      );
-    }
-    const candidates = await db.prepare(
-      `SELECT u.id,u.display_name,u.avatar_key,u.gender,
-              COALESCE(s.offers,0) AS offers,
-              COALESCE(s.answered,0) AS answered,
-              COALESCE(s.completed_calls,0) AS completed_calls,
-              COALESCE(s.total_minutes,0) AS total_minutes,
-              COALESCE(s.last_offer_at,0) AS last_offer_at
-         FROM users u
-         LEFT JOIN random_call_stats s ON s.user_id=u.id
-        WHERE u.id<>?
-          AND u.call_verified=1
-          AND lower(u.gender)=?
-          AND NOT EXISTS(
-            SELECT 1 FROM direct_calls c
-             WHERE c.state IN ('ringing','active')
-               AND (c.caller_user_id=u.id OR c.receiver_user_id=u.id)
-          )
-        ORDER BY
-          (COALESCE(s.completed_calls,0)*100 +
-           COALESCE(s.answered,0)*20 +
-           COALESCE(s.total_minutes,0)) DESC,
-          COALESCE(s.last_offer_at,0) ASC
-        LIMIT 30`
-    ).bind(callerId, gender).all();
-
-    let candidate = null;
-    for (const row of candidates.results ?? []) {
-      if (!(await usersBlockedEitherWay(db, callerId, String(row.id)))) {
-        candidate = row;
-        break;
-      }
-    }
-    if (!candidate) {
-      return json({
-        ok: false,
-        error: gender === "female"
-          ? "no_verified_available_girl"
-          : "no_verified_available_boy",
-      }, { status: 404 });
-    }
-
-    const receiverId = String(candidate.id);
-    const receiverReward = gender === "female" ? 400000 : 0;
-    const callId = id();
-    const ts = now();
-    await db.prepare(
-      `INSERT INTO direct_calls
-        (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
-         call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
-         receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
-       VALUES (?,?,?,'ringing',?,NULL,NULL,?,'random',?,?,?,0,0,0)`
-    ).bind(
-      callId,
-      callerId,
-      receiverId,
-      ts,
-      ts,
-      randomCost,
-      receiverReward,
-      gender === "female" ? 1 : 0,
-    ).run();
-    await db.prepare(
-      `INSERT INTO random_call_stats
-        (user_id,offers,answered,completed_calls,total_minutes,last_offer_at,updated_at)
-       VALUES (?,1,0,0,0,?,?)
-       ON CONFLICT(user_id) DO UPDATE SET
-         offers=offers+1,last_offer_at=excluded.last_offer_at,updated_at=excluded.updated_at`
-    ).bind(receiverId, ts, ts).run();
-    return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
-  }
-
   if (url.pathname === "/api/calls/start" && request.method === "POST") {
     const body = await bodyJson(request);
     const callerId = String(body.user_id ?? "").trim();
@@ -3882,7 +3653,6 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "invalid_call_target" }, { status: 400 });
     }
     await ensureDirectCallTable(db);
-    await ensureCallVerificationSchema(db);
     await expireDirectCalls(db);
     if (await usersBlockedEitherWay(db, callerId, receiverId)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
@@ -3914,13 +3684,6 @@ async function handleApi(request, env, url) {
         { status: 409 },
       );
     }
-    const receiver = await db.prepare(
-      "SELECT gender,call_verified FROM users WHERE id=? LIMIT 1"
-    ).bind(receiverId).first();
-    const femaleVerified =
-      String(receiver?.gender ?? "").toLowerCase() === "female" &&
-      Number(receiver?.call_verified ?? 0) === 1;
-    const receiverReward = femaleVerified ? 320000 : 0;
 
     const callId = id();
     const createdAt = now();
@@ -3929,17 +3692,8 @@ async function handleApi(request, env, url) {
         (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
          call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
          receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
-       VALUES(?,?,?,'ringing',?,NULL,NULL,?,'direct',?,?,?,0,0,0)`
-    ).bind(
-      callId,
-      callerId,
-      receiverId,
-      createdAt,
-      createdAt,
-      directCost,
-      receiverReward,
-      femaleVerified ? 1 : 0,
-    ).run();
+       VALUES(?,?,?,'ringing',?,NULL,NULL,?,'direct',400000,0,0,0,0,0)`
+    ).bind(callId,callerId,receiverId,createdAt,createdAt).run();
     return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
   }
 
@@ -3967,7 +3721,6 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureDirectCallTable(db);
-    await ensureCallVerificationSchema(db);
     const call = await db.prepare(
       "SELECT * FROM direct_calls WHERE id=? AND receiver_user_id=? LIMIT 1"
     ).bind(callId,userId).first();
@@ -3982,20 +3735,10 @@ async function handleApi(request, env, url) {
         ? "UPDATE direct_calls SET state='active',answered_at=?,updated_at=? WHERE id=? AND state='ringing'"
         : "UPDATE direct_calls SET state='declined',ended_at=?,updated_at=? WHERE id=? AND state='ringing'"
     ).bind(ts,ts,callId).run();
-    if (accepted) {
-      if (String(call.call_kind ?? "") === "random") {
-        await db.prepare(
-          `INSERT INTO random_call_stats
-            (user_id,offers,answered,completed_calls,total_minutes,last_offer_at,updated_at)
-           VALUES (?,0,1,0,0,NULL,?)
-           ON CONFLICT(user_id) DO UPDATE SET
-             answered=answered+1,updated_at=excluded.updated_at`
-        ).bind(userId, ts).run();
-      }
-      const billed = await settleDirectCallBilling(db, callId, ts);
-      return json({ ok: true, call: billed });
+    if (!accepted) {
+      return json({ ok:true,call:await directCallRow(db,callId) });
     }
-    return json({ ok:true,call:await directCallRow(db,callId) });
+    return json({ ok:true,call:await settleDirectCallBilling(db, callId, ts) });
   }
 
   if (url.pathname === "/api/calls/status" && request.method === "GET") {
@@ -4030,17 +3773,11 @@ async function handleApi(request, env, url) {
     const ts = now();
     if (call.state === "active") {
       await settleDirectCallBilling(db, callId, ts);
-      call = await db.prepare(
-        "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
-      ).bind(callId).first();
     }
     await db.prepare(
       "UPDATE direct_calls SET state='ended',ended_at=?,updated_at=? WHERE id=? AND state IN ('ringing','active')"
     ).bind(ts,ts,callId).run();
-    if (String(call?.call_kind ?? "") === "random") {
-      await recordRandomCallCompletion(db, callId, ts);
-    }
-    return json({ ok:true, call:await directCallRow(db,callId) });
+    return json({ ok:true,call:await directCallRow(db,callId) });
   }
 
   if (url.pathname === "/api/friends" && request.method === "GET") {
@@ -4392,8 +4129,7 @@ async function handleApi(request, env, url) {
     const userPrefix = `users/${actor}/`;
     const messagePrefix = `messages/${actor}/`;
     const customGiftPrefix = `custom-gifts/${actor}/`;
-    const callVerificationPrefix = `call-verifications/${actor}/`;
-    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix) || key.startsWith(customGiftPrefix) || key.startsWith(callVerificationPrefix);
+    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix) || key.startsWith(customGiftPrefix);
     const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
     if (roomMatch) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
@@ -4536,27 +4272,8 @@ export default {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts|call-verifications)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
-        }
-        if (key.startsWith("call-verifications/")) {
-          const ownerToken = String(env.OWNER_ADMIN_TOKEN ?? "").trim();
-          const bearer = bearerToken(request);
-          const parts = key.split("/");
-          const ownerAccess = ownerToken.isNotEmpty && bearer === ownerToken;
-          let userAccess = false;
-          if (!ownerAccess) {
-            try {
-              const session = await verifySessionToken(
-                bearer,
-                String(env.SESSION_SECRET),
-              );
-              userAccess = String(session.sub) === String(parts[1] ?? "");
-            } catch (_) {}
-          }
-          if (!ownerAccess && !userAccess) {
-            return json({ ok: false, error: "file_not_found" }, { status: 404 });
-          }
         }
         if (key.startsWith("messages/")) {
           const authError = await requireSession(request, env);
