@@ -2421,15 +2421,19 @@ class _RoomScreenState extends State<RoomScreen> {
               children: [
                 TinniPanel(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  onTap: _showRoomTools,
-                  child: Row(
+                  onTap: _showRoomGiftRanking,
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.celebration_rounded, size: 16, color: TinniPalette.gold),
-                      const SizedBox(width: 5),
+                      Icon(
+                        Icons.emoji_events_rounded,
+                        size: 17,
+                        color: TinniPalette.gold,
+                      ),
+                      SizedBox(width: 5),
                       Text(
-                        roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party',
-                        style: const TextStyle(
+                        'Ranking',
+                        style: TextStyle(
                           color: TinniPalette.gold,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
@@ -2438,17 +2442,106 @@ class _RoomScreenState extends State<RoomScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 6),
+                TinniPanel(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                  onTap: _showRoomGiftRanking,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.monetization_on_rounded,
+                        size: 15,
+                        color: TinniPalette.gold,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _compactRoomCoins(roomGiftLifetimeTotal),
+                        style: const TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const Spacer(),
                 TinniPanel(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                   onTap: _openRoomMembers,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.groups_rounded, size: 17, color: TinniPalette.cream),
+                      if (roomMembers.isNotEmpty)
+                        SizedBox(
+                          width: 28.0 +
+                              ((roomMembers.take(3).length - 1) * 17.0),
+                          height: 28,
+                          child: Stack(
+                            children: [
+                              for (var index = 0;
+                                  index < roomMembers.take(3).length;
+                                  index++)
+                                Positioned(
+                                  left: index * 17.0,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      final id =
+                                          roomMembers[index]['user_id']?.toString() ??
+                                              '';
+                                      if (id.isEmpty) return;
+                                      Navigator.of(context).push<void>(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => PublicProfileScreen(
+                                            state: widget.state,
+                                            userId: id,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: CircleAvatar(
+                                      radius: 13,
+                                      backgroundColor: TinniPalette.panel2,
+                                      backgroundImage:
+                                          roomMembers[index]['avatar_key']
+                                                      ?.toString()
+                                                      .isNotEmpty ==
+                                                  true
+                                              ? NetworkImage(
+                                                  widget.state.backend.fileUrl(
+                                                    roomMembers[index]
+                                                            ['avatar_key']
+                                                        .toString(),
+                                                  ),
+                                                  headers: widget
+                                                      .state.backend.fileHeaders,
+                                                )
+                                              : null,
+                                      child: roomMembers[index]['avatar_key']
+                                                  ?.toString()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? null
+                                          : const Icon(
+                                              Icons.person_rounded,
+                                              size: 13,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      else
+                        const Icon(
+                          Icons.groups_rounded,
+                          size: 17,
+                          color: TinniPalette.cream,
+                        ),
                       const SizedBox(width: 5),
                       Text(
-                        knownRoomMembers.length.toString(),
+                        '${roomMembers.length}',
                         style: const TextStyle(
                           color: TinniPalette.cream,
                           fontWeight: FontWeight.w900,
