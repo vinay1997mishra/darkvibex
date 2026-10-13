@@ -116,6 +116,9 @@ class BackendApi {
   Future<Map<String, dynamic>?> userProfile({required String userId}) =>
       _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
 
+  Future<Map<String, dynamic>?> search({required String userId, required String query}) =>
+      _json('GET', '/api/search?user_id=${Uri.encodeQueryComponent(userId)}&q=${Uri.encodeQueryComponent(query)}');
+
   Future<List<Map<String, dynamic>>> mineIdentities({required String userId}) async {
     final value = await _json('GET', '/api/mine/account-identities?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['identities'];
