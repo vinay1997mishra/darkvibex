@@ -4161,7 +4161,8 @@ async function handleApi(request, env, url) {
     const userPrefix = `users/${actor}/`;
     const messagePrefix = `messages/${actor}/`;
     const customGiftPrefix = `custom-gifts/${actor}/`;
-    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix) || key.startsWith(customGiftPrefix);
+    const callVerificationPrefix = `call-verifications/${actor}/`;
+    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix) || key.startsWith(customGiftPrefix) || key.startsWith(callVerificationPrefix);
     const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
     if (roomMatch) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
@@ -4304,8 +4305,27 @@ export default {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|call-verifications)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
+        }
+        if (key.startsWith("call-verifications/")) {
+          const ownerToken = String(env.OWNER_ADMIN_TOKEN ?? "").trim();
+          const bearer = bearerToken(request);
+          const parts = key.split("/");
+          const ownerAccess = ownerToken.isNotEmpty && bearer === ownerToken;
+          let userAccess = false;
+          if (!ownerAccess) {
+            try {
+              const session = await verifySessionToken(
+                bearer,
+                String(env.SESSION_SECRET),
+              );
+              userAccess = String(session.sub) === String(parts[1] ?? "");
+            } catch (_) {}
+          }
+          if (!ownerAccess && !userAccess) {
+            return json({ ok: false, error: "file_not_found" }, { status: 404 });
+          }
         }
         if (key.startsWith("messages/")) {
           const authError = await requireSession(request, env);
