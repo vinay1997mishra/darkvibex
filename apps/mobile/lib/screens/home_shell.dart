@@ -125,8 +125,37 @@ class _RoomsHome extends StatefulWidget {
 class _RoomsHomeState extends State<_RoomsHome> {
   AppState get state => widget.state;
   bool popular = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFollowedRooms();
+  }
+
+  Future<void> _loadFollowedRooms() async {
+    if (!state.backendConnected) return;
+    final rows = await state.backend.followedRooms(userId: state.userId);
+    final values = rows.map((row) {
+      return RoomSummary(
+        id: row['id']?.toString() ?? '',
+        name: row['name']?.toString() ?? 'Room',
+        ownerName: row['owner_name']?.toString() ?? 'Owner',
+        ownerUserId: row['owner_user_id']?.toString() ?? '',
+        online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+        seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+        avatarKey: row['avatar_key']?.toString().isNotEmpty == true
+            ? row['avatar_key']?.toString()
+            : null,
+        partyMode:
+            row['party_mode']?.toString() ?? 'Friends-making Party',
+      );
+    }).where((room) => room.id.isNotEmpty).toList(growable: false);
+    if (!mounted) return;
+    setState(() => followedRooms = values);
+  }
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
+  List<RoomSummary> followedRooms = const <RoomSummary>[];
 
   Future<void> _showRoomRanking(BuildContext context) async {
     final rooms = [...state.rooms]
@@ -274,7 +303,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
       MaterialPageRoute(
         builder: (_) => RoomScreen(state: state, room: room),
       ),
-    );
+    ).then((_) => _loadFollowedRooms());
   }
 
   Widget _buildPartyPage(BuildContext context) {
@@ -729,23 +758,34 @@ class _RoomsHomeState extends State<_RoomsHome> {
           ),
         ),
         const SizedBox(height: 10),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 42),
-          child: Column(
-            children: [
-              TinniGlowIcon(
-                icon: Icons.inventory_2_outlined,
-                size: 36,
-                boxSize: 62,
+        if (followedRooms.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 42),
+            child: Column(
+              children: [
+                TinniGlowIcon(
+                  icon: Icons.inventory_2_outlined,
+                  size: 36,
+                  boxSize: 62,
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'No following rooms yet',
+                  style: TextStyle(color: TinniPalette.muted),
+                ),
+              ],
+            ),
+          )
+        else
+          for (final room in followedRooms)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: _RoomCard(
+                state: state,
+                room: room,
+                onTap: () => _openRoom(room),
               ),
-              SizedBox(height: 10),
-              Text(
-                'Following rooms will appear here',
-                style: TextStyle(color: TinniPalette.muted),
-              ),
-            ],
-          ),
-        ),
+            ),
       ],
     );
   }
