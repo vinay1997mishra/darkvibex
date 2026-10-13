@@ -300,7 +300,7 @@ class AboutDarkVibeXScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: TinniPalette.black,
         appBar: AppBar(title: const Text('About DarkVibeX')),
-        body: const TinniBackground(
+        body: TinniBackground(
           child: ListView(
             padding: EdgeInsets.all(16),
             children: [
