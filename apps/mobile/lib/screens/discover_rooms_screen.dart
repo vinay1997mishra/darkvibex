@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'global_search_screen.dart';
 import 'room_screen.dart';
 
 class DiscoverRoomsScreen extends StatefulWidget {
@@ -38,9 +39,21 @@ class _DiscoverRoomsScreenState extends State<DiscoverRoomsScreen> {
 
         return CustomScrollView(
           slivers: [
-            const SliverAppBar(
+            SliverAppBar(
               floating: true,
-              title: Text('Discover', style: TextStyle(fontWeight: FontWeight.w800)),
+              title: const Text('Discover', style: TextStyle(fontWeight: FontWeight.w800)),
+              actions: [
+                IconButton(
+                  tooltip: 'Search people and rooms',
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => GlobalSearchScreen(state: widget.state),
+                    ),
+                  ),
+                ),
+              ],
             ),
             SliverToBoxAdapter(
               child: Padding(
