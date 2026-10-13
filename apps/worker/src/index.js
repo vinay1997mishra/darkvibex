@@ -441,6 +441,7 @@ async function listRooms(db) {
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
             ri.image_key AS avatar_key,
+            COALESCE(u.country_code, '') AS owner_country_code,
             CASE WHEN ov.level >= 18 AND ov.active_until > ?
                        AND json_extract(ov.preferences_json, '$.anonymous_everywhere') = 1
                  THEN 'Anonymous' ELSE COALESCE(u.display_name, '') END AS owner_name,
