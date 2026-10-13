@@ -1888,21 +1888,41 @@ async function handleApi(request, env, url) {
     if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
       return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
     }
+
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, ownerId);
-    const seatCount = requestedSeatCount;
-    const roomId = String(body.id ?? "").trim() || String(Math.floor(100000 + Math.random() * 900000));
-    const ts = now();
-    await db.prepare(
-      "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
-    ).bind(roomId, ownerId, name, seatCount, ts, ts).run();
     await ensureRoomSettingsTable(db);
-    await db.prepare(
-      "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
-    ).bind(roomId, partyMode, roomMode, ts).run();
-    await db.prepare(
-      "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
-    ).bind(roomId, ownerId, ts, ts).run();
+
+    const seatCount = requestedSeatCount;
+    const requestedRoomId = String(body.id ?? "").trim();
+    let roomId = requestedRoomId;
+    if (roomId) {
+      const existing = await db.prepare("SELECT 1 AS found FROM rooms WHERE id = ? LIMIT 1").bind(roomId).first();
+      if (existing) return json({ ok: false, error: "room_id_taken" }, { status: 409 });
+    } else {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const candidate = String(Math.floor(100000 + Math.random() * 900000));
+        const existing = await db.prepare("SELECT 1 AS found FROM rooms WHERE id = ? LIMIT 1").bind(candidate).first();
+        if (!existing) {
+          roomId = candidate;
+          break;
+        }
+      }
+      if (!roomId) return json({ ok: false, error: "room_id_unavailable" }, { status: 503 });
+    }
+
+    const ts = now();
+    await db.batch([
+      db.prepare(
+        "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
+      ).bind(roomId, ownerId, name, seatCount, ts, ts),
+      db.prepare(
+        "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
+      ).bind(roomId, partyMode, roomMode, ts),
+      db.prepare(
+        "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
+      ).bind(roomId, ownerId, ts, ts),
+    ]);
     return json({ ok: true, room_id: roomId, party_mode: partyMode, room_mode: roomMode }, { status: 201 });
   }
 
