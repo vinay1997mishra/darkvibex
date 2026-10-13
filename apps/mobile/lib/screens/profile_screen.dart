@@ -63,11 +63,20 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  void _openPublicProfile(BuildContext context, String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(state: state, userId: userId),
+      ),
+    );
+  }
+
   void _showVisitors(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => ProfileVisitorsScreen(state: state),
+        builder: (_) => ProfileVisitorsScreen(state: state, onOpenProfile: (userId) => _openPublicProfile(context, userId)),
       ),
     );
   }
@@ -211,7 +220,7 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          MineCharmVisitorsStrip(state: state),
+          MineCharmVisitorsStrip(state: state, onOpenProfile: (userId) => _openPublicProfile(context, userId)),
           const SizedBox(height: 22),
           Card(
             child: Column(
