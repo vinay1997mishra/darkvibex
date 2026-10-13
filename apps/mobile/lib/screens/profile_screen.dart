@@ -957,7 +957,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool loading = true;
   bool isFriend = false;
   bool isFollowing = false;
+  bool isBlocked = false;
   bool followBusy = false;
+  bool blockBusy = false;
   bool startingCall = false;
 
   @override
@@ -973,8 +975,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final friends = await widget.state.backend.friends(
       userId: widget.state.userId,
     );
+    final blocked = await widget.state.backend.blockedUsers(
+      userId: widget.state.userId,
+    );
     final friendStatus =
         friends.any((row) => row['id']?.toString() == widget.userId);
+    final blockedStatus =
+        blocked.any((row) => row['user_id']?.toString() == widget.userId);
     final following = widget.userId == widget.state.userId
         ? false
         : await widget.state.backend.followStatus(
@@ -989,6 +996,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       loading = false;
       isFriend = friendStatus;
       isFollowing = following;
+      isBlocked = blockedStatus;
     });
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
@@ -1006,7 +1014,23 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Widget build(BuildContext context) {
     final displayName = user?['display_name']?.toString() ?? '';
     return Scaffold(
-        appBar: AppBar(title: Text(user?['display_name']?.toString() ?? 'Profile')),
+        appBar: AppBar(
+          title: Text(user?['display_name']?.toString() ?? 'Profile'),
+          actions: [
+            if (widget.userId != widget.state.userId)
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'block') _toggleBlock();
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem<String>(
+                    value: 'block',
+                    child: Text(isBlocked ? 'Unblock user' : 'Block user'),
+                  ),
+                ],
+              ),
+          ],
+        ),
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : user == null
@@ -1049,7 +1073,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               runSpacing: 8,
                               children: [
                                 FilledButton.icon(
-                                  onPressed: followBusy ? null : _toggleFollow,
+                                  onPressed: followBusy || isBlocked ? null : _toggleFollow,
                                   icon: Icon(
                                     isFollowing
                                         ? Icons.person_remove_alt_1_rounded
@@ -1059,27 +1083,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                     isFollowing ? 'Following' : 'Follow',
                                   ),
                                 ),
-                                OutlinedButton.icon(
-                                  onPressed: isFriend ? null : _addFriend,
-                                  icon: Icon(
-                                    isFriend
-                                        ? Icons.check_rounded
-                                        : Icons.people_alt_rounded,
+                                if (isFriend)
+                                  const Chip(
+                                    avatar: Icon(Icons.people_alt_rounded, size: 16),
+                                    label: Text('Friends'),
                                   ),
-                                  label: Text(
-                                    isFriend ? 'Friend' : 'Add friend',
-                                  ),
-                                ),
                                 OutlinedButton.icon(
                                   key: const Key('public-profile-message'),
-                                  onPressed: _openConversation,
+                                  onPressed: isBlocked ? null : _openConversation,
                                   icon: const Icon(Icons.chat_bubble_rounded),
                                   label: const Text('Message'),
                                 ),
                                 OutlinedButton.icon(
                                   key: const Key('public-profile-call'),
                                   onPressed:
-                                      isFriend && !startingCall ? _startCall : null,
+                                      isFriend && !isBlocked && !startingCall ? _startCall : null,
                                   icon: startingCall
                                       ? const SizedBox.square(
                                           dimension: 16,
@@ -1166,6 +1184,37 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  Future<void> _toggleBlock() async {
+    if (blockBusy) return;
+    setState(() => blockBusy = true);
+    final next = !isBlocked;
+    final ok = await widget.state.backend.setUserBlocked(
+      userId: widget.state.userId,
+      targetUserId: widget.userId,
+      blocked: next,
+    );
+    if (!mounted) return;
+    setState(() {
+      blockBusy = false;
+      if (ok) {
+        isBlocked = next;
+        if (next) {
+          isFriend = false;
+          isFollowing = false;
+        }
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? (next ? 'User blocked' : 'User unblocked')
+              : 'Block setting could not be updated',
+        ),
+      ),
+    );
+  }
+
   Future<void> _toggleFollow() async {
     if (followBusy) return;
     setState(() => followBusy = true);
@@ -1180,21 +1229,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       followBusy = false;
       if (ok) isFollowing = next;
     });
+    if (ok) {
+      final friends = await widget.state.backend.friends(
+        userId: widget.state.userId,
+      );
+      if (mounted) {
+        setState(() {
+          isFriend =
+              friends.any((row) => row['id']?.toString() == widget.userId);
+        });
+      }
+    }
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Follow could not be updated')),
       );
-    }
-  }
-
-  Future<void> _addFriend() async {
-    final result = await widget.state.backend.addFriend(userId: widget.state.userId, friendUserId: widget.userId);
-    if (!mounted) return;
-    if (result?['ok'] == true) {
-      setState(() => isFriend = true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Friend added')));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not add friend. The 300-friend base limit may be full.')));
     }
   }
 
