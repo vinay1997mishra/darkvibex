@@ -31,7 +31,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
   static const _categories = <_StoreCategory>[
     _StoreCategory('Car', 'vehicle', Icons.directions_car_filled_rounded),
     _StoreCategory('Profile', 'profile_card', Icons.badge_rounded),
-    _StoreCategory('Lucky', 'unique_id', Icons.numbers_rounded),
+    _StoreCategory('Unique ID', 'unique_id', Icons.numbers_rounded),
     _StoreCategory('Ring', 'ring', Icons.circle_outlined),
     _StoreCategory(
       'Profile Background',
@@ -532,7 +532,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 ),
                 const SizedBox(height: 6),
                 if (active && canUse)
-                  const SizedBox(
+                  SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: null,

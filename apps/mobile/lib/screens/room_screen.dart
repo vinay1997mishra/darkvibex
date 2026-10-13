@@ -1,14 +1,16 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
+import '../background/room_foreground_service.dart';
+import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
 import '../infra/livekit_rtc.dart';
 import '../infra/realtime.dart';
@@ -21,8 +23,10 @@ import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
+import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
+import 'sharing_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -83,8 +87,10 @@ class _RoomScreenState extends State<RoomScreen> {
   late int roomSeatCount;
   bool roomLocked = false;
   bool roomPasswordSet = false;
+  String? roomLockCode;
   bool amRoomAdmin = false;
   String roomThemeId = 'dark';
+  String? roomThemeAssetKey;
   String roomSeatThemeId = 'royal-gold';
   late String roomPartyMode;
   late String roomMode;
@@ -98,7 +104,20 @@ class _RoomScreenState extends State<RoomScreen> {
   Map<String, dynamic>? pendingSeatInvite;
   bool seatInviteDialogVisible = false;
   bool effectsEnabled = true;
+  bool roomNoticesEnabled = true;
+  bool giftEffectsEnabled = true;
+  bool giftSoundEnabled = true;
+  bool giftFlyInEnabled = true;
+  bool carEffectsEnabled = true;
+  bool giftBubbleEnabled = true;
+  bool rocketDrawNoticeEnabled = true;
+  Map<String, dynamic>? activeGiftEffect;
+  Timer? giftEffectTimer;
   final KtvService roomMusic = KtvService();
+  final RoomForegroundServiceBridge roomForegroundService =
+      const RoomForegroundServiceBridge();
+  final RoomPermissionBridge roomPermissions = const RoomPermissionBridge();
+  bool roomForegroundServiceStarted = false;
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
   bool get isRoomAdmin => isRoomHost || amRoomAdmin;
@@ -112,6 +131,7 @@ class _RoomScreenState extends State<RoomScreen> {
     roomPartyMode = widget.room.partyMode;
     roomMode = widget.room.roomMode;
     unawaited(roomMusic.loadLocalSongs());
+    unawaited(_loadRoomEffectPreferences());
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
@@ -165,6 +185,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   void _showArrivalEffect(Map<String, dynamic> member) {
     arrivalEffectTimer?.cancel();
+    giftEffectTimer?.cancel();
     if (!mounted) return;
     setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
     arrivalEffectTimer = Timer(const Duration(milliseconds: 5000), () {
@@ -728,7 +749,11 @@ class _RoomScreenState extends State<RoomScreen> {
       roomLocked = settings['locked'] == true || settings['locked']?.toString() == '1';
       roomPasswordSet = settings['lock_password_set'] == true ||
           settings['lock_password_set']?.toString() == '1';
+      final lockCode = settings['lock_code']?.toString().trim() ?? '';
+      roomLockCode = lockCode.isEmpty ? null : lockCode;
       roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
+      final themeAsset = settings['theme_asset_key']?.toString().trim() ?? '';
+      roomThemeAssetKey = themeAsset.isEmpty ? null : themeAsset;
       roomSeatThemeId = settings['seat_theme_id']?.toString() ?? roomSeatThemeId;
       roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
       roomMode = settings['room_mode']?.toString() ?? roomMode;
@@ -744,7 +769,6 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!isRoomHost) return;
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
-    final lockPassword = TextEditingController();
     final seatOptions = <int>[
       for (var count = 8; count <= 42; count++) count,
     ];
@@ -819,20 +843,27 @@ class _RoomScreenState extends State<RoomScreen> {
                   onChanged: (value) => setDialogState(() => locked = value),
                 ),
                 if (locked)
-                  TextField(
-                    controller: lockPassword,
-                    obscureText: true,
-                    maxLength: 64,
-                    decoration: InputDecoration(
-                      labelText: 'Room password',
-                      hintText: roomPasswordSet
-                          ? 'Leave blank to keep current password'
-                          : 'Minimum 4 characters',
-                      helperText: roomPasswordSet
-                          ? 'Enter a value only to change the password.'
-                          : 'Password is required for a newly locked room.',
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: TinniPalette.panel2,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: TinniPalette.gold.withValues(alpha: .45),
+                      ),
+                    ),
+                    child: Text(
+                      roomLockCode == null
+                          ? 'A secure 5-digit room code will be generated after Save.'
+                          : 'Current room code: $roomLockCode',
+                      style: const TextStyle(
+                        color: TinniPalette.gold,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: announcement,
                   maxLength: 500,
@@ -949,30 +980,10 @@ class _RoomScreenState extends State<RoomScreen> {
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                final password = lockPassword.text.trim();
-                if (locked &&
-                    !roomPasswordSet &&
-                    password.length < 4) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Room password must be at least 4 characters'),
-                    ),
-                  );
-                  return;
-                }
-                if (locked && password.isNotEmpty && password.length < 4) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Room password must be at least 4 characters'),
-                    ),
-                  );
-                  return;
-                }
                 Navigator.pop(dialogContext, {
                   'name': name.text.trim(),
                   'seat_count': seatCount,
                   'locked': locked,
-                  'lock_password': password.isEmpty ? null : password,
                   'announcement': announcement.text.trim(),
                   'theme_id': themeId,
                   'party_mode': partyMode,
@@ -989,9 +1000,8 @@ class _RoomScreenState extends State<RoomScreen> {
     );
     name.dispose();
     announcement.dispose();
-    lockPassword.dispose();
     if (result == null || !mounted) return;
-    final ok = await widget.state.backend.saveRoomSettings(
+    final saved = await widget.state.backend.saveRoomSettingsResult(
       roomId: widget.room.id,
       userId: widget.state.userId,
       name: result['name'] as String,
@@ -1004,8 +1014,8 @@ class _RoomScreenState extends State<RoomScreen> {
       groupPkEnabled: result['group_pk_enabled'] as bool,
       welcomeImageKey: result['welcome_image_key'] as String,
       seatThemeId: roomSeatThemeId,
-      lockPassword: result['lock_password'] as String?,
     );
+    final ok = saved?['ok'] == true;
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room settings could not be saved')));
@@ -1029,6 +1039,11 @@ class _RoomScreenState extends State<RoomScreen> {
       roomSeatCount = result['seat_count'] as int;
       roomLocked = result['locked'] as bool;
       roomPasswordSet = roomLocked;
+      final savedSettings = saved?['settings'];
+      final savedCode = savedSettings is Map
+          ? savedSettings['lock_code']?.toString().trim() ?? ''
+          : '';
+      roomLockCode = roomLocked && savedCode.isNotEmpty ? savedCode : null;
       roomThemeId = result['theme_id'] as String;
       roomPartyMode = result['party_mode'] as String;
       roomMode = savedRoomMode;
@@ -1098,14 +1113,20 @@ class _RoomScreenState extends State<RoomScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          obscureText: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(5),
+          ],
+          maxLength: 5,
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
-            labelText: 'Room password',
-            errorText: invalid ? 'Wrong password' : null,
+            labelText: '5-digit room code',
+            counterText: '',
+            errorText: invalid ? 'Wrong room code' : null,
           ),
           onSubmitted: (value) {
-            if (value.trim().isNotEmpty) {
+            if (RegExp(r'^\d{5}$').hasMatch(value.trim())) {
               Navigator.pop(dialogContext, value.trim());
             }
           },
@@ -1118,7 +1139,9 @@ class _RoomScreenState extends State<RoomScreen> {
           FilledButton(
             onPressed: () {
               final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+              if (RegExp(r'^\d{5}$').hasMatch(value)) {
+                Navigator.pop(dialogContext, value);
+              }
             },
             child: const Text('Enter room'),
           ),
@@ -1127,6 +1150,24 @@ class _RoomScreenState extends State<RoomScreen> {
     );
     controller.dispose();
     return result;
+  }
+
+  Future<bool> _ensureRoomVoicePermission({
+    bool request = true,
+  }) async {
+    var granted = await roomPermissions.hasVoiceRoomPermissions();
+    if (!granted && request) {
+      granted = await roomPermissions.requestVoiceRoomPermissions();
+    }
+    if (granted && !roomForegroundServiceStarted) {
+      final started = await roomForegroundService.start();
+      if (mounted) {
+        setState(() => roomForegroundServiceStarted = started);
+      } else {
+        roomForegroundServiceStarted = started;
+      }
+    }
+    return granted;
   }
 
   Future<void> _connectVoice() async {
@@ -1162,9 +1203,11 @@ class _RoomScreenState extends State<RoomScreen> {
           final error = joined?['error']?.toString() ?? '';
           final message = error == 'room_blocked'
               ? 'You are blocked from this room'
-              : error == 'room_locked'
-                  ? 'This locked room has no usable password yet'
-                  : 'This room is unavailable';
+              : error == 'room_country_mismatch'
+                  ? 'Only rooms from your selected country are available'
+                  : error == 'room_locked'
+                      ? 'This locked room has no usable password yet'
+                      : 'This room is unavailable';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(message)),
           );
@@ -1174,6 +1217,14 @@ class _RoomScreenState extends State<RoomScreen> {
       }
       await _loadRoomSettings();
       await widget.state.refreshIdLevel(notify: false);
+    }
+
+    final voicePermissionGranted =
+        await _ensureRoomVoicePermission(request: true);
+    if (!voicePermissionGranted && mounted) {
+      setState(() {
+        voiceStatus = 'Listen-only • allow microphone for voice';
+      });
     }
 
     final token = widget.state.sessionToken;
@@ -1200,9 +1251,11 @@ class _RoomScreenState extends State<RoomScreen> {
       }
       if (!mounted) return;
       setState(() {
-        voiceStatus = candidate is LiveKitRtcAdapter
-            ? 'Voice/video connected'
-            : 'Local voice mode';
+        voiceStatus = !voicePermissionGranted
+            ? 'Listening • microphone permission needed'
+            : candidate is LiveKitRtcAdapter
+                ? 'Voice/video connected'
+                : 'Local voice mode';
       });
     } catch (_) {
       if (candidate is LiveKitRtcAdapter) candidate.dispose();
@@ -1295,6 +1348,8 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
     rtcEvents = null;
+    unawaited(roomForegroundService.stop());
+    roomForegroundServiceStarted = false;
     final current = rtc;
     if (current != null) {
       unawaited(
@@ -1406,6 +1461,18 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     final enable = muted;
+    if (enable) {
+      final permission = await _ensureRoomVoicePermission(request: true);
+      if (!permission) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Allow microphone access to speak on a seat'),
+          ),
+        );
+        return;
+      }
+    }
     try {
       await rtc?.setMicPublished(enable);
       if (widget.state.backendConnected && mySeat != null) {
@@ -2084,6 +2151,64 @@ class _RoomScreenState extends State<RoomScreen> {
     ));
   }
 
+  Future<void> _cleanupMinimizedRoom() async {
+    if (widget.state.backendConnected) {
+      try {
+        await widget.state.backend.leaveRoom(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+        );
+      } catch (_) {}
+    }
+    try {
+      await roomMusic.stopRoomPlayback();
+    } catch (_) {}
+    try {
+      await rtc?.setMicPublished(false);
+    } catch (_) {}
+    try {
+      if (cameraPublished && rtc is LiveKitRtcAdapter) {
+        await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+      }
+    } catch (_) {}
+    try {
+      await rtc?.leave();
+    } catch (_) {}
+    try {
+      await roomForegroundService.stop();
+      roomForegroundServiceStarted = false;
+    } catch (_) {}
+  }
+
+  Future<void> _minimizeRoom() async {
+    if (!mounted) return;
+    final displayRoom = RoomSummary(
+      id: widget.room.id,
+      name: roomName,
+      ownerName: widget.room.ownerName,
+      ownerUserId: widget.room.ownerUserId,
+      online: roomMembers.length,
+      seatCount: roomSeatCount,
+      avatarKey: roomAvatarKey,
+      partyMode: roomPartyMode,
+      roomMode: roomMode,
+    );
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => HomeShell(
+          state: widget.state,
+          minimizedRoom: displayRoom,
+          onResumeRoom: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+          onCloseMinimizedRoom: _cleanupMinimizedRoom,
+        ),
+      ),
+    );
+  }
+
   Future<void> _leaveRoom() async {
     if (widget.state.backendConnected) {
       final ok = await widget.state.backend.leaveRoom(
@@ -2098,12 +2223,25 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     }
     await roomMusic.stopRoomPlayback();
+    try {
+      await roomForegroundService.stop();
+      roomForegroundServiceStarted = false;
+    } catch (_) {}
     if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _openGames() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => GamesScreen(state: widget.state)),
+      MaterialPageRoute<void>(
+        builder: (_) => GamesScreen(
+          state: widget.state,
+          roomId: widget.room.id,
+          roomOwnerUserId: widget.room.ownerUserId,
+          onToggleMic: _toggleMic,
+          micOn: () => mySeat != null && !muted,
+          hasMicSeat: () => mySeat != null,
+        ),
+      ),
     );
   }
 
@@ -2253,29 +2391,88 @@ class _RoomScreenState extends State<RoomScreen> {
                       final values = await showDialog<(int, int)>(
                         context: context,
                         builder: (dialogContext) {
-                          var coins = 5000;
-                          var slots = 10;
-                          return StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
-                            title: const Text('Create Red Pocket (LP)'),
-                            content: Column(mainAxisSize: MainAxisSize.min, children: [
-                              DropdownButtonFormField<int>(
-                                value: coins,
-                                decoration: const InputDecoration(labelText: 'Coin amount'),
-                                items: const [5000, 10000, 25000, 50000].map((n) => DropdownMenuItem(value: n, child: Text('$n coins'))).toList(),
-                                onChanged: (v) { if (v != null) setDialogState(() => coins = v); },
-                              ),
-                              DropdownButtonFormField<int>(
-                                value: slots,
-                                decoration: const InputDecoration(labelText: 'Winners'),
-                                items: const [5, 10, 20].map((n) => DropdownMenuItem(value: n, child: Text('$n people'))).toList(),
-                                onChanged: (v) { if (v != null) setDialogState(() => slots = v); },
-                              ),
-                            ]),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-                              FilledButton(onPressed: () => Navigator.pop(dialogContext, (coins, slots)), child: const Text('Create')),
-                            ],
-                          ));
+                          const allowed = <int, List<int>>{
+                            5: <int>[100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+                            20: <int>[100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+                            50: <int>[500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+                            100: <int>[1000000, 2000000, 5000000, 8000000, 10000000],
+                            200: <int>[1000000, 2000000, 5000000, 8000000, 10000000],
+                            500: <int>[2000000, 5000000, 8000000, 10000000],
+                          };
+                          var slots = 5;
+                          var coins = 100000;
+                          return StatefulBuilder(
+                            builder: (dialogContext, setDialogState) {
+                              final coinOptions = allowed[slots]!;
+                              return AlertDialog(
+                                title: const Text('Create Red Pocket (LP)'),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    DropdownButtonFormField<int>(
+                                      value: slots,
+                                      decoration: const InputDecoration(
+                                        labelText: 'People',
+                                      ),
+                                      items: allowed.keys
+                                          .map(
+                                            (n) => DropdownMenuItem(
+                                              value: n,
+                                              child: Text('$n people'),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setDialogState(() {
+                                          slots = value;
+                                          final next = allowed[slots]!;
+                                          if (!next.contains(coins)) {
+                                            coins = next.first;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(height: 12),
+                                    DropdownButtonFormField<int>(
+                                      value: coins,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Coin amount',
+                                      ),
+                                      items: coinOptions
+                                          .map(
+                                            (n) => DropdownMenuItem(
+                                              value: n,
+                                              child: Text(
+                                                '${_compactRoomCoins(n)} coins',
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setDialogState(() => coins = value);
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(
+                                      dialogContext,
+                                      (coins, slots),
+                                    ),
+                                    child: const Text('Create'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
                         },
                       );
                       if (values == null) return;
@@ -2322,13 +2519,94 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _showLuckyNumber() async {
-    final number = Random.secure().nextInt(99) + 1;
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connect to the room server to draw a Lucky Number.'),
+        ),
+      );
+      return;
+    }
+    final result = await widget.state.backend.drawRoomLuckyNumber(
+      roomId: widget.room.id,
+    );
+    if (!mounted) return;
+    final rawEvent = result?['event'];
+    if (result?['ok'] != true || rawEvent is! Map) {
+      final reason = result?['error']?.toString().replaceAll('_', ' ') ??
+          'Lucky Number could not be drawn.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(reason)),
+      );
+      return;
+    }
+    final event = Map<String, dynamic>.from(rawEvent);
+    final number = int.tryParse(event['number']?.toString() ?? '') ?? 0;
+    final displayName = event['display_name']?.toString().trim();
+    final rawEvents = result?['events'];
+    final recent = rawEvents is List
+        ? rawEvents
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .take(10)
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Lucky Number'),
-        content: Text('Your number is $number. This is a local for-fun draw; it does not award coins.'),
-        actions: [FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+        content: SizedBox(
+          width: 360,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Text(
+                '${displayName == null || displayName.isEmpty ? 'You' : displayName} drew $number.',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'This result is generated and stored by the room server.',
+              ),
+              if (recent.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Recent room draws',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                for (final row in recent)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.confirmation_number_rounded),
+                    title: Text(
+                      row['display_name']?.toString().trim().isNotEmpty == true
+                          ? row['display_name'].toString()
+                          : 'User',
+                    ),
+                    trailing: Text(
+                      row['number']?.toString() ?? '-',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
@@ -2739,9 +3017,189 @@ class _RoomScreenState extends State<RoomScreen> {
     await _loadRoomControls();
   }
 
-  Future<void> _toggleRoomEffects() async {
-    setState(() => effectsEnabled = !effectsEnabled);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(effectsEnabled ? 'Room glow effects enabled on this device' : 'Room glow effects disabled on this device')));
+  Future<void> _loadRoomEffectPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      effectsEnabled = prefs.getBool('dvx.room.effects.all') ?? true;
+      roomNoticesEnabled = prefs.getBool('dvx.room.effects.notices') ?? true;
+      giftEffectsEnabled = prefs.getBool('dvx.room.effects.gift') ?? true;
+      giftSoundEnabled = prefs.getBool('dvx.room.effects.gift_sound') ?? true;
+      giftFlyInEnabled = prefs.getBool('dvx.room.effects.gift_fly_in') ?? true;
+      carEffectsEnabled = prefs.getBool('dvx.room.effects.car') ?? true;
+      giftBubbleEnabled = prefs.getBool('dvx.room.effects.gift_bubble') ?? true;
+      rocketDrawNoticeEnabled =
+          prefs.getBool('dvx.room.effects.rocket_notice') ?? true;
+    });
+  }
+
+  Future<void> _setRoomEffectPreference(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  Future<void> _showRoomEffects() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .72,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
+              children: [
+                const ListTile(
+                  leading: TinniGlowIcon(
+                    icon: Icons.auto_awesome_rounded,
+                    size: 22,
+                    boxSize: 42,
+                  ),
+                  title: Text(
+                    'Effects',
+                    style: TextStyle(
+                      color: TinniPalette.gold,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Choose exactly which room effects you want to see or hear.',
+                  ),
+                ),
+                SwitchListTile(
+                  title: const Text('All Visual Effects'),
+                  subtitle: const Text('Master switch for room visual effects.'),
+                  value: effectsEnabled,
+                  onChanged: (value) {
+                    setState(() => effectsEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference('dvx.room.effects.all', value),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Room Notices'),
+                  subtitle: const Text('Show or hide general room notices.'),
+                  value: roomNoticesEnabled,
+                  onChanged: (value) {
+                    setState(() => roomNoticesEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.notices',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Effects'),
+                  subtitle: const Text('Gift animation and visual effects.'),
+                  value: giftEffectsEnabled,
+                  onChanged: (value) {
+                    setState(() => giftEffectsEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference('dvx.room.effects.gift', value),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Sound'),
+                  subtitle: const Text('Sound played with supported gift effects.'),
+                  value: giftSoundEnabled,
+                  onChanged: (value) {
+                    setState(() => giftSoundEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_sound',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Fly-in'),
+                  subtitle: const Text('Gift entry/fly-in animation in the room.'),
+                  value: giftFlyInEnabled,
+                  onChanged: (value) {
+                    setState(() => giftFlyInEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_fly_in',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Car Effects'),
+                  subtitle: const Text('Vehicle/car room-entry animations.'),
+                  value: carEffectsEnabled,
+                  onChanged: (value) {
+                    setState(() => carEffectsEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference('dvx.room.effects.car', value),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Bubble'),
+                  subtitle: const Text('Gift bubble/pop-up notices in the room.'),
+                  value: giftBubbleEnabled,
+                  onChanged: (value) {
+                    setState(() => giftBubbleEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_bubble',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Rocket Draw Notice'),
+                  subtitle: const Text('Show the room Rocket shortcut and notice.'),
+                  value: rocketDrawNoticeEnabled,
+                  onChanged: (value) {
+                    setState(() => rocketDrawNoticeEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.rocket_notice',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _playGiftEffect(Map<String, dynamic> gift) {
+    if (!effectsEnabled || !giftEffectsEnabled) return;
+    giftEffectTimer?.cancel();
+    if (giftSoundEnabled) {
+      unawaited(SystemSound.play(SystemSoundType.click));
+    }
+    if (giftFlyInEnabled || giftBubbleEnabled) {
+      setState(() => activeGiftEffect = Map<String, dynamic>.from(gift));
+      giftEffectTimer = Timer(const Duration(milliseconds: 2200), () {
+        if (mounted) setState(() => activeGiftEffect = null);
+      });
+    }
   }
 
   Color get _seatThemeAccent => switch (roomSeatThemeId) {
@@ -2759,7 +3217,7 @@ class _RoomScreenState extends State<RoomScreen> {
     String? partyMode,
     String? nextRoomMode,
   }) async {
-    final ok = await widget.state.backend.saveRoomSettings(
+    final result = await widget.state.backend.saveRoomSettingsResult(
       roomId: widget.room.id,
       userId: widget.state.userId,
       name: roomName,
@@ -2773,8 +3231,12 @@ class _RoomScreenState extends State<RoomScreen> {
       welcomeImageKey: roomWelcomeImageKey ?? '',
       seatThemeId: seatThemeId ?? roomSeatThemeId,
     );
+    final ok = result?['ok'] == true;
     if (!mounted) return ok;
     if (ok) {
+      final settings = result?['settings'];
+      final generatedCode =
+          settings is Map ? settings['lock_code']?.toString().trim() ?? '' : '';
       if (nextRoomMode != null &&
           nextRoomMode != 'live' &&
           cameraPublished &&
@@ -2793,11 +3255,22 @@ class _RoomScreenState extends State<RoomScreen> {
         if (themeId != null) roomThemeId = themeId;
         if (seatThemeId != null) roomSeatThemeId = seatThemeId;
         if (groupPk != null) groupPkEnabled = groupPk;
-        if (locked != null) roomLocked = locked;
+        if (locked != null) {
+          roomLocked = locked;
+          roomPasswordSet = locked;
+          if (!locked) {
+            roomLockCode = null;
+          } else if (generatedCode.isNotEmpty) {
+            roomLockCode = generatedCode;
+          }
+        }
         if (partyMode != null) roomPartyMode = partyMode;
         if (nextRoomMode != null) roomMode = nextRoomMode;
       });
       await widget.state.refreshRooms();
+      if (themeId != null && mounted) {
+        await _loadRoomSettings();
+      }
     }
     return ok;
   }
@@ -2875,44 +3348,220 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<void> _createCustomRoomTheme() async {
+    if (!isRoomHost || !widget.state.backendConnected) return;
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+      maxWidth: 1440,
+      maxHeight: 1920,
+    );
+    if (image == null) return;
+    final ext = image.name.split('.').last.toLowerCase();
+    final normalizedExt = ext == 'jpeg' ? 'jpg' : ext;
+    final contentType = switch (normalizedExt) {
+      'jpg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => null,
+    };
+    if (contentType == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
+        );
+      }
+      return;
+    }
+
+    final details = await showDialog<(String, bool)>(
+      context: context,
+      builder: (dialogContext) {
+        final name = TextEditingController(text: 'My Room Theme');
+        var confirmed = false;
+        return StatefulBuilder(
+          builder: (dialogContext, refresh) => AlertDialog(
+            title: const Text('Add New Room Theme'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: name,
+                  maxLength: 60,
+                  decoration: const InputDecoration(labelText: 'Theme name'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: confirmed,
+                  onChanged: (value) =>
+                      refresh(() => confirmed = value == true),
+                  title: const Text(
+                    'I confirm this room cover is safe and allowed.',
+                  ),
+                ),
+                const Text(
+                  'User theme price: 10M coins • valid for 7 days.',
+                  style: TextStyle(
+                    color: TinniPalette.muted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: confirmed && name.text.trim().isNotEmpty
+                    ? () => Navigator.pop(
+                          dialogContext,
+                          (name.text.trim(), confirmed),
+                        )
+                    : null,
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (details == null) return;
+
+    final key = await widget.state.backend.uploadImage(
+      key:
+          'room-themes/${widget.state.userId}/theme-${DateTime.now().microsecondsSinceEpoch}.$normalizedExt',
+      bytes: await image.readAsBytes(),
+      contentType: contentType,
+    );
+    if (key == null || !mounted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Room theme image upload failed')),
+        );
+      }
+      return;
+    }
+
+    final result = await widget.state.backend.createRoomTheme(
+      roomId: widget.room.id,
+      name: details.$1,
+      assetKey: key,
+      policyConfirmed: details.$2,
+      durationDays: 7,
+    );
+    if (!mounted) return;
+    if (result?['ok'] != true) {
+      final error = result?['error']?.toString().replaceAll('_', ' ') ??
+          'Room theme could not be created';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+    final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
+    if (balance != null) widget.state.setCoinBalance(balance);
+    final rawTheme = result?['theme'];
+    final themeId =
+        rawTheme is Map ? rawTheme['id']?.toString().trim() ?? '' : '';
+    if (themeId.isEmpty) return;
+    final ok = await _saveRoomConfiguration(themeId: themeId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Room theme activated for 7 days.'
+              : 'Theme created, but could not be activated.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _showRoomThemeSelector() async {
     if (!isRoomHost) return;
+    final response =
+        await widget.state.backend.roomThemes(roomId: widget.room.id);
+    final rawThemes = response?['themes'];
+    final customThemes = rawThemes is List
+        ? rawThemes
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+
+    if (!mounted) return;
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              leading: Icon(Icons.image_rounded),
-              title: Text(
-                'Room Cover / Theme',
-                style: TextStyle(
-                  color: TinniPalette.gold,
-                  fontWeight: FontWeight.w900,
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .72,
+          child: ListView(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.image_rounded),
+                title: Text(
+                  'Room Cover / Theme',
+                  style: TextStyle(
+                    color: TinniPalette.gold,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
+                subtitle: Text('Built-in and purchased room-wide covers'),
               ),
-            ),
-            for (final entry in const <(String, String)>[
-              ('dark', 'Dark'),
-              ('midnight', 'Midnight'),
-              ('rose', 'Rose'),
-              ('forest', 'Forest'),
-              ('gold', 'Gold'),
-            ])
-              RadioListTile<String>(
-                value: entry.$1,
-                groupValue: roomThemeId,
-                title: Text(entry.$2),
-                onChanged: (value) => Navigator.pop(sheetContext, value),
+              ListTile(
+                key: const Key('room-theme-add-custom'),
+                leading: const Icon(
+                  Icons.add_photo_alternate_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Add New Room Theme'),
+                subtitle: const Text('10M coins • 7 days'),
+                onTap: () => Navigator.pop(sheetContext, '__add__'),
               ),
-          ],
+              const Divider(),
+              for (final entry in const <(String, String)>[
+                ('dark', 'Dark'),
+                ('midnight', 'Midnight'),
+                ('rose', 'Rose'),
+                ('forest', 'Forest'),
+                ('gold', 'Gold'),
+              ])
+                RadioListTile<String>(
+                  value: entry.$1,
+                  groupValue: roomThemeId,
+                  title: Text(entry.$2),
+                  onChanged: (value) => Navigator.pop(sheetContext, value),
+                ),
+              if (customThemes.isNotEmpty) const Divider(),
+              for (final theme in customThemes)
+                RadioListTile<String>(
+                  value: theme['id']?.toString() ?? '',
+                  groupValue: roomThemeId,
+                  secondary: const Icon(Icons.wallpaper_rounded),
+                  title: Text(theme['name']?.toString() ?? 'Room Theme'),
+                  subtitle: Text(
+                    theme['expires_at'] == null
+                        ? 'Permanent'
+                        : 'Purchased room cover',
+                  ),
+                  onChanged: (value) => Navigator.pop(sheetContext, value),
+                ),
+            ],
+          ),
         ),
       ),
     );
-    if (selected == null || selected == roomThemeId) return;
+    if (selected == null) return;
+    if (selected == '__add__') {
+      await _createCustomRoomTheme();
+      return;
+    }
+    if (selected == roomThemeId) return;
     final ok = await _saveRoomConfiguration(themeId: selected);
     if (!mounted || ok) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -3179,6 +3828,13 @@ class _RoomScreenState extends State<RoomScreen> {
                                 color: TinniPalette.gold,
                               ),
                               title: const Text('Room Lock'),
+                              subtitle: Text(
+                                roomLocked
+                                    ? (roomLockCode == null
+                                        ? '5-digit code active'
+                                        : 'Code: $roomLockCode')
+                                    : 'Off',
+                              ),
                               value: roomLocked,
                               onChanged: (value) async {
                                 final ok = await _saveRoomConfiguration(
@@ -3282,7 +3938,7 @@ class _RoomScreenState extends State<RoomScreen> {
       (
         'Effects',
         Icons.auto_awesome_rounded,
-        _toggleRoomEffects,
+        _showRoomEffects,
         true,
       ),
       (
@@ -3479,31 +4135,31 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _shareRoom() async {
-    final text =
-        'Join my DarkVibeX room: $roomName\nRoom ID: ${widget.room.id}';
-    try {
-      await SharePlus.instance.share(ShareParams(text: text));
-      if (widget.state.backendConnected) {
-        try {
-          await widget.state.backend.shareRoomForIdLevel(
-            userId: widget.state.userId,
-            roomId: widget.room.id,
-          );
-        } catch (_) {}
-        try {
-          await widget.state.backend.recordAladdinShare(
-            roomId: widget.room.id,
-            userId: widget.state.userId,
-            platform: 'system',
-          );
-        } catch (_) {}
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Room could not be shared right now')),
-      );
-    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SharingScreen(
+          title: roomName,
+          roomId: widget.room.id,
+          onShared: (platform) async {
+            if (!widget.state.backendConnected) return;
+            try {
+              await widget.state.backend.shareRoomForIdLevel(
+                userId: widget.state.userId,
+                roomId: widget.room.id,
+              );
+            } catch (_) {}
+            try {
+              await widget.state.backend.recordAladdinShare(
+                roomId: widget.room.id,
+                userId: widget.state.userId,
+                platform: platform,
+              );
+            } catch (_) {}
+            await widget.state.refreshIdLevel(notify: false);
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _openLamp() async {
@@ -3571,6 +4227,153 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<Map<String, dynamic>?> _createRoomCustomGift() async {
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connect to the server before creating a Custom Gift.')),
+      );
+      return null;
+    }
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['png', 'jpg', 'jpeg', 'webp', 'mp4'],
+    );
+    if (files.isEmpty || !mounted) return null;
+    final file = files.first;
+    final path = file.path;
+    if (path == null || path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This custom gift file could not be opened.')),
+      );
+      return null;
+    }
+    final lower = file.name.toLowerCase();
+    final extension = lower.contains('.') ? lower.split('.').last : '';
+    final contentType = switch (extension) {
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'mp4' => 'video/mp4',
+      _ => '',
+    };
+    if (contentType.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose PNG, JPG, WebP or MP4.')),
+      );
+      return null;
+    }
+
+    final nameController = TextEditingController(
+      text: file.name.contains('.')
+          ? file.name.substring(0, file.name.lastIndexOf('.'))
+          : file.name,
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Custom Gift'),
+        content: TextField(
+          controller: nameController,
+          maxLength: 40,
+          decoration: const InputDecoration(labelText: 'Gift name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = nameController.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    if (name == null || name.trim().isEmpty || !mounted) return null;
+
+    try {
+      final bytes = await File(path).readAsBytes();
+      final normalizedExtension = extension == 'jpeg' ? 'jpg' : extension;
+      final key = await widget.state.backend.uploadImage(
+        key: 'custom-gifts/${widget.state.userId}/gift-${DateTime.now().microsecondsSinceEpoch}.$normalizedExtension',
+        bytes: bytes,
+        contentType: contentType,
+      );
+      if (key == null) throw StateError('upload_failed');
+      final result = await widget.state.backend.createCustomGift(
+        userId: widget.state.userId,
+        name: name.trim(),
+        assetKey: key,
+      );
+      final gift = result?['gift'];
+      if (gift is! Map) throw StateError('create_failed');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(name.trim() + ' added to Custom Gifts.')),
+      );
+      return Map<String, dynamic>.from(gift);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Custom Gift could not be created.')),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<void> _sendGiftByDefinition(
+    Map<String, dynamic> gift,
+    String receiverId,
+  ) async {
+    final giftId = gift['id']?.toString() ?? '';
+    final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
+    if (giftId.isEmpty || giftCost <= 0 || receiverId.isEmpty) return;
+    final result = await widget.state.backend.sendGift(
+      roomId: widget.room.id,
+      senderUserId: widget.state.userId,
+      receiverUserId: receiverId,
+      giftId: giftId,
+      coinCost: giftCost,
+    );
+    final remoteBalance =
+        int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
+    if (remoteBalance != null) {
+      widget.state.setCoinBalance(remoteBalance);
+      _playGiftEffect(gift);
+      await widget.state.refreshIdLevel(notify: false);
+      if (!mounted) return;
+      unawaited(_loadRoomGiftRanking());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (gift['emoji']?.toString() ?? '🎁') +
+                ' ' +
+                (gift['name']?.toString() ?? 'Gift') +
+                ' sent • ' +
+                giftCost.toString() +
+                ' coins',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final error = result?['error']?.toString() ?? '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error.isEmpty
+              ? 'Gift was not sent. Check access and coin balance.'
+              : error.replaceAll('_', ' '),
+        ),
+      ),
+    );
+  }
+
   Future<void> _sendGift() async {
     String receiverId = widget.room.ownerUserId;
     if (isRoomHost) {
@@ -3592,6 +4395,24 @@ class _RoomScreenState extends State<RoomScreen> {
       builder: (sheetContext) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
           const Padding(padding: EdgeInsets.all(18), child: Text('Choose a gift', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+          ListTile(
+            key: const Key('room-create-custom-gift'),
+            leading: const TinniGlowIcon(
+              icon: Icons.add_photo_alternate_rounded,
+              size: 20,
+              boxSize: 38,
+            ),
+            title: const Text('Custom Gift'),
+            subtitle: const Text('Create with PNG, JPG, WebP or MP4'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              final created = await _createRoomCustomGift();
+              if (created == null || !mounted) return;
+              await _sendGiftByDefinition(created, receiverId);
+            },
+          ),
+          const Divider(height: 1),
           ...gifts.map((item) => ListTile(
             leading: Text(item['emoji']?.toString() ?? '🎁', style: const TextStyle(fontSize: 30)),
             title: Text(item['name']?.toString() ?? 'Gift'),
@@ -3602,29 +4423,10 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
     );
     if (!mounted || gift == null) return;
-    final giftId = gift['id']?.toString() ?? 'basic-star';
-    final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
     if (widget.state.backendConnected && receiverId.isNotEmpty) {
-      final result = await widget.state.backend.sendGift(
-        roomId: widget.room.id, senderUserId: widget.state.userId,
-        receiverUserId: receiverId, giftId: giftId, coinCost: giftCost,
-      );
-      final remoteBalance = int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
-      if (remoteBalance != null) {
-        widget.state.setCoinBalance(remoteBalance);
-        await widget.state.refreshIdLevel(notify: false);
-        if (!mounted) return;
-        unawaited(_loadRoomGiftRanking());
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins')));
-        return;
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gift was not sent. Check VIP access and coin balance.')));
+      await _sendGiftByDefinition(gift, receiverId);
       return;
     }
-    final ok = widget.state.spendCoins(giftCost);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins' : 'Not enough coins')));
   }
 
   Future<void> _sendInlineMessage([String? override]) async {
@@ -3826,6 +4628,12 @@ class _RoomScreenState extends State<RoomScreen> {
     return Scaffold(
       backgroundColor: _roomThemeColor,
       appBar: AppBar(
+        leading: IconButton(
+          key: const Key('room-minimize-button'),
+          tooltip: 'Minimize room',
+          onPressed: _minimizeRoom,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+        ),
         title: Row(
           children: [
             CircleAvatar(
@@ -3895,6 +4703,24 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       body: Stack(
         children: [
+          if (roomThemeAssetKey != null)
+            Positioned.fill(
+              child: Image(
+                image: NetworkImage(
+                  widget.state.backend.fileUrl(roomThemeAssetKey!),
+                  headers: widget.state.backend.fileHeaders,
+                ),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    ColoredBox(color: _roomThemeColor),
+              ),
+            ),
+          if (roomThemeAssetKey != null)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: .28),
+              ),
+            ),
           Positioned.fill(
             child: Column(
               children: [
@@ -4214,7 +5040,8 @@ class _RoomScreenState extends State<RoomScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Card(
+                  if (roomNoticesEnabled)
+                    Card(
                     color: const Color(0xFF2A1F12),
                     child: Padding(
                       padding: const EdgeInsets.all(10),
@@ -4333,7 +5160,8 @@ class _RoomScreenState extends State<RoomScreen> {
                 backgroundColor: const Color(0xFF5D1E65),
               ),
             ),
-          Positioned(
+          if (rocketDrawNoticeEnabled && effectsEnabled)
+            Positioned(
             key: const Key('room-game-floating-position'),
             right: 8,
             bottom: 138,
@@ -4383,7 +5211,60 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
           ),
-          if (arrivalEffectMember != null)
+          if (activeGiftEffect != null && effectsEnabled && giftEffectsEnabled)
+            Positioned(
+              left: 24,
+              right: 24,
+              bottom: 154,
+              child: IgnorePointer(
+                child: Container(
+                  key: const Key('room-gift-effect'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color(0xEE25102F),
+                        Color(0xEE5A2D65),
+                        Color(0xEE1A1022),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: TinniPalette.gold),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x55FFD45A),
+                        blurRadius: 18,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        activeGiftEffect?['emoji']?.toString() ?? '🎁',
+                        style: const TextStyle(fontSize: 34),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          activeGiftEffect?['name']?.toString() ?? 'Gift',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: TinniPalette.cream,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (arrivalEffectMember != null && effectsEnabled && carEffectsEnabled)
             Positioned.fill(
               child: VehicleEntryEffect(
                 displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)

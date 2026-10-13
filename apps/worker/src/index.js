@@ -6,12 +6,12 @@ import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
+import { BASE_GIFT_CATALOG, giftById } from "./gift_catalog.js";
 import {
   roleWalletDetail,
   setRoleWalletCredential,
   verifyRoleWalletCredential,
   transferRoleCoins,
-  requestRoleDollarWithdrawal,
 } from "./role_wallets.js";
 import {
   ensureTinniSocialSchema,
@@ -35,6 +35,8 @@ import {
   familyLeave,
   familyUpdateNotice,
   familyCheckIn,
+  familyTransferCoins,
+  familyWalletTransfers,
   cpState,
   cpRequest,
   cpRespond,
@@ -42,11 +44,15 @@ import {
   cpAddMemory,
   cpMemories,
   cpRanking,
+  recordCpGiftProgress,
   vsState,
   vsRequest,
   vsRespond,
   vsDisconnect,
   vsRanking,
+  recordVsGiftProgress,
+  profileTrends,
+  addProfileTrend,
   officialNotices,
   activityFeed,
 } from "./tinni_social.js";
@@ -251,7 +257,7 @@ async function activeAnnouncements(db) {
   try {
     const ts = now();
     const rows = await db.prepare(
-      `SELECT id,title,body,country,starts_at,ends_at,updated_at
+      `SELECT id,title,body,starts_at,ends_at,updated_at
          FROM owner_announcements
         WHERE enabled = 1
           AND (starts_at IS NULL OR starts_at <= ?)
@@ -268,7 +274,7 @@ async function activeAnnouncements(db) {
 async function publicCatalog(db, kind) {
   try {
     const rows = await db.prepare(
-      "SELECT kind,id,name,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
+      "SELECT kind,id,name,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
     ).bind(kind).all();
     return (rows.results ?? []).map((row) => {
       let data = {};
@@ -281,6 +287,22 @@ async function publicCatalog(db, kind) {
   }
 }
 
+const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
+  "English",
+  "Hindi",
+  "Urdu",
+  "Arabic",
+  "Bengali",
+  "Malayalam",
+  "Filipino (Tagalog)",
+  "Persian (Farsi)",
+  "Kurdish",
+  "Baluchi",
+  "Chinese (Simplified)",
+  "Chinese (Traditional)",
+  "Korean",
+]);
+
 async function ensureUsersSchema(db) {
   // Worker deploys do not automatically apply schema.sql to D1. Make the
   // authentication path self-healing without issuing duplicate ALTER writes.
@@ -290,6 +312,14 @@ async function ensureUsersSchema(db) {
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
       date_of_birth TEXT,
+      country_code TEXT,
+      country_name TEXT,
+      flag_emoji TEXT,
+      gender TEXT,
+      age_change_count INTEGER NOT NULL DEFAULT 0,
+      country_change_count INTEGER NOT NULL DEFAULT 0,
+      gender_change_count INTEGER NOT NULL DEFAULT 0,
+      language TEXT NOT NULL DEFAULT 'English',
       role TEXT NOT NULL DEFAULT 'user',
       coins INTEGER NOT NULL DEFAULT 0,
       diamonds INTEGER NOT NULL DEFAULT 0,
@@ -307,6 +337,14 @@ async function ensureUsersSchema(db) {
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
     ["date_of_birth", "TEXT"],
+    ["country_code", "TEXT"],
+    ["country_name", "TEXT"],
+    ["flag_emoji", "TEXT"],
+    ["gender", "TEXT"],
+    ["age_change_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["country_change_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["gender_change_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["language", "TEXT NOT NULL DEFAULT 'English'"],
     ["role", "TEXT NOT NULL DEFAULT 'user'"],
     ["coins", "INTEGER NOT NULL DEFAULT 0"],
     ["diamonds", "INTEGER NOT NULL DEFAULT 0"],
@@ -331,7 +369,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
   return db.prepare(
-    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
+    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -345,6 +383,7 @@ async function ensureRoomCoreSchema(db) {
       name TEXT NOT NULL,
       seat_count INTEGER NOT NULL DEFAULT 12,
       locked INTEGER NOT NULL DEFAULT 0,
+      country_code TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (owner_user_id) REFERENCES users(id)
@@ -358,6 +397,7 @@ async function ensureRoomCoreSchema(db) {
     ["name", "TEXT NOT NULL DEFAULT ''"],
     ["seat_count", "INTEGER NOT NULL DEFAULT 12"],
     ["locked", "INTEGER NOT NULL DEFAULT 0"],
+    ["country_code", "TEXT NOT NULL DEFAULT ''"],
     ["created_at", "INTEGER NOT NULL DEFAULT 0"],
     ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
   ];
@@ -365,6 +405,15 @@ async function ensureRoomCoreSchema(db) {
     if (roomColumns.has(name)) continue;
     await db.prepare(`ALTER TABLE rooms ADD COLUMN ${name} ${definition}`).run();
   }
+  await db.prepare(
+    `UPDATE rooms
+        SET country_code = COALESCE(
+          NULLIF((SELECT country_code FROM users WHERE users.id = rooms.owner_user_id), ''),
+          country_code,
+          ''
+        )
+      WHERE COALESCE(country_code, '') = ''`
+  ).run();
 
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_members (
@@ -408,6 +457,8 @@ async function ensureRoomSettingsTable(db) {
       seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold',
       mic_mode TEXT NOT NULL DEFAULT 'free',
       public_screen_enabled INTEGER NOT NULL DEFAULT 1,
+      lock_password_hash TEXT NOT NULL DEFAULT '',
+      lock_password_code TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
@@ -433,8 +484,47 @@ async function ensureRoomSettingsTable(db) {
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN lock_password_hash TEXT NOT NULL DEFAULT ''").run();
   } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN lock_password_code TEXT NOT NULL DEFAULT ''").run();
+  } catch (_) {}
 }
 
+
+async function ensureRoomCustomThemeTable(db) {
+  await ensureRoomCoreSchema(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_custom_themes (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    asset_key TEXT NOT NULL,
+    price_coins INTEGER NOT NULL DEFAULT 10000000,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_room_custom_themes_room_expiry ON room_custom_themes(room_id, expires_at)"
+  ).run();
+}
+
+async function expireRoomCustomThemes(db, roomId, ts = now()) {
+  await ensureRoomCustomThemeTable(db);
+  const expired = await db.prepare(
+    "SELECT id FROM room_custom_themes WHERE room_id=? AND expires_at IS NOT NULL AND expires_at<=?"
+  ).bind(roomId, ts).all();
+  const ids = (expired.results ?? []).map((row) => String(row.id ?? "")).filter(Boolean);
+  if (ids.length === 0) return;
+  for (const themeId of ids) {
+    await db.batch([
+      db.prepare("UPDATE room_settings SET theme_id='dark',updated_at=? WHERE room_id=? AND theme_id=?")
+        .bind(ts, roomId, themeId),
+      db.prepare("DELETE FROM room_custom_themes WHERE id=? AND room_id=?")
+        .bind(themeId, roomId),
+    ]);
+  }
+}
 
 async function expireRoomLuckyPouches(db, roomId, ts = now()) {
   await db.batch([
@@ -477,6 +567,34 @@ async function ensureRoomLuckyPouchTables(db) {
     UNIQUE (pouch_id, user_id),
     FOREIGN KEY (pouch_id) REFERENCES room_lucky_pouches(id) ON DELETE CASCADE
   )`).run();
+}
+
+async function ensureProfileMediaTable(db) {
+  await ensureUsersSchema(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS profile_media (
+    user_id TEXT NOT NULL,
+    slot TEXT NOT NULL,
+    asset_key TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id,slot),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+}
+
+async function ensureRoomLuckyNumberTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS room_lucky_numbers (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    number_value INTEGER NOT NULL CHECK(number_value BETWEEN 1 AND 100),
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_room_lucky_numbers_room_time ON room_lucky_numbers(room_id, created_at DESC)"
+  ).run();
 }
 
 async function ensureInboxEnvelopeTables(db) {
@@ -705,6 +823,22 @@ async function ensureDirectCallTable(db) {
   await db.prepare(
     "CREATE INDEX IF NOT EXISTS idx_direct_calls_caller_state ON direct_calls(caller_user_id,state,created_at DESC)"
   ).run();
+  const callInfo = await db.prepare("PRAGMA table_info(direct_calls)").all();
+  const callColumns = new Set((callInfo.results ?? []).map((row) => String(row.name ?? "")));
+  const callAdditions = [
+    ["call_kind", "TEXT NOT NULL DEFAULT 'direct'"],
+    ["cost_coins_per_minute", "INTEGER NOT NULL DEFAULT 0"],
+    ["receiver_diamonds_per_minute", "INTEGER NOT NULL DEFAULT 0"],
+    ["receiver_earning_eligible", "INTEGER NOT NULL DEFAULT 0"],
+    ["billed_minutes", "INTEGER NOT NULL DEFAULT 0"],
+    ["caller_cost_coins", "INTEGER NOT NULL DEFAULT 0"],
+    ["receiver_reward_diamonds", "INTEGER NOT NULL DEFAULT 0"],
+    ["end_reason", "TEXT"],
+  ];
+  for (const [name, definition] of callAdditions) {
+    if (callColumns.has(name)) continue;
+    await db.prepare(`ALTER TABLE direct_calls ADD COLUMN ${name} ${definition}`).run();
+  }
 }
 
 async function expireDirectCalls(db, ts = now()) {
@@ -753,12 +887,17 @@ async function ensureImageTables(db) {
   ).run();
 }
 
-async function listRooms(db) {
+async function listRooms(db, viewerUserId) {
   await ensureImageTables(db);
   await ensureRoomSettingsTable(db);
   await ensureVipSchema(db);
+  const viewer = await db.prepare(
+    "SELECT country_code FROM users WHERE id=? LIMIT 1"
+  ).bind(viewerUserId).first();
+  const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
+  if (!viewerCountry) return [];
   const result = await db.prepare(
-    `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
+    `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
             COALESCE(rs.room_mode, 'voice') AS room_mode,
@@ -771,10 +910,29 @@ async function listRooms(db) {
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
+      WHERE r.country_code = ?
       ORDER BY r.updated_at DESC
       LIMIT 100`
-  ).bind(now()).all();
+  ).bind(now(), viewerCountry).all();
   return result.results ?? [];
+}
+
+async function ensureCustomGiftSchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS custom_gifts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      asset_key TEXT NOT NULL,
+      coin_cost INTEGER NOT NULL DEFAULT 5000 CHECK (coin_cost > 0),
+      status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('pending','approved','rejected')),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_custom_gifts_status_time ON custom_gifts(status, updated_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_custom_gifts_user_time ON custom_gifts(user_id, updated_at DESC)"),
+  ]);
 }
 
 async function walletChange(db, userId, amount, kind, referenceId = null) {
@@ -794,6 +952,911 @@ async function walletChange(db, userId, amount, kind, referenceId = null) {
   return next;
 }
 
+async function settleDirectCallBilling(db, callId, ts = now()) {
+  await ensureDirectCallTable(db);
+  const call = await db.prepare(
+    "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
+  ).bind(callId).first();
+  if (!call || call.state !== "active" || call.answered_at == null) {
+    return call ? directCallRow(db, callId) : null;
+  }
+  const perMinuteCost = Number(call.cost_coins_per_minute ?? 0);
+  if (perMinuteCost <= 0) return directCallRow(db, callId);
+  const targetMinutes =
+      1 + Math.max(0, Math.floor((ts - Number(call.answered_at)) / 60000));
+  const billedMinutes = Number(call.billed_minutes ?? 0);
+  const dueMinutes = targetMinutes - billedMinutes;
+  if (dueMinutes <= 0) return directCallRow(db, callId);
+
+  const caller = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(call.caller_user_id).first();
+  const affordableMinutes = Math.min(
+    dueMinutes,
+    Math.floor(Number(caller?.coins ?? 0) / perMinuteCost),
+  );
+  if (affordableMinutes > 0) {
+    const callerCost = affordableMinutes * perMinuteCost;
+    const rewardPerMinute =
+        Number(call.receiver_earning_eligible ?? 0) === 1
+          ? Number(call.receiver_diamonds_per_minute ?? 0)
+          : 0;
+    const receiverReward = affordableMinutes * rewardPerMinute;
+    await walletChange(
+      db,
+      String(call.caller_user_id),
+      -callerCost,
+      "call_charge",
+      callId,
+    );
+    const statements = [
+      db.prepare(
+        `UPDATE direct_calls
+            SET billed_minutes=billed_minutes+?,
+                caller_cost_coins=caller_cost_coins+?,
+                receiver_reward_diamonds=receiver_reward_diamonds+?,
+                updated_at=?
+          WHERE id=?`
+      ).bind(affordableMinutes, callerCost, receiverReward, ts, callId),
+    ];
+    if (receiverReward > 0) {
+      statements.push(
+        db.prepare(
+          "UPDATE users SET diamonds=diamonds+?,updated_at=? WHERE id=?"
+        ).bind(receiverReward, ts, call.receiver_user_id),
+      );
+    }
+    await db.batch(statements);
+  }
+
+  if (affordableMinutes < dueMinutes) {
+    await db.prepare(
+      "UPDATE direct_calls SET state='ended',ended_at=?,end_reason='insufficient_coins',updated_at=? WHERE id=? AND state='active'"
+    ).bind(ts, ts, callId).run();
+  }
+  return directCallRow(db, callId);
+}
+
+
+function normalizeEmail(value) {
+  const email=String(value ?? "").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("invalid_email");
+  return email.slice(0,254);
+}
+
+function randomOpaqueToken(byteCount=24) {
+  const bytes=new Uint8Array(byteCount);
+  crypto.getRandomValues(bytes);
+  return base64UrlBytes(bytes);
+}
+
+async function derivePasswordHash(passwordValue,saltValue,iterations=100000) {
+  const password=String(passwordValue ?? "");
+  if(password.length<8||password.length>128) throw new Error("password_length");
+  const salt=encoder.encode(String(saltValue));
+  const material=await crypto.subtle.importKey(
+    "raw",encoder.encode(password),"PBKDF2",false,["deriveBits"],
+  );
+  const bits=await crypto.subtle.deriveBits(
+    {
+      name:"PBKDF2",
+      hash:"SHA-256",
+      salt,
+      iterations:Math.max(50000,Math.min(150000,Number(iterations)||100000)),
+    },
+    material,
+    256,
+  );
+  return base64UrlBytes(new Uint8Array(bits));
+}
+
+async function ensureEmailAuthSchema(db) {
+  await ensureUsersSchema(db);
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_credentials (
+      email TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      iterations INTEGER NOT NULL DEFAULT 100000,
+      credential_version INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_otp_requests (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      otp_hash TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      verified INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_email_otp_email_time ON email_otp_requests(email,created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_setup_tokens (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`),
+  ]);
+}
+
+function randomSixDigitOtp() {
+  const values=new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return String(values[0] % 1000000).padStart(6,"0");
+}
+
+async function sendDarkVibeXOtp(env,email,otp,purpose) {
+  if(!env.RESEND_API_KEY||!env.EMAIL_FROM) throw new Error("email_otp_not_configured");
+  const label=purpose==="reset" ? "password reset" : "account verification";
+  const response=await fetch("https://api.resend.com/emails",{
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      authorization:"Bearer "+String(env.RESEND_API_KEY),
+    },
+    body:JSON.stringify({
+      from:String(env.EMAIL_FROM),
+      to:[email],
+      subject:"DarkVibeX verification code",
+      html:
+        '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px">'+
+        '<h2>DarkVibeX</h2><p>Your '+label+' code is:</p>'+
+        '<div style="font-size:32px;font-weight:800;letter-spacing:8px">'+otp+'</div>'+
+        '<p>This code expires in 10 minutes. Do not share it.</p></div>',
+    }),
+  });
+  if(!response.ok) throw new Error("email_send_failed");
+}
+
+async function startEmailOtp(db,env,emailValue,purposeValue) {
+  await ensureEmailAuthSchema(db);
+  const email=normalizeEmail(emailValue);
+  const purpose=String(purposeValue ?? "signup")==="reset" ? "reset" : "signup";
+  const existing=await db.prepare(
+    "SELECT user_id FROM email_credentials WHERE email=? LIMIT 1"
+  ).bind(email).first();
+  if(purpose==="signup"&&existing) throw new Error("email_already_registered");
+  if(purpose==="reset"&&!existing) throw new Error("email_account_not_found");
+
+  const recent=await db.prepare(
+    "SELECT created_at FROM email_otp_requests WHERE email=? ORDER BY created_at DESC LIMIT 1"
+  ).bind(email).first();
+  if(recent&&now()-Number(recent.created_at ?? 0)<60000) {
+    throw new Error("otp_wait_before_resend");
+  }
+
+  const requestId="otp-"+id();
+  const otp=randomSixDigitOtp();
+  const secret=String(env.SESSION_SECRET ?? "");
+  if(!secret) throw new Error("session_secret_not_configured");
+  const otpHash=await hmacSignature(secret,requestId+"|"+email+"|"+otp);
+  const createdAt=now();
+  await db.prepare(
+    "INSERT INTO email_otp_requests(id,email,purpose,otp_hash,expires_at,attempts,verified,created_at) VALUES(?,?,?,?,?,0,0,?)"
+  ).bind(requestId,email,purpose,otpHash,createdAt+10*60*1000,createdAt).run();
+  try {
+    await sendDarkVibeXOtp(env,email,otp,purpose);
+  } catch(error) {
+    await db.prepare("DELETE FROM email_otp_requests WHERE id=?").bind(requestId).run();
+    throw error;
+  }
+  return { request_id:requestId,email,purpose,expires_at:createdAt+10*60*1000 };
+}
+
+async function verifyEmailOtpRequest(db,env,requestIdValue,otpValue) {
+  await ensureEmailAuthSchema(db);
+  const requestId=String(requestIdValue ?? "").trim();
+  const otp=String(otpValue ?? "").trim();
+  if(!/^\d{6}$/.test(otp)) throw new Error("invalid_otp");
+  const row=await db.prepare(
+    "SELECT * FROM email_otp_requests WHERE id=? LIMIT 1"
+  ).bind(requestId).first();
+  if(!row) throw new Error("otp_request_not_found");
+  if(Number(row.expires_at ?? 0)<now()) throw new Error("otp_expired");
+  if(Number(row.attempts ?? 0)>=5) throw new Error("otp_attempts_exceeded");
+  const secret=String(env.SESSION_SECRET ?? "");
+  const expected=await hmacSignature(
+    secret,requestId+"|"+String(row.email)+"|"+otp,
+  );
+  if(expected!==String(row.otp_hash)) {
+    await db.prepare(
+      "UPDATE email_otp_requests SET attempts=attempts+1 WHERE id=?"
+    ).bind(requestId).run();
+    throw new Error("invalid_otp");
+  }
+  const setupToken=randomOpaqueToken(32);
+  const tokenHash=await sha256Hex(setupToken);
+  const createdAt=now();
+  await db.batch([
+    db.prepare("UPDATE email_otp_requests SET verified=1 WHERE id=?").bind(requestId),
+    db.prepare(
+      "INSERT INTO email_setup_tokens(token_hash,email,purpose,expires_at,created_at) VALUES(?,?,?,?,?)"
+    ).bind(tokenHash,row.email,row.purpose,createdAt+15*60*1000,createdAt),
+  ]);
+  return {
+    email:String(row.email),
+    purpose:String(row.purpose),
+    setup_token:setupToken,
+    expires_at:createdAt+15*60*1000,
+  };
+}
+
+async function consumeEmailSetupToken(db,tokenValue) {
+  await ensureEmailAuthSchema(db);
+  const token=String(tokenValue ?? "").trim();
+  if(!token) throw new Error("setup_token_required");
+  const hash=await sha256Hex(token);
+  const row=await db.prepare(
+    "SELECT * FROM email_setup_tokens WHERE token_hash=? LIMIT 1"
+  ).bind(hash).first();
+  if(!row||Number(row.expires_at ?? 0)<now()) throw new Error("setup_token_expired");
+  await db.prepare("DELETE FROM email_setup_tokens WHERE token_hash=?").bind(hash).run();
+  return row;
+}
+
+async function setEmailPassword(db,email,userId,password) {
+  const salt=randomOpaqueToken(18);
+  const iterations=100000;
+  const passwordHash=await derivePasswordHash(password,salt,iterations);
+  const stamp=now();
+  await db.prepare(
+    `INSERT INTO email_credentials(
+      email,user_id,password_salt,password_hash,iterations,credential_version,created_at,updated_at
+    ) VALUES(?,?,?,?,?,1,?,?)
+    ON CONFLICT(email) DO UPDATE SET
+      user_id=excluded.user_id,
+      password_salt=excluded.password_salt,
+      password_hash=excluded.password_hash,
+      iterations=excluded.iterations,
+      credential_version=email_credentials.credential_version+1,
+      updated_at=excluded.updated_at`
+  ).bind(email,userId,salt,passwordHash,iterations,stamp,stamp).run();
+}
+
+async function emailPasswordLogin(db,emailValue,passwordValue) {
+  await ensureEmailAuthSchema(db);
+  const email=normalizeEmail(emailValue);
+  const row=await db.prepare(
+    "SELECT * FROM email_credentials WHERE email=? LIMIT 1"
+  ).bind(email).first();
+  if(!row) throw new Error("invalid_email_or_password");
+  const actual=await derivePasswordHash(
+    passwordValue,row.password_salt,Number(row.iterations ?? 100000),
+  );
+  if(actual!==String(row.password_hash)) throw new Error("invalid_email_or_password");
+  return String(row.user_id);
+}
+
+function randomFiveDigitRoomCode() {
+  const values=new Uint32Array(1);
+  const limit=Math.floor(0x100000000 / 90000) * 90000;
+  do {
+    crypto.getRandomValues(values);
+  } while(values[0]>=limit);
+  return String(10000 + (values[0] % 90000));
+}
+
+const LUDO_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
+const LUDO_OFFSETS = Object.freeze({ red: 0, green: 13, yellow: 26, blue: 39 });
+const LUDO_SAFE_TRACK = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+
+function ludoInitialState() {
+  return {
+    current_player: "red",
+    rolled: null,
+    winner: null,
+    status: "RED starts. Roll the dice.",
+    tokens: {
+      red: [-1, -1, -1, -1],
+      green: [-1, -1, -1, -1],
+      yellow: [-1, -1, -1, -1],
+      blue: [-1, -1, -1, -1],
+    },
+  };
+}
+
+function ludoTrackIndex(color, progress) {
+  if (!(color in LUDO_OFFSETS) || progress < 0 || progress >= 52) return -1;
+  return (LUDO_OFFSETS[color] + progress) % 52;
+}
+
+function ludoMovableIndexes(state) {
+  const dice = Number(state?.rolled ?? 0);
+  const color = String(state?.current_player ?? "red");
+  const tokens = Array.isArray(state?.tokens?.[color]) ? state.tokens[color] : [];
+  if (!dice || state?.winner) return [];
+  const result = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const progress = Number(tokens[index]);
+    if (progress >= 57) continue;
+    if (progress < 0) {
+      if (dice === 6) result.push(index);
+    } else if (progress + dice <= 57) {
+      result.push(index);
+    }
+  }
+  return result;
+}
+
+async function ensureLudoSchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS ludo_room_sessions (
+      room_id TEXT PRIMARY KEY,
+      state_json TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS ludo_room_players (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      color TEXT NOT NULL,
+      joined_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      UNIQUE (room_id, color),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+  ]);
+}
+
+async function requireLudoRoomMember(db, roomId, userId) {
+  const room = await db.prepare(
+    "SELECT id,owner_user_id FROM rooms WHERE id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!room) throw new Error("room_not_found");
+  const member = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1"
+  ).bind(roomId, userId).first();
+  if (!member) throw new Error("room_membership_required");
+  return room;
+}
+
+async function loadLudoState(db, roomId) {
+  await ensureLudoSchema(db);
+  let row = await db.prepare(
+    "SELECT state_json,version,updated_at FROM ludo_room_sessions WHERE room_id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!row) {
+    const state = ludoInitialState();
+    const ts = now();
+    await db.prepare(
+      "INSERT OR IGNORE INTO ludo_room_sessions(room_id,state_json,version,updated_at) VALUES(?,?,1,?)"
+    ).bind(roomId, JSON.stringify(state), ts).run();
+    row = await db.prepare(
+      "SELECT state_json,version,updated_at FROM ludo_room_sessions WHERE room_id=? LIMIT 1"
+    ).bind(roomId).first();
+  }
+  let state;
+  try {
+    state = JSON.parse(String(row?.state_json ?? "{}"));
+  } catch (_) {
+    state = ludoInitialState();
+  }
+  for (const color of LUDO_COLORS) {
+    if (!Array.isArray(state?.tokens?.[color]) || state.tokens[color].length !== 4) {
+      state.tokens ??= {};
+      state.tokens[color] = [-1, -1, -1, -1];
+    }
+  }
+  return {
+    state,
+    version: Math.max(1, Number(row?.version ?? 1)),
+    updated_at: Number(row?.updated_at ?? 0),
+  };
+}
+
+async function saveLudoState(db, roomId, state, expectedVersion) {
+  const ts = now();
+  const result = await db.prepare(
+    "UPDATE ludo_room_sessions SET state_json=?,version=version+1,updated_at=? WHERE room_id=? AND version=?"
+  ).bind(JSON.stringify(state), ts, roomId, expectedVersion).run();
+  if (Number(result?.meta?.changes ?? 0) !== 1) {
+    throw new Error("game_state_changed");
+  }
+  return { state, version: expectedVersion + 1, updated_at: ts };
+}
+
+async function ludoOccupiedColors(db, roomId) {
+  const rows = await db.prepare(
+    "SELECT color FROM ludo_room_players WHERE room_id=? ORDER BY joined_at ASC"
+  ).bind(roomId).all();
+  return new Set((rows.results ?? []).map((row) => String(row.color)));
+}
+
+async function ludoAdvancePlayer(db, roomId, state, keepTurn = false) {
+  const previousRoll = Number(state.rolled ?? 0);
+  state.rolled = null;
+  if (state.winner) return;
+  if (keepTurn && previousRoll === 6) {
+    state.status = String(state.current_player).toUpperCase() + " gets another roll.";
+    return;
+  }
+  const occupied = await ludoOccupiedColors(db, roomId);
+  const currentIndex = LUDO_COLORS.indexOf(String(state.current_player));
+  for (let offset = 1; offset <= LUDO_COLORS.length; offset += 1) {
+    const next = LUDO_COLORS[(Math.max(0, currentIndex) + offset) % LUDO_COLORS.length];
+    if (occupied.has(next)) {
+      state.current_player = next;
+      state.status = next.toUpperCase() + " turn.";
+      return;
+    }
+  }
+  state.status = String(state.current_player).toUpperCase() + " turn.";
+}
+
+async function cleanupLudoPlayers(db, roomId) {
+  const stale = await db.prepare(
+    `SELECT p.user_id,p.color
+       FROM ludo_room_players p
+       LEFT JOIN room_members m
+         ON m.room_id=p.room_id AND m.user_id=p.user_id
+      WHERE p.room_id=? AND m.user_id IS NULL`
+  ).bind(roomId).all();
+  if (!(stale.results ?? []).length) return;
+  const loaded = await loadLudoState(db, roomId);
+  let changed = false;
+  for (const row of stale.results ?? []) {
+    const color = String(row.color);
+    await db.prepare(
+      "DELETE FROM ludo_room_players WHERE room_id=? AND user_id=?"
+    ).bind(roomId, String(row.user_id)).run();
+    if (loaded.state.tokens?.[color]) {
+      loaded.state.tokens[color] = [-1, -1, -1, -1];
+      changed = true;
+    }
+    if (loaded.state.current_player === color) {
+      loaded.state.rolled = null;
+      await ludoAdvancePlayer(db, roomId, loaded.state, false);
+      changed = true;
+    }
+  }
+  const remaining = await db.prepare(
+    "SELECT 1 AS yes FROM ludo_room_players WHERE room_id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!remaining) {
+    loaded.state = ludoInitialState();
+    changed = true;
+  }
+  if (changed) {
+    try {
+      await saveLudoState(db, roomId, loaded.state, loaded.version);
+    } catch (_) {}
+  }
+}
+
+async function ensureLudoPlayer(db, roomId, userId) {
+  await requireLudoRoomMember(db, roomId, userId);
+  await cleanupLudoPlayers(db, roomId);
+  let player = await db.prepare(
+    "SELECT color,joined_at FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
+  ).bind(roomId, userId).first();
+  if (player) return String(player.color);
+  for (const color of LUDO_COLORS) {
+    const ts = now();
+    await db.prepare(
+      "INSERT OR IGNORE INTO ludo_room_players(room_id,user_id,color,joined_at) VALUES(?,?,?,?)"
+    ).bind(roomId, userId, color, ts).run();
+    player = await db.prepare(
+      "SELECT color,joined_at FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
+    ).bind(roomId, userId).first();
+    if (player) return String(player.color);
+  }
+  return null;
+}
+
+async function publicLudoState(db, roomId, userId, loadedValue = null) {
+  const loaded = loadedValue ?? await loadLudoState(db, roomId);
+  const rows = await db.prepare(
+    `SELECT p.user_id,p.color,p.joined_at,u.display_name,u.avatar_key,
+            m.seat_index,m.mic_muted
+       FROM ludo_room_players p
+       JOIN users u ON u.id=p.user_id
+       LEFT JOIN room_members m
+         ON m.room_id=p.room_id AND m.user_id=p.user_id
+      WHERE p.room_id=?
+      ORDER BY p.joined_at ASC`
+  ).bind(roomId).all();
+  const players = (rows.results ?? []).map((row) => ({
+    user_id: String(row.user_id),
+    color: String(row.color),
+    display_name: String(row.display_name ?? row.user_id),
+    avatar_key: String(row.avatar_key ?? ""),
+    joined_at: Number(row.joined_at ?? 0),
+    seat_index: row.seat_index == null ? null : Number(row.seat_index),
+    mic_muted: Number(row.mic_muted ?? 1) === 1,
+  }));
+  const mine = players.find((row) => row.user_id === userId) ?? null;
+  return {
+    ok: true,
+    room_id: roomId,
+    player_color: mine?.color ?? null,
+    spectator: !mine,
+    players,
+    version: loaded.version,
+    updated_at: loaded.updated_at,
+    ...loaded.state,
+    movable_indexes: ludoMovableIndexes(loaded.state),
+  };
+}
+
+async function secureDieRoll() {
+  const values = new Uint32Array(1);
+  const accepted = Math.floor(0x100000000 / 6) * 6;
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= accepted);
+  return Number(values[0] % 6) + 1;
+}
+
+const FRUIT_PARTY_ROUND_MS = 21000;
+const FRUIT_PARTY_RESULT_MS = 5000;
+const FRUIT_PARTY_CYCLE_MS = FRUIT_PARTY_ROUND_MS + FRUIT_PARTY_RESULT_MS;
+const FRUIT_PARTY_LUCKY_WINDOW_MS = 2 * 60 * 60 * 1000;
+const FRUIT_PARTY_BET_AMOUNTS = Object.freeze([
+  5000, 25000, 100000, 500000, 2000000, 10000000,
+]);
+const FRUIT_PARTY_FRUITS = Object.freeze([
+  { key: "lemon", emoji: "🍋", label: "Lemon", multiplier: 5 },
+  { key: "raspberry", emoji: "🫐", label: "Raspberry", multiplier: 5 },
+  { key: "kiwi", emoji: "🥝", label: "Kiwi", multiplier: 5 },
+  { key: "plum", emoji: "🍑", label: "Plum", multiplier: 5 },
+  { key: "banana", emoji: "🍌", label: "Banana", multiplier: 10 },
+  { key: "strawberry", emoji: "🍓", label: "Strawberry", multiplier: 15 },
+  { key: "watermelon", emoji: "🍉", label: "Watermelon", multiplier: 25 },
+  { key: "cherry", emoji: "🍒", label: "Cherry", multiplier: 45 },
+]);
+const FRUIT_PARTY_BY_KEY = new Map(
+  FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, fruit]),
+);
+const FRUIT_PARTY_X5 = FRUIT_PARTY_FRUITS.filter((fruit) => fruit.multiplier === 5);
+const FRUIT_PARTY_MID = FRUIT_PARTY_FRUITS.filter(
+  (fruit) => fruit.multiplier === 10 ||
+    fruit.multiplier === 15 ||
+    fruit.multiplier === 25,
+);
+const FRUIT_PARTY_HIGH = FRUIT_PARTY_FRUITS.filter(
+  (fruit) => fruit.multiplier === 45,
+);
+
+function secureIndex(length) {
+  if (length <= 1) return 0;
+  const values = new Uint32Array(1);
+  const ceiling = Math.floor(0x100000000 / length) * length;
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= ceiling);
+  return values[0] % length;
+}
+
+function fruitPartyWeightedFruit() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  const roll = values[0] % 100;
+  if (roll < 75) return FRUIT_PARTY_X5[secureIndex(FRUIT_PARTY_X5.length)];
+  if (roll < 95) return FRUIT_PARTY_MID[secureIndex(FRUIT_PARTY_MID.length)];
+  return FRUIT_PARTY_HIGH[secureIndex(FRUIT_PARTY_HIGH.length)];
+}
+
+function fruitPartyDistinctFruits(count) {
+  const pool = [...FRUIT_PARTY_FRUITS];
+  const picked = [];
+  while (pool.length && picked.length < count) {
+    picked.push(pool.splice(secureIndex(pool.length), 1)[0]);
+  }
+  return picked;
+}
+
+function fruitPartyRoundId(ts) {
+  return Math.floor(ts / FRUIT_PARTY_CYCLE_MS);
+}
+function fruitPartyRoundStart(roundId) {
+  return roundId * FRUIT_PARTY_CYCLE_MS;
+}
+function fruitPartyBetEnd(roundId) {
+  return fruitPartyRoundStart(roundId) + FRUIT_PARTY_ROUND_MS;
+}
+function fruitPartyCycleEnd(roundId) {
+  return fruitPartyRoundStart(roundId) + FRUIT_PARTY_CYCLE_MS;
+}
+
+async function ensureFruitPartySchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_bets (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      round_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      fruit_key TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, request_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_results (
+      round_id INTEGER PRIMARY KEY,
+      fruit_key TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      bonus_fruits_json TEXT NOT NULL DEFAULT '[]',
+      total_bet INTEGER NOT NULL DEFAULT 0,
+      total_payout INTEGER NOT NULL DEFAULT 0,
+      active_players INTEGER NOT NULL DEFAULT 0,
+      top_winners_json TEXT NOT NULL DEFAULT '[]',
+      settled_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_lucky_windows (
+      window_id INTEGER PRIMARY KEY,
+      rounds_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_fruit_party_bets_round ON fruit_party_bets(round_id)"
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_fruit_party_results_time ON fruit_party_results(settled_at DESC)"
+    ),
+  ]);
+}
+
+async function fruitPartyLuckyRounds(db, roundId) {
+  const windowId = Math.floor(
+    fruitPartyRoundStart(roundId) / FRUIT_PARTY_LUCKY_WINDOW_MS,
+  );
+  let row = await db.prepare(
+    "SELECT rounds_json FROM fruit_party_lucky_windows WHERE window_id=?"
+  ).bind(windowId).first();
+  if (!row) {
+    const windowStart = windowId * FRUIT_PARTY_LUCKY_WINDOW_MS;
+    const windowEnd = windowStart + FRUIT_PARTY_LUCKY_WINDOW_MS;
+    const firstRound = Math.ceil(windowStart / FRUIT_PARTY_CYCLE_MS);
+    const lastRound = Math.floor((windowEnd - 1) / FRUIT_PARTY_CYCLE_MS);
+    const totalRounds = Math.max(1, lastRound - firstRound + 1);
+    const count = 3 + secureIndex(2);
+    const selected = new Set();
+    while (selected.size < Math.min(count, totalRounds)) {
+      selected.add(firstRound + secureIndex(totalRounds));
+    }
+    const rounds = [...selected].sort((a, b) => a - b);
+    await db.prepare(
+      "INSERT OR IGNORE INTO fruit_party_lucky_windows(window_id,rounds_json,created_at) VALUES(?,?,?)"
+    ).bind(windowId, JSON.stringify(rounds), now()).run();
+    row = await db.prepare(
+      "SELECT rounds_json FROM fruit_party_lucky_windows WHERE window_id=?"
+    ).bind(windowId).first();
+  }
+  try {
+    const parsed = JSON.parse(String(row?.rounds_json ?? "[]"));
+    return Array.isArray(parsed) ? parsed.map(Number) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function settleFruitPartyRound(db, roundId) {
+  const existing = await db.prepare(
+    "SELECT round_id FROM fruit_party_results WHERE round_id=? LIMIT 1"
+  ).bind(roundId).first();
+  if (existing) return;
+
+  const rows = await db.prepare(
+    `SELECT b.user_id,b.fruit_key,b.amount,u.display_name,u.avatar_key
+       FROM fruit_party_bets b
+       JOIN users u ON u.id=b.user_id
+      WHERE b.round_id=?
+      ORDER BY b.created_at ASC`
+  ).bind(roundId).all();
+  const bets = rows.results ?? [];
+  const luckyRounds = await fruitPartyLuckyRounds(db, roundId);
+  const lucky11 = luckyRounds.includes(roundId);
+  const bonus = lucky11 ? fruitPartyDistinctFruits(4) : [];
+  let winner = lucky11 ? bonus[0] : fruitPartyWeightedFruit();
+
+  if (!lucky11) {
+    const previous = await db.prepare(
+      "SELECT fruit_key FROM fruit_party_results WHERE round_id<? ORDER BY round_id DESC LIMIT 1"
+    ).bind(roundId).first();
+    if (previous && String(previous.fruit_key) === winner.key) {
+      const alternatives = FRUIT_PARTY_FRUITS.filter(
+        (fruit) => fruit.key !== String(previous.fruit_key),
+      );
+      winner = alternatives[secureIndex(alternatives.length)];
+    }
+  }
+
+  const winningKeys = new Set(
+    lucky11 ? bonus.map((fruit) => fruit.key) : [winner.key],
+  );
+  const payouts = new Map();
+  const profiles = new Map();
+  let totalBet = 0;
+  for (const bet of bets) {
+    const amount = Number(bet.amount ?? 0);
+    totalBet += amount;
+    profiles.set(String(bet.user_id), {
+      display_name: String(bet.display_name ?? bet.user_id ?? "User"),
+      avatar_key: String(bet.avatar_key ?? ""),
+    });
+    if (!winningKeys.has(String(bet.fruit_key))) continue;
+    const fruit = FRUIT_PARTY_BY_KEY.get(String(bet.fruit_key));
+    if (!fruit) continue;
+    const payout = amount * fruit.multiplier;
+    payouts.set(
+      String(bet.user_id),
+      Number(payouts.get(String(bet.user_id)) ?? 0) + payout,
+    );
+  }
+  const totalPayout = [...payouts.values()].reduce(
+    (sum, value) => sum + Number(value),
+    0,
+  );
+  const topWinners = [...payouts.entries()]
+    .filter(([, amount]) => Number(amount) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
+    .map(([userId, amount]) => ({
+      user_id: userId,
+      display_name: profiles.get(userId)?.display_name ?? userId,
+      avatar_key: profiles.get(userId)?.avatar_key ?? "",
+      winning_coins: Number(amount),
+    }));
+  const ts = now();
+
+  const statements = [
+    db.prepare(
+      `INSERT INTO fruit_party_results(
+        round_id,fruit_key,mode,bonus_fruits_json,total_bet,total_payout,
+        active_players,top_winners_json,settled_at
+      ) VALUES(?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      roundId,
+      winner.key,
+      lucky11 ? "lucky_11_random_4" : "weighted_random",
+      JSON.stringify(bonus.map((fruit) => fruit.key)),
+      totalBet,
+      totalPayout,
+      new Set(bets.map((bet) => String(bet.user_id))).size,
+      JSON.stringify(topWinners),
+      ts,
+    ),
+  ];
+  for (const [userId, payout] of payouts.entries()) {
+    const reference = `fruit-party:${roundId}:${userId}`;
+    statements.push(
+      db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+        .bind(Number(payout), ts, userId),
+      db.prepare(
+        `INSERT INTO wallet_ledger(
+          id,user_id,kind,amount,balance_after,reference_id,created_at
+        )
+        SELECT ?,u.id,'fruit_party_win',?,u.coins,?,?
+          FROM users u WHERE u.id=?`
+      ).bind(id(), Number(payout), reference, ts, userId),
+    );
+  }
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    const after = await db.prepare(
+      "SELECT round_id FROM fruit_party_results WHERE round_id=?"
+    ).bind(roundId).first();
+    if (!after) throw error;
+  }
+
+  await db.prepare(
+    "DELETE FROM fruit_party_results WHERE round_id NOT IN (SELECT round_id FROM fruit_party_results ORDER BY round_id DESC LIMIT 100)"
+  ).run();
+  await db.prepare(
+    "DELETE FROM fruit_party_bets WHERE round_id<?"
+  ).bind(roundId - 120).run();
+}
+
+async function syncFruitParty(db, ts = now()) {
+  await ensureFruitPartySchema(db);
+  const currentRound = fruitPartyRoundId(ts);
+  const eligible =
+    ts >= fruitPartyBetEnd(currentRound) ? currentRound : currentRound - 1;
+  const start = Math.max(0, eligible - 7);
+  for (let round = start; round <= eligible; round++) {
+    await settleFruitPartyRound(db, round);
+  }
+}
+
+async function fruitPartyState(db, userId, ts = now()) {
+  await syncFruitParty(db, ts);
+  const roundId = fruitPartyRoundId(ts);
+  const betEnd = fruitPartyBetEnd(roundId);
+  const cycleEnd = fruitPartyCycleEnd(roundId);
+  const inResultSpin = ts >= betEnd;
+  const myRows = await db.prepare(
+    "SELECT fruit_key,COALESCE(SUM(amount),0) AS amount FROM fruit_party_bets WHERE round_id=? AND user_id=? GROUP BY fruit_key"
+  ).bind(roundId, userId).all();
+  const myBets = Object.fromEntries(
+    FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, 0]),
+  );
+  for (const row of myRows.results ?? []) {
+    if (Object.prototype.hasOwnProperty.call(myBets, row.fruit_key)) {
+      myBets[row.fruit_key] = Number(row.amount ?? 0);
+    }
+  }
+  const totals = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS total_bet,COUNT(DISTINCT user_id) AS active_players FROM fruit_party_bets WHERE round_id=?"
+  ).bind(roundId).first();
+  const historyRows = await db.prepare(
+    `SELECT round_id,fruit_key,mode,bonus_fruits_json,total_bet,total_payout,
+            active_players,top_winners_json,settled_at
+       FROM fruit_party_results
+      ORDER BY round_id DESC
+      LIMIT 7`
+  ).all();
+  const history = (historyRows.results ?? []).map((row) => {
+    let bonusKeys = [];
+    let topWinners = [];
+    try { bonusKeys = JSON.parse(String(row.bonus_fruits_json ?? "[]")); } catch (_) {}
+    try { topWinners = JSON.parse(String(row.top_winners_json ?? "[]")); } catch (_) {}
+    return {
+      round_id: Number(row.round_id),
+      fruit: FRUIT_PARTY_BY_KEY.get(String(row.fruit_key)) ?? null,
+      mode: String(row.mode ?? ""),
+      lucky11: String(row.mode ?? "").startsWith("lucky_11_"),
+      bonus_fruits: bonusKeys
+        .map((key) => FRUIT_PARTY_BY_KEY.get(String(key)))
+        .filter(Boolean),
+      total_bet: Number(row.total_bet ?? 0),
+      total_payout: Number(row.total_payout ?? 0),
+      active_players: Number(row.active_players ?? 0),
+      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
+      settled_at: Number(row.settled_at ?? 0),
+    };
+  });
+  const wallet = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  const dayStart = Math.floor(ts / 86400000) * 86400000;
+  const winRow = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='fruit_party_win' AND created_at>=?"
+  ).bind(userId, dayStart).first();
+
+  return {
+    ok: true,
+    server_time: ts,
+    round: {
+      round_id: roundId,
+      round_start: fruitPartyRoundStart(roundId),
+      round_end: betEnd,
+      cycle_end: cycleEnd,
+      remaining_ms: Math.max(0, betEnd - ts),
+      result_spin_remaining_ms: inResultSpin
+        ? Math.max(0, cycleEnd - ts)
+        : 0,
+      result_spin_ms: FRUIT_PARTY_RESULT_MS,
+      phase: inResultSpin ? "result_spin" : "betting",
+      round_duration_ms: FRUIT_PARTY_ROUND_MS,
+      round_cycle_ms: FRUIT_PARTY_CYCLE_MS,
+      betting_open: !inResultSpin && betEnd > ts,
+      total_bet: Number(totals?.total_bet ?? 0),
+      active_players: Number(totals?.active_players ?? 0),
+    },
+    config: {
+      bet_amounts: FRUIT_PARTY_BET_AMOUNTS,
+      lucky_window_ms: FRUIT_PARTY_LUCKY_WINDOW_MS,
+      lucky_rounds_min: 3,
+      lucky_rounds_max: 4,
+      lucky_fruit_count: 4,
+      fruits: FRUIT_PARTY_FRUITS,
+    },
+    wallet_balance: Number(wallet?.coins ?? 0),
+    today_winnings: Number(winRow?.winnings ?? 0),
+    my_bets: myBets,
+    history,
+  };
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -802,6 +1865,7 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       google_web_client_id: String(env.GOOGLE_WEB_CLIENT_ID ?? ""),
+      email_otp_configured: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
     });
   }
 
@@ -815,6 +1879,146 @@ async function handleApi(request, env, url) {
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  if (url.pathname === "/api/profile-media" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    await ensureProfileMediaTable(db);
+    const targetId = String(
+      url.searchParams.get("user_id") ?? session.sub ?? "",
+    ).trim();
+    if (!targetId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    const user = await db.prepare(
+      "SELECT id,avatar_key FROM users WHERE id=? LIMIT 1"
+    ).bind(targetId).first();
+    if (!user) return json({ ok:false,error:"user_not_found" }, { status:404 });
+    const rows = await db.prepare(
+      "SELECT slot,asset_key,updated_at FROM profile_media WHERE user_id=?"
+    ).bind(targetId).all();
+    const media = {
+      avatar: user.avatar_key ? String(user.avatar_key) : null,
+      cover: null,
+      life_1: null,
+      life_2: null,
+      life_3: null,
+      travel: null,
+    };
+    for (const row of rows.results ?? []) {
+      const slot = String(row.slot ?? "");
+      if (Object.prototype.hasOwnProperty.call(media, slot)) {
+        media[slot] = String(row.asset_key ?? "") || null;
+      }
+    }
+    return json({ ok:true,user_id:targetId,media });
+  }
+
+  if (url.pathname === "/api/profile-media" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const actorId = String(session.sub);
+    const body = await bodyJson(request);
+    const slot = String(body.slot ?? "").trim();
+    const assetKey = String(body.asset_key ?? "").trim();
+    const allowed = new Set(["cover","life_1","life_2","life_3","travel"]);
+    if (!allowed.has(slot)) {
+      return json({ ok:false,error:"invalid_profile_media_slot" }, { status:400 });
+    }
+    if (!assetKey.startsWith(`users/${actorId}/profile-media-`) ||
+        !/\.(jpg|jpeg|png|webp)$/i.test(assetKey)) {
+      return json({ ok:false,error:"invalid_profile_media_key" }, { status:400 });
+    }
+    await ensureProfileMediaTable(db);
+    const previous = await db.prepare(
+      "SELECT asset_key FROM profile_media WHERE user_id=? AND slot=?"
+    ).bind(actorId,slot).first();
+    await db.prepare(
+      `INSERT INTO profile_media(user_id,slot,asset_key,updated_at)
+       VALUES(?,?,?,?)
+       ON CONFLICT(user_id,slot) DO UPDATE SET
+         asset_key=excluded.asset_key,updated_at=excluded.updated_at`
+    ).bind(actorId,slot,assetKey,now()).run();
+    const oldKey = String(previous?.asset_key ?? "");
+    if (oldKey && oldKey !== assetKey && env.FILES) {
+      try { await env.FILES.delete(oldKey); } catch (_) {}
+    }
+    return json({ ok:true,slot,asset_key:assetKey });
+  }
+
+  if (url.pathname === "/api/profile-media" && request.method === "DELETE") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const actorId = String(session.sub);
+    const body = await bodyJson(request);
+    const slot = String(body.slot ?? "").trim();
+    const allowed = new Set(["cover","life_1","life_2","life_3","travel"]);
+    if (!allowed.has(slot) || body.confirm_remove !== true) {
+      return json({ ok:false,error:"profile_media_remove_confirmation_required" }, { status:400 });
+    }
+    await ensureProfileMediaTable(db);
+    const previous = await db.prepare(
+      "SELECT asset_key FROM profile_media WHERE user_id=? AND slot=?"
+    ).bind(actorId,slot).first();
+    await db.prepare(
+      "DELETE FROM profile_media WHERE user_id=? AND slot=?"
+    ).bind(actorId,slot).run();
+    const oldKey = String(previous?.asset_key ?? "");
+    if (oldKey && env.FILES) {
+      try { await env.FILES.delete(oldKey); } catch (_) {}
+    }
+    return json({ ok:true,slot });
+  }
+
+  if (url.pathname === "/api/profile/trends" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const targetId = userId || String(session.sub);
+    const user = await db.prepare("SELECT id FROM users WHERE id=? LIMIT 1")
+      .bind(targetId).first();
+    if (!user) return json({ ok:false,error:"user_not_found" }, { status:404 });
+    return json({
+      ok:true,
+      trends:await profileTrends(
+        db,
+        targetId,
+        url.searchParams.get("limit") ?? 40,
+      ),
+    });
+  }
+
+  if (url.pathname === "/api/profile/trends" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({
+        ok:true,
+        trend:await addProfileTrend(db,userId,body.text),
+      }, { status:201 });
+    } catch (error) {
+      return json(
+        { ok:false,error:String(error?.message ?? error) },
+        { status:400 },
+      );
+    }
   }
 
   if (url.pathname === "/api/messages/official" && request.method === "GET") {
@@ -1097,6 +2301,45 @@ async function handleApi(request, env, url) {
     }
   }
 
+  if (url.pathname === "/api/family/wallet/transfers" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    return json({
+      ok: true,
+      transfers: await familyWalletTransfers(db, String(session.sub), limit),
+    });
+  }
+
+  if (url.pathname === "/api/family/wallet/send" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const body = await bodyJson(request);
+    try {
+      return json(
+        await familyTransferCoins(
+          db,
+          String(session.sub),
+          String(body.receiver_user_id ?? "").trim(),
+          body.coins,
+        ),
+        { status: 201 },
+      );
+    } catch (error) {
+      const message = String(error?.message ?? error ?? "family_transfer_failed");
+      const status = message === "insufficient_coins" ? 409 : 400;
+      return json({ ok:false,error:message }, { status });
+    }
+  }
+
   if (url.pathname === "/api/family/check-in" && request.method === "POST") {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
@@ -1182,7 +2425,15 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json({ ok: true, cp: await cpRequest(db, userId, String(body.target_user_id ?? "")) }, { status: 201 });
+      const cp = await cpRequest(db, userId, String(body.target_user_id ?? ""));
+      const wallet = await db.prepare(
+        "SELECT coins FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      return json({
+        ok: true,
+        cp,
+        coin_balance: Number(wallet?.coins ?? 0),
+      }, { status: 201 });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -1206,6 +2457,41 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     return json(await cpDisconnect(db, userId));
+  }
+
+  if (url.pathname === "/api/cp/ring" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const ringId = String(body.ring_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await cpState(db, userId);
+    if (!cp || cp.state !== "active") {
+      return json({ ok:false,error:"cp_not_active" }, { status:409 });
+    }
+    if (!ringId) {
+      await db.prepare(
+        "UPDATE cp_relationships SET ring_id=NULL,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+      ).bind(now(),cp.user_a,cp.user_b).run();
+      return json({ ok:true,cp:await cpState(db,userId) });
+    }
+    await ensureCosmeticsSchema(db);
+    const product = COSMETIC_CATALOG.find(
+      (item) => item.id === ringId && item.kind === "ring"
+    );
+    if (!product) {
+      return json({ ok:false,error:"ring_not_found" }, { status:404 });
+    }
+    const owned = await db.prepare(
+      "SELECT 1 AS owned FROM user_props WHERE user_id=? AND item_id=? AND kind='ring' AND expires_at>? LIMIT 1"
+    ).bind(userId,ringId,now()).first();
+    if (!owned) {
+      return json({ ok:false,error:"ring_not_owned" }, { status:403 });
+    }
+    await db.prepare(
+      "UPDATE cp_relationships SET ring_id=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+    ).bind(ringId,now(),cp.user_a,cp.user_b).run();
+    return json({ ok:true,cp:await cpState(db,userId) });
   }
 
   if (url.pathname === "/api/cp/memories" && request.method === "GET") {
@@ -1232,18 +2518,33 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureLampSchema(db);
+    await ensureRoomSettingsTable(db);
+    await ensureImageTables(db);
+    const viewer = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
+    if (!viewerCountry) return json({ ok:true,rooms:[] });
     const rows = await db.prepare(
-      `SELECT r.id,r.name,r.owner_name,r.owner_user_id,r.online,r.seat_count,
-              r.avatar_key,COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
+      `SELECT r.id,r.name,
+              COALESCE(u.display_name,'Owner') AS owner_name,
+              r.owner_user_id,
+              COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
+              r.seat_count,
+              ri.image_key AS avatar_key,
+              r.country_code,
+              COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
               COALESCE(s.room_mode,'voice') AS room_mode,
               rf.followed_at
          FROM room_followers rf
          JOIN rooms r ON r.id=rf.room_id
+         LEFT JOIN users u ON u.id=r.owner_user_id
+         LEFT JOIN room_images ri ON ri.room_id=r.id
          LEFT JOIN room_settings s ON s.room_id=r.id
-        WHERE rf.user_id=?
+        WHERE rf.user_id=? AND r.country_code=?
         ORDER BY rf.updated_at DESC LIMIT 100`
-    ).bind(userId).all();
-    return json({ ok: true, rooms: rows.results ?? [] });
+    ).bind(userId,viewerCountry).all();
+    return json({ ok:true,rooms:rows.results ?? [] });
   }
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
@@ -1380,6 +2681,94 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
     const body = await bodyJson(request);
     return json({ ok: true, role: normalizeRole(body.role) });
+  }
+
+  if (url.pathname === "/api/session/email/start" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      return json({
+        ok:true,
+        ...(await startEmailOtp(db,env,body.email,body.purpose)),
+      }, { status:201 });
+    } catch(error) {
+      const code=String(error?.message ?? error);
+      const status=code==="email_otp_not_configured" ? 503 : 400;
+      return json({ok:false,error:code},{status});
+    }
+  }
+
+  if (url.pathname === "/api/session/email/verify" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      return json({
+        ok:true,
+        ...(await verifyEmailOtpRequest(db,env,body.request_id,body.otp)),
+      });
+    } catch(error) {
+      return json({ok:false,error:String(error?.message ?? error)},{status:400});
+    }
+  }
+
+  if (url.pathname === "/api/session/email/complete" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      const setup=await consumeEmailSetupToken(db,body.setup_token);
+      const email=String(setup.email);
+      const purpose=String(setup.purpose);
+      let credential=await db.prepare(
+        "SELECT user_id FROM email_credentials WHERE email=? LIMIT 1"
+      ).bind(email).first();
+      let userId=String(credential?.user_id ?? "");
+      if(purpose==="signup") {
+        if(userId) throw new Error("email_already_registered");
+        const digest=await sha256Hex(email);
+        userId="e_"+digest.slice(0,20);
+        const displayName=String(body.display_name ?? "DarkVibeX User").trim().slice(0,60);
+        await ensureUser(db,userId,displayName || "DarkVibeX User");
+      } else if(!userId) {
+        throw new Error("email_account_not_found");
+      }
+      await setEmailPassword(db,email,userId,body.password);
+      await ensureAuthIdentityTable(db);
+      await db.prepare(
+        `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
+         VALUES('email',?,?,?,?,?)
+         ON CONFLICT(provider,subject) DO UPDATE SET
+           user_id=excluded.user_id,email=excluded.email,updated_at=excluded.updated_at`
+      ).bind(email,userId,email,now(),now()).run();
+      const user=await ensureUser(db,userId,String(body.display_name ?? "").trim());
+      if(body.date_of_birth) {
+        await db.prepare(
+          "UPDATE users SET date_of_birth=?,updated_at=? WHERE id=?"
+        ).bind(String(body.date_of_birth),now(),userId).run();
+      }
+      const latest=await db.prepare(
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=?"
+      ).bind(userId).first();
+      const token=await createSessionToken(env,userId,latest?.display_name ?? userId);
+      return json({ok:true,token,user:latest,provider:"email"});
+    } catch(error) {
+      const code=String(error?.message ?? error);
+      return json({ok:false,error:code},{status:400});
+    }
+  }
+
+  if (url.pathname === "/api/session/email/login" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      const userId=await emailPasswordLogin(db,body.email,body.password);
+      await ensureUserAllowed(db,userId);
+      const user=await db.prepare(
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      if(!user) throw new Error("user_not_found");
+      const token=await createSessionToken(env,userId,user.display_name);
+      return json({ok:true,token,user,provider:"email"});
+    } catch(error) {
+      const code=String(error?.message ?? error);
+      const status=code==="user_banned"||code==="user_suspended" ? 403 : 401;
+      return json({ok:false,error:code},{status});
+    }
   }
 
   if (url.pathname === "/api/session/google" && request.method === "POST") {
@@ -1538,24 +2927,168 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const displayName = String(body.display_name ?? "").trim().slice(0, 60);
+    const hasDob = Object.prototype.hasOwnProperty.call(body, "date_of_birth");
+    const hasCountry = Object.prototype.hasOwnProperty.call(body, "country_code") ||
+      Object.prototype.hasOwnProperty.call(body, "country_name");
+    const hasGender = Object.prototype.hasOwnProperty.call(body, "gender");
+    const hasLanguage = Object.prototype.hasOwnProperty.call(body, "language");
     const dateOfBirth = String(body.date_of_birth ?? "").trim();
+    const countryCode = String(body.country_code ?? "").trim().toUpperCase();
+    const countryName = String(body.country_name ?? "").trim().slice(0, 80);
+    const flagEmoji = String(body.flag_emoji ?? "").trim().slice(0, 24);
+    const gender = String(body.gender ?? "").trim().toLowerCase();
+    const language = String(body.language ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
-    if (!displayName) return json({ ok: false, error: "display_name_required" }, { status: 400 });
-    if (dateOfBirth && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
-      return json({ ok: false, error: "invalid_date_of_birth" }, { status: 400 });
+    if (!userId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    if (!displayName) return json({ ok:false,error:"display_name_required" }, { status:400 });
+    if (hasDob && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+      return json({ ok:false,error:"invalid_date_of_birth" }, { status:400 });
+    }
+    if (hasCountry && (!/^[A-Z]{2}$/.test(countryCode) || !countryName)) {
+      return json({ ok:false,error:"country_incomplete" }, { status:400 });
+    }
+    if (hasGender && !new Set(["male","female"]).has(gender)) {
+      return json({ ok:false,error:"invalid_gender" }, { status:400 });
+    }
+    if (hasLanguage && !DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
+      return json({ ok:false,error:"unsupported_language" }, { status:400 });
+    }
+
+    await ensureUsersSchema(db);
+    await ensureRoomCoreSchema(db);
+    const current = await db.prepare(
+      `SELECT date_of_birth,country_code,country_name,flag_emoji,gender,language,
+              age_change_count,country_change_count,gender_change_count
+         FROM users WHERE id=? LIMIT 1`
+    ).bind(userId).first();
+    if (!current) return json({ ok:false,error:"user_not_found" }, { status:404 });
+
+    const oldDob = String(current.date_of_birth ?? "").trim();
+    const oldCountry = String(current.country_code ?? "").trim().toUpperCase();
+    const oldGender = String(current.gender ?? "").trim().toLowerCase();
+    const nextDob = hasDob ? dateOfBirth : oldDob;
+    const nextCountry = hasCountry ? countryCode : oldCountry;
+    const nextCountryName = hasCountry ? countryName : String(current.country_name ?? "").trim();
+    const nextFlag = hasCountry ? flagEmoji : String(current.flag_emoji ?? "").trim();
+    const nextGender = hasGender ? gender : oldGender;
+    const nextLanguage = hasLanguage ? language : String(current.language ?? "English").trim();
+
+    const ageChanged = Boolean(oldDob) && nextDob !== oldDob;
+    const countryChanged = Boolean(oldCountry) && nextCountry !== oldCountry;
+    const genderChanged = Boolean(oldGender) && nextGender !== oldGender;
+    const ageChanges = Number(current.age_change_count ?? 0);
+    const countryChanges = Number(current.country_change_count ?? 0);
+    const genderChanges = Number(current.gender_change_count ?? 0);
+
+    if (ageChanged && ageChanges >= 3) {
+      return json({ ok:false,error:"age_change_limit_reached",remaining:0 }, { status:409 });
+    }
+    if (countryChanged && countryChanges >= 3) {
+      return json({ ok:false,error:"country_change_limit_reached",remaining:0 }, { status:409 });
+    }
+    if (genderChanged && genderChanges >= 3) {
+      return json({ ok:false,error:"gender_change_limit_reached",remaining:0 }, { status:409 });
+    }
+
+    const nextAgeCount = ageChanges + (ageChanged ? 1 : 0);
+    const nextCountryCount = countryChanges + (countryChanged ? 1 : 0);
+    const nextGenderCount = genderChanges + (genderChanged ? 1 : 0);
+    const ts = now();
+    const update = await db.prepare(
+      `UPDATE users
+          SET display_name=?,
+              date_of_birth=?,
+              country_code=?,
+              country_name=?,
+              flag_emoji=?,
+              gender=?,
+              language=?,
+              age_change_count=?,
+              country_change_count=?,
+              gender_change_count=?,
+              updated_at=?
+        WHERE id=?
+          AND age_change_count=?
+          AND country_change_count=?
+          AND gender_change_count=?`
+    ).bind(
+      displayName,
+      nextDob || null,
+      nextCountry || null,
+      nextCountryName || null,
+      nextFlag || null,
+      nextGender || null,
+      nextLanguage || "English",
+      nextAgeCount,
+      nextCountryCount,
+      nextGenderCount,
+      ts,
+      userId,
+      ageChanges,
+      countryChanges,
+      genderChanges,
+    ).run();
+    if (Number(update.meta?.changes ?? 0) !== 1) {
+      return json({ ok:false,error:"profile_change_conflict_retry" }, { status:409 });
+    }
+
+    if (nextCountry && nextCountry !== oldCountry) {
+      await db.prepare(
+        "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=?"
+      ).bind(nextCountry,ts,userId).run();
+      await db.prepare(
+        `DELETE FROM room_members
+          WHERE user_id=?
+            AND room_id IN (
+              SELECT id FROM rooms
+               WHERE country_code<>? AND owner_user_id<>?
+            )`
+      ).bind(userId,nextCountry,userId).run();
+      await db.prepare(
+        `DELETE FROM room_members
+          WHERE room_id IN (SELECT id FROM rooms WHERE owner_user_id=?)
+            AND user_id<>?
+            AND user_id IN (
+              SELECT id FROM users WHERE COALESCE(country_code,'')<>?
+            )`
+      ).bind(userId,userId,nextCountry).run();
+    } else if (nextCountry && !oldCountry) {
+      await db.prepare(
+        "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=? AND COALESCE(country_code,'')=''"
+      ).bind(nextCountry,ts,userId).run();
+    }
+
+    const user = await db.prepare(
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+    ).bind(userId).first();
+    return json({
+      ok:true,
+      user,
+      change_limits:{
+        age_remaining:Math.max(0,3-nextAgeCount),
+        country_remaining:Math.max(0,3-nextCountryCount),
+        gender_remaining:Math.max(0,3-nextGenderCount),
+      },
+    });
+  }
+
+  if (url.pathname === "/api/users/language" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const language = String(body.language ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!userId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    if (!DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
+      return json({ ok:false,error:"unsupported_language" }, { status:400 });
     }
     await ensureUsersSchema(db);
     await db.prepare(
-      "UPDATE users SET display_name = ?, date_of_birth = ?, updated_at = ? WHERE id = ?"
-    ).bind(displayName, dateOfBirth || null, now(), userId).run();
-    const user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
-    ).bind(userId).first();
-    return json({ ok: true, user });
+      "UPDATE users SET language=?,updated_at=? WHERE id=?"
+    ).bind(language,now(),userId).run();
+    return json({ ok:true, language });
   }
-
   if (url.pathname === "/api/users/avatar" && request.method === "POST") {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
@@ -1598,11 +3131,11 @@ async function handleApi(request, env, url) {
     await ensureVipSchema(db);
     let viewedUserId = requestedUserId;
     let user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (!user && requestedUserId) {
       const byPublicId = await db.prepare(
-        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth
+        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.gender,u.age_change_count,u.country_change_count,u.gender_change_count,u.language
            FROM user_vip v
            JOIN users u ON u.id=v.user_id
           WHERE v.custom_id=?
@@ -1704,8 +3237,20 @@ async function handleApi(request, env, url) {
       const totalCoins = Number(body.total_coins);
       const slots = Number(body.slots);
       const requestId = String(body.request_id ?? "").trim().slice(0, 100);
-      if (!Number.isSafeInteger(totalCoins) || totalCoins < 100 || totalCoins > 10000000 ||
-          !Number.isSafeInteger(slots) || slots < 2 || slots > 500 || !requestId) {
+      const allowedPouchCoins = {
+        5: [100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+        20: [100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+        50: [500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+        100: [1000000, 2000000, 5000000, 8000000, 10000000],
+        200: [1000000, 2000000, 5000000, 8000000, 10000000],
+        500: [2000000, 5000000, 8000000, 10000000],
+      };
+      const allowedCoins = allowedPouchCoins[slots];
+      if (!Number.isSafeInteger(totalCoins) ||
+          !Number.isSafeInteger(slots) ||
+          !Array.isArray(allowedCoins) ||
+          !allowedCoins.includes(totalCoins) ||
+          !requestId) {
         return json({ ok: false, error: "invalid_pouch" }, { status: 400 });
       }
       const existing = await db.prepare("SELECT id FROM room_lucky_pouches WHERE owner_user_id = ? AND request_id = ?")
@@ -1779,6 +3324,84 @@ async function handleApi(request, env, url) {
     }
     const balance = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
     return json({ ok: true, amount: Number(claim.amount), coin_balance: Number(balance?.coins ?? 0) });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "lucky-number") {
+    const roomId = parts[2];
+    await ensureRoomCoreSchema(db);
+    await ensureRoomLuckyNumberTable(db);
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const userId = String(session.sub);
+    const room = await db.prepare("SELECT id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+
+    if (request.method === "GET") {
+      const rows = await db.prepare(
+        `SELECT id,user_id,display_name,number_value AS number,created_at
+           FROM room_lucky_numbers
+          WHERE room_id = ?
+          ORDER BY created_at DESC
+          LIMIT 50`
+      ).bind(roomId).all();
+      return json({ ok: true, events: rows.results ?? [] });
+    }
+
+    if (request.method === "POST") {
+      const user = await db.prepare(
+        "SELECT display_name FROM users WHERE id = ? LIMIT 1"
+      ).bind(userId).first();
+      const max = 0x100000000;
+      const accepted = Math.floor(max / 100) * 100;
+      const raw = new Uint32Array(1);
+      do {
+        crypto.getRandomValues(raw);
+      } while (raw[0] >= accepted);
+      const number = Number(raw[0] % 100) + 1;
+      const eventId = "lucky-" + id();
+      const ts = now();
+      const displayName = String(user?.display_name ?? "User").trim() || "User";
+      await db.batch([
+        db.prepare(
+          "INSERT INTO room_lucky_numbers(id,room_id,user_id,display_name,number_value,created_at) VALUES(?,?,?,?,?,?)"
+        ).bind(eventId, roomId, userId, displayName, number, ts),
+        db.prepare(
+          `DELETE FROM room_lucky_numbers
+            WHERE room_id = ?
+              AND id NOT IN (
+                SELECT id FROM room_lucky_numbers
+                 WHERE room_id = ?
+                 ORDER BY created_at DESC
+                 LIMIT 100
+              )`
+        ).bind(roomId, roomId),
+      ]);
+      const rows = await db.prepare(
+        `SELECT id,user_id,display_name,number_value AS number,created_at
+           FROM room_lucky_numbers
+          WHERE room_id = ?
+          ORDER BY created_at DESC
+          LIMIT 50`
+      ).bind(roomId).all();
+      return json({
+        ok: true,
+        event: {
+          id: eventId,
+          user_id: userId,
+          display_name: displayName,
+          number,
+          created_at: ts,
+        },
+        events: rows.results ?? [],
+      }, { status: 201 });
+    }
+
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "controls") {
@@ -2027,9 +3650,117 @@ async function handleApi(request, env, url) {
     return json({ ok:true, approved:body.approved===true });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "themes") {
+    const roomId = parts[2];
+    await ensureRoomCustomThemeTable(db);
+    await ensureRoomSettingsTable(db);
+    await expireRoomCustomThemes(db, roomId, now());
+    const room = await db.prepare(
+      "SELECT owner_user_id FROM rooms WHERE id=? LIMIT 1"
+    ).bind(roomId).first();
+    if (!room) return json({ ok:false,error:"room_not_found" }, { status:404 });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const actorId = String(session.sub);
+
+    if (request.method === "GET") {
+      const rows = await db.prepare(
+        `SELECT id,name,asset_key,price_coins,created_at,expires_at
+           FROM room_custom_themes
+          WHERE room_id=? AND (expires_at IS NULL OR expires_at>?)
+          ORDER BY created_at DESC
+          LIMIT 100`
+      ).bind(roomId, now()).all();
+      return json({
+        ok:true,
+        user_price_coins:10000000,
+        user_duration_days:7,
+        themes:rows.results ?? [],
+      });
+    }
+
+    if (request.method === "POST") {
+      if (String(room.owner_user_id) !== actorId) {
+        return json({ ok:false,error:"room_owner_required" }, { status:403 });
+      }
+      const body = await bodyJson(request);
+      const name = String(body.name ?? "").trim().slice(0, 60);
+      const assetKey = String(body.asset_key ?? "").trim();
+      if (!name) return json({ ok:false,error:"theme_name_required" }, { status:400 });
+      if (body.policy_confirmed !== true) {
+        return json({ ok:false,error:"theme_policy_confirmation_required" }, { status:400 });
+      }
+      if (!assetKey.startsWith(`room-themes/${actorId}/`) ||
+          !/\.(jpg|jpeg|png|webp)$/i.test(assetKey)) {
+        return json({ ok:false,error:"invalid_theme_asset" }, { status:400 });
+      }
+      const actor = await db.prepare(
+        "SELECT role,coins FROM users WHERE id=? LIMIT 1"
+      ).bind(actorId).first();
+      if (!actor) return json({ ok:false,error:"user_not_found" }, { status:404 });
+      const platformOwner = String(actor.role ?? "") === "platform_owner";
+      const price = platformOwner ? 0 : 10000000;
+      if (Number(actor.coins ?? 0) < price) {
+        return json({ ok:false,error:"insufficient_coins",required_coins:price }, { status:409 });
+      }
+      const themeId = "room-theme-" + id();
+      const ts = now();
+      const permanent = platformOwner && body.permanent === true;
+      const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
+      const expiresAt = permanent ? null : ts + requestedDays * 86400000;
+      if (price > 0) {
+        await db.batch([
+          db.prepare(
+            `INSERT INTO room_custom_themes(
+              id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at
+            )
+            SELECT ?,?,?,?,?,?,?,?
+             WHERE EXISTS(
+               SELECT 1 FROM users WHERE id=? AND coins>=?
+             )`
+          ).bind(themeId,roomId,actorId,name,assetKey,price,ts,expiresAt,actorId,price),
+          db.prepare(
+            "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM room_custom_themes WHERE id=?)"
+          ).bind(price,ts,actorId,themeId),
+          db.prepare(
+            `INSERT INTO wallet_ledger(
+              id,user_id,kind,amount,balance_after,reference_id,created_at
+            )
+            SELECT ?,u.id,'room_theme_purchase',?,u.coins,?,?
+              FROM users u
+             WHERE u.id=? AND EXISTS(SELECT 1 FROM room_custom_themes WHERE id=?)`
+          ).bind(id(),-price,themeId,ts,actorId,themeId),
+        ]);
+      } else {
+        await db.prepare(
+          `INSERT INTO room_custom_themes(
+            id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at
+          ) VALUES(?,?,?,?,?,?,?,?)`
+        ).bind(themeId,roomId,actorId,name,assetKey,price,ts,expiresAt).run();
+      }
+      const created = await db.prepare(
+        "SELECT id,name,asset_key,price_coins,created_at,expires_at FROM room_custom_themes WHERE id=?"
+      ).bind(themeId).first();
+      if (!created) {
+        return json({ ok:false,error:"insufficient_coins",required_coins:price }, { status:409 });
+      }
+      const balance = await db.prepare("SELECT coins FROM users WHERE id=?").bind(actorId).first();
+      return json({
+        ok:true,
+        theme:created,
+        coin_balance:Number(balance?.coins ?? 0),
+      }, { status:201 });
+    }
+
+    return json({ ok:false,error:"method_not_allowed" }, { status:405 });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
     await ensureRoomSettingsTable(db);
+    await ensureRoomCustomThemeTable(db);
+    await expireRoomCustomThemes(db, roomId, now());
     await ensureVipSchema(db);
     const room = await db.prepare(
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
@@ -2037,12 +3768,16 @@ async function handleApi(request, env, url) {
               COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
               COALESCE(s.room_mode, 'voice') AS room_mode,
               COALESCE(s.seat_theme_id, 'royal-gold') AS seat_theme_id,
+              COALESCE(ct.asset_key, '') AS theme_asset_key,
+              COALESCE(s.lock_password_code, '') AS lock_password_code,
               CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
               CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
          LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
+         LEFT JOIN room_custom_themes ct ON ct.id = s.theme_id
+          AND ct.room_id = r.id AND (ct.expires_at IS NULL OR ct.expires_at > ?)
         WHERE r.id = ?`
-    ).bind(now(), roomId).first();
+    ).bind(now(), now(), roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     if (request.method === "GET") {
       const authError = await requireSession(request, env);
@@ -2052,7 +3787,12 @@ async function handleApi(request, env, url) {
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
       ).bind(roomId, String(session.sub)).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
-      return json({ ok: true, settings: room });
+      const settings = { ...room };
+      delete settings.lock_password_code;
+      if (String(session.sub) === String(room.owner_user_id) && Number(room.locked) === 1) {
+        settings.lock_code = String(room.lock_password_code ?? "");
+      }
+      return json({ ok: true, settings });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
@@ -2081,22 +3821,19 @@ async function handleApi(request, env, url) {
       const seatCount = requestedSeatCount;
       const locked = actorIsOwner ? (body.locked === true ? 1 : 0) : Number(room.locked ?? 0);
       const priorLock = await db.prepare(
-        "SELECT COALESCE(lock_password_hash,'') AS lock_password_hash FROM room_settings WHERE room_id=?"
+        "SELECT COALESCE(lock_password_hash,'') AS lock_password_hash,COALESCE(lock_password_code,'') AS lock_password_code FROM room_settings WHERE room_id=?"
       ).bind(roomId).first();
       let lockPasswordHash = String(priorLock?.lock_password_hash ?? "");
+      let lockPasswordCode = String(priorLock?.lock_password_code ?? "");
       if (actorIsOwner) {
         if (locked === 1) {
-          const suppliedPassword = String(body.lock_password ?? "").trim().slice(0, 64);
-          if (suppliedPassword) {
-            if (suppliedPassword.length < 4) {
-              return json({ ok:false,error:"room_password_too_short" }, { status:400 });
-            }
-            lockPasswordHash = await sha256Hex(suppliedPassword);
-          } else if (!lockPasswordHash) {
-            return json({ ok:false,error:"room_password_required" }, { status:400 });
+          if (Number(room.locked ?? 0) !== 1 || !lockPasswordHash || !/^\d{5}$/.test(lockPasswordCode)) {
+            lockPasswordCode = randomFiveDigitRoomCode();
+            lockPasswordHash = await sha256Hex(lockPasswordCode);
           }
         } else {
           lockPasswordHash = "";
+          lockPasswordCode = "";
         }
       }
       const announcement = actorIsOwner
@@ -2117,8 +3854,17 @@ async function handleApi(request, env, url) {
       const themeId = actorIsOwner
         ? String(body.theme_id ?? room.theme_id ?? "dark")
         : String(room.theme_id ?? "dark");
-      if (!allowedThemes.has(themeId)) return json({ ok: false, error: "invalid_theme" }, { status: 400 });
-      if (themeId !== "dark" && themeId !== room.theme_id && !vipStatus.room_background_enabled) {
+      let customTheme = null;
+      if (!allowedThemes.has(themeId)) {
+        customTheme = await db.prepare(
+          "SELECT id FROM room_custom_themes WHERE id=? AND room_id=? AND (expires_at IS NULL OR expires_at>?) LIMIT 1"
+        ).bind(themeId,roomId,now()).first();
+        if (!customTheme) return json({ ok:false,error:"invalid_or_expired_theme" }, { status:400 });
+      }
+      if (allowedThemes.has(themeId) &&
+          themeId !== "dark" &&
+          themeId !== room.theme_id &&
+          !vipStatus.room_background_enabled) {
         return json({ ok: false, error: "vip3_required_for_room_background" }, { status: 403 });
       }
       const groupPkEnabled = actorIsOwner
@@ -2155,16 +3901,42 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, room_mode = excluded.room_mode, seat_theme_id = excluded.seat_theme_id, lock_password_hash = excluded.lock_password_hash, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, roomMode, seatThemeId, lockPasswordHash, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, lock_password_code, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, room_mode = excluded.room_mode, seat_theme_id = excluded.seat_theme_id, lock_password_hash = excluded.lock_password_hash, lock_password_code = excluded.lock_password_code, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, roomMode, seatThemeId, lockPasswordHash, lockPasswordCode, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey, party_mode: partyMode, room_mode: roomMode, seat_theme_id: seatThemeId, lock_password_set: lockPasswordHash ? 1 : 0 } });
+      return json({
+        ok: true,
+        settings: {
+          ...room,
+          name,
+          seat_count: seatCount,
+          locked,
+          announcement,
+          theme_id: themeId,
+          group_pk_enabled: groupPkEnabled,
+          welcome_image_key: welcomeImageKey,
+          party_mode: partyMode,
+          room_mode: roomMode,
+          seat_theme_id: seatThemeId,
+          lock_password_set: lockPasswordHash ? 1 : 0,
+          ...(actorIsOwner && locked === 1 ? { lock_code: lockPasswordCode } : {}),
+        },
+      });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
   if (url.pathname === "/api/rooms" && request.method === "GET") {
-    return json({ ok: true, rooms: await listRooms(db) });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    return json({
+      ok:true,
+      rooms:await listRooms(db,String(session.sub)),
+    });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "avatar" && request.method === "POST") {
@@ -2232,6 +4004,13 @@ async function handleApi(request, env, url) {
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, ownerId);
     await ensureRoomSettingsTable(db);
+    const ownerProfile = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(ownerId).first();
+    const ownerCountry = String(ownerProfile?.country_code ?? "").trim().toUpperCase();
+    if (!ownerCountry) {
+      return json({ ok:false,error:"country_required_for_room" }, { status:409 });
+    }
 
     const seatCount = requestedSeatCount;
     const requestedRoomId = String(body.id ?? "").trim();
@@ -2255,8 +4034,8 @@ async function handleApi(request, env, url) {
     try {
       await db.batch([
         db.prepare(
-          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
-        ).bind(roomId, ownerId, name, seatCount, ts, ts),
+          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, country_code, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)"
+        ).bind(roomId, ownerId, name, seatCount, ownerCountry, ts, ts),
         db.prepare(
           "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
         ).bind(roomId, partyMode, roomMode, ts),
@@ -2307,12 +4086,20 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
-      `SELECT r.owner_user_id,r.locked,COALESCE(s.lock_password_hash,'') AS lock_password_hash
+      `SELECT r.owner_user_id,r.locked,r.country_code,COALESCE(s.lock_password_hash,'') AS lock_password_hash
          FROM rooms r
          LEFT JOIN room_settings s ON s.room_id=r.id
         WHERE r.id=?`
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const userCountryRow = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    const userCountry = String(userCountryRow?.country_code ?? "").trim().toUpperCase();
+    const roomCountry = String(roomAccess.country_code ?? "").trim().toUpperCase();
+    if (!userCountry || !roomCountry || userCountry !== roomCountry) {
+      return json({ ok:false,error:"room_country_mismatch" }, { status:403 });
+    }
     await ensureRoomSafetyTables(db);
     const roomBan = await db.prepare(
       "SELECT 1 AS blocked FROM room_bans WHERE room_id = ? AND user_id = ?"
@@ -2580,7 +4367,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
@@ -2900,6 +4687,79 @@ async function handleApi(request, env, url) {
     const claim = await db.prepare("SELECT amount FROM inbox_red_envelope_claims WHERE envelope_id=? AND claim_token=?").bind(envelopeId, claimToken).first();
     if (!claim) return json({ ok: false, error: "envelope_expired_claimed_or_not_for_you" }, { status: 409 });
     return json({ ok: true, amount: Number(claim.amount) });
+  }
+
+  if (url.pathname === "/api/custom-gifts" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId || undefined);
+    if (authError) return authError;
+    await ensureCustomGiftSchema(db);
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const actor = String(session.sub);
+    const rows = await db.prepare(
+      `SELECT id,user_id,name,asset_key,coin_cost,status,created_at,updated_at
+         FROM custom_gifts
+        WHERE user_id=? OR status='approved'
+        ORDER BY CASE WHEN user_id=? THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 200`
+    ).bind(actor, actor).all();
+    return json({ ok: true, gifts: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/custom-gifts" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    await ensureCustomGiftSchema(db);
+    const name = String(body.name ?? "").trim().slice(0, 40);
+    const assetKey = String(body.asset_key ?? "").trim();
+    const coinCost = Math.max(100, Math.min(10000000, Math.trunc(Number(body.coin_cost ?? 5000))));
+    if (!name || !assetKey.startsWith(`custom-gifts/${userId}/`) ||
+        !/\.(jpg|jpeg|png|webp|mp4)$/i.test(assetKey) ||
+        !Number.isSafeInteger(coinCost)) {
+      return json({ ok: false, error: "invalid_custom_gift" }, { status: 400 });
+    }
+    const giftId = "custom-" + id();
+    const ts = now();
+    await db.prepare(
+      "INSERT INTO custom_gifts (id,user_id,name,asset_key,coin_cost,status,created_at,updated_at) VALUES (?,?,?,?,?,'approved',?,?)"
+    ).bind(giftId, userId, name, assetKey, coinCost, ts, ts).run();
+    return json({
+      ok: true,
+      gift: {
+        id: giftId,
+        user_id: userId,
+        name,
+        asset_key: assetKey,
+        coin_cost: coinCost,
+        status: "approved",
+        category: "custom",
+      },
+    }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const rows = await db.prepare(
+      `SELECT u.id,u.display_name,u.avatar_key,u.role
+         FROM users u
+        WHERE u.role IN ('coin_seller','merchant')
+        ORDER BY CASE u.role WHEN 'coin_seller' THEN 0 ELSE 1 END,
+                 u.updated_at DESC
+        LIMIT 200`
+    ).all();
+    return json({
+      ok: true,
+      providers: (rows.results ?? []).map((row) => ({
+        user_id: row.id,
+        display_name: row.display_name,
+        avatar_key: row.avatar_key,
+        role: row.role,
+      })),
+    });
   }
 
   if (url.pathname === "/api/messages/send" && request.method === "POST") {
@@ -3336,33 +5196,6 @@ async function handleApi(request, env, url) {
     }
   }
 
-  if (url.pathname === "/api/wallet/role-dollars/withdraw" && request.method === "POST") {
-    const body=await bodyJson(request);
-    const userId=String(body.user_id ?? "").trim();
-    const walletType=String(body.wallet_type ?? "").trim();
-    const credential=String(body.credential ?? "");
-    const authError=await requireSession(request,env,userId);
-    if(authError) return authError;
-    const hash=await sha256Hex(
-      String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+credential
-    );
-    try{
-      const result=await requestRoleDollarWithdrawal(db,{
-        userId,
-        walletType,
-        destinationType:String(body.destination_type ?? ""),
-        destinationValue:String(body.destination_value ?? ""),
-        amountUsdCents:Number(body.amount_usd_cents ?? 0),
-        credentialHash:hash,
-        ts:now(),
-      });
-      return json({ok:true,...result});
-    }catch(error){
-      const code=String(error?.message ?? error);
-      return json({ok:false,error:code},{status:400});
-    }
-  }
-
   if (url.pathname === "/api/wallet/coin-seller-transfer" && request.method === "POST") {
     const body=await bodyJson(request);
     const sellerId=String(body.seller_user_id ?? "").trim();
@@ -3500,10 +5333,26 @@ async function handleApi(request, env, url) {
         LIMIT 1`
     ).bind(callerId,receiverId,callerId,receiverId).first();
     if (busy) return json({ ok: false, error: "user_busy" }, { status: 409 });
+
+    const caller = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(callerId).first();
+    const directCost = 400000;
+    if (Number(caller?.coins ?? 0) < directCost) {
+      return json(
+        { ok: false, error: "insufficient_coins", required_coins: directCost },
+        { status: 409 },
+      );
+    }
+
     const callId = id();
     const createdAt = now();
     await db.prepare(
-      "INSERT INTO direct_calls(id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at) VALUES(?,?,?,'ringing',?,NULL,NULL,?)"
+      `INSERT INTO direct_calls
+        (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
+         call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
+         receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
+       VALUES(?,?,?,'ringing',?,NULL,NULL,?,'direct',400000,0,0,0,0,0)`
     ).bind(callId,callerId,receiverId,createdAt,createdAt).run();
     return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
   }
@@ -3546,7 +5395,10 @@ async function handleApi(request, env, url) {
         ? "UPDATE direct_calls SET state='active',answered_at=?,updated_at=? WHERE id=? AND state='ringing'"
         : "UPDATE direct_calls SET state='declined',ended_at=?,updated_at=? WHERE id=? AND state='ringing'"
     ).bind(ts,ts,callId).run();
-    return json({ ok:true,call:await directCallRow(db,callId) });
+    if (!accepted) {
+      return json({ ok:true,call:await directCallRow(db,callId) });
+    }
+    return json({ ok:true,call:await settleDirectCallBilling(db, callId, ts) });
   }
 
   if (url.pathname === "/api/calls/status" && request.method === "GET") {
@@ -3555,9 +5407,12 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await expireDirectCalls(db);
-    const call = await directCallRow(db,callId);
+    let call = await directCallRow(db,callId);
     if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
       return json({ ok:false,error:"call_not_found" }, { status:404 });
+    }
+    if (call.state === "active") {
+      call = await settleDirectCallBilling(db, callId, now());
     }
     return json({ ok:true,call });
   }
@@ -3569,17 +5424,20 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureDirectCallTable(db);
-    const call = await db.prepare(
+    let call = await db.prepare(
       "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
     ).bind(callId).first();
     if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
       return json({ ok:false,error:"call_not_found" }, { status:404 });
     }
     const ts = now();
+    if (call.state === "active") {
+      await settleDirectCallBilling(db, callId, ts);
+    }
     await db.prepare(
       "UPDATE direct_calls SET state='ended',ended_at=?,updated_at=? WHERE id=? AND state IN ('ringing','active')"
     ).bind(ts,ts,callId).run();
-    return json({ ok:true });
+    return json({ ok:true,call:await directCallRow(db,callId) });
   }
 
   if (url.pathname === "/api/friends" && request.method === "GET") {
@@ -3721,8 +5579,18 @@ async function handleApi(request, env, url) {
         ? 7 * 24 * 60 * 60 * 1000
         : 24 * 60 * 60 * 1000;
     const cutoff = now() - windowMs;
+    await ensureRoomCoreSchema(db);
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const viewer = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(String(session.sub)).first();
+    const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
     let rows;
     if (kind === "room") {
+      if (!viewerCountry) return json({ ok:true,kind,period,ranking:[] });
       rows = await db.prepare(
         `SELECT r.id AS room_id,
                 r.name AS room_name,
@@ -3734,9 +5602,10 @@ async function handleApi(request, env, url) {
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
+          WHERE r.country_code=?
           ORDER BY score DESC, online DESC, r.updated_at DESC
           LIMIT 100`
-      ).bind(cutoff).all();
+      ).bind(cutoff,viewerCountry).all();
     } else if (kind === "charm") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
@@ -3794,35 +5663,76 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     const vip = await getVipStatus(db, userId, now());
-    const gifts = [
-      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0 },
-      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3 },
-      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3 },
-      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3 },
+    const darkVibeExtras = [
+      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0, category: "normal" },
+      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3, category: "exclusive" },
+      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3, category: "exclusive" },
+      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3, category: "exclusive" },
     ];
-    return json({ ok: true, gifts: gifts.filter(g => g.vip_level === 0 || (vip.active && vip.level >= g.vip_level)) });
+    await ensureCustomGiftSchema(db);
+    const custom = await db.prepare(
+      "SELECT id,name,asset_key,coin_cost FROM custom_gifts WHERE status='approved' ORDER BY updated_at DESC LIMIT 100"
+    ).all();
+    const customRows = (custom.results ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      emoji: "🎁",
+      coin_cost: Number(row.coin_cost),
+      vip_level: 0,
+      category: "custom",
+      asset_key: row.asset_key,
+    }));
+    return json({
+      ok: true,
+      gifts: [
+        ...BASE_GIFT_CATALOG,
+        ...darkVibeExtras.filter((gift) =>
+          gift.vip_level === 0 || (vip.active && vip.level >= gift.vip_level)),
+        ...customRows,
+      ],
+    });
   }
 
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
     const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
-    if (giftsFeature.enabled === false) return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
+    if (giftsFeature.enabled === false) {
+      return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
+    }
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
-    const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
-    const catalog = {
-      "basic-star": { cost: 5000, vip_level: 0 },
-      "vip-rose": { cost: 10000, vip_level: 3 },
-      "vip-crown": { cost: 50000, vip_level: 3 },
-      "vip-phoenix": { cost: 100000, vip_level: 3 },
-    };
-    const gift = catalog[giftId];
-    if (!sender || !receiver || !gift) return json({ ok: false, error: "invalid_gift" }, { status: 400 });
+    const giftId = String(body.gift_id ?? "").trim().slice(0, 100);
+    let gift = giftById(giftId);
+    if (!gift) {
+      const extras = {
+        "basic-star": { coin_cost: 5000, vip_level: 0 },
+        "vip-rose": { coin_cost: 10000, vip_level: 3 },
+        "vip-crown": { coin_cost: 50000, vip_level: 3 },
+        "vip-phoenix": { coin_cost: 100000, vip_level: 3 },
+      };
+      gift = extras[giftId] ?? null;
+    }
+    if (!gift && giftId.startsWith("custom-")) {
+      await ensureCustomGiftSchema(db);
+      const custom = await db.prepare(
+        "SELECT coin_cost FROM custom_gifts WHERE id=? AND status='approved' LIMIT 1"
+      ).bind(giftId).first();
+      if (custom) gift = { coin_cost: Number(custom.coin_cost), vip_level: 0 };
+    }
+    if (!sender || !receiver || !gift) {
+      return json({ ok: false, error: "invalid_gift" }, { status: 400 });
+    }
     const vip = await getVipStatus(db, sender, now());
-    if (gift.vip_level > 0 && (!vip.active || vip.level < gift.vip_level)) return json({ ok: false, error: "vip_required" }, { status: 403 });
-    const cost = gift.cost;
+    const requiredVip = Number(gift.vip_level ?? 0);
+    if (requiredVip > 0 && (!vip.active || vip.level < requiredVip)) {
+      return json({ ok: false, error: "vip_required" }, { status: 403 });
+    }
+    const cost = Number(gift.coin_cost ?? 0);
+    if (!Number.isSafeInteger(cost) || cost <= 0) {
+      return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
+    }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
@@ -3830,41 +5740,295 @@ async function handleApi(request, env, url) {
     const eventId = id();
     const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
     await db.batch([
-      db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?").bind(cost, now(), receiver),
+      db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?")
+        .bind(cost, now(), receiver),
       db.prepare(
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
     ]);
     await awardIdLevelGift(db, sender, cost, eventId, now());
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
-    return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
+    let cpProgress = null;
+    let vsProgress = null;
+    const giftCategory = String(gift.category ?? "").toLowerCase();
+    if (giftCategory === "cp" && giftId !== "cp-invite") {
+      cpProgress = await recordCpGiftProgress(
+        db,
+        sender,
+        receiver,
+        cost,
+        eventId,
+      );
+    }
+    if (giftCategory === "vs") {
+      vsProgress = await recordVsGiftProgress(
+        db,
+        sender,
+        receiver,
+        cost,
+        eventId,
+      );
+    }
+    return json({
+      ok: true,
+      event_id: eventId,
+      sender_coin_balance: balance,
+      cp_progress: Number(cpProgress?.progress ?? 0),
+      cp_state: cpProgress?.cp ?? null,
+      vs_progress: Number(vsProgress?.progress ?? 0),
+      vs_state: vsProgress?.vs ?? null,
+    });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts[3] === "ludo") {
+    const roomId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+
+    try {
+      await ensureLudoSchema(db);
+      await requireLudoRoomMember(db, roomId, userId);
+
+      if (parts.length === 4 && request.method === "GET") {
+        const color = await ensureLudoPlayer(db, roomId, userId);
+        const state = await publicLudoState(db, roomId, userId);
+        if (!color) state.spectator = true;
+        return json(state);
+      }
+
+      if (parts.length === 5 && parts[4] === "roll" && request.method === "POST") {
+        const color = await ensureLudoPlayer(db, roomId, userId);
+        if (!color) return json({ ok:false,error:"ludo_table_full" }, { status:409 });
+        const loaded = await loadLudoState(db, roomId);
+        if (loaded.state.winner) return json(await publicLudoState(db, roomId, userId, loaded));
+        if (String(loaded.state.current_player) !== color) {
+          return json({ ok:false,error:"not_your_turn",state:await publicLudoState(db,roomId,userId,loaded) }, { status:409 });
+        }
+        if (loaded.state.rolled != null) {
+          return json(await publicLudoState(db, roomId, userId, loaded));
+        }
+        loaded.state.rolled = await secureDieRoll();
+        loaded.state.status = color.toUpperCase() + " rolled " + loaded.state.rolled + ".";
+        if (ludoMovableIndexes(loaded.state).length === 0) {
+          await ludoAdvancePlayer(db, roomId, loaded.state, false);
+        }
+        const saved = await saveLudoState(
+          db, roomId, loaded.state, loaded.version,
+        );
+        return json(await publicLudoState(db, roomId, userId, saved));
+      }
+
+      if (parts.length === 5 && parts[4] === "move" && request.method === "POST") {
+        const color = await ensureLudoPlayer(db, roomId, userId);
+        if (!color) return json({ ok:false,error:"ludo_table_full" }, { status:409 });
+        const body = await bodyJson(request);
+        const tokenIndex = Number(body.token_index);
+        if (!Number.isInteger(tokenIndex) || tokenIndex < 0 || tokenIndex > 3) {
+          return json({ ok:false,error:"invalid_ludo_token" }, { status:400 });
+        }
+        const loaded = await loadLudoState(db, roomId);
+        if (loaded.state.winner) return json(await publicLudoState(db, roomId, userId, loaded));
+        if (String(loaded.state.current_player) !== color) {
+          return json({ ok:false,error:"not_your_turn",state:await publicLudoState(db,roomId,userId,loaded) }, { status:409 });
+        }
+        const dice = Number(loaded.state.rolled ?? 0);
+        if (!dice) return json({ ok:false,error:"roll_dice_first" }, { status:409 });
+        const movable = ludoMovableIndexes(loaded.state);
+        if (!movable.includes(tokenIndex)) {
+          return json({ ok:false,error:"token_cannot_move" }, { status:409 });
+        }
+
+        const tokens = loaded.state.tokens[color];
+        const current = Number(tokens[tokenIndex]);
+        const next = current < 0 ? 0 : current + dice;
+        tokens[tokenIndex] = next;
+
+        if (next < 52) {
+          const sharedIndex = ludoTrackIndex(color, next);
+          if (!LUDO_SAFE_TRACK.has(sharedIndex)) {
+            for (const opponent of LUDO_COLORS) {
+              if (opponent === color) continue;
+              for (let index = 0; index < loaded.state.tokens[opponent].length; index += 1) {
+                const progress = Number(loaded.state.tokens[opponent][index]);
+                if (
+                  progress >= 0 &&
+                  progress < 52 &&
+                  ludoTrackIndex(opponent, progress) === sharedIndex
+                ) {
+                  loaded.state.tokens[opponent][index] = -1;
+                }
+              }
+            }
+          }
+        }
+
+        if (loaded.state.tokens[color].every((progress) => Number(progress) >= 57)) {
+          loaded.state.winner = color;
+          loaded.state.rolled = null;
+          loaded.state.status = color.toUpperCase() + " wins!";
+        } else {
+          loaded.state.status =
+            color.toUpperCase() + " moved token " + (tokenIndex + 1) + ".";
+          await ludoAdvancePlayer(db, roomId, loaded.state, dice === 6);
+        }
+        const saved = await saveLudoState(
+          db, roomId, loaded.state, loaded.version,
+        );
+        return json(await publicLudoState(db, roomId, userId, saved));
+      }
+
+      if (parts.length === 5 && parts[4] === "leave" && request.method === "POST") {
+        const player = await db.prepare(
+          "SELECT color FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
+        ).bind(roomId, userId).first();
+        if (!player) return json({ ok:true });
+        const color = String(player.color);
+        await db.prepare(
+          "DELETE FROM ludo_room_players WHERE room_id=? AND user_id=?"
+        ).bind(roomId, userId).run();
+        const loaded = await loadLudoState(db, roomId);
+        loaded.state.tokens[color] = [-1, -1, -1, -1];
+        if (loaded.state.current_player === color) {
+          loaded.state.rolled = null;
+          await ludoAdvancePlayer(db, roomId, loaded.state, false);
+        }
+        const any = await db.prepare(
+          "SELECT 1 AS yes FROM ludo_room_players WHERE room_id=? LIMIT 1"
+        ).bind(roomId).first();
+        if (!any) loaded.state = ludoInitialState();
+        try {
+          await saveLudoState(db, roomId, loaded.state, loaded.version);
+        } catch (_) {}
+        return json({ ok:true });
+      }
+
+      if (parts.length === 5 && parts[4] === "reset" && request.method === "POST") {
+        const room = await requireLudoRoomMember(db, roomId, userId);
+        if (String(room.owner_user_id) !== userId) {
+          return json({ ok:false,error:"room_owner_required" }, { status:403 });
+        }
+        const loaded = await loadLudoState(db, roomId);
+        const state = ludoInitialState();
+        const occupied = await ludoOccupiedColors(db, roomId);
+        if (!occupied.has("red") && occupied.size > 0) {
+          state.current_player = LUDO_COLORS.find((color) => occupied.has(color)) ?? "red";
+          state.status = state.current_player.toUpperCase() + " starts. Roll the dice.";
+        }
+        const saved = await saveLudoState(db, roomId, state, loaded.version);
+        return json(await publicLudoState(db, roomId, userId, saved));
+      }
+
+      return json({ ok:false,error:"method_not_allowed" }, { status:405 });
+    } catch (error) {
+      const message = String(error?.message ?? error ?? "ludo_error");
+      const status = message === "room_not_found" ? 404 :
+        message === "room_membership_required" ? 403 :
+        message === "game_state_changed" ? 409 : 400;
+      return json({ ok:false,error:message }, { status });
+    }
+  }
+
+  if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await fruitPartyState(db, userId, now()));
   }
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) return json({ ok: false, error: "games_disabled" }, { status: 403 });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
-    const stake = Number(body.stake ?? 0);
+    const fruitKey = String(body.fruit_key ?? "").trim();
+    const amount = Number(body.amount ?? 0);
+    const requestId = String(body.request_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!userId || stake !== 5000) {
-      return json({ ok: false, error: "invalid_bet" }, { status: 400 });
+    if (!FRUIT_PARTY_BY_KEY.has(fruitKey) ||
+        !FRUIT_PARTY_BET_AMOUNTS.includes(amount) ||
+        !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
+      return json({ ok:false,error:"invalid_bet" }, { status:400 });
     }
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
-    const betId = id();
-    const afterStake = await walletChange(db, userId, -stake, "game_bet", betId);
-    const symbols = ["apple", "orange", "watermelon", "grape", "kiwi", "strawberry", "cherry", "lemon"];
-    const result = symbols[Math.floor(Math.random() * symbols.length)];
-    const won = Math.random() < 0.28;
-    const payout = won ? stake * 5 : 0;
-    let balance = afterStake;
-    if (payout > 0) balance = await walletChange(db, userId, payout, "game_win", betId);
-    await db.prepare(
-      "INSERT INTO game_bets (id, game_id, user_id, stake, result, payout, created_at) VALUES (?, 'fruit-party', ?, ?, ?, ?, ?)"
-    ).bind(betId, userId, stake, result, payout, now()).run();
-    return json({ ok: true, bet_id: betId, result, payout, coin_balance: balance });
+    await ensureFruitPartySchema(db);
+    const ts = now();
+    await syncFruitParty(db, ts);
+    const roundId = fruitPartyRoundId(ts);
+    if (ts >= fruitPartyBetEnd(roundId)) {
+      return json(
+        { ok:false,error:"betting_locked",state:await fruitPartyState(db,userId,ts) },
+        { status:409 },
+      );
+    }
+    const betId = `fruit-party:${userId}:${requestId}`;
+    const prior = await db.prepare(
+      "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
+    ).bind(userId, requestId).first();
+    if (prior) return json(await fruitPartyState(db, userId, ts));
+
+    try {
+      await db.batch([
+        db.prepare(
+          `INSERT INTO fruit_party_bets(
+            id,request_id,round_id,user_id,fruit_key,amount,created_at
+          )
+          SELECT ?,?,?,?,?,?,?
+           WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
+        ).bind(
+          betId,requestId,roundId,userId,fruitKey,amount,ts,userId,amount,
+        ),
+        db.prepare(
+          "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)"
+        ).bind(amount,ts,userId,betId),
+        db.prepare(
+          `INSERT INTO wallet_ledger(
+            id,user_id,kind,amount,balance_after,reference_id,created_at
+          )
+          SELECT ?,u.id,'fruit_party_bet',?,u.coins,?,?
+            FROM users u
+           WHERE u.id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)`
+        ).bind(id(),-amount,betId,ts,userId,betId),
+      ]);
+    } catch (error) {
+      const duplicate = await db.prepare(
+        "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
+      ).bind(userId, requestId).first();
+      if (!duplicate) throw error;
+      return json(await fruitPartyState(db, userId, now()));
+    }
+    const accepted = await db.prepare(
+      "SELECT id FROM fruit_party_bets WHERE id=? LIMIT 1"
+    ).bind(betId).first();
+    if (!accepted) {
+      return json(
+        { ok:false,error:"insufficient_coins",state:await fruitPartyState(db,userId,ts) },
+        { status:409 },
+      );
+    }
+    return json(await fruitPartyState(db, userId, now()), { status:201 });
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
@@ -3880,7 +6044,7 @@ async function handleApi(request, env, url) {
     const actor = String(session?.sub ?? "");
     const key = String(request.headers.get("x-file-key") ?? "").trim();
     const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4" };
     const extension = key.split(".").pop()?.toLowerCase();
     if (!actor || !extensions[type] || extension !== extensions[type] ||
         key.includes("..") || key.startsWith("/") || !/^[a-zA-Z0-9._/-]+$/.test(key)) {
@@ -3888,15 +6052,21 @@ async function handleApi(request, env, url) {
     }
     const userPrefix = `users/${actor}/`;
     const messagePrefix = `messages/${actor}/`;
-    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix);
+    const customGiftPrefix = `custom-gifts/${actor}/`;
+    const roomThemePrefix = `room-themes/${actor}/`;
+    let authorizedKey = key.startsWith(userPrefix) ||
+      key.startsWith(messagePrefix) ||
+      key.startsWith(customGiftPrefix) ||
+      key.startsWith(roomThemePrefix);
     const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
     if (roomMatch) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
       authorizedKey = room?.owner_user_id === actor;
     }
     if (!authorizedKey) return json({ ok: false, error: "file_owner_required" }, { status: 403 });
+    const maxFileBytes = type === "video/mp4" ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
     const declaredLength = Number(request.headers.get("content-length") ?? 0);
-    if (declaredLength > 5 * 1024 * 1024) {
+    if (declaredLength > maxFileBytes) {
       return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
     }
     const reader = request.body?.getReader();
@@ -3907,7 +6077,7 @@ async function handleApi(request, env, url) {
       const part = await reader.read();
       if (part.done) break;
       size += part.value.byteLength;
-      if (size > 5 * 1024 * 1024) {
+      if (size > maxFileBytes) {
         await reader.cancel();
         return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
       }
@@ -3926,8 +6096,9 @@ async function handleApi(request, env, url) {
     const isJpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
     const isWebp = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
       String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+    const isMp4 = bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
     if ((type === "image/jpeg" && !isJpeg) || (type === "image/png" && !isPng) ||
-        (type === "image/webp" && !isWebp)) {
+        (type === "image/webp" && !isWebp) || (type === "video/mp4" && !isMp4)) {
       return json({ ok: false, error: "image_content_type_mismatch" }, { status: 400 });
     }
     await env.FILES.put(key, bytes, {
@@ -4029,7 +6200,7 @@ export default {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|room-themes)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {

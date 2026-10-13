@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
 import 'legal_policy_screen.dart';
 import 'mine_social_screens.dart';
@@ -28,9 +29,11 @@ class AppSettingsScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => ValueListenableBuilder<String>(
+        valueListenable: state.languagePreference,
+        builder: (context, language, _) => Scaffold(
         backgroundColor: TinniPalette.black,
-        appBar: AppBar(title: const Text('Setting')),
+        appBar: AppBar(title: Text(darkVibeXText(language, 'setting'))),
         body: TinniBackground(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
@@ -43,7 +46,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-message-notification'),
                       icon: Icons.notifications_active_rounded,
-                      title: 'Message notification',
+                      title: darkVibeXText(language, 'message_notification'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) =>
@@ -55,7 +58,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-bind-account'),
                       icon: Icons.link_rounded,
-                      title: 'Bind account',
+                      title: darkVibeXText(language, 'bind_account'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => BindAccountScreen(state: state),
@@ -66,10 +69,10 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-language'),
                       icon: Icons.language_rounded,
-                      title: 'Language settings',
+                      title: darkVibeXText(language, 'language_settings'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const LanguageSettingsScreen(),
+                          builder: (_) => LanguageSettingsScreen(state: state),
                         ),
                       ),
                     ),
@@ -77,7 +80,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-about'),
                       icon: Icons.info_outline_rounded,
-                      title: 'About DarkVibeX',
+                      title: darkVibeXText(language, 'about_tinni'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const AboutDarkVibeXScreen(),
@@ -88,7 +91,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-feedback'),
                       icon: Icons.chat_bubble_outline_rounded,
-                      title: 'Feedback',
+                      title: darkVibeXText(language, 'feedback'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => FeedbackScreen(state: state),
@@ -99,7 +102,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-blocklist'),
                       icon: Icons.block_rounded,
-                      title: 'Blocklist',
+                      title: darkVibeXText(language, 'blocklist'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => BlocklistScreen(state: state),
@@ -110,7 +113,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-privacy-statement'),
                       icon: Icons.privacy_tip_outlined,
-                      title: 'Privacy statement',
+                      title: darkVibeXText(language, 'privacy_statement'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const LegalPolicyScreen(),
@@ -129,11 +132,13 @@ class AppSettingsScreen extends StatelessWidget {
                     Icons.logout_rounded,
                     color: Colors.redAccent,
                   ),
-                  title: const Text('Sign out'),
+                  title: Text(darkVibeXText(language, 'sign_out')),
                   subtitle: Text(
-                    state.authProvider == 'google'
-                        ? 'Google account'
-                        : 'Guest session',
+                    switch (state.authProvider) {
+                      'google' => 'Google account',
+                      'email' => 'Email account',
+                      _ => 'Guest session',
+                    },
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () async {
@@ -146,5 +151,6 @@ class AppSettingsScreen extends StatelessWidget {
             ],
           ),
         ),
-      );
+      ),
+    );
 }

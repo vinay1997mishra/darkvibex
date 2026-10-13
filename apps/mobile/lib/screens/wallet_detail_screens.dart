@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
@@ -33,7 +32,6 @@ String _walletDateTime(int milliseconds) {
       '${two(value.hour)}:${two(value.minute)}';
 }
 
-String _walletUsd(int cents) => '\$${(cents / 100).toStringAsFixed(2)}';
 
 class CoinsHistoryScreen extends StatefulWidget {
   const CoinsHistoryScreen({super.key, required this.state});
@@ -595,7 +593,9 @@ class _RoleWalletDetailScreenState
 
   Future<void> setupCredential() async {
     final credential = await _askCredential(
-      title: credentialSet ? 'Change wallet credential' : 'Set wallet credential',
+      title: credentialSet
+          ? 'Change wallet credential'
+          : 'Set wallet credential',
       confirm: true,
     );
     if (credential == null || credential.isEmpty || !mounted) return;
@@ -718,145 +718,9 @@ class _RoleWalletDetailScreenState
     }
   }
 
-  Future<void> withdrawDollars() async {
-    if (!credentialSet) {
-      await setupCredential();
-      return;
-    }
-    final amount = TextEditingController();
-    final address = TextEditingController();
-    final credential = TextEditingController();
-    var destination = 'company';
-    final data = await showDialog<List<String>>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Send Dollars'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: destination,
-                  decoration:
-                      const InputDecoration(labelText: 'Destination'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'company',
-                      child: Text('Company'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'crypto_usdt',
-                      child: Text('Cryptocurrency (USDT)'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => destination = value);
-                    }
-                  },
-                ),
-                if (destination == 'crypto_usdt')
-                  TextField(
-                    controller: address,
-                    decoration: InputDecoration(
-                      labelText: 'USDT wallet address',
-                      suffixIcon: IconButton(
-                        key: const Key('usdt-scan-qr-button'),
-                        onPressed: () async {
-                          final value =
-                              await Navigator.of(dialogContext).push<String>(
-                            MaterialPageRoute<String>(
-                              builder: (_) =>
-                                  const _UsdtQrScannerScreen(),
-                            ),
-                          );
-                          if (value != null && dialogContext.mounted) {
-                            setDialogState(() => address.text = value);
-                          }
-                        },
-                        icon: const Icon(Icons.qr_code_scanner_rounded),
-                      ),
-                    ),
-                  ),
-                TextField(
-                  controller: amount,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText:
-                        'USD amount (minimum ${_walletUsd(_walletInt(wallet['minimum_transfer_usd_cents']))})',
-                  ),
-                ),
-                TextField(
-                  controller: credential,
-                  obscureText: true,
-                  keyboardType: widget.walletType == 'coin_seller'
-                      ? TextInputType.number
-                      : TextInputType.text,
-                  inputFormatters: widget.walletType == 'coin_seller'
-                      ? [FilteringTextInputFormatter.digitsOnly]
-                      : null,
-                  maxLength: widget.walletType == 'coin_seller' ? 4 : 32,
-                  decoration:
-                      const InputDecoration(labelText: 'Wallet credential'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(
-                dialogContext,
-                [
-                  destination,
-                  amount.text.trim(),
-                  address.text.trim(),
-                  credential.text,
-                ],
-              ),
-              child: const Text('Send'),
-            ),
-          ],
-        ),
-      ),
-    );
-    amount.dispose();
-    address.dispose();
-    credential.dispose();
-    if (data == null || data.length != 4 || !mounted) return;
-    final cents = ((double.tryParse(data[1]) ?? 0) * 100).round();
-    final result =
-        await widget.state.backend.roleWalletDollarWithdrawal(
-      userId: widget.state.userId,
-      walletType: widget.walletType,
-      destinationType: data[0],
-      amountUsdCents: cents,
-      destinationValue: data[2],
-      credential: data[3],
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result?['ok'] == true
-              ? 'Dollar transfer request saved.'
-              : (result?['error']?.toString() ??
-                  'Dollar transfer failed'),
-        ),
-      ),
-    );
-    if (result?['ok'] == true) await load();
-  }
-
   @override
   Widget build(BuildContext context) {
     final transactions = _walletRows(wallet['transactions']);
-    final withdrawals = _walletRows(wallet['withdrawals']);
     return Scaffold(
       backgroundColor: TinniPalette.black,
       appBar: AppBar(
@@ -891,25 +755,11 @@ class _RoleWalletDetailScreenState
                             ),
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _RoleAmount(
-                                  label: 'Coins',
-                                  value: _walletNumber(
-                                    _walletInt(wallet['balance_coins']),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: _RoleAmount(
-                                  label: 'Total Dollars',
-                                  value: _walletUsd(
-                                    _walletInt(wallet['total_usd_cents']),
-                                  ),
-                                ),
-                              ),
-                            ],
+                          _RoleAmount(
+                            label: 'Coins',
+                            value: _walletNumber(
+                              _walletInt(wallet['balance_coins']),
+                            ),
                           ),
                           const SizedBox(height: 10),
                           Text(
@@ -927,30 +777,14 @@ class _RoleWalletDetailScreenState
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: sendCoins,
-                            icon: const Icon(Icons.send_rounded),
-                            label: const Text('Send Coins'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: withdrawDollars,
-                            icon: const Icon(
-                              Icons.currency_exchange_rounded,
-                            ),
-                            label: const Text('Send Dollars'),
-                          ),
-                        ),
-                      ],
+                    FilledButton.icon(
+                      onPressed: sendCoins,
+                      icon: const Icon(Icons.send_rounded),
+                      label: const Text('Send Coins'),
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Permanent Ledger',
+                      'Permanent Coin Ledger',
                       style: TextStyle(
                         color: TinniPalette.gold,
                         fontWeight: FontWeight.w900,
@@ -958,7 +792,7 @@ class _RoleWalletDetailScreenState
                     ),
                     const SizedBox(height: 7),
                     if (transactions.isEmpty)
-                      const TinniPanel(child: Text('No transactions.'))
+                      const TinniPanel(child: Text('No coin transactions.'))
                     else
                       for (final row in transactions)
                         Padding(
@@ -967,7 +801,7 @@ class _RoleWalletDetailScreenState
                             child: ListTile(
                               contentPadding: EdgeInsets.zero,
                               title: Text(
-                                row['kind']?.toString() ?? 'Transaction',
+                                row['kind']?.toString() ?? 'Coin transaction',
                               ),
                               subtitle: Text(
                                 [
@@ -981,65 +815,9 @@ class _RoleWalletDetailScreenState
                                   ),
                                 ].join(' • '),
                               ),
-                              trailing: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.end,
-                                children: [
-                                  if (_walletInt(row['coin_amount']) != 0)
-                                    Text(
-                                      '${_walletInt(row['coin_amount']) > 0 ? '+' : ''}'
-                                      '${_walletNumber(_walletInt(row['coin_amount']))}',
-                                    ),
-                                  if (_walletInt(
-                                        row['usd_cents_amount'],
-                                      ) !=
-                                      0)
-                                    Text(
-                                      _walletUsd(
-                                        _walletInt(
-                                          row['usd_cents_amount'],
-                                        ).abs(),
-                                      ),
-                                      style: const TextStyle(
-                                        color: TinniPalette.gold,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    if (withdrawals.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Dollar Withdrawals',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      for (final row in withdrawals)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: TinniPanel(
-                            child: ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                row['destination_type'] ==
-                                        'crypto_usdt'
-                                    ? 'Cryptocurrency (USDT)'
-                                    : 'Company',
-                              ),
-                              subtitle: Text(
-                                '${row['status'] ?? 'pending'} • '
-                                '${_walletDateTime(_walletInt(row['created_at']))}',
-                              ),
                               trailing: Text(
-                                _walletUsd(
-                                  _walletInt(row['amount_usd_cents']),
-                                ),
+                                '${_walletInt(row['coin_amount']) > 0 ? '+' : ''}'
+                                '${_walletNumber(_walletInt(row['coin_amount']))}',
                                 style: const TextStyle(
                                   color: TinniPalette.gold,
                                   fontWeight: FontWeight.w900,
@@ -1048,61 +826,12 @@ class _RoleWalletDetailScreenState
                             ),
                           ),
                         ),
-                    ],
                   ],
                 ),
               ),
       ),
     );
   }
-}
-
-class ReceivedDollarsScreen extends StatelessWidget {
-  const ReceivedDollarsScreen({
-    super.key,
-    required this.rows,
-  });
-
-  final List<Map<String, dynamic>> rows;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
-        appBar: AppBar(title: const Text('Received Dollars')),
-        body: TinniBackground(
-          child: ListView(
-            padding: const EdgeInsets.all(14),
-            children: rows
-                .where((row) => _walletInt(row['usd_cents_amount']) > 0)
-                .map(
-                  (row) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: TinniPanel(
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          row['kind']?.toString() ?? 'Dollars received',
-                        ),
-                        subtitle: Text(
-                          _walletDateTime(_walletInt(row['created_at'])),
-                        ),
-                        trailing: Text(
-                          _walletUsd(
-                            _walletInt(row['usd_cents_amount']),
-                          ),
-                          style: const TextStyle(
-                            color: TinniPalette.gold,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      );
 }
 
 class _RoleAmount extends StatelessWidget {
@@ -1130,67 +859,5 @@ class _RoleAmount extends StatelessWidget {
             ),
           ),
         ],
-      );
-}
-
-class _UsdtQrScannerScreen extends StatefulWidget {
-  const _UsdtQrScannerScreen();
-
-  @override
-  State<_UsdtQrScannerScreen> createState() =>
-      _UsdtQrScannerScreenState();
-}
-
-class _UsdtQrScannerScreenState extends State<_UsdtQrScannerScreen> {
-  bool handled = false;
-
-  void onDetect(BarcodeCapture capture) {
-    if (handled) return;
-    for (final barcode in capture.barcodes) {
-      final value = barcode.rawValue?.trim() ?? '';
-      if (value.isEmpty) continue;
-      handled = true;
-      Navigator.of(context).pop(value);
-      return;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        key: const Key('usdt-qr-scanner-screen'),
-        appBar: AppBar(title: const Text('Scan USDT Address')),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            MobileScanner(onDetect: onDetect),
-            IgnorePointer(
-              child: Center(
-                child: Container(
-                  width: 250,
-                  height: 250,
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: TinniPalette.gold,
-                      width: 3,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-              ),
-            ),
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: SafeArea(
-                minimum: EdgeInsets.all(20),
-                child: TinniPanel(
-                  child: Text(
-                    'Place the USDT wallet QR inside the frame.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
       );
 }

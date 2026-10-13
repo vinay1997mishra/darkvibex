@@ -4,18 +4,30 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
 import '../vip/vip_policy.dart';
 import 'messages_screen.dart';
 import 'mine_social_screens.dart';
 import 'profile_screen.dart';
 import 'ranking_screen.dart';
+import 'gifts_screen.dart';
+import 'vip_screen.dart';
 import 'room_screen.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.state});
+  const HomeShell({
+    super.key,
+    required this.state,
+    this.minimizedRoom,
+    this.onResumeRoom,
+    this.onCloseMinimizedRoom,
+  });
 
   final AppState state;
+  final RoomSummary? minimizedRoom;
+  final VoidCallback? onResumeRoom;
+  final Future<void> Function()? onCloseMinimizedRoom;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -43,11 +55,24 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       backgroundColor: TinniPalette.black,
       body: SafeArea(
-        child: IndexedStack(
-          index: index,
+        child: Column(
           children: [
-            for (var i = 0; i < pages.length; i++)
-              visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+            Expanded(
+              child: IndexedStack(
+                index: index,
+                children: [
+                  for (var i = 0; i < pages.length; i++)
+                    visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+                ],
+              ),
+            ),
+            if (widget.minimizedRoom != null)
+              _MiniActiveRoomBar(
+                state: widget.state,
+                room: widget.minimizedRoom!,
+                onResume: widget.onResumeRoom,
+                onClose: widget.onCloseMinimizedRoom,
+              ),
           ],
         ),
       ),
@@ -76,37 +101,158 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ],
         ),
-        child: NavigationBar(
-          selectedIndex: index,
-          backgroundColor: Colors.transparent,
-          indicatorColor: TinniPalette.gold.withValues(alpha: .12),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          onDestinationSelected: (value) => setState(() {
-            index = value;
-            visited.add(value);
-          }),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.groups_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.groups_rounded),
-              label: 'Party',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.explore_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.explore_rounded),
-              label: 'Discover',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.mail_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.mail_rounded),
-              label: 'Message',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.person_rounded),
-              label: 'Mine',
-            ),
-          ],
+        child: ValueListenableBuilder<String>(
+          valueListenable: widget.state.languagePreference,
+          builder: (context, language, _) => NavigationBar(
+            selectedIndex: index,
+            backgroundColor: Colors.transparent,
+            indicatorColor: TinniPalette.gold.withValues(alpha: .12),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            onDestinationSelected: (value) => setState(() {
+              index = value;
+              visited.add(value);
+            }),
+            destinations: [
+              NavigationDestination(
+                icon: const Icon(Icons.groups_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.groups_rounded),
+                label: darkVibeXText(language, 'party'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.explore_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.explore_rounded),
+                label: darkVibeXText(language, 'discover'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.mail_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.mail_rounded),
+                label: darkVibeXText(language, 'message'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.person_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.person_rounded),
+                label: darkVibeXText(language, 'mine'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniActiveRoomBar extends StatefulWidget {
+  const _MiniActiveRoomBar({
+    required this.state,
+    required this.room,
+    this.onResume,
+    this.onClose,
+  });
+
+  final AppState state;
+  final RoomSummary room;
+  final VoidCallback? onResume;
+  final Future<void> Function()? onClose;
+
+  @override
+  State<_MiniActiveRoomBar> createState() => _MiniActiveRoomBarState();
+}
+
+class _MiniActiveRoomBarState extends State<_MiniActiveRoomBar> {
+  bool closing = false;
+
+  Future<void> _closeRoom() async {
+    if (closing) return;
+    setState(() => closing = true);
+    final navigator = Navigator.of(context);
+    try {
+      await widget.onClose?.call();
+      if (!mounted) return;
+      navigator.pop();
+      navigator.pop();
+    } finally {
+      if (mounted) setState(() => closing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final room = widget.room;
+    return Material(
+      color: TinniPalette.nearBlack,
+      child: InkWell(
+        key: const Key('mini-room-bar'),
+        onTap: widget.onResume,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: TinniPalette.deepGold)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                key: const Key('mini-room-dp'),
+                radius: 21,
+                backgroundColor: TinniPalette.panel2,
+                backgroundImage: room.avatarKey == null
+                    ? null
+                    : NetworkImage(
+                        widget.state.backend.fileUrl(room.avatarKey!),
+                        headers: widget.state.backend.fileHeaders,
+                      ),
+                child: room.avatarKey == null
+                    ? const Icon(
+                        Icons.mic_external_on_rounded,
+                        color: TinniPalette.gold,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      room.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: TinniPalette.cream,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text(
+                      'Voice room active • Tap to return',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: TinniPalette.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close voice room',
+                onPressed: closing ? null : _closeRoom,
+                icon: closing
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.close_rounded,
+                        color: Colors.redAccent,
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -158,6 +304,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
   List<RoomSummary> followedRooms = const <RoomSummary>[];
+
+  List<RoomSummary> get visibleFollowedRooms {
+    final allowed = state.rooms.map((room) => room.id).toSet();
+    return followedRooms
+        .where((room) => allowed.contains(room.id))
+        .toList(growable: false);
+  }
 
   Future<void> _openRankings(
     BuildContext context, {
@@ -495,7 +648,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Widget _topTabs() {
-    const labels = <String>['Mine', 'Party', 'Events', 'Country'];
+    const labels = <String>['Mine', 'Party', 'Events'];
     return Row(
       children: [
         Expanded(
@@ -709,7 +862,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           ),
         ),
         const SizedBox(height: 10),
-        if (followedRooms.isEmpty)
+        if (visibleFollowedRooms.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 42),
             child: Column(
@@ -728,7 +881,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
             ),
           )
         else
-          for (final room in followedRooms)
+          for (final room in visibleFollowedRooms)
             Padding(
               padding: const EdgeInsets.only(bottom: 9),
               child: _RoomCard(
@@ -742,74 +895,134 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Widget _buildEventsPage() {
-    final rooms = state.rooms
-        .where((room) => room.partyMode == 'Event hosting mode')
-        .toList(growable: false);
+    final events = <(String, String, IconData, VoidCallback)>[
+      (
+        'Weekly CP',
+        'Couple ranking, intimacy and heartbeat activities',
+        Icons.favorite_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => CpRankingScreen(state: state),
+          ),
+        ),
+      ),
+      (
+        'Gift Festival',
+        'Popular, luxury, CP, VS and backpack gift collections',
+        Icons.card_giftcard_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => GiftsScreen(state: state),
+          ),
+        ),
+      ),
+      (
+        'VIP Celebration',
+        'VIP privileges, entry status and royal rewards',
+        Icons.workspace_premium_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => VipScreen(state: state),
+          ),
+        ),
+      ),
+      (
+        'Family Party',
+        'Family sign-in, contribution and group activities',
+        Icons.groups_rounded,
+        () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => FamilyRankingScreen(state: state),
+          ),
+        ),
+      ),
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
       children: [
-        const Text(
-          'Events',
-          style: TextStyle(
-            color: TinniPalette.gold,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
+        const TinniPanel(
+          child: Row(
+            children: [
+              TinniGlowIcon(
+                icon: Icons.celebration_rounded,
+                size: 30,
+                boxSize: 56,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Royal Events',
+                      style: TextStyle(
+                        color: TinniPalette.gold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      'DarkVibeX events and social activities.',
+                      style: TextStyle(color: TinniPalette.muted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        if (rooms.isEmpty)
-          const TinniPanel(
-            child: Text(
-              'No event rooms are live right now.',
-              style: TextStyle(color: TinniPalette.muted),
-            ),
-          )
-        else
-          for (final room in rooms)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: _RoomCard(
-                state: state,
-                room: room,
-                onTap: () => _openRoom(room),
+        const SizedBox(height: 14),
+        for (final item in events)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: TinniPanel(
+              onTap: item.$4,
+              child: Row(
+                children: [
+                  TinniGlowIcon(
+                    icon: item.$3,
+                    size: 26,
+                    boxSize: 50,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.$1,
+                          style: const TextStyle(
+                            color: TinniPalette.cream,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          item.$2,
+                          style: const TextStyle(
+                            color: TinniPalette.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: TinniPalette.gold,
+                  ),
+                ],
               ),
             ),
-      ],
-    );
-  }
-
-  Widget _buildCountryPage() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
-        const Text(
-          'Country',
-          style: TextStyle(
-            color: TinniPalette.gold,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Rooms by country',
-          style: TextStyle(color: TinniPalette.muted),
-        ),
-        const SizedBox(height: 12),
-        for (final room in state.rooms)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 9),
-            child: _RoomCard(
-              state: state,
-              room: room,
-              onTap: () => _openRoom(room),
-            ),
           ),
       ],
     );
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
@@ -825,7 +1038,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   _buildHomeMinePage(),
                   _buildPartyPage(context),
                   _buildEventsPage(),
-                  _buildCountryPage(),
                 ],
               ),
             ),

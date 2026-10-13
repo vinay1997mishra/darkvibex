@@ -1,12 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import 'vip_screen.dart';
 import 'app_settings_screen.dart';
-import 'wallet_screen.dart';
+import 'recharge_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'mine_social_screens.dart';
 import 'conversation_screen.dart';
@@ -53,8 +52,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  // DarkVibeX extra: final placement is pending user confirmation.
-  // ignore: unused_element
   Future<void> _showFriends(BuildContext context) async {
     final friends = await state.backend.friends(userId: state.userId);
     if (!context.mounted) return;
@@ -97,17 +94,76 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ),
                               ),
-                      trailing: IconButton(
-                        tooltip: 'Remove friend',
-                        icon: const Icon(Icons.person_remove_alt_1_rounded),
-                        onPressed: () async {
-                          final ok = await state.backend.removeFriend(
-                            userId: state.userId,
-                            friendUserId: id,
-                          );
-                          if (!sheetContext.mounted) return;
-                          if (ok) Navigator.pop(sheetContext);
-                        },
+                      trailing: Wrap(
+                        spacing: 2,
+                        children: [
+                          IconButton(
+                            key: Key('friend-call-$id'),
+                            tooltip: 'Voice call',
+                            icon: const Icon(
+                              Icons.call_rounded,
+                              color: TinniPalette.gold,
+                            ),
+                            onPressed: id.isEmpty
+                                ? null
+                                : () async {
+                                    final value =
+                                        await state.backend.startDirectCall(
+                                      userId: state.userId,
+                                      receiverUserId: id,
+                                    );
+                                    if (!sheetContext.mounted) return;
+                                    final raw = value?['call'];
+                                    if (raw is! Map) {
+                                      ScaffoldMessenger.of(sheetContext)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            value?['error']
+                                                    ?.toString()
+                                                    .replaceAll('_', ' ') ??
+                                                'Call could not be started.',
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    final call =
+                                        Map<String, dynamic>.from(raw);
+                                    await Navigator.of(sheetContext).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => DirectCallScreen(
+                                          state: state,
+                                          callId:
+                                              call['id']?.toString() ?? '',
+                                          peerName: name,
+                                          initialState:
+                                              call['state']?.toString() ??
+                                                  'ringing',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Friend options',
+                            onSelected: (value) async {
+                              if (value != 'remove') return;
+                              final ok = await state.backend.removeFriend(
+                                userId: state.userId,
+                                friendUserId: id,
+                              );
+                              if (!sheetContext.mounted) return;
+                              if (ok) Navigator.pop(sheetContext);
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem<String>(
+                                value: 'remove',
+                                child: Text('Remove friend'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -286,56 +342,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$day/$month/${value.year} $hour:$minute';
   }
 
-  Future<void> _pickAvatar(BuildContext context) async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-      maxHeight: 1024,
-    );
-    if (file == null) return;
-    final ext = file.name.split('.').last.toLowerCase();
-    final type = switch (ext) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'jpg' || 'jpeg' => 'image/jpeg',
-      _ => null,
-    };
-    if (type == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
-        );
-      }
-      return;
-    }
-    final key = await state.backend.uploadImage(
-      key: 'users/${state.userId}/avatar-${DateTime.now().microsecondsSinceEpoch}.${ext == 'jpeg' ? 'jpg' : ext}',
-      bytes: await file.readAsBytes(),
-      contentType: type,
-    );
-    if (key == null || !await state.backend.setUserAvatar(
-      userId: state.userId,
-      avatarKey: key,
-    )) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo could not be saved')),
-        );
-      }
-      return;
-    }
-    state.setAvatarKey(key);
-  }
 
   @override
   Widget build(BuildContext context) {
     final ringId = state.activeCosmetic('ring');
     final profileCardId = state.activeCosmetic('profile_card');
     final profileBackgroundId = state.activeCosmetic('profile_background');
-    return AnimatedBuilder(
-      animation: state,
-      builder: (context, _) => TinniBackground(
+    return ValueListenableBuilder<String>(
+      valueListenable: state.languagePreference,
+      builder: (context, language, _) => AnimatedBuilder(
+        animation: state,
+        builder: (context, _) => TinniBackground(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
           children: [
@@ -507,7 +524,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 _mineCount(
                   (socialStats['following_count'] ?? 0).toString(),
-                  'Follow',
+                  darkVibeXText(language, 'follow'),
                   onTap: () => _showPeopleList(
                     context,
                     title: 'Following',
@@ -519,7 +536,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const _MineDivider(),
                 _mineCount(
                   (socialStats['followers_count'] ?? 0).toString(),
-                  'Fans',
+                  darkVibeXText(language, 'fans'),
                   onTap: () => _showPeopleList(
                     context,
                     title: 'Followers',
@@ -531,7 +548,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const _MineDivider(),
                 _mineCount(
                   (socialStats['lifetime_received_coins'] ?? 0).toString(),
-                  'Charm',
+                  darkVibeXText(language, 'charm'),
                 ),
                 const _MineDivider(),
                 Expanded(
@@ -567,7 +584,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => WalletScreen(state: state),
+                  builder: (_) => RechargeScreen(state: state),
                 ),
               ),
               child: Row(
@@ -602,15 +619,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        '${state.diamonds} diamonds',
-                        style: const TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 10,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A0804),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: TinniPalette.deepGold),
+                        ),
+                        child: const Text(
+                          'First Recharge',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      const Text(
-                        'Wallet',
+                      const SizedBox(height: 2),
+                      Text(
+                        darkVibeXText(language, 'wallet'),
                         style: TextStyle(
                           color: TinniPalette.gold,
                           fontSize: 20,
@@ -618,6 +648,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            TinniPanel(
+              key: const Key('mine-friends-calls'),
+              onTap: () => _showFriends(context),
+              child: const Row(
+                children: [
+                  TinniGlowIcon(
+                    icon: Icons.call_rounded,
+                    size: 27,
+                    boxSize: 52,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Friends & Calls',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Only mutual friends can call each other',
+                          style: TextStyle(
+                            color: TinniPalette.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: TinniPalette.gold,
                   ),
                 ],
               ),
@@ -736,7 +808,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 7),
                 Expanded(
                   child: _mineStatusCard(
-                    title: 'Wealth level',
+                    title: darkVibeXText(language, 'wealth_level'),
                     subtitle:
                         'LV.${((socialStats['wealth'] is Map ? (socialStats['wealth'] as Map)['level'] : 0) ?? 0)}',
                     icon: Icons.diamond_rounded,
@@ -757,7 +829,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.hexagon_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Medal of Honor'),
+                title: Text(darkVibeXText(language, 'medal_of_honor')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -770,8 +842,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 state,
                 Icons.shopping_bag_rounded,
-                'Shop',
+                darkVibeXText(language, 'shop'),
                 'Frames, vehicles and entry effects',
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text(darkVibeXText(language, 'trends')),
+                subtitle: const Text(
+                  'Profile posts and updates',
+                  style: TextStyle(
+                    color: TinniPalette.muted,
+                    fontSize: 10,
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TrendsScreen(state: state),
+                  ),
+                ),
               ),
             ]),
             const SizedBox(height: 9),
@@ -781,7 +874,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.task_alt_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Task'),
+                title: Text(darkVibeXText(language, 'task')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -798,7 +891,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.home_work_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Family'),
+                title: Text(darkVibeXText(language, 'family')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -812,7 +905,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.favorite_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('CP Nest'),
+                title: Text(darkVibeXText(language, 'cp_nest')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -829,7 +922,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.chat_bubble_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Feedback'),
+                title: Text(darkVibeXText(language, 'feedback')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -842,13 +935,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 state,
                 Icons.settings_rounded,
-                'Setting',
+                darkVibeXText(language, 'setting'),
                 'Language, account, privacy and app settings',
               ),
             ]),
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -1045,6 +1139,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final Object _privacyScope = Object();
   Map<String, dynamic>? user;
   Map<String, dynamic> socialStats = const <String, dynamic>{};
+  List<Map<String, dynamic>> trends = const <Map<String, dynamic>>[];
+  Map<String, String?> media = const <String, String?>{};
   bool loading = true;
   bool isFriend = false;
   bool isFollowing = false;
@@ -1089,6 +1185,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           )
         else
           Future<bool>.value(false),
+        widget.state.backend.profileTrends(userId: targetId),
+        widget.state.backend.profileMedia(userId: targetId),
       ]);
       final friends = values[0] is List
           ? (values[0] as List).whereType<Map>().toList()
@@ -1104,6 +1202,18 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         stats = Map<String, dynamic>.from(values[2] as Map);
       }
       following = values[3] == true;
+      final trendRows = values[4] is List
+          ? (values[4] as List)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[];
+      trends = trendRows;
+      if (values[5] is Map) {
+        media = (values[5] as Map).map(
+          (key, value) => MapEntry(key.toString(), value?.toString()),
+        );
+      }
     }
 
     if (!mounted) return;
@@ -1118,6 +1228,77 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
       user?['privacy_protection_enabled'] == true,
+    );
+  }
+
+  ImageProvider<Object>? _publicMediaProvider(String? key) {
+    final value = key?.trim() ?? '';
+    if (value.isEmpty) return null;
+    return NetworkImage(
+      widget.state.backend.fileUrl(value),
+      headers: widget.state.backend.fileHeaders,
+    );
+  }
+
+  String _trendTime(dynamic raw) {
+    final value = int.tryParse(raw?.toString() ?? '') ?? 0;
+    if (value <= 0) return '';
+    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year}';
+  }
+
+  Future<void> _showTrends() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .68,
+          child: trends.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No Trends yet.',
+                    style: TextStyle(color: TinniPalette.muted),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                  children: [
+                    const ListTile(
+                      title: Text(
+                        'Trends',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    for (final row in trends)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TinniPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(row['text']?.toString() ?? ''),
+                              const SizedBox(height: 6),
+                              Text(
+                                _trendTime(row['created_at']),
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
@@ -1152,10 +1333,27 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ? const Center(child: CircularProgressIndicator())
             : user == null
                 ? const Center(child: Text('Profile could not be loaded'))
-                : Center(
-                    child: Column(
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                    child: Center(
+                      child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (_publicMediaProvider(media['cover']) != null) ...[
+                          Container(
+                            width: 420,
+                            height: 180,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: TinniPalette.bronze),
+                              image: DecorationImage(
+                                image: _publicMediaProvider(media['cover'])!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Container(
                           padding: EdgeInsets.all(
                             user!['active_ring_id']?.toString().isNotEmpty == true
@@ -1265,6 +1463,60 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
                             ]),
                           ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: OutlinedButton.icon(
+                            onPressed: _showTrends,
+                            icon: const Icon(Icons.auto_awesome_rounded),
+                            label: Text('Trends (${trends.length})'),
+                          ),
+                        ),
+                        if ([
+                          media['life_1'],
+                          media['travel'],
+                          media['life_2'],
+                          media['life_3'],
+                        ].any((value) => value?.isNotEmpty == true)) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Photos',
+                            style: TextStyle(
+                              color: TinniPalette.gold,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final entry in <(String, String)>[
+                                ('life_1', 'Life'),
+                                ('travel', 'Travel'),
+                                ('life_2', 'Life'),
+                                ('life_3', 'Life'),
+                              ])
+                                if (_publicMediaProvider(media[entry.$1]) != null)
+                                  Container(
+                                    width: 92,
+                                    height: 92,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: TinniPalette.bronze,
+                                      ),
+                                      image: DecorationImage(
+                                        image: _publicMediaProvider(
+                                          media[entry.$1],
+                                        )!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        ],
                         if (!_isSelf) ...[
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
@@ -1295,20 +1547,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                   icon: const Icon(Icons.chat_bubble_rounded),
                                   label: const Text('Message'),
                                 ),
-                                OutlinedButton.icon(
-                                  key: const Key('public-profile-call'),
-                                  onPressed:
-                                      isFriend && !isBlocked && !startingCall ? _startCall : null,
-                                  icon: startingCall
-                                      ? const SizedBox.square(
-                                          dimension: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.call_rounded),
-                                  label: const Text('Call'),
-                                ),
+                                if (isFriend)
+                                  OutlinedButton.icon(
+                                    key: const Key('public-profile-call'),
+                                    onPressed:
+                                        !isBlocked && !startingCall ? _startCall : null,
+                                    icon: startingCall
+                                        ? const SizedBox.square(
+                                            dimension: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.call_rounded),
+                                    label: const Text('Call'),
+                                  ),
                               ],
                             ),
                           ),
@@ -1327,6 +1580,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       ],
                     ),
                   ),
+                ),
       );
   }
 

@@ -2,6 +2,207 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import 'family_wallet_screen.dart';
+import 'gifts_screen.dart';
+
+class TrendsScreen extends StatefulWidget {
+  const TrendsScreen({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  State<TrendsScreen> createState() => _TrendsScreenState();
+}
+
+class _TrendsScreenState extends State<TrendsScreen> {
+  bool loading = true;
+  bool posting = false;
+  List<Map<String, dynamic>> trends = const <Map<String, dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final rows = await widget.state.backend.profileTrends(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    setState(() {
+      trends = rows;
+      loading = false;
+    });
+  }
+
+  String _time(dynamic raw) {
+    final value = int.tryParse(raw?.toString() ?? '') ?? 0;
+    if (value <= 0) return '';
+    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year} '
+        '${two(date.hour)}:${two(date.minute)}';
+  }
+
+  Future<void> _post() async {
+    if (posting) return;
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('New Trend'),
+        content: TextField(
+          key: const Key('profile-trend-text'),
+          controller: controller,
+          maxLength: 500,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Share something on your profile…',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Post'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (text == null || text.isEmpty || !mounted) return;
+    setState(() => posting = true);
+    try {
+      final result = await widget.state.backend.addProfileTrend(
+        userId: widget.state.userId,
+        text: text,
+      );
+      final row = result?['trend'];
+      if (!mounted) return;
+      if (result?['ok'] == true && row is Map) {
+        setState(() {
+          trends = <Map<String, dynamic>>[
+            Map<String, dynamic>.from(row),
+            ...trends,
+          ];
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'Trend could not be posted.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => posting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: TinniPalette.black,
+        appBar: AppBar(
+          title: const Text(
+            'Trends',
+            style: TextStyle(
+              color: TinniPalette.gold,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'New Trend',
+              onPressed: posting ? null : _post,
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ],
+        ),
+        body: TinniBackground(
+          child: loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                    children: [
+                      TinniPanel(
+                        onTap: posting ? null : _post,
+                        child: const Row(
+                          children: [
+                            TinniGlowIcon(
+                              icon: Icons.auto_awesome_rounded,
+                              size: 22,
+                              boxSize: 42,
+                            ),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Share something on your profile…',
+                                style: TextStyle(
+                                  color: TinniPalette.muted,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.edit_rounded,
+                              color: TinniPalette.gold,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (trends.isEmpty)
+                        const TinniPanel(
+                          child: Text(
+                            'No Trends yet.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: TinniPalette.muted),
+                          ),
+                        )
+                      else
+                        for (final row in trends)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: TinniPanel(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    row['text']?.toString() ?? '',
+                                    style: const TextStyle(
+                                      color: TinniPalette.cream,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _time(row['created_at']),
+                                    style: const TextStyle(
+                                      color: TinniPalette.muted,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+        ),
+      );
+}
 
 class WealthLevelScreen extends StatefulWidget {
   const WealthLevelScreen({super.key, required this.state});
@@ -690,23 +891,48 @@ class _FamilyScreenState extends State<FamilyScreen> {
           ),
         ),
         const SizedBox(height: 9),
-        FilledButton.icon(
-          onPressed: () async {
-            final value = await widget.state.backend.familyCheckIn(userId: widget.state.userId);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  value?['already_checked_in'] == true
-                      ? 'Already checked in today'
-                      : '+${value?['exp_awarded'] ?? 0} Family EXP',
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final value = await widget.state.backend.familyCheckIn(
+                    userId: widget.state.userId,
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        value?['already_checked_in'] == true
+                            ? 'Already checked in today'
+                            : '+${value?['exp_awarded'] ?? 0} Family EXP',
+                      ),
+                    ),
+                  );
+                  await _load();
+                },
+                icon: const Icon(Icons.task_alt_rounded),
+                label: const Text('Daily check-in'),
               ),
-            );
-            await _load();
-          },
-          icon: const Icon(Icons.task_alt_rounded),
-          label: const Text('Daily check-in'),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                key: const Key('family-wallet-open'),
+                onPressed: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => FamilyWalletScreen(
+                      state: widget.state,
+                      familyName: family?['name']?.toString() ?? 'Family',
+                    ),
+                  ),
+                ).then((_) => _load()),
+                icon: const Icon(Icons.account_balance_wallet_rounded),
+                label: const Text('Family Wallet'),
+              ),
+            ),
+          ],
         ),
         if (requests.isNotEmpty) ...[
           const SizedBox(height: 14),
@@ -823,8 +1049,10 @@ class CpScreen extends StatefulWidget {
 
 class _CpScreenState extends State<CpScreen> {
   bool loading = true;
+  bool busy = false;
   Map<String, dynamic>? cp;
-  List<Map<String, dynamic>> memories = const [];
+  List<Map<String, dynamic>> memories = const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> friends = const <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -832,58 +1060,171 @@ class _CpScreenState extends State<CpScreen> {
     _load();
   }
 
+  void _notice(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text.replaceAll('_', ' '))),
+    );
+  }
+
   Future<void> _load() async {
-    final value = await widget.state.backend.cpState(userId: widget.state.userId);
+    final value = await widget.state.backend.cpState(
+      userId: widget.state.userId,
+    );
     final raw = value?['cp'];
     final next = raw is Map ? Map<String, dynamic>.from(raw) : null;
-    final memoryRows = next == null
-        ? const <Map<String, dynamic>>[]
-        : await widget.state.backend.cpMemories(userId: widget.state.userId);
+    final values = await Future.wait<dynamic>([
+      widget.state.backend.friends(userId: widget.state.userId),
+      next == null
+          ? Future.value(const <Map<String, dynamic>>[])
+          : widget.state.backend.cpMemories(userId: widget.state.userId),
+    ]);
     if (!mounted) return;
     setState(() {
       cp = next;
-      memories = memoryRows;
+      friends = values[0] is List
+          ? (values[0] as List)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[];
+      memories = values[1] is List
+          ? (values[1] as List)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[];
       loading = false;
     });
   }
 
   String _partnerId() {
     if (cp == null) return '';
-    return cp!['user_a'] == widget.state.userId
+    return cp!['user_a']?.toString() == widget.state.userId
         ? cp!['user_b']?.toString() ?? ''
         : cp!['user_a']?.toString() ?? '';
   }
 
   String _partnerName() {
     if (cp == null) return '';
-    return cp!['user_a'] == widget.state.userId
+    return cp!['user_a']?.toString() == widget.state.userId
         ? cp!['user_b_name']?.toString() ?? _partnerId()
         : cp!['user_a_name']?.toString() ?? _partnerId();
   }
 
-  Future<void> _request() async {
-    final controller = TextEditingController();
-    final id = await showDialog<String>(
+  String? _partnerAvatarKey() {
+    if (cp == null) return null;
+    return cp!['user_a']?.toString() == widget.state.userId
+        ? cp!['user_b_avatar_key']?.toString()
+        : cp!['user_a_avatar_key']?.toString();
+  }
+
+  Future<void> _requestTo(String id) async {
+    if (busy || id.isEmpty) return;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Request CP'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'User ID'),
+        title: const Text('CP Invite'),
+        content: const Text(
+          'Send a confession invitation to this mutual friend? '
+          'CP Invite costs 2,222,222 DarkVibeX coins.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Send')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Invite'),
+          ),
         ],
       ),
     );
-    controller.dispose();
-    if (id == null || id.isEmpty) return;
-    await widget.state.backend.cpRequest(
-      userId: widget.state.userId,
-      targetUserId: id,
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.cpRequest(
+        userId: widget.state.userId,
+        targetUserId: id,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        final balance =
+            int.tryParse(result?['coin_balance']?.toString() ?? '');
+        if (balance != null) widget.state.setCoinBalance(balance);
+        _notice('CP invitation sent.');
+      } else {
+        _notice(result?['error']?.toString() ?? 'CP invitation failed');
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _respond(bool accept) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.cpRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true) {
+        _notice(result?['error']?.toString() ?? 'CP response failed');
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    if (busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Disconnect CP'),
+        content: const Text(
+          'Disconnect this CP relationship? Current CP intimacy and level will be cleared.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
     );
-    await _load();
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final ok = await widget.state.backend.cpDisconnect(
+        userId: widget.state.userId,
+      );
+      if (!ok) _notice('CP could not be disconnected.');
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _openCpGifts() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => GiftsScreen(
+          state: widget.state,
+          initialCategory: 'CP',
+        ),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   Future<void> _addMemory() async {
@@ -892,30 +1233,300 @@ class _CpScreenState extends State<CpScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Add CP memory'),
-        content: TextField(controller: controller, maxLength: 500, maxLines: 4),
+        content: TextField(
+          controller: controller,
+          maxLength: 500,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Write a CP memory',
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              controller.text.trim(),
+            ),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
     controller.dispose();
-    if (text == null || text.isEmpty) return;
-    if (await widget.state.backend.addCpMemory(userId: widget.state.userId, text: text)) {
-      await _load();
+    if (text == null || text.isEmpty || !mounted) return;
+    final ok = await widget.state.backend.addCpMemory(
+      userId: widget.state.userId,
+      text: text,
+    );
+    if (!ok) {
+      _notice('CP memory could not be saved.');
+      return;
     }
+    await _load();
+  }
+
+  Future<void> _showMemories() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+          children: [
+            ListTile(
+              title: const Text(
+                'CP Memories',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              trailing: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _addMemory();
+                },
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add'),
+              ),
+            ),
+            if (memories.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(22),
+                child: Text(
+                  'No CP memories yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: TinniPalette.muted),
+                ),
+              )
+            else
+              for (final memory in memories)
+                ListTile(
+                  leading: const Icon(
+                    Icons.favorite_rounded,
+                    color: TinniPalette.gold,
+                  ),
+                  title: Text(memory['body']?.toString() ?? ''),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRingCabinet() async {
+    final value = await widget.state.backend.cosmetics(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    final rawItems = value?['items'];
+    final rawOwned = value?['owned'];
+    final items = rawItems is List
+        ? rawItems
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .where((row) => row['kind']?.toString() == 'ring')
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+    final ownedIds = rawOwned is List
+        ? rawOwned
+            .whereType<Map>()
+            .where((row) => row['kind']?.toString() == 'ring')
+            .map((row) => row['item_id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet()
+        : <String>{};
+    final rings = items
+        .where((item) => ownedIds.contains(item['id']?.toString()))
+        .toList(growable: false);
+    final selected = cp?['ring_id']?.toString();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+          children: [
+            const ListTile(
+              title: Text(
+                'Ring Cabinet',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text('Choose an owned CP ring.'),
+            ),
+            if (rings.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(22),
+                child: Text(
+                  'No owned rings yet. Buy a ring from Shop first.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: TinniPalette.muted),
+                ),
+              )
+            else
+              for (final ring in rings)
+                ListTile(
+                  leading: const TinniGlowIcon(
+                    icon: Icons.diamond_rounded,
+                    size: 20,
+                    boxSize: 40,
+                  ),
+                  title: Text(
+                    ring['name']?.toString() ??
+                        ring['id']?.toString() ??
+                        'Ring',
+                  ),
+                  subtitle: Text(ring['id']?.toString() ?? ''),
+                  trailing: selected == ring['id']?.toString()
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: TinniPalette.gold,
+                        )
+                      : const Icon(Icons.chevron_right_rounded),
+                  onTap: selected == ring['id']?.toString()
+                      ? null
+                      : () async {
+                          final result =
+                              await widget.state.backend.cpSetRing(
+                            userId: widget.state.userId,
+                            ringId: ring['id']?.toString(),
+                          );
+                          if (!sheetContext.mounted) return;
+                          if (result?['ok'] == true) {
+                            Navigator.pop(sheetContext);
+                            await _load();
+                          } else {
+                            _notice(
+                              result?['error']?.toString() ??
+                                  'Ring could not be selected',
+                            );
+                          }
+                        },
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRules() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: .78,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 22),
+            children: const [
+              Text(
+                'CP Rules',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              SizedBox(height: 14),
+              ListTile(
+                leading: Icon(
+                  Icons.favorite_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text('Become CP'),
+                subtitle: Text(
+                  'Invite a mutual friend. The CP invitation costs 2,222,222 coins.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.card_giftcard_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text('CP gift intimacy'),
+                subtitle: Text(
+                  'Only CP-category gifts exchanged between the active CP pair increase intimacy and CP level.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.layers_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text('Separate progress'),
+                subtitle: Text(
+                  'CP, VS, Normal and Luxury gift progress remain separate.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.diamond_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text('Ring Cabinet'),
+                subtitle: Text(
+                  'An owned ring can be selected for the active CP relationship.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.auto_stories_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text('Memories'),
+                subtitle: Text(
+                  'Active CP users can save relationship memories inside CP Nest.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = cp?['state']?.toString();
-    final pendingForMe = state == 'pending' &&
+    final relationState = cp?['state']?.toString();
+    final pendingForMe = relationState == 'pending' &&
         cp?['requested_by']?.toString() != widget.state.userId;
+    final intimacy = int.tryParse(cp?['intimacy']?.toString() ?? '') ?? 0;
+    final previous = int.tryParse(
+          cp?['previous_level_threshold']?.toString() ?? '',
+        ) ??
+        0;
+    final next =
+        int.tryParse(cp?['next_level_threshold']?.toString() ?? '');
+    final progress = next == null || next <= previous
+        ? 1.0
+        : ((intimacy - previous) / (next - previous)).clamp(0.0, 1.0);
+    final partnerAvatar = _partnerAvatarKey();
+
     return Scaffold(
       backgroundColor: TinniPalette.black,
       appBar: AppBar(
         title: const Text('My CP'),
         actions: [
+          IconButton(
+            tooltip: 'CP Rules',
+            onPressed: _showRules,
+            icon: const Icon(Icons.info_outline_rounded),
+          ),
           IconButton(
             tooltip: 'CP Ranking',
             onPressed: () => Navigator.of(context).push(
@@ -930,144 +1541,354 @@ class _CpScreenState extends State<CpScreen> {
       body: TinniBackground(
         child: loading
             ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(14),
-                children: [
-                  if (cp == null)
-                    TinniPanel(
-                      onTap: _request,
-                      child: const Row(
-                        children: [
-                          TinniGlowIcon(icon: Icons.favorite_rounded, size: 28, boxSize: 54),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Request CP',
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(14),
+                  children: [
+                    if (cp == null) ...[
+                      const TinniPanel(
+                        child: Column(
+                          children: [
+                            TinniGlowIcon(
+                              icon: Icons.favorite_rounded,
+                              size: 34,
+                              boxSize: 66,
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Choose a friend for CP',
                               style: TextStyle(
-                                color: TinniPalette.cream,
-                                fontSize: 17,
+                                color: TinniPalette.gold,
+                                fontSize: 20,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-                          ),
-                          Icon(Icons.chevron_right_rounded, color: TinniPalette.gold),
-                        ],
-                      ),
-                    )
-                  else ...[
-                    TinniPanel(
-                      child: Column(
-                        children: [
-                          const TinniGlowIcon(icon: Icons.favorite_rounded, size: 34, boxSize: 66),
-                          const SizedBox(height: 10),
-                          Text(
-                            _partnerName(),
-                            style: const TextStyle(
-                              color: TinniPalette.gold,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          Text(
-                            'ID ${_partnerId()} • ${state ?? ''}',
-                            style: const TextStyle(color: TinniPalette.muted),
-                          ),
-                          if (state == 'active')
+                            SizedBox(height: 4),
                             Text(
-                              'Intimacy ${cp?['intimacy'] ?? 0} • Lv.${cp?['level'] ?? 1}',
-                              style: const TextStyle(color: TinniPalette.cream),
+                              'CP invitations can only be sent to mutual friends.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: TinniPalette.muted),
                             ),
-                        ],
-                      ),
-                    ),
-                    if (pendingForMe) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () async {
-                                await widget.state.backend.cpRespond(
-                                  userId: widget.state.userId,
-                                  accept: true,
-                                );
-                                await _load();
-                              },
-                              child: const Text('Accept CP'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                await widget.state.backend.cpRespond(
-                                  userId: widget.state.userId,
-                                  accept: false,
-                                );
-                                await _load();
-                              },
-                              child: const Text('Reject'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (state == 'active') ...[
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _addMemory,
-                              icon: const Icon(Icons.auto_stories_rounded),
-                              label: const Text('Add memory'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () async {
-                                if (await widget.state.backend.cpDisconnect(
-                                  userId: widget.state.userId,
-                                )) {
-                                  await _load();
-                                }
-                              },
-                              icon: const Icon(Icons.link_off_rounded),
-                              label: const Text('Disconnect'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'CP Memories',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontWeight: FontWeight.w900,
+                          ],
                         ),
                       ),
-                      for (final memory in memories)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: TinniPanel(
-                            child: ListTile(
-                              leading: const Icon(
-                                Icons.favorite_border_rounded,
-                                color: TinniPalette.gold,
+                      const SizedBox(height: 12),
+                      if (friends.isEmpty)
+                        const TinniPanel(
+                          child: Text(
+                            'No mutual friends available yet.',
+                            style: TextStyle(color: TinniPalette.muted),
+                          ),
+                        )
+                      else
+                        for (final friend in friends)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: TinniPanel(
+                              onTap: busy
+                                  ? null
+                                  : () => _requestTo(
+                                        friend['id']?.toString() ?? '',
+                                      ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: TinniPalette.panel2,
+                                    backgroundImage:
+                                        friend['avatar_key']
+                                                    ?.toString()
+                                                    .isNotEmpty ==
+                                                true
+                                            ? NetworkImage(
+                                                widget.state.backend.fileUrl(
+                                                  friend['avatar_key']
+                                                      .toString(),
+                                                ),
+                                                headers: widget.state.backend
+                                                    .fileHeaders,
+                                              )
+                                            : null,
+                                    child: friend['avatar_key']
+                                                ?.toString()
+                                                .isNotEmpty ==
+                                            true
+                                        ? null
+                                        : const Icon(
+                                            Icons.person_rounded,
+                                          ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          friend['display_name']?.toString() ??
+                                              'Friend',
+                                          style: const TextStyle(
+                                            color: TinniPalette.cream,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        Text(
+                                          'ID ${friend['id'] ?? ''}',
+                                          style: const TextStyle(
+                                            color: TinniPalette.muted,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Text(
+                                    'Invite',
+                                    style: TextStyle(
+                                      color: TinniPalette.gold,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              title: Text(memory['body']?.toString() ?? ''),
                             ),
                           ),
+                    ] else ...[
+                      TinniPanel(
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 38,
+                              backgroundColor: TinniPalette.panel2,
+                              backgroundImage:
+                                  partnerAvatar?.isNotEmpty == true
+                                      ? NetworkImage(
+                                          widget.state.backend.fileUrl(
+                                            partnerAvatar!,
+                                          ),
+                                          headers:
+                                              widget.state.backend.fileHeaders,
+                                        )
+                                      : null,
+                              child: partnerAvatar?.isNotEmpty == true
+                                  ? null
+                                  : const Icon(
+                                      Icons.favorite_rounded,
+                                      color: TinniPalette.gold,
+                                      size: 36,
+                                    ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              _partnerName(),
+                              style: const TextStyle(
+                                color: TinniPalette.gold,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              'ID ${_partnerId()} • ${relationState ?? ''}',
+                              style: const TextStyle(
+                                color: TinniPalette.muted,
+                              ),
+                            ),
+                            if (relationState == 'active') ...[
+                              const SizedBox(height: 9),
+                              Text(
+                                'CP Lv.${cp?['level'] ?? 1} • Intimacy $intimacy',
+                                style: const TextStyle(
+                                  color: TinniPalette.cream,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 7),
+                              LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 7,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                next == null
+                                    ? 'Maximum configured CP level reached'
+                                    : '$intimacy / $next intimacy',
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                  fontSize: 10,
+                                ),
+                              ),
+                              if (cp?['ring_id']
+                                      ?.toString()
+                                      .isNotEmpty ==
+                                  true) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.diamond_rounded,
+                                      color: TinniPalette.gold,
+                                      size: 17,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      cp!['ring_id'].toString(),
+                                      style: const TextStyle(
+                                        color: TinniPalette.gold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ],
                         ),
+                      ),
+                      if (pendingForMe) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton(
+                                onPressed:
+                                    busy ? null : () => _respond(true),
+                                child: const Text('Accept CP'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed:
+                                    busy ? null : () => _respond(false),
+                                child: const Text('Reject'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (relationState == 'pending' && !pendingForMe) ...[
+                        const SizedBox(height: 10),
+                        const TinniPanel(
+                          child: Text(
+                            'CP invitation sent. Waiting for your friend to accept.',
+                            style: TextStyle(color: TinniPalette.muted),
+                          ),
+                        ),
+                      ],
+                      if (relationState == 'active') ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TinniPanel(
+                                onTap: _openCpGifts,
+                                child: const Column(
+                                  children: [
+                                    TinniGlowIcon(
+                                      icon: Icons.card_giftcard_rounded,
+                                      size: 22,
+                                      boxSize: 42,
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      'CP Gifts',
+                                      style: TextStyle(
+                                        color: TinniPalette.gold,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TinniPanel(
+                                onTap: _showRingCabinet,
+                                child: const Column(
+                                  children: [
+                                    TinniGlowIcon(
+                                      icon: Icons.diamond_rounded,
+                                      size: 22,
+                                      boxSize: 42,
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      'Ring Cabinet',
+                                      style: TextStyle(
+                                        color: TinniPalette.gold,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TinniPanel(
+                                onTap: _showMemories,
+                                child: const Column(
+                                  children: [
+                                    TinniGlowIcon(
+                                      icon: Icons.auto_stories_rounded,
+                                      size: 22,
+                                      boxSize: 42,
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      'Memories',
+                                      style: TextStyle(
+                                        color: TinniPalette.gold,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TinniPanel(
+                                onTap: busy ? null : _disconnect,
+                                child: const Column(
+                                  children: [
+                                    TinniGlowIcon(
+                                      icon: Icons.link_off_rounded,
+                                      size: 22,
+                                      boxSize: 42,
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      'Disconnect',
+                                      style: TextStyle(
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ],
-                ],
+                ),
               ),
       ),
     );
   }
 }
+
 
 class CpRankingScreen extends StatefulWidget {
   const CpRankingScreen({super.key, required this.state});
@@ -1149,7 +1970,9 @@ class VsScreen extends StatefulWidget {
 
 class _VsScreenState extends State<VsScreen> {
   bool loading = true;
+  bool busy = false;
   Map<String, dynamic>? vs;
+  List<Map<String, dynamic>> friends = const <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -1158,13 +1981,17 @@ class _VsScreenState extends State<VsScreen> {
   }
 
   Future<void> _load() async {
-    final value = await widget.state.backend.vsState(
+    final relation = await widget.state.backend.vsState(
       userId: widget.state.userId,
     );
-    final raw = value?['vs'];
+    final friendRows = await widget.state.backend.friends(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
+    final raw = relation?['vs'];
     setState(() {
       vs = raw is Map ? Map<String, dynamic>.from(raw) : null;
+      friends = friendRows;
       loading = false;
     });
   }
@@ -1183,36 +2010,200 @@ class _VsScreenState extends State<VsScreen> {
         : vs!['user_a_name']?.toString() ?? _rivalId();
   }
 
-  Future<void> _request() async {
-    final controller = TextEditingController();
-    final id = await showDialog<String>(
+  String? _rivalAvatarKey() {
+    if (vs == null) return null;
+    return vs!['user_a']?.toString() == widget.state.userId
+        ? vs!['user_b_avatar_key']?.toString()
+        : vs!['user_a_avatar_key']?.toString();
+  }
+
+  void _notice(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text.replaceAll('_', ' '))),
+    );
+  }
+
+  Future<String?> _chooseFriend() async {
+    if (friends.isEmpty) {
+      _notice('No mutual friends available for a VS challenge.');
+      return null;
+    }
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF10080A),
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+          children: [
+            const ListTile(
+              title: Text(
+                'Choose a friend to challenge',
+                style: TextStyle(
+                  color: Color(0xFFFF202D),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text(
+                'VS can only be created with a mutual friend.',
+              ),
+            ),
+            for (final friend in friends)
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: const Color(0xFF241014),
+                  backgroundImage:
+                      friend['avatar_key']?.toString().isNotEmpty == true
+                          ? NetworkImage(
+                              widget.state.backend.fileUrl(
+                                friend['avatar_key'].toString(),
+                              ),
+                              headers: widget.state.backend.fileHeaders,
+                            )
+                          : null,
+                  child: friend['avatar_key']?.toString().isNotEmpty == true
+                      ? null
+                      : const Icon(
+                          Icons.person_rounded,
+                          color: Color(0xFFFF202D),
+                        ),
+                ),
+                title: Text(
+                  friend['display_name']?.toString().trim().isNotEmpty == true
+                      ? friend['display_name'].toString()
+                      : 'User',
+                ),
+                subtitle: Text('ID ${friend['id'] ?? ''}'),
+                trailing: const Icon(
+                  Icons.bolt_rounded,
+                  color: Color(0xFFFF202D),
+                ),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  friend['id']?.toString(),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _requestTo(String id) async {
+    if (busy || id.isEmpty) return;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('VS Challenge'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'User ID'),
+        content: const Text(
+          'Send this friend a VS challenge? Once accepted, only VS-category gifts exchanged between this pair raise the VS level.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF202D),
+            ),
             child: const Text('Challenge'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (id == null || id.isEmpty) return;
-    await widget.state.backend.vsRequest(
-      userId: widget.state.userId,
-      targetUserId: id,
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.vsRequest(
+        userId: widget.state.userId,
+        targetUserId: id,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true) {
+        _notice(result?['error']?.toString() ?? 'VS challenge failed');
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _request() async {
+    if (busy) return;
+    final id = await _chooseFriend();
+    if (id == null || id.isEmpty || !mounted) return;
+    await _requestTo(id);
+  }
+
+  Future<void> _respond(bool accept) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.vsRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true) {
+        _notice(result?['error']?.toString() ?? 'VS response failed');
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    if (busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove VS'),
+        content: const Text(
+          'Remove this VS relation? The current rivalry level will be cleared.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF202D),
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
     );
-    await _load();
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final ok = await widget.state.backend.vsDisconnect(
+        userId: widget.state.userId,
+      );
+      if (!ok) _notice('VS could not be removed.');
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _openVsGifts() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => GiftsScreen(
+          state: widget.state,
+          initialCategory: 'VS',
+        ),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   @override
@@ -1220,6 +2211,14 @@ class _VsScreenState extends State<VsScreen> {
     final relationState = vs?['state']?.toString();
     final incoming = relationState == 'pending' &&
         vs?['requested_by']?.toString() != widget.state.userId;
+    final rivalry = int.tryParse(vs?['rivalry']?.toString() ?? '') ?? 0;
+    final previous =
+        int.tryParse(vs?['previous_level_threshold']?.toString() ?? '') ?? 0;
+    final next = int.tryParse(vs?['next_level_threshold']?.toString() ?? '');
+    final progress = next == null || next <= previous
+        ? 1.0
+        : ((rivalry - previous) / (next - previous)).clamp(0.0, 1.0);
+    final avatarKey = _rivalAvatarKey();
 
     return Scaffold(
       backgroundColor: const Color(0xFF05070B),
@@ -1245,18 +2244,118 @@ class _VsScreenState extends State<VsScreen> {
               color: Color(0xFFFF202D),
             ),
           ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: busy ? null : _load,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(14),
-              children: [
-                if (vs == null)
-                  InkWell(
-                    onTap: _request,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(14),
+                children: [
+                  if (vs == null) ...[
+                    InkWell(
+                      onTap: busy ? null : _request,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFF220508),
+                              Color(0xFF05070B),
+                              Color(0xFF140306),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: const Color(0xFFFF202D),
+                          ),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.dangerous_rounded,
+                              color: Color(0xFFFF202D),
+                              size: 64,
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Add VS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              'Choose a mutual friend and send a VS challenge.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Color(0xFF9A8285)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Mutual friends',
+                      style: TextStyle(
+                        color: Color(0xFFFF202D),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (friends.isEmpty)
+                      const TinniPanel(
+                        child: Text(
+                          'No mutual friends available yet.',
+                          style: TextStyle(color: TinniPalette.muted),
+                        ),
+                      )
+                    else
+                      for (final friend in friends.take(20))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: TinniPanel(
+                            onTap: busy
+                                ? null
+                                : () => _requestTo(
+                                      friend['id']?.toString() ?? '',
+                                    ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.person_rounded,
+                                  color: Color(0xFFFF202D),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    friend['display_name']?.toString() ??
+                                        friend['id']?.toString() ??
+                                        'Friend',
+                                  ),
+                                ),
+                                const Text(
+                                  'Challenge',
+                                  style: TextStyle(
+                                    color: Color(0xFFFF202D),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                  ] else ...[
+                    Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
@@ -1264,141 +2363,166 @@ class _VsScreenState extends State<VsScreen> {
                           colors: [
                             Color(0xFF220508),
                             Color(0xFF05070B),
-                            Color(0xFF140306),
                           ],
                         ),
                         border: Border.all(
                           color: const Color(0xFFFF202D),
                         ),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
-                          Icon(
-                            Icons.dangerous_rounded,
-                            color: Color(0xFFFF202D),
-                            size: 64,
+                          CircleAvatar(
+                            radius: 38,
+                            backgroundColor: const Color(0xFF241014),
+                            backgroundImage:
+                                avatarKey?.isNotEmpty == true
+                                    ? NetworkImage(
+                                        widget.state.backend.fileUrl(avatarKey!),
+                                        headers:
+                                            widget.state.backend.fileHeaders,
+                                      )
+                                    : null,
+                            child: avatarKey?.isNotEmpty == true
+                                ? null
+                                : const Icon(
+                                    Icons.dangerous_rounded,
+                                    color: Color(0xFFFF202D),
+                                    size: 42,
+                                  ),
                           ),
-                          SizedBox(height: 10),
+                          const SizedBox(height: 8),
                           Text(
-                            'Add VS',
-                            style: TextStyle(
+                            _rivalName(),
+                            style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                              fontSize: 21,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
                           Text(
-                            'Choose a user ID and send a VS challenge.',
-                            style: TextStyle(color: Color(0xFF9A8285)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else ...[
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF220508),
-                          Color(0xFF05070B),
-                        ],
-                      ),
-                      border: Border.all(
-                        color: const Color(0xFFFF202D),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.dangerous_rounded,
-                          color: Color(0xFFFF202D),
-                          size: 58,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _rivalName(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          'ID ${_rivalId()} • ${relationState ?? ''}',
-                          style: const TextStyle(
-                            color: Color(0xFF9A8285),
-                          ),
-                        ),
-                        if (relationState == 'active')
-                          Text(
-                            'VS Lv.${vs?['level'] ?? 1} • Rivalry ${vs?['rivalry'] ?? 0}',
+                            'ID ${_rivalId()} • ${relationState ?? ''}',
                             style: const TextStyle(
-                              color: Color(0xFFFF202D),
-                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF9A8285),
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                  if (incoming) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              await widget.state.backend.vsRespond(
-                                userId: widget.state.userId,
-                                accept: false,
-                              );
-                              await _load();
-                            },
-                            child: const Text('Refuse'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: () async {
-                              await widget.state.backend.vsRespond(
-                                userId: widget.state.userId,
-                                accept: true,
-                              );
-                              await _load();
-                            },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFFF202D),
-                              foregroundColor: Colors.white,
+                          if (relationState == 'active') ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'VS Lv.${vs?['level'] ?? 1} • Rivalry $rivalry',
+                              style: const TextStyle(
+                                color: Color(0xFFFF202D),
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                            child: const Text('Accept'),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 7,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              next == null
+                                  ? 'Maximum configured VS level reached'
+                                  : '$rivalry / $next rivalry',
+                              style: const TextStyle(
+                                color: Color(0xFF9A8285),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (incoming) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed:
+                                  busy ? null : () => _respond(false),
+                              child: const Text('Refuse'),
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed:
+                                  busy ? null : () => _respond(true),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF202D),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Accept'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (relationState == 'pending' && !incoming) ...[
+                      const SizedBox(height: 10),
+                      const TinniPanel(
+                        child: Text(
+                          'VS challenge sent. Waiting for your friend to accept.',
+                          style: TextStyle(color: TinniPalette.muted),
                         ),
-                      ],
-                    ),
-                  ],
-                  if (relationState == 'active') ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        if (await widget.state.backend.vsDisconnect(
-                          userId: widget.state.userId,
-                        )) {
-                          await _load();
-                        }
-                      },
-                      icon: const Icon(Icons.link_off_rounded),
-                      label: const Text('Remove VS'),
-                    ),
+                      ),
+                    ],
+                    if (relationState == 'active') ...[
+                      const SizedBox(height: 12),
+                      TinniPanel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'VS Gifts',
+                              style: TextStyle(
+                                color: Color(0xFFFF202D),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Only VS-category gifts exchanged with your connected VS raise the rivalry level.',
+                              style: TextStyle(
+                                color: TinniPalette.muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: _openVsGifts,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      const Color(0xFFFF202D),
+                                ),
+                                icon:
+                                    const Icon(Icons.card_giftcard_rounded),
+                                label: const Text('Open VS Gifts'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : _disconnect,
+                        icon: const Icon(Icons.link_off_rounded),
+                        label: const Text('Remove VS'),
+                      ),
+                    ],
                   ],
                 ],
-              ],
+              ),
             ),
     );
   }
 }
+
 
 class VsRankingScreen extends StatefulWidget {
   const VsRankingScreen({super.key, required this.state});

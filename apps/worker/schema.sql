@@ -5,6 +5,14 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL DEFAULT '',
   avatar_key TEXT,
   date_of_birth TEXT,
+  country_code TEXT,
+  country_name TEXT,
+  flag_emoji TEXT,
+  gender TEXT,
+  age_change_count INTEGER NOT NULL DEFAULT 0,
+  country_change_count INTEGER NOT NULL DEFAULT 0,
+  gender_change_count INTEGER NOT NULL DEFAULT 0,
+  language TEXT NOT NULL DEFAULT 'English',
   role TEXT NOT NULL DEFAULT 'user'
     CHECK (role IN (
       'user',
@@ -28,6 +36,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   name TEXT NOT NULL,
   seat_count INTEGER NOT NULL DEFAULT 12 CHECK (seat_count BETWEEN 8 AND 42),
   locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0,1)),
+  country_code TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (owner_user_id) REFERENCES users(id)

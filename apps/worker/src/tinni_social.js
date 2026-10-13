@@ -23,6 +23,15 @@ export async function ensureTinniSocialSchema(db) {
       body TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS profile_trends (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_profile_trends_user_time
+       ON profile_trends(user_id,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS user_feedback (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -69,6 +78,19 @@ export async function ensureTinniSocialSchema(db) {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (family_id, user_id, day_key)
     )`,
+    `CREATE TABLE IF NOT EXISTS family_wallet_transfers (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      sender_user_id TEXT NOT NULL,
+      receiver_user_id TEXT NOT NULL,
+      coins INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY(sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(receiver_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_wallet_transfers_family_time
+       ON family_wallet_transfers(family_id,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS cp_relationships (
       user_a TEXT NOT NULL,
       user_b TEXT NOT NULL,
@@ -76,10 +98,25 @@ export async function ensureTinniSocialSchema(db) {
       intimacy INTEGER NOT NULL DEFAULT 0,
       level INTEGER NOT NULL DEFAULT 1,
       requested_by TEXT,
+      ring_id TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
     )`,
+    `CREATE TABLE IF NOT EXISTS cp_gift_progress (
+      event_id TEXT PRIMARY KEY,
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      pair_started_at INTEGER NOT NULL,
+      sender_user_id TEXT NOT NULL,
+      receiver_user_id TEXT NOT NULL,
+      progress INTEGER NOT NULL,
+      level_before INTEGER NOT NULL,
+      level_after INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_cp_gift_progress_pair_time
+       ON cp_gift_progress(user_a,user_b,pair_started_at,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS vs_relationships (
       user_a TEXT NOT NULL,
       user_b TEXT NOT NULL,
@@ -91,6 +128,20 @@ export async function ensureTinniSocialSchema(db) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
     )`,
+    `CREATE TABLE IF NOT EXISTS vs_gift_progress (
+      event_id TEXT PRIMARY KEY,
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      pair_started_at INTEGER NOT NULL,
+      sender_user_id TEXT NOT NULL,
+      receiver_user_id TEXT NOT NULL,
+      progress INTEGER NOT NULL,
+      level_before INTEGER NOT NULL,
+      level_after INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_vs_gift_progress_pair_time
+       ON vs_gift_progress(user_a,user_b,pair_started_at,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS cp_memories (
       id TEXT PRIMARY KEY,
       user_a TEXT NOT NULL,
@@ -101,6 +152,9 @@ export async function ensureTinniSocialSchema(db) {
     )`,
   ];
   for (const sql of statements) await db.prepare(sql).run();
+  try {
+    await db.prepare("ALTER TABLE cp_relationships ADD COLUMN ring_id TEXT").run();
+  } catch (_) {}
   await db.prepare(
     "INSERT OR IGNORE INTO official_notices(id,title,body,created_at) VALUES(?,?,?,?)"
   ).bind(
@@ -414,7 +468,13 @@ export async function familyState(db, userId) {
     return { family: null, members: [], join_requests: [], available_families: await familyList(db, 100) };
   }
   const members = await db.prepare(
-    `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key
+    `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key,
+            COALESCE((
+              SELECT SUM(t.coins)
+                FROM family_wallet_transfers t
+               WHERE t.family_id=fm.family_id
+                 AND t.receiver_user_id=fm.user_id
+            ),0) AS received_coins
        FROM family_members fm JOIN users u ON u.id=fm.user_id
       WHERE fm.family_id=?
       ORDER BY CASE fm.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
@@ -557,6 +617,144 @@ export async function familyCheckIn(db, userId) {
   return { ok: true, already_checked_in: false, exp_awarded: exp };
 }
 
+export async function familyTransferCoins(db, senderId, receiverId, coinsValue) {
+  await ensureTinniSocialSchema(db);
+  const amount = Math.floor(Number(coinsValue ?? 0));
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("invalid_coin_amount");
+  if (!senderId || !receiverId || senderId === receiverId) throw new Error("invalid_family_member");
+  const sender = await familyMembership(db, senderId);
+  const receiver = await familyMembership(db, receiverId);
+  if (!sender || !receiver || String(sender.family_id) !== String(receiver.family_id)) {
+    throw new Error("family_member_required");
+  }
+  const transferId = uid("family-transfer-");
+  const createdAt = ts();
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO family_wallet_transfers(
+        id,family_id,sender_user_id,receiver_user_id,coins,created_at
+      )
+      SELECT ?,?,?,?,?,?
+       WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
+    ).bind(
+      transferId,sender.family_id,senderId,receiverId,amount,createdAt,
+      senderId,amount,
+    ),
+    db.prepare(
+      "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
+    ).bind(amount,createdAt,senderId,transferId),
+    db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
+    ).bind(amount,createdAt,receiverId,transferId),
+    db.prepare(
+      "UPDATE families SET experience=experience+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
+    ).bind(amount,createdAt,sender.family_id,transferId),
+    db.prepare(
+      `INSERT INTO wallet_ledger(
+        id,user_id,kind,amount,balance_after,reference_id,created_at
+      )
+      SELECT ?,u.id,'family_send',?,u.coins,?,?
+        FROM users u
+       WHERE u.id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)`
+    ).bind(uid(),-amount,transferId,createdAt,senderId,transferId),
+    db.prepare(
+      `INSERT INTO wallet_ledger(
+        id,user_id,kind,amount,balance_after,reference_id,created_at
+      )
+      SELECT ?,u.id,'family_receive',?,u.coins,?,?
+        FROM users u
+       WHERE u.id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)`
+    ).bind(uid(),amount,transferId,createdAt,receiverId,transferId),
+  ]);
+
+  const created = await db.prepare(
+    "SELECT id FROM family_wallet_transfers WHERE id=? LIMIT 1"
+  ).bind(transferId).first();
+  if (!created) throw new Error("insufficient_coins");
+  const balance = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(senderId).first();
+  const family = await db.prepare(
+    "SELECT experience FROM families WHERE id=? LIMIT 1"
+  ).bind(sender.family_id).first();
+  return {
+    ok: true,
+    transfer_id: transferId,
+    receiver_user_id: receiverId,
+    coins: amount,
+    coin_balance: Number(balance?.coins ?? 0),
+    family_experience: Number(family?.experience ?? 0),
+    family_level: familyLevel(family?.experience ?? 0),
+  };
+}
+
+export async function familyWalletTransfers(db, userId, limitValue = 100) {
+  await ensureTinniSocialSchema(db);
+  const membership = await familyMembership(db, userId);
+  if (!membership) return [];
+  const limit = Math.max(1, Math.min(200, Math.floor(Number(limitValue) || 100)));
+  const rows = await db.prepare(
+    `SELECT t.id,t.sender_user_id,t.receiver_user_id,t.coins,t.created_at,
+            su.display_name AS sender_name,su.avatar_key AS sender_avatar_key,
+            ru.display_name AS receiver_name,ru.avatar_key AS receiver_avatar_key
+       FROM family_wallet_transfers t
+       JOIN users su ON su.id=t.sender_user_id
+       JOIN users ru ON ru.id=t.receiver_user_id
+      WHERE t.family_id=?
+      ORDER BY t.created_at DESC
+      LIMIT ?`
+  ).bind(membership.family_id,limit).all();
+  return rows.results ?? [];
+}
+
+async function cpThresholds(db) {
+  let configured = null;
+  let legacy = null;
+  try {
+    const row = await db.prepare(
+      "SELECT value_json FROM owner_settings WHERE key='cp_coin_thresholds' LIMIT 1"
+    ).first();
+    if (row?.value_json) configured = JSON.parse(String(row.value_json));
+  } catch (_) {}
+  if (!Array.isArray(configured)) {
+    try {
+      const row = await db.prepare(
+        "SELECT value_json FROM owner_settings WHERE key='cp_level_thresholds' LIMIT 1"
+      ).first();
+      if (row?.value_json) legacy = JSON.parse(String(row.value_json));
+    } catch (_) {}
+  }
+  const source = Array.isArray(configured)
+      ? configured
+      : Array.isArray(legacy)
+          ? legacy.map((value) => Number(value) * 100)
+          : [20000000];
+  return [...new Set(
+    source
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0),
+  )].sort((a,b) => a-b);
+}
+
+function cpLevelFor(intimacyValue, thresholds) {
+  const intimacy = Math.max(0, Math.floor(Number(intimacyValue ?? 0)));
+  let level = 1;
+  for (const threshold of thresholds) {
+    if (intimacy >= threshold) level += 1;
+    else break;
+  }
+  return level;
+}
+
+async function cpBlockingFlow(db, userId) {
+  if (!userId) return false;
+  const row = await db.prepare(
+    "SELECT state FROM cp_relationships WHERE (user_a=? OR user_b=?) AND state IN ('pending','active') LIMIT 1"
+  ).bind(userId,userId).first();
+  return row?.state === "pending" || row?.state === "active";
+}
+
 export async function cpState(db, userId) {
   await ensureTinniSocialSchema(db);
   const row = await db.prepare(
@@ -565,27 +763,79 @@ export async function cpState(db, userId) {
        FROM cp_relationships c
        LEFT JOIN users ua ON ua.id=c.user_a
        LEFT JOIN users ub ON ub.id=c.user_b
-      WHERE c.user_a=? OR c.user_b=?
-      ORDER BY c.updated_at DESC LIMIT 1`
+      WHERE (c.user_a=? OR c.user_b=?)
+        AND c.state IN ('pending','active')
+      ORDER BY CASE WHEN c.state='active' THEN 0 ELSE 1 END,
+               c.updated_at DESC
+      LIMIT 1`
   ).bind(userId,userId).first();
-  return row ?? null;
+  if (!row) return null;
+  const thresholds = await cpThresholds(db);
+  const intimacy = Math.max(0, Number(row.intimacy ?? 0));
+  const level = cpLevelFor(intimacy, thresholds);
+  return {
+    ...row,
+    intimacy,
+    level,
+    previous_level_threshold:
+      level > 1 ? Number(thresholds[level - 2] ?? 0) : 0,
+    next_level_threshold:
+      level - 1 < thresholds.length ? Number(thresholds[level - 1]) : null,
+  };
 }
 
-export async function cpRequest(db, userId, targetId) {
+export async function cpRequest(db, userId, targetIdValue) {
   await ensureTinniSocialSchema(db);
+  const targetId = String(targetIdValue ?? "").trim();
   if (!targetId || userId === targetId) throw new Error("invalid_cp_target");
-  const existing = await cpState(db,userId);
-  if (existing && existing.state === "active") throw new Error("cp_already_active");
-  const targetExisting = await cpState(db,targetId);
-  if (targetExisting && targetExisting.state === "active") throw new Error("target_cp_already_active");
+  const target = await db.prepare("SELECT id FROM users WHERE id=? LIMIT 1")
+    .bind(targetId).first();
+  if (!target) throw new Error("cp_user_not_found");
+  if (!(await mutualFriends(db,userId,targetId))) {
+    throw new Error("cp_friend_required");
+  }
+  if (await cpBlockingFlow(db,userId)) throw new Error("cp_already_active");
+  if (await cpBlockingFlow(db,targetId)) throw new Error("target_cp_already_active");
+
+  const inviteCost = 2222222;
+  const debit = await db.prepare(
+    "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+  ).bind(inviteCost,ts(),userId,inviteCost).run();
+  if (Number(debit.meta?.changes ?? 0) !== 1) {
+    throw new Error("insufficient_coins");
+  }
+
   const [a,b] = pair(userId,targetId);
   const createdAt=ts();
-  await db.prepare(
-    `INSERT INTO cp_relationships(user_a,user_b,state,intimacy,level,requested_by,created_at,updated_at)
-     VALUES(?,?,'pending',0,1,?,?,?)
-     ON CONFLICT(user_a,user_b) DO UPDATE SET
-       state='pending',requested_by=excluded.requested_by,updated_at=excluded.updated_at`
-  ).bind(a,b,userId,createdAt,createdAt).run();
+  try {
+    await db.prepare(
+      `INSERT INTO cp_relationships(
+        user_a,user_b,state,intimacy,level,requested_by,created_at,updated_at
+      ) VALUES(?,?,'pending',0,1,?,?,?)
+      ON CONFLICT(user_a,user_b) DO UPDATE SET
+        state='pending',intimacy=0,level=1,requested_by=excluded.requested_by,
+        created_at=excluded.created_at,updated_at=excluded.updated_at`
+    ).bind(a,b,userId,createdAt,createdAt).run();
+    const wallet = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    await db.prepare(
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).bind(
+      uid("cp-"),
+      userId,
+      "cp_connect",
+      -inviteCost,
+      Number(wallet?.coins ?? 0),
+      "cp:" + targetId,
+      createdAt,
+    ).run();
+  } catch (error) {
+    await db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(inviteCost,ts(),userId).run();
+    throw error;
+  }
   return cpState(db,userId);
 }
 
@@ -610,11 +860,11 @@ export async function cpRespond(db, userId, accept) {
 
 export async function cpDisconnect(db, userId) {
   const row = await cpState(db,userId);
-  if (!row) return { ok: true };
+  if (!row) return { ok: true, cp:null };
   await db.prepare(
     "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
   ).bind(row.user_a,row.user_b).run();
-  return { ok: true };
+  return { ok: true, cp:null };
 }
 
 export async function cpAddMemory(db, userId, bodyValue) {
@@ -638,6 +888,66 @@ export async function cpMemories(db, userId) {
   return rows.results ?? [];
 }
 
+export async function recordCpGiftProgress(
+  db,
+  senderUserId,
+  receiverUserId,
+  coinValue,
+  eventId,
+) {
+  await ensureTinniSocialSchema(db);
+  const relation = await cpState(db,senderUserId);
+  if (!relation || relation.state !== "active") {
+    return { progress:0, cp:relation };
+  }
+  const pairMatches =
+    (String(relation.user_a) === String(senderUserId) &&
+     String(relation.user_b) === String(receiverUserId)) ||
+    (String(relation.user_b) === String(senderUserId) &&
+     String(relation.user_a) === String(receiverUserId));
+  const progress = Math.max(0, Math.floor(Number(coinValue ?? 0)));
+  if (!pairMatches || !Number.isSafeInteger(progress) || progress <= 0) {
+    return { progress:0, cp:relation };
+  }
+  const thresholds = await cpThresholds(db);
+  const levelBefore = cpLevelFor(relation.intimacy,thresholds);
+  const intimacy = Number(relation.intimacy ?? 0) + progress;
+  if (!Number.isSafeInteger(intimacy)) throw new Error("cp_progress_limit");
+  const levelAfter = cpLevelFor(intimacy,thresholds);
+  const updatedAt=ts();
+  await db.prepare(
+    "UPDATE cp_relationships SET intimacy=?,level=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+  ).bind(
+    intimacy,levelAfter,updatedAt,relation.user_a,relation.user_b
+  ).run();
+  if (eventId) {
+    await db.prepare(
+      `INSERT OR IGNORE INTO cp_gift_progress(
+        event_id,user_a,user_b,pair_started_at,sender_user_id,receiver_user_id,
+        progress,level_before,level_after,created_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      eventId,
+      relation.user_a,
+      relation.user_b,
+      Number(relation.created_at ?? 0),
+      senderUserId,
+      receiverUserId,
+      progress,
+      levelBefore,
+      levelAfter,
+      updatedAt,
+    ).run();
+  }
+  return {
+    progress,
+    level_before:levelBefore,
+    level_after:levelAfter,
+    intimacy,
+    cp:await cpState(db,senderUserId),
+  };
+}
+
 export async function cpRanking(db, limitValue=100) {
   await ensureTinniSocialSchema(db);
   const limit=Math.max(1,Math.min(100,Number(limitValue)||100));
@@ -650,9 +960,70 @@ export async function cpRanking(db, limitValue=100) {
       WHERE c.state='active'
       ORDER BY c.intimacy DESC,c.updated_at ASC LIMIT ?`
   ).bind(limit).all();
-  return rows.results ?? [];
+  const thresholds = await cpThresholds(db);
+  return (rows.results ?? []).map((row,index) => ({
+    ...row,
+    rank:index+1,
+    level:cpLevelFor(row.intimacy,thresholds),
+  }));
 }
 
+
+async function vsThresholds(db) {
+  let configured = null;
+  let legacy = null;
+  try {
+    const row = await db.prepare(
+      "SELECT value_json FROM owner_settings WHERE key='vs_coin_thresholds' LIMIT 1"
+    ).first();
+    if (row?.value_json) configured = JSON.parse(String(row.value_json));
+  } catch (_) {}
+  if (!Array.isArray(configured)) {
+    try {
+      const row = await db.prepare(
+        "SELECT value_json FROM owner_settings WHERE key='enemy_level_thresholds' LIMIT 1"
+      ).first();
+      if (row?.value_json) legacy = JSON.parse(String(row.value_json));
+    } catch (_) {}
+  }
+  const source = Array.isArray(configured)
+      ? configured
+      : Array.isArray(legacy)
+          ? legacy.map((value) => Number(value) * 100)
+          : [20000000];
+  return [...new Set(
+    source
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0),
+  )].sort((a,b) => a-b);
+}
+
+function vsLevelFor(rivalryValue, thresholds) {
+  const rivalry = Math.max(0, Math.floor(Number(rivalryValue ?? 0)));
+  let level = 1;
+  for (const threshold of thresholds) {
+    if (rivalry >= threshold) level += 1;
+    else break;
+  }
+  return level;
+}
+
+async function vsBlockingFlow(db, userId) {
+  if (!userId) return false;
+  const row = await db.prepare(
+    "SELECT state FROM vs_relationships WHERE (user_a=? OR user_b=?) AND state IN ('pending','active') LIMIT 1"
+  ).bind(userId,userId).first();
+  return row?.state === "pending" || row?.state === "active";
+}
+
+async function mutualFriends(db, userId, targetId) {
+  const row = await db.prepare(
+    `SELECT
+       EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS a,
+       EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS b`
+  ).bind(userId,targetId,targetId,userId).first();
+  return Number(row?.a ?? 0) === 1 && Number(row?.b ?? 0) === 1;
+}
 
 export async function vsState(db, userId) {
   await ensureTinniSocialSchema(db);
@@ -662,19 +1033,40 @@ export async function vsState(db, userId) {
        FROM vs_relationships v
        LEFT JOIN users ua ON ua.id=v.user_a
        LEFT JOIN users ub ON ub.id=v.user_b
-      WHERE v.user_a=? OR v.user_b=?
-      ORDER BY v.updated_at DESC LIMIT 1`
+      WHERE (v.user_a=? OR v.user_b=?)
+        AND v.state IN ('pending','active')
+      ORDER BY CASE WHEN v.state='active' THEN 0 ELSE 1 END,
+               v.updated_at DESC
+      LIMIT 1`
   ).bind(userId,userId).first();
-  return row ?? null;
+  if (!row) return null;
+  const thresholds = await vsThresholds(db);
+  const rivalry = Math.max(0, Number(row.rivalry ?? 0));
+  const level = vsLevelFor(rivalry, thresholds);
+  return {
+    ...row,
+    rivalry,
+    level,
+    previous_level_threshold:
+      level > 1 ? Number(thresholds[level - 2] ?? 0) : 0,
+    next_level_threshold:
+      level - 1 < thresholds.length ? Number(thresholds[level - 1]) : null,
+  };
 }
 
-export async function vsRequest(db, userId, targetId) {
+export async function vsRequest(db, userId, targetIdValue) {
   await ensureTinniSocialSchema(db);
+  const targetId = String(targetIdValue ?? "").trim();
   if (!targetId || userId === targetId) throw new Error("invalid_vs_target");
-  const existing = await vsState(db,userId);
-  if (existing && existing.state === "active") throw new Error("vs_already_active");
-  const targetExisting = await vsState(db,targetId);
-  if (targetExisting && targetExisting.state === "active") throw new Error("target_vs_already_active");
+  const target = await db.prepare(
+    "SELECT id FROM users WHERE id=? LIMIT 1"
+  ).bind(targetId).first();
+  if (!target) throw new Error("vs_user_not_found");
+  if (!(await mutualFriends(db,userId,targetId))) {
+    throw new Error("vs_friend_required");
+  }
+  if (await vsBlockingFlow(db,userId)) throw new Error("vs_already_active");
+  if (await vsBlockingFlow(db,targetId)) throw new Error("target_vs_already_active");
   const [a,b] = pair(userId,targetId);
   const createdAt=ts();
   await db.prepare(
@@ -682,7 +1074,7 @@ export async function vsRequest(db, userId, targetId) {
      VALUES(?,?,'pending',0,1,?,?,?)
      ON CONFLICT(user_a,user_b) DO UPDATE SET
        state='pending',rivalry=0,level=1,requested_by=excluded.requested_by,
-       updated_at=excluded.updated_at`
+       created_at=excluded.created_at,updated_at=excluded.updated_at`
   ).bind(a,b,userId,createdAt,createdAt).run();
   return vsState(db,userId);
 }
@@ -708,11 +1100,71 @@ export async function vsRespond(db, userId, accept) {
 
 export async function vsDisconnect(db, userId) {
   const row = await vsState(db,userId);
-  if (!row) return { ok:true };
+  if (!row) return { ok:true, vs:null };
   await db.prepare(
     "DELETE FROM vs_relationships WHERE user_a=? AND user_b=?"
   ).bind(row.user_a,row.user_b).run();
-  return { ok:true };
+  return { ok:true, vs:null };
+}
+
+export async function recordVsGiftProgress(
+  db,
+  senderUserId,
+  receiverUserId,
+  coinValue,
+  eventId,
+) {
+  await ensureTinniSocialSchema(db);
+  const relation = await vsState(db,senderUserId);
+  if (!relation || relation.state !== "active") {
+    return { progress:0, vs:relation };
+  }
+  const pairMatches =
+    (String(relation.user_a) === String(senderUserId) &&
+     String(relation.user_b) === String(receiverUserId)) ||
+    (String(relation.user_b) === String(senderUserId) &&
+     String(relation.user_a) === String(receiverUserId));
+  const progress = Math.max(0, Math.floor(Number(coinValue ?? 0)));
+  if (!pairMatches || !Number.isSafeInteger(progress) || progress <= 0) {
+    return { progress:0, vs:relation };
+  }
+  const thresholds = await vsThresholds(db);
+  const levelBefore = vsLevelFor(relation.rivalry, thresholds);
+  const rivalry = Number(relation.rivalry ?? 0) + progress;
+  if (!Number.isSafeInteger(rivalry)) throw new Error("vs_progress_limit");
+  const levelAfter = vsLevelFor(rivalry, thresholds);
+  const updatedAt = ts();
+  await db.prepare(
+    "UPDATE vs_relationships SET rivalry=?,level=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+  ).bind(
+    rivalry,levelAfter,updatedAt,relation.user_a,relation.user_b
+  ).run();
+  if (eventId) {
+    await db.prepare(
+      `INSERT OR IGNORE INTO vs_gift_progress(
+        event_id,user_a,user_b,pair_started_at,sender_user_id,receiver_user_id,
+        progress,level_before,level_after,created_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      eventId,
+      relation.user_a,
+      relation.user_b,
+      Number(relation.created_at ?? 0),
+      senderUserId,
+      receiverUserId,
+      progress,
+      levelBefore,
+      levelAfter,
+      updatedAt,
+    ).run();
+  }
+  return {
+    progress,
+    level_before:levelBefore,
+    level_after:levelAfter,
+    rivalry,
+    vs:await vsState(db,senderUserId),
+  };
 }
 
 export async function vsRanking(db, limitValue=100) {
@@ -727,9 +1179,39 @@ export async function vsRanking(db, limitValue=100) {
       WHERE v.state='active'
       ORDER BY v.rivalry DESC,v.updated_at ASC LIMIT ?`
   ).bind(limit).all();
+  const thresholds = await vsThresholds(db);
+  return (rows.results ?? []).map((row,index) => ({
+    ...row,
+    rank:index+1,
+    level:vsLevelFor(row.rivalry,thresholds),
+  }));
+}
+
+
+export async function profileTrends(db, userId, limitValue=40) {
+  await ensureTinniSocialSchema(db);
+  const limit=Math.max(1,Math.min(100,Number(limitValue)||40));
+  const rows=await db.prepare(
+    "SELECT id,user_id,text,created_at FROM profile_trends WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
+  ).bind(userId,limit).all();
   return rows.results ?? [];
 }
 
+export async function addProfileTrend(db, userId, textValue) {
+  await ensureTinniSocialSchema(db);
+  const text=clean(textValue,500);
+  if(!text) throw new Error("trend_text_required");
+  const row={
+    id:uid("trend-"),
+    user_id:userId,
+    text,
+    created_at:ts(),
+  };
+  await db.prepare(
+    "INSERT INTO profile_trends(id,user_id,text,created_at) VALUES(?,?,?,?)"
+  ).bind(row.id,row.user_id,row.text,row.created_at).run();
+  return row;
+}
 
 export async function officialNotices(db) {
   await ensureTinniSocialSchema(db);

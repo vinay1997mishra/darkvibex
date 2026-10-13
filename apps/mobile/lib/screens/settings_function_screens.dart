@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
 import 'cosmetics_shop_screen.dart';
 import 'profile_screen.dart';
@@ -221,49 +222,50 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
 }
 
 class LanguageSettingsScreen extends StatefulWidget {
-  const LanguageSettingsScreen({super.key});
+  const LanguageSettingsScreen({super.key, required this.state});
+
+  final AppState state;
 
   @override
   State<LanguageSettingsScreen> createState() => _LanguageSettingsScreenState();
 }
 
 class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
-  static const languages = <String>[
-    'English',
-    'Hindi',
-    'Urdu',
-    'Arabic',
-    'Bengali',
-    'Malayalam',
-    'Filipino (Tagalog)',
-    'Persian (Farsi)',
-    'Kurdish',
-    'Baluchi',
-    'Chinese (Simplified)',
-    'Chinese (Traditional)',
-    'Korean',
-  ];
-
-  String selected = 'English';
+  late String selected;
+  bool saving = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final value =
-        (await SharedPreferences.getInstance()).getString('dvx.language');
-    if (mounted && value != null && languages.contains(value)) {
-      setState(() => selected = value);
-    }
+    selected = widget.state.languagePreference.value;
+    if (!darkVibeXIsSupportedLanguage(selected)) selected = 'English';
   }
 
   Future<void> _select(String value) async {
-    await (await SharedPreferences.getInstance())
-        .setString('dvx.language', value);
-    if (mounted) setState(() => selected = value);
+    if (saving || value == selected) return;
+    final old = selected;
+    setState(() {
+      selected = value;
+      saving = true;
+    });
+
+    final ok = await widget.state.saveLanguagePreference(value);
+    if (!mounted) return;
+    setState(() {
+      saving = false;
+      if (!ok) selected = old;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Language preference saved: $value'
+              : (widget.state.authError ??
+                  'Language preference could not be saved'),
+        ),
+      ),
+    );
   }
 
   @override
@@ -271,23 +273,54 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
         backgroundColor: TinniPalette.black,
         appBar: AppBar(title: const Text('Language settings')),
         body: TinniBackground(
-          child: ListView.builder(
+          child: ListView(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-            itemCount: languages.length,
-            itemBuilder: (context, index) {
-              final value = languages[index];
-              return Card(
-                color: const Color(0xE60A0804),
-                child: RadioListTile<String>(
-                  value: value,
-                  groupValue: selected,
-                  title: Text(value),
-                  onChanged: (next) {
-                    if (next != null) _select(next);
-                  },
+            children: [
+              for (final value in darkVibeXSupportedLanguages)
+                Card(
+                  color: const Color(0xE60A0804),
+                  child: RadioListTile<String>(
+                    key: Key('language-' + value.toLowerCase()),
+                    value: value,
+                    groupValue: selected,
+                    title: Text(
+                      value,
+                      style: TextStyle(
+                        color: selected == value
+                            ? TinniPalette.gold
+                            : TinniPalette.cream,
+                        fontWeight: selected == value
+                            ? FontWeight.w900
+                            : FontWeight.w600,
+                      ),
+                    ),
+                    secondary: saving && selected == value
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : null,
+                    onChanged: saving
+                        ? null
+                        : (next) {
+                            if (next != null) _select(next);
+                          },
+                  ),
                 ),
-              );
-            },
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: Text(
+                  'This language is saved to your DarkVibeX account. '
+                  'Create ID and Settings use the same language list. '
+                  'User names, room text, chat and numeric IDs are not auto-translated.',
+                  style: TextStyle(
+                    color: TinniPalette.muted,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );

@@ -98,7 +98,6 @@
               <label>Display name<input id="catalogName" /></label>
               <label>Price in coins<input id="catalogPrice" type="number" min="0" value="0" /></label>
               <label>Sort order<input id="catalogOrder" type="number" value="0" /></label>
-              <label>Country target<input id="catalogCountry" placeholder="Blank = all" /></label>
               <label>Asset / file key<input id="catalogAsset" placeholder="R2 key or asset reference" /></label>
               <label>Level / duration<input id="catalogLevel" placeholder="e.g. VIP 3 / 7 days" /></label>
               <label class="check"><input id="catalogEnabled" type="checkbox" checked /> Enabled</label>
@@ -123,8 +122,8 @@
 
         <section class="view" data-view-panel="announcements">
           <article class="panel">
-            <div class="panel-head"><div><h2>Announcements</h2><p>Create in-app notices with optional country and time window.</p></div></div>
-            <div class="form-grid"><label>Title<input id="announcementTitle" /></label><label>Country target<input id="announcementCountry" placeholder="Blank = all" /></label><label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label></div>
+            <div class="panel-head"><div><h2>Announcements</h2><p>Create in-app notices for all DarkVibeX users.</p></div></div>
+            <div class="form-grid"><label>Title<input id="announcementTitle" /></label><label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label></div>
             <button id="saveAnnouncement" class="primary">Publish announcement</button>
           </article>
           <article class="panel"><div id="announcementList" class="stack"></div></article>

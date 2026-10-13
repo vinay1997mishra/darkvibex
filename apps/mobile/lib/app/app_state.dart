@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../i18n/darkvibex_localization.dart';
 import '../infra/backend_api.dart';
 import '../vip/vip_policy.dart';
 
@@ -63,6 +64,17 @@ class AppState extends ChangeNotifier {
   String userRole = 'user';
   String? avatarKey;
   String? dateOfBirth;
+  String countryCode = '';
+  String countryName = '';
+  String flagEmoji = '';
+  String gender = '';
+  int ageChangeCount = 0;
+  int countryChangeCount = 0;
+  int genderChangeCount = 0;
+  int get ageChangesRemaining => (3 - ageChangeCount).clamp(0, 3).toInt();
+  int get countryChangesRemaining => (3 - countryChangeCount).clamp(0, 3).toInt();
+  int get genderChangesRemaining => (3 - genderChangeCount).clamp(0, 3).toInt();
+  final ValueNotifier<String> languagePreference = ValueNotifier<String>('English');
   String? sessionToken;
   String? authProvider;
   bool backendConnected = false;
@@ -230,6 +242,76 @@ class AppState extends ChangeNotifier {
     await prefs.remove(_sessionUserIdKey);
     await prefs.remove(_sessionDisplayNameKey);
     await prefs.remove(_sessionDateOfBirthKey);
+  }
+
+  Future<bool> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    if (signingIn) return false;
+    signingIn = true;
+    authError = null;
+    notifyListeners();
+    try {
+      final session = await backend.startEmailSession(
+        email: email,
+        password: password,
+      );
+      final code = session?['error']?.toString();
+      if (session?['ok'] != true) {
+        authError = switch (code) {
+          'invalid_email_or_password' => 'Email or DarkVibeX password is incorrect.',
+          'user_banned' => 'This account is banned.',
+          'user_suspended' => 'This account is suspended.',
+          _ => 'Email login could not be completed.',
+        };
+        return false;
+      }
+      return await _applySession(session, provider: 'email');
+    } catch (_) {
+      authError = 'Email login could not connect to DarkVibeX.';
+      return false;
+    } finally {
+      signingIn = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> completeEmailSignup({
+    required String setupToken,
+    required String password,
+    required String name,
+    required String dateOfBirthValue,
+  }) async {
+    if (signingIn) return false;
+    signingIn = true;
+    authError = null;
+    notifyListeners();
+    try {
+      final session = await backend.completeEmailPassword(
+        setupToken: setupToken,
+        password: password,
+        displayName: name,
+        dateOfBirth: dateOfBirthValue,
+      );
+      final code = session?['error']?.toString();
+      if (session?['ok'] != true) {
+        authError = switch (code) {
+          'setup_token_expired' => 'Email verification expired. Verify the OTP again.',
+          'email_already_registered' => 'This email already has a DarkVibeX ID.',
+          'password_length' => 'Password must be at least 8 characters.',
+          _ => 'Email account could not be created.',
+        };
+        return false;
+      }
+      return await _applySession(session, provider: 'email');
+    } catch (_) {
+      authError = 'Email account could not be created.';
+      return false;
+    } finally {
+      signingIn = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> signInWithGoogle() async {
@@ -450,6 +532,23 @@ class AppState extends ChangeNotifier {
     userRole = user['role']?.toString() ?? userRole;
     avatarKey = user['avatar_key']?.toString();
     dateOfBirth = user['date_of_birth']?.toString();
+    countryCode = user['country_code']?.toString().trim() ?? '';
+    countryName = user['country_name']?.toString().trim() ?? '';
+    flagEmoji = user['flag_emoji']?.toString().trim() ?? '';
+    gender = user['gender']?.toString().trim().toLowerCase() ?? '';
+    ageChangeCount =
+        int.tryParse(user['age_change_count']?.toString() ?? '') ?? 0;
+    countryChangeCount =
+        int.tryParse(user['country_change_count']?.toString() ?? '') ?? 0;
+    genderChangeCount =
+        int.tryParse(user['gender_change_count']?.toString() ?? '') ?? 0;
+    var restoredLanguage = user['language']?.toString().trim() ?? '';
+    if (!darkVibeXIsSupportedLanguage(restoredLanguage)) {
+      restoredLanguage =
+          (await SharedPreferences.getInstance()).getString('dvx.language') ??
+              'English';
+    }
+    setLanguagePreference(restoredLanguage);
     if (dateOfBirth == null || dateOfBirth!.trim().isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       dateOfBirth = prefs.getString(_sessionDateOfBirthKey);
@@ -471,10 +570,9 @@ class AppState extends ChangeNotifier {
     await refreshCosmetics(notify: false);
 
     final remoteRooms = await backend.listRooms();
-    if (remoteRooms.isNotEmpty) {
-      rooms
-        ..clear()
-        ..addAll(remoteRooms.map((row) => RoomSummary(
+    rooms
+      ..clear()
+      ..addAll(remoteRooms.map((row) => RoomSummary(
               id: row['id']?.toString() ?? '',
               name: row['name']?.toString() ?? 'Room',
               ownerName: row['owner_name']?.toString() ?? '',
@@ -485,7 +583,6 @@ class AppState extends ChangeNotifier {
               partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
               roomMode: row['room_mode']?.toString() ?? 'voice',
             )));
-    }
 
     await refreshInbox(notify: false);
   }
@@ -493,10 +590,9 @@ class AppState extends ChangeNotifier {
   Future<void> refreshRooms({bool notify = true}) async {
     if (!backendConnected) return;
     final remoteRooms = await backend.listRooms();
-    if (remoteRooms.isNotEmpty) {
-      rooms
-        ..clear()
-        ..addAll(remoteRooms.map((row) => RoomSummary(
+    rooms
+      ..clear()
+      ..addAll(remoteRooms.map((row) => RoomSummary(
               id: row['id']?.toString() ?? '',
               name: row['name']?.toString() ?? 'Room',
               ownerName: row['owner_name']?.toString() ?? '',
@@ -507,7 +603,6 @@ class AppState extends ChangeNotifier {
               partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
               roomMode: row['room_mode']?.toString() ?? 'voice',
             )));
-    }
     if (notify) notifyListeners();
   }
 
@@ -544,6 +639,15 @@ class AppState extends ChangeNotifier {
     displayName = 'DarkVibeX User';
     userRole = 'user';
     avatarKey = null;
+    dateOfBirth = null;
+    countryCode = '';
+    countryName = '';
+    flagEmoji = '';
+    gender = '';
+    ageChangeCount = 0;
+    countryChangeCount = 0;
+    genderChangeCount = 0;
+    languagePreference.value = 'English';
     messages.clear();
     coins = 2500000;
     diamonds = 120;
@@ -737,6 +841,11 @@ class AppState extends ChangeNotifier {
   Future<bool> completeLoginProfile({
     required String name,
     required String dateOfBirthValue,
+    String? countryCodeValue,
+    String? countryNameValue,
+    String? flagEmojiValue,
+    String? genderValue,
+    String? languageValue,
     Uint8List? avatarBytes,
     String avatarExtension = 'jpg',
     String avatarContentType = 'image/jpeg',
@@ -745,19 +854,77 @@ class AppState extends ChangeNotifier {
     final cleanName = name.trim();
     if (cleanName.isEmpty) return false;
 
+    final nextCountryCode = (countryCodeValue ?? countryCode).trim().toUpperCase();
+    final nextCountryName = (countryNameValue ?? countryName).trim();
+    final nextFlagEmoji = (flagEmojiValue ?? flagEmoji).trim();
+    final nextGender = (genderValue ?? gender).trim().toLowerCase();
+    final requestedLanguage =
+        (languageValue ?? languagePreference.value).trim();
+    final nextLanguage = darkVibeXIsSupportedLanguage(requestedLanguage)
+        ? requestedLanguage
+        : 'English';
+
     final profile = await backend.saveUserProfile(
       userId: userId,
       displayName: cleanName,
       dateOfBirth: dateOfBirthValue.trim(),
+      countryCode: nextCountryCode,
+      countryName: nextCountryName,
+      flagEmoji: nextFlagEmoji,
+      gender: nextGender,
+      language: nextLanguage,
     );
     if (profile?['ok'] != true) {
-      authError = 'Profile details could not be saved.';
+      final code = profile?['error']?.toString() ?? '';
+      authError = switch (code) {
+        'age_change_limit_reached' =>
+          'Age/date of birth can only be changed 3 times.',
+        'country_change_limit_reached' =>
+          'Country can only be changed 3 times.',
+        'gender_change_limit_reached' =>
+          'Gender can only be changed 3 times.',
+        'profile_change_conflict_retry' =>
+          'Profile changed elsewhere. Reopen profile and try again.',
+        _ => code.isEmpty
+            ? 'Profile details could not be saved.'
+            : code.replaceAll('_', ' '),
+      };
       notifyListeners();
       return false;
     }
 
+    final returnedUser = profile?['user'];
+    final previousCountry = countryCode;
     displayName = cleanName;
     dateOfBirth = dateOfBirthValue.trim();
+    countryCode = nextCountryCode;
+    countryName = nextCountryName;
+    flagEmoji = nextFlagEmoji;
+    gender = nextGender;
+    if (returnedUser is Map) {
+      dateOfBirth =
+          returnedUser['date_of_birth']?.toString() ?? dateOfBirth;
+      countryCode =
+          returnedUser['country_code']?.toString().trim() ?? countryCode;
+      countryName =
+          returnedUser['country_name']?.toString().trim() ?? countryName;
+      flagEmoji =
+          returnedUser['flag_emoji']?.toString().trim() ?? flagEmoji;
+      gender =
+          returnedUser['gender']?.toString().trim().toLowerCase() ?? gender;
+      ageChangeCount =
+          int.tryParse(returnedUser['age_change_count']?.toString() ?? '') ??
+              ageChangeCount;
+      countryChangeCount =
+          int.tryParse(returnedUser['country_change_count']?.toString() ?? '') ??
+              countryChangeCount;
+      genderChangeCount =
+          int.tryParse(returnedUser['gender_change_count']?.toString() ?? '') ??
+              genderChangeCount;
+    }
+    setLanguagePreference(nextLanguage);
+    await (await SharedPreferences.getInstance())
+        .setString('dvx.language', nextLanguage);
 
     if (avatarBytes != null && avatarBytes.isNotEmpty) {
       final ext = avatarExtension.toLowerCase() == 'jpeg'
@@ -776,7 +943,39 @@ class AppState extends ChangeNotifier {
 
     authError = null;
     await _persistSession();
+    if (previousCountry != countryCode) {
+      await refreshRooms(notify: false);
+    }
     notifyListeners();
+    return true;
+  }
+
+  void setLanguagePreference(String value) {
+    final normalized = value.trim();
+    languagePreference.value =
+        darkVibeXIsSupportedLanguage(normalized) ? normalized : 'English';
+  }
+
+  Future<bool> saveLanguagePreference(String value) async {
+    final normalized = value.trim();
+    if (!darkVibeXIsSupportedLanguage(normalized)) return false;
+    if (!isAuthenticated || !backendConnected) return false;
+
+    final result = await backend.setUserLanguage(
+      userId: userId,
+      language: normalized,
+    );
+    if (result?['ok'] != true) {
+      authError = result?['error']?.toString() ??
+          'Language preference could not be saved.';
+      notifyListeners();
+      return false;
+    }
+
+    setLanguagePreference(normalized);
+    await (await SharedPreferences.getInstance())
+        .setString('dvx.language', normalized);
+    authError = null;
     return true;
   }
 
@@ -832,6 +1031,8 @@ class AppState extends ChangeNotifier {
           'Choose Voice Room or Live Room.',
         'owner_and_name_required' =>
           'Room name is required.',
+        'country_required_for_room' =>
+          'Select your country before creating a room.',
         'room_create_storage_failed' =>
           'Room storage could not save the room. The server is being repaired.',
         'room_id_taken' || 'room_id_unavailable' =>

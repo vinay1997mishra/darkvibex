@@ -1,10 +1,13 @@
 import 'dart:typed_data';
 
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
+import 'reset_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.state});
@@ -20,6 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _picker = ImagePicker();
 
   DateTime? _dateOfBirth;
+  Country? _selectedCountry;
+  String? _selectedGender;
+  String _selectedLanguage = 'English';
   Uint8List? _avatarBytes;
   String _avatarExtension = 'jpg';
   String _avatarContentType = 'image/jpeg';
@@ -120,6 +126,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _pickCountry() {
+    showCountryPicker(
+      context: context,
+      showPhoneCode: true,
+      useSafeArea: true,
+      onSelect: (country) {
+        if (!mounted) return;
+        setState(() => _selectedCountry = country);
+      },
+    );
+  }
+
   bool _validateProfile() {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -133,15 +151,39 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return false;
     }
+    if (_selectedCountry == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select your country and flag')),
+      );
+      return false;
+    }
+    if (_selectedGender == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select male or female')),
+      );
+      return false;
+    }
+    if (!darkVibeXIsSupportedLanguage(_selectedLanguage)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a supported language')),
+      );
+      return false;
+    }
     return true;
   }
 
   Future<void> _finishProfile() async {
     if (mounted) setState(() => _savingProfile = true);
     try {
+      final country = _selectedCountry!;
       await state.completeLoginProfile(
         name: _nameController.text.trim(),
         dateOfBirthValue: _dobApiValue,
+        countryCodeValue: country.countryCode,
+        countryNameValue: country.name,
+        flagEmojiValue: country.flagEmoji,
+        genderValue: _selectedGender,
+        languageValue: _selectedLanguage,
         avatarBytes: _avatarBytes,
         avatarExtension: _avatarExtension,
         avatarContentType: _avatarContentType,
@@ -155,6 +197,247 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_validateProfile() || state.signingIn || _savingProfile) return;
     final ok = await state.signInWithGoogle();
     if (ok) await _finishProfile();
+  }
+
+  void _notice(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text.replaceAll('_', ' '))),
+    );
+  }
+
+  Future<void> _emailLogin() async {
+    if (state.signingIn || _savingProfile) return;
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Email / Gmail Login'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('email-login-address'),
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(
+                labelText: 'Email / Gmail ID',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('email-login-password'),
+              controller: passwordController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              decoration: const InputDecoration(
+                labelText: 'DarkVibeX Password',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            key: const Key('reset-password-link'),
+            onPressed: () => Navigator.pop(dialogContext, 'reset'),
+            child: const Text('Reset password'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'create'),
+            child: const Text('Create Email ID'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'login'),
+            child: const Text('Login'),
+          ),
+        ],
+      ),
+    );
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    emailController.dispose();
+    passwordController.dispose();
+    if (!mounted || action == null) return;
+
+    if (action == 'reset') {
+      final result = await Navigator.of(context).push<String>(
+        MaterialPageRoute<String>(
+          builder: (_) => ResetPasswordScreen(
+            state: state,
+            initialEmail: email,
+          ),
+        ),
+      );
+      if (result != null && mounted) {
+        _notice('Password reset successfully. Login with your new password.');
+      }
+      return;
+    }
+
+    if (action == 'create') {
+      await _createEmailAccount(initialEmail: email);
+      return;
+    }
+
+    if (!email.contains('@') || password.isEmpty) {
+      _notice('Enter your email and DarkVibeX password.');
+      return;
+    }
+    await state.signInWithEmail(email: email, password: password);
+  }
+
+  Future<void> _createEmailAccount({String initialEmail = ''}) async {
+    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    final emailController = TextEditingController(text: initialEmail);
+    final email = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create Email ID'),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          decoration: const InputDecoration(
+            labelText: 'Email / Gmail ID',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = emailController.text.trim();
+              if (value.contains('@')) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Send OTP'),
+          ),
+        ],
+      ),
+    );
+    emailController.dispose();
+    if (email == null || !mounted) return;
+
+    final started = await state.backend.startEmailOtp(
+      email: email,
+      purpose: 'signup',
+    );
+    if (!mounted) return;
+    if (started?['ok'] != true) {
+      _notice(started?['error']?.toString() ?? 'OTP could not be sent');
+      return;
+    }
+    final requestId = started?['request_id']?.toString() ?? '';
+    if (requestId.isEmpty) return;
+
+    final otpController = TextEditingController();
+    final otp = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Verify Email OTP'),
+        content: TextField(
+          key: const Key('email-otp-field'),
+          controller: otpController,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(
+            labelText: '6-digit OTP',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = otpController.text.trim();
+              if (RegExp(r'^\d{6}$').hasMatch(value)) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Verify'),
+          ),
+        ],
+      ),
+    );
+    otpController.dispose();
+    if (otp == null || !mounted) return;
+
+    final verified = await state.backend.verifyEmailOtp(
+      requestId: requestId,
+      otp: otp,
+    );
+    if (!mounted) return;
+    if (verified?['ok'] != true) {
+      _notice(verified?['error']?.toString() ?? 'OTP verification failed');
+      return;
+    }
+    final setupToken = verified?['setup_token']?.toString() ?? '';
+    if (setupToken.isEmpty) return;
+
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create DarkVibeX Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('email-new-password'),
+              controller: passwordController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'New Password',
+                helperText: 'Minimum 8 characters',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('email-confirm-password'),
+              controller: confirmController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'Confirm Password',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = passwordController.text;
+              if (value.length >= 8 && value == confirmController.text) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    passwordController.dispose();
+    confirmController.dispose();
+    if (password == null || !mounted) return;
+
+    final ok = await state.completeEmailSignup(
+      setupToken: setupToken,
+      password: password,
+      name: _nameController.text.trim(),
+      dateOfBirthValue: _dobApiValue,
+    );
+    if (ok && mounted) await _finishProfile();
   }
 
   Future<void> _guestLogin() async {
@@ -292,6 +575,87 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            InkWell(
+                              key: const Key('create-id-country'),
+                              onTap: busy ? null : _pickCountry,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Country',
+                                  prefixIcon: Icon(Icons.public_rounded),
+                                  suffixIcon: Icon(Icons.arrow_drop_down_rounded),
+                                ),
+                                child: Text(
+                                  _selectedCountry == null
+                                      ? 'Choose country'
+                                      : '${_selectedCountry!.flagEmoji} ${_selectedCountry!.name}',
+                                  style: TextStyle(
+                                    color: _selectedCountry == null
+                                        ? TinniPalette.muted
+                                        : TinniPalette.cream,
+                                    fontWeight: _selectedCountry == null
+                                        ? FontWeight.w500
+                                        : FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ChoiceChip(
+                                    key: const Key('create-id-gender-male'),
+                                    label: const Text('Male'),
+                                    selected: _selectedGender == 'male',
+                                    onSelected: busy
+                                        ? null
+                                        : (_) => setState(
+                                              () => _selectedGender = 'male',
+                                            ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ChoiceChip(
+                                    key: const Key('create-id-gender-female'),
+                                    label: const Text('Female'),
+                                    selected: _selectedGender == 'female',
+                                    onSelected: busy
+                                        ? null
+                                        : (_) => setState(
+                                              () => _selectedGender = 'female',
+                                            ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              key: const Key('create-id-language'),
+                              initialValue: _selectedLanguage,
+                              decoration: const InputDecoration(
+                                labelText: 'Language',
+                                prefixIcon: Icon(Icons.language_rounded),
+                              ),
+                              items: darkVibeXSupportedLanguages
+                                  .map(
+                                    (language) => DropdownMenuItem<String>(
+                                      value: language,
+                                      child: Text(language),
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                              onChanged: busy
+                                  ? null
+                                  : (value) {
+                                      if (value == null) return;
+                                      setState(
+                                        () => _selectedLanguage = value,
+                                      );
+                                    },
+                            ),
                           ],
                         ),
                       ),
@@ -311,6 +675,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 )
                               : const Icon(Icons.login_rounded),
                           label: const Text('Continue with Google'),
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          key: const Key('email-login-button'),
+                          onPressed: busy ? null : _emailLogin,
+                          icon: const Icon(Icons.email_rounded),
+                          label: const Text('Email / Gmail Login'),
                         ),
                       ),
                       const SizedBox(height: 11),

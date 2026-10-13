@@ -66,7 +66,8 @@ class BackendApi {
   String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
 
   Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
-    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > 5 * 1024 * 1024) return null;
+    final maxBytes = contentType == 'video/mp4' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > maxBytes) return null;
     final client = HttpClient();
     try {
       final request = await client.putUrl(Uri.parse('$origin/api/files'));
@@ -86,6 +87,11 @@ class BackendApi {
     required String userId,
     required String displayName,
     required String dateOfBirth,
+    String countryCode = '',
+    String countryName = '',
+    String flagEmoji = '',
+    String gender = '',
+    String language = '',
   }) =>
       _json(
         'POST',
@@ -94,6 +100,25 @@ class BackendApi {
           'user_id': userId,
           'display_name': displayName,
           'date_of_birth': dateOfBirth,
+          if (countryCode.trim().isNotEmpty) 'country_code': countryCode.trim(),
+          if (countryName.trim().isNotEmpty) 'country_name': countryName.trim(),
+          if (flagEmoji.trim().isNotEmpty) 'flag_emoji': flagEmoji.trim(),
+          if (gender.trim().isNotEmpty) 'gender': gender.trim(),
+          if (language.trim().isNotEmpty) 'language': language.trim(),
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> setUserLanguage({
+    required String userId,
+    required String language,
+  }) =>
+      _json(
+        'POST',
+        '/api/users/language',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'language': language,
         },
         returnErrorBody: true,
       );
@@ -143,6 +168,66 @@ class BackendApi {
     final value = await _json('POST', '/api/vip/${Uri.encodeComponent(userId)}/support-tickets/${Uri.encodeComponent(ticketId)}/reply', body: {'message': message});
     return value?['ok'] == true;
   }
+
+  Future<Map<String, dynamic>?> startEmailOtp({
+    required String email,
+    String purpose = 'signup',
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/start',
+        body: <String, dynamic>{
+          'email': email,
+          'purpose': purpose,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> verifyEmailOtp({
+    required String requestId,
+    required String otp,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/verify',
+        body: <String, dynamic>{
+          'request_id': requestId,
+          'otp': otp,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> completeEmailPassword({
+    required String setupToken,
+    required String password,
+    String? displayName,
+    String? dateOfBirth,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/complete',
+        body: <String, dynamic>{
+          'setup_token': setupToken,
+          'password': password,
+          if (displayName != null) 'display_name': displayName,
+          if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> startEmailSession({
+    required String email,
+    required String password,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/login',
+        body: <String, dynamic>{
+          'email': email,
+          'password': password,
+        },
+        returnErrorBody: true,
+      );
 
   Future<Map<String, dynamic>?> startGoogleSession({
     required String idToken,
@@ -200,6 +285,43 @@ class BackendApi {
       _json('POST', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch/claim', body: {
         'user_id': userId,
       });
+
+  Future<Map<String, dynamic>?> drawRoomLuckyNumber({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-number',
+      );
+
+  Future<Map<String, dynamic>?> roomThemes({
+    required String roomId,
+  }) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/themes',
+      );
+
+  Future<Map<String, dynamic>?> createRoomTheme({
+    required String roomId,
+    required String name,
+    required String assetKey,
+    bool policyConfirmed = true,
+    int durationDays = 7,
+    bool permanent = false,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/themes',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'name': name,
+          'asset_key': assetKey,
+          'policy_confirmed': policyConfirmed,
+          'duration_days': durationDays,
+          'permanent': permanent,
+        },
+      );
 
   Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
       _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
@@ -270,6 +392,39 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> saveRoomSettingsResult({
+    required String roomId,
+    required String userId,
+    required String name,
+    required int seatCount,
+    required bool locked,
+    required String announcement,
+    String themeId = 'dark',
+    bool groupPkEnabled = false,
+    String welcomeImageKey = '',
+    String partyMode = 'Friends-making Party',
+    String roomMode = 'voice',
+    String seatThemeId = 'royal-gold',
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/settings',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'name': name,
+          'seat_count': seatCount,
+          'locked': locked,
+          'announcement': announcement,
+          'theme_id': themeId,
+          'group_pk_enabled': groupPkEnabled,
+          'welcome_image_key': welcomeImageKey,
+          'party_mode': partyMode,
+          'room_mode': roomMode,
+          'seat_theme_id': seatThemeId,
+        },
+      );
+
   Future<bool> saveRoomSettings({
     required String roomId,
     required String userId,
@@ -283,25 +438,20 @@ class BackendApi {
     String partyMode = 'Friends-making Party',
     String roomMode = 'voice',
     String seatThemeId = 'royal-gold',
-    String? lockPassword,
   }) async {
-    final value = await _json(
-      'POST',
-      '/api/rooms/${Uri.encodeComponent(roomId)}/settings',
-      body: {
-        'user_id': userId,
-        'name': name,
-        'seat_count': seatCount,
-        'locked': locked,
-        'announcement': announcement,
-        'theme_id': themeId,
-        'group_pk_enabled': groupPkEnabled,
-        'welcome_image_key': welcomeImageKey,
-        'party_mode': partyMode,
-        'room_mode': roomMode,
-        'seat_theme_id': seatThemeId,
-        if (lockPassword != null) 'lock_password': lockPassword,
-      },
+    final value = await saveRoomSettingsResult(
+      roomId: roomId,
+      userId: userId,
+      name: name,
+      seatCount: seatCount,
+      locked: locked,
+      announcement: announcement,
+      themeId: themeId,
+      groupPkEnabled: groupPkEnabled,
+      welcomeImageKey: welcomeImageKey,
+      partyMode: partyMode,
+      roomMode: roomMode,
+      seatThemeId: seatThemeId,
     );
     return value?['ok'] == true;
   }
@@ -561,6 +711,20 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> rechargeProviders() async {
+    final value = await _json(
+      'GET',
+      '/api/recharge-providers',
+      returnErrorBody: true,
+    );
+    final rows = value?['providers'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
   Future<List<Map<String, dynamic>>> inbox({
     required String userId,
   }) async {
@@ -705,28 +869,6 @@ class BackendApi {
         returnErrorBody: true,
       );
 
-  Future<Map<String, dynamic>?> roleWalletDollarWithdrawal({
-    required String userId,
-    required String walletType,
-    required String destinationType,
-    required int amountUsdCents,
-    required String credential,
-    String destinationValue = '',
-  }) =>
-      _json(
-        'POST',
-        '/api/wallet/role-dollars/withdraw',
-        body: <String, dynamic>{
-          'user_id': userId,
-          'wallet_type': walletType,
-          'destination_type': destinationType,
-          'destination_value': destinationValue,
-          'amount_usd_cents': amountUsdCents,
-          'credential': credential,
-        },
-        returnErrorBody: true,
-      );
-
   Future<Map<String, dynamic>?> wallet({
     required String userId,
   }) =>
@@ -772,6 +914,40 @@ class BackendApi {
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
+
+  Future<List<Map<String, dynamic>>> customGifts({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/custom-gifts?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['gifts'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> createCustomGift({
+    required String userId,
+    required String name,
+    required String assetKey,
+    int coinCost = 5000,
+  }) =>
+      _json(
+        'POST',
+        '/api/custom-gifts',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'name': name,
+          'asset_key': assetKey,
+          'coin_cost': coinCost,
+        },
+        returnErrorBody: true,
+      );
 
   Future<Map<String, dynamic>?> sendGift({
     required String roomId,
@@ -911,19 +1087,79 @@ class BackendApi {
           'seller_user_id': sellerUserId,
           'receiver_user_id': receiverUserId,
           'coins': coins,
+          'pin': pin,
         },
+      );
+
+  Future<Map<String, dynamic>?> ludoState({
+    required String roomId,
+  }) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> ludoRoll({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/roll',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> ludoMove({
+    required String roomId,
+    required int tokenIndex,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/move',
+        returnErrorBody: true,
+        body: <String, dynamic>{'token_index': tokenIndex},
+      );
+
+  Future<Map<String, dynamic>?> ludoLeave({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/leave',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> ludoReset({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/reset',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> fruitPartyState() =>
+      _json(
+        'GET',
+        '/api/games/fruit-party/state',
+        returnErrorBody: true,
       );
 
   Future<Map<String, dynamic>?> fruitPartyBet({
     required String userId,
-    required int stake,
+    required String fruitKey,
+    required int amount,
+    required String requestId,
   }) =>
       _json(
         'POST',
         '/api/games/fruit-party/bet',
+        returnErrorBody: true,
         body: <String, dynamic>{
           'user_id': userId,
-          'stake': stake,
+          'fruit_key': fruitKey,
+          'amount': amount,
+          'request_id': requestId,
         },
       );
 
@@ -1113,6 +1349,86 @@ class BackendApi {
         .map((row) => Map<String, dynamic>.from(row))
         .toList();
   }
+
+  Future<Map<String, String?>> profileMedia({
+    String? userId,
+  }) async {
+    final suffix = userId == null || userId.trim().isEmpty
+        ? ''
+        : '?user_id=${Uri.encodeQueryComponent(userId.trim())}';
+    final value = await _json(
+      'GET',
+      '/api/profile-media$suffix',
+      returnErrorBody: true,
+    );
+    final raw = value?['media'];
+    if (raw is! Map) return const <String, String?>{};
+    return raw.map(
+      (key, item) => MapEntry(key.toString(), item?.toString()),
+    );
+  }
+
+  Future<bool> saveProfileMedia({
+    required String slot,
+    required String assetKey,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/profile-media',
+      returnErrorBody: true,
+      body: <String, dynamic>{
+        'slot': slot,
+        'asset_key': assetKey,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> deleteProfileMedia({
+    required String slot,
+  }) async {
+    final value = await _json(
+      'DELETE',
+      '/api/profile-media',
+      returnErrorBody: true,
+      body: <String, dynamic>{
+        'slot': slot,
+        'confirm_remove': true,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> profileTrends({
+    required String userId,
+    int limit = 40,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/profile/trends?user_id=${Uri.encodeQueryComponent(userId)}&limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['trends'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> addProfileTrend({
+    required String userId,
+    required String text,
+  }) =>
+      _json(
+        'POST',
+        '/api/profile/trends',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'text': text,
+        },
+        returnErrorBody: true,
+      );
 
   Future<Map<String, dynamic>?> socialStats({
     required String userId,
@@ -1423,6 +1739,36 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> familyWalletTransfers({
+    int limit = 100,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/family/wallet/transfers?limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['transfers'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> sendFamilyCoins({
+    required String receiverUserId,
+    required int coins,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/wallet/send',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'receiver_user_id': receiverUserId,
+          'coins': coins,
+        },
+      );
+
   Future<Map<String, dynamic>?> familyCheckIn({
     required String userId,
   }) =>
@@ -1540,6 +1886,20 @@ class BackendApi {
     );
     return value?['ok'] == true;
   }
+
+  Future<Map<String, dynamic>?> cpSetRing({
+    required String userId,
+    String? ringId,
+  }) =>
+      _json(
+        'POST',
+        '/api/cp/ring',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'ring_id': ringId ?? '',
+        },
+        returnErrorBody: true,
+      );
 
   Future<List<Map<String, dynamic>>> cpMemories({
     required String userId,
