@@ -24,6 +24,9 @@
       "bucket_name": "darkvibex-files"
     }
   ],
+  "vars": {
+    "GOOGLE_WEB_CLIENT_ID": "856668709223-9aqo8i4k1nmhftnn0jhf9agbrb0t9qt1.apps.googleusercontent.com"
+  },
   "triggers": {
     "crons": ["*/5 * * * *"]
   }
@@ -34,5 +37,4 @@
   //   LIVEKIT_URL
   //   LIVEKIT_API_KEY
   //   LIVEKIT_API_SECRET
-  //   GOOGLE_WEB_CLIENT_ID
 }
