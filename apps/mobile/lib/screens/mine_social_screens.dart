@@ -1470,3 +1470,77 @@ class _VsRankingScreenState extends State<VsRankingScreen> {
               ),
       );
 }
+
+
+class FamilyRankingScreen extends StatefulWidget {
+  const FamilyRankingScreen({super.key, required this.state});
+  final AppState state;
+
+  @override
+  State<FamilyRankingScreen> createState() => _FamilyRankingScreenState();
+}
+
+class _FamilyRankingScreenState extends State<FamilyRankingScreen> {
+  bool loading = true;
+  List<Map<String, dynamic>> rows = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final values = await widget.state.backend.familyList();
+    if (!mounted) return;
+    setState(() {
+      rows = values;
+      loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: TinniPalette.black,
+        appBar: AppBar(title: const Text('Family Ranking')),
+        body: TinniBackground(
+          child: loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(12),
+                    itemCount: rows.length,
+                    itemBuilder: (context, index) {
+                      final row = rows[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TinniPanel(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: TinniPalette.gold,
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(color: Colors.black),
+                              ),
+                            ),
+                            title: Text(
+                              row['name']?.toString() ?? 'Family',
+                              style: const TextStyle(
+                                color: TinniPalette.cream,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${row['tag'] ?? ''} • ${row['member_count'] ?? 0} members • EXP ${row['experience'] ?? 0}',
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+      );
+}
