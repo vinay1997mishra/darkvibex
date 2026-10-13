@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../ui/tinni_style.dart';
 import 'conversation_screen.dart';
 
 class MessagesScreen extends StatelessWidget {
@@ -12,12 +13,17 @@ class MessagesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
-      builder: (context, _) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      builder: (context, _) => TinniBackground(
+        child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
         children: [
           const Text(
-            'Messages',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+            'Message',
+            style: TextStyle(
+              color: TinniPalette.gold,
+              fontSize: 27,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 14),
           if (state.messages.isEmpty)
@@ -26,7 +32,9 @@ class MessagesScreen extends StatelessWidget {
               child: Center(child: Text('No messages yet')),
             ),
           for (final item in state.messages)
-            Card(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: TinniPanel(
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundImage: item.avatarKey == null
@@ -52,8 +60,10 @@ class MessagesScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              ),
             ),
         ],
+      ),
       ),
     );
   }
