@@ -1,124 +1,363 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
+import '../ui/tinni_style.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.state});
 
   final AppState state;
 
   @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _nameController = TextEditingController();
+  final _picker = ImagePicker();
+
+  DateTime? _dateOfBirth;
+  Uint8List? _avatarBytes;
+  String _avatarExtension = 'jpg';
+  String _avatarContentType = 'image/jpeg';
+  bool _savingProfile = false;
+
+  AppState get state => widget.state;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  String get _dobLabel {
+    final value = _dateOfBirth;
+    if (value == null) return 'Date of birth';
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    return '$day/$month/${value.year}';
+  }
+
+  String get _dobApiValue {
+    final value = _dateOfBirth;
+    if (value == null) return '';
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+
+  Future<void> _pickAvatar() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const TinniGlowIcon(icon: Icons.photo_library_rounded),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const TinniGlowIcon(icon: Icons.photo_camera_rounded),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final file = await _picker.pickImage(
+      source: source,
+      imageQuality: 72,
+      maxWidth: 768,
+      maxHeight: 768,
+    );
+    if (file == null) return;
+
+    final ext = file.name.split('.').last.toLowerCase();
+    final contentType = switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      _ => null,
+    };
+    if (contentType == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP photo')),
+        );
+      }
+      return;
+    }
+
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _avatarBytes = bytes;
+      _avatarExtension = ext == 'jpeg' ? 'jpg' : ext;
+      _avatarContentType = contentType;
+    });
+  }
+
+  Future<void> _pickDateOfBirth() async {
+    final now = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _dateOfBirth ?? DateTime(now.year - 18, now.month, now.day),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(now.year, now.month, now.day),
+      helpText: 'Select date of birth',
+    );
+    if (selected != null && mounted) {
+      setState(() => _dateOfBirth = selected);
+    }
+  }
+
+  bool _validateProfile() {
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter your name')),
+      );
+      return false;
+    }
+    if (_dateOfBirth == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select your date of birth')),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _finishProfile() async {
+    if (!mounted) return;
+    setState(() => _savingProfile = true);
+    try {
+      await state.completeLoginProfile(
+        name: _nameController.text.trim(),
+        dateOfBirthValue: _dobApiValue,
+        avatarBytes: _avatarBytes,
+        avatarExtension: _avatarExtension,
+        avatarContentType: _avatarContentType,
+      );
+    } finally {
+      if (mounted) setState(() => _savingProfile = false);
+    }
+  }
+
+  Future<void> _googleLogin() async {
+    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    final ok = await state.signInWithGoogle();
+    if (ok) await _finishProfile();
+  }
+
+  Future<void> _guestLogin() async {
+    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    final ok = await state.continueAsGuest();
+    if (ok) await _finishProfile();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFFFD36A);
+    final busy = state.signingIn || _savingProfile;
 
     return Scaffold(
-      body: SafeArea(
-        child: AnimatedBuilder(
-          animation: state,
-          builder: (context, _) => Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 92,
-                      height: 92,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0x88FFD36A)),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF2A1F12), Color(0xFF111217)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+      backgroundColor: TinniPalette.black,
+      body: TinniBackground(
+        child: SafeArea(
+          child: AnimatedBuilder(
+            animation: state,
+            builder: (context, _) => Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'DarkVibeX',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -.6,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.graphic_eq_rounded,
-                        size: 48,
-                        color: gold,
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    const Text(
-                      'DarkVibeX',
-                      style: TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Voice rooms, chat, games and your vibe in one place.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: FilledButton.icon(
-                        onPressed: state.signingIn
-                            ? null
-                            : () => state.signInWithGoogle(),
-                        icon: state.signingIn
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.login_rounded),
-                        label: const Text(
-                          'Continue with Google',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Create your profile and enter the vibe',
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 12,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: OutlinedButton(
-                        onPressed: state.signingIn
-                            ? null
-                            : () => state.continueAsGuest(),
-                        child: const Text('Continue as guest'),
+                      const SizedBox(height: 22),
+                      GestureDetector(
+                        onTap: busy ? null : _pickAvatar,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 98,
+                              height: 98,
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: TinniPalette.brightGold,
+                                  width: 2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x55D09A0A),
+                                    blurRadius: 16,
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                backgroundColor: TinniPalette.panel2,
+                                backgroundImage: _avatarBytes == null
+                                    ? null
+                                    : MemoryImage(_avatarBytes!),
+                                child: _avatarBytes == null
+                                    ? const Icon(
+                                        Icons.person_rounded,
+                                        size: 46,
+                                        color: TinniPalette.gold,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                            const Positioned(
+                              right: -2,
+                              bottom: 2,
+                              child: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: TinniPalette.gold,
+                                child: Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 17,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    if (state.authError != null) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Tap to add DP',
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
+                        ),
+                      ),
                       const SizedBox(height: 18),
-                      Container(
+                      TinniPanel(
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _nameController,
+                              textInputAction: TextInputAction.next,
+                              maxLength: 60,
+                              decoration: const InputDecoration(
+                                labelText: 'Name',
+                                prefixIcon: Icon(Icons.badge_rounded),
+                                counterText: '',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            InkWell(
+                              onTap: busy ? null : _pickDateOfBirth,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Date of birth',
+                                  prefixIcon: Icon(Icons.cake_rounded),
+                                  suffixIcon: Icon(Icons.calendar_month_rounded),
+                                ),
+                                child: Text(
+                                  _dobLabel,
+                                  style: TextStyle(
+                                    color: _dateOfBirth == null
+                                        ? TinniPalette.muted
+                                        : TinniPalette.cream,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          color: Colors.red.withValues(alpha: 0.12),
-                          border: Border.all(
-                            color: Colors.red.withValues(alpha: 0.35),
+                        height: 54,
+                        child: FilledButton.icon(
+                          onPressed: busy ? null : _googleLogin,
+                          icon: busy
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.black,
+                                  ),
+                                )
+                              : const Icon(Icons.login_rounded),
+                          label: const Text('Continue with Google'),
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: busy ? null : _guestLogin,
+                          icon: const Icon(Icons.person_outline_rounded),
+                          label: const Text('Continue as guest'),
+                        ),
+                      ),
+                      if (state.authError != null) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(13),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: TinniPalette.danger.withValues(alpha: .14),
+                            border: Border.all(
+                              color: TinniPalette.danger.withValues(alpha: .55),
+                            ),
+                          ),
+                          child: Text(
+                            state.authError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFFFF8D8D),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        child: Text(
-                          state.authError!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.redAccent),
+                      ],
+                      const SizedBox(height: 18),
+                      const Text(
+                        'By continuing, you agree to use DarkVibeX responsibly.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 22),
-                    Text(
-                      'By continuing, you agree to use DarkVibeX responsibly.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.45),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
