@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import 'vip_screen.dart';
 import 'app_settings_screen.dart';
 import 'recharge_screen.dart';
@@ -390,9 +391,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final ringId = state.activeCosmetic('ring');
     final profileCardId = state.activeCosmetic('profile_card');
     final profileBackgroundId = state.activeCosmetic('profile_background');
-    return AnimatedBuilder(
-      animation: state,
-      builder: (context, _) => TinniBackground(
+    return ValueListenableBuilder<String>(
+      valueListenable: state.languagePreference,
+      builder: (context, language, _) => AnimatedBuilder(
+        animation: state,
+        builder: (context, _) => TinniBackground(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
           children: [
@@ -564,7 +567,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 _mineCount(
                   (socialStats['following_count'] ?? 0).toString(),
-                  'Follow',
+                  darkVibeXText(language, 'follow'),
                   onTap: () => _showPeopleList(
                     context,
                     title: 'Following',
@@ -576,7 +579,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const _MineDivider(),
                 _mineCount(
                   (socialStats['followers_count'] ?? 0).toString(),
-                  'Fans',
+                  darkVibeXText(language, 'fans'),
                   onTap: () => _showPeopleList(
                     context,
                     title: 'Followers',
@@ -588,7 +591,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const _MineDivider(),
                 _mineCount(
                   (socialStats['lifetime_received_coins'] ?? 0).toString(),
-                  'Charm',
+                  darkVibeXText(language, 'charm'),
                 ),
                 const _MineDivider(),
                 Expanded(
@@ -679,8 +682,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
-                        'Wallet',
+                      Text(
+                        darkVibeXText(language, 'wallet'),
                         style: TextStyle(
                           color: TinniPalette.gold,
                           fontSize: 20,
@@ -848,7 +851,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 7),
                 Expanded(
                   child: _mineStatusCard(
-                    title: 'Wealth level',
+                    title: darkVibeXText(language, 'wealth_level'),
                     subtitle:
                         'LV.${((socialStats['wealth'] is Map ? (socialStats['wealth'] as Map)['level'] : 0) ?? 0)}',
                     icon: Icons.diamond_rounded,
@@ -869,7 +872,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.hexagon_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Medal of Honor'),
+                title: Text(darkVibeXText(language, 'medal_of_honor')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -882,7 +885,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 state,
                 Icons.shopping_bag_rounded,
-                'Shop',
+                darkVibeXText(language, 'shop'),
                 'Frames, vehicles and entry effects',
               ),
               ListTile(
@@ -890,7 +893,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.auto_awesome_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Trends'),
+                title: Text(darkVibeXText(language, 'trends')),
                 subtitle: const Text(
                   'Profile posts and updates',
                   style: TextStyle(
@@ -914,7 +917,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.task_alt_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Task'),
+                title: Text(darkVibeXText(language, 'task')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -931,7 +934,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.home_work_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Family'),
+                title: Text(darkVibeXText(language, 'family')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -945,7 +948,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.favorite_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('CP Nest'),
+                title: Text(darkVibeXText(language, 'cp_nest')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -962,7 +965,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icons.chat_bubble_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Feedback'),
+                title: Text(darkVibeXText(language, 'feedback')),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.push(
                   context,
@@ -975,13 +978,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 state,
                 Icons.settings_rounded,
-                'Setting',
+                darkVibeXText(language, 'setting'),
                 'Language, account, privacy and app settings',
               ),
             ]),
           ],
         ),
       ),
+    ),
     );
   }
 
