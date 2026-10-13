@@ -1585,6 +1585,11 @@ async function handleApi(request, env, url) {
       user.active_vip_level = targetVip.active ? targetVip.level : 0;
       user.public_id = targetVip.custom_id || user.id;
       user.public_id_expires_at = targetVip.custom_id_expires_at ?? null;
+      const owned = await ownedCosmetics(db, viewedUserId, now());
+      for (const prop of owned) {
+        if (!(prop.active === true || Number(prop.active ?? 0) === 1)) continue;
+        user["active_" + String(prop.kind) + "_id"] = String(prop.item_id ?? "");
+      }
       user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
     }
     if (user && viewerId !== viewedUserId) {
@@ -2417,6 +2422,7 @@ async function handleApi(request, env, url) {
     if (request.method === "GET") {
       await ensureVipSchema(db);
       await ensureImageTables(db);
+      await ensureCosmeticsSchema(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -2429,14 +2435,18 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 18 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                      THEN 'Anonymous' ELSE u.display_name END AS display_name,
-                m.text, m.created_at, mi.image_key
+                m.text, m.created_at, mi.image_key,
+                (SELECT p.item_id FROM user_props p
+                  WHERE p.user_id=m.user_id AND p.kind='bubble'
+                    AND p.active=1 AND p.expires_at>?
+                  LIMIT 1) AS active_bubble_id
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC LIMIT 100`
-      ).bind(now(), roomId).all();
+      ).bind(now(), now(), roomId).all();
       return json({ ok: true, messages: (rows.results ?? []).reverse() });
     }
     if (request.method === "POST") {
@@ -2513,8 +2523,14 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 14 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.invisible_entry') = 1
                      THEN 1 ELSE 0 END AS invisible_entry,
+                CASE WHEN v.custom_id IS NOT NULL
+                           AND (v.custom_id_expires_at IS NULL OR v.custom_id_expires_at > ?)
+                     THEN v.custom_id ELSE m.user_id END AS public_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
+                (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
+                (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'bubble' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_bubble_id,
+                (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'profile_card' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_profile_card_id,
                 m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
                 CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
                 CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin,
@@ -2530,7 +2546,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
@@ -2913,12 +2929,17 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureImageTables(db);
+    await ensureCosmeticsSchema(db);
     const vip = await getVipStatus(db, userId, now());
     const retentionDays = vip.active ? Number(vip.message_retention_days ?? 0) : 0;
     const cutoff = retentionDays > 0 ? now() - retentionDays * 86400000 : 0;
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
-              i.image_key
+              i.image_key,
+              (SELECT p.item_id FROM user_props p
+                WHERE p.user_id=m.sender_user_id AND p.kind='bubble'
+                  AND p.active=1 AND p.expires_at>?
+                LIMIT 1) AS active_bubble_id
          FROM direct_messages m
          LEFT JOIN direct_message_images i ON i.message_id = m.id
         WHERE ((m.sender_user_id = ? AND m.receiver_user_id = ?)
@@ -2926,7 +2947,7 @@ async function handleApi(request, env, url) {
           AND (? = 0 OR m.created_at >= ?)
         ORDER BY m.created_at DESC
         LIMIT ?`
-    ).bind(userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
+    ).bind(now(), userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
     rows.results = (rows.results ?? []).reverse();
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
