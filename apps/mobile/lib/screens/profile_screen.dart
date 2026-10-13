@@ -143,7 +143,15 @@ class ProfileScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
           children: [
             TinniPanel(
-              onTap: () {},
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => PublicProfileScreen(
+                    state: state,
+                    userId: state.userId,
+                  ),
+                ),
+              ),
               child: Row(
                 children: [
                   VipAnimatedFrame(
