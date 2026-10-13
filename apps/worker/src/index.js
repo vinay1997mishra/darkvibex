@@ -2519,6 +2519,7 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureLampSchema(db);
     await ensureRoomSettingsTable(db);
+    await ensureImageTables(db);
     const viewer = await db.prepare(
       "SELECT country_code FROM users WHERE id=? LIMIT 1"
     ).bind(userId).first();
