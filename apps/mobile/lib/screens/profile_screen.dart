@@ -330,13 +330,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ringId = state.activeCosmetic('ring');
+    final profileCardId = state.activeCosmetic('profile_card');
+    final profileBackgroundId = state.activeCosmetic('profile_background');
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => TinniBackground(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
           children: [
-            TinniPanel(
+            InkWell(
+              key: const Key('mine-profile-card'),
+              borderRadius: BorderRadius.circular(16),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
@@ -346,7 +351,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              child: Row(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: profileBackgroundId != null ||
+                          profileCardId != null
+                      ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[
+                            Color(0xFF281230),
+                            Color(0xFF0E0A11),
+                            Color(0xFF301E0A),
+                          ],
+                        )
+                      : null,
+                  color: profileBackgroundId == null &&
+                          profileCardId == null
+                      ? TinniPalette.panel
+                      : null,
+                  border: Border.all(
+                    color: profileCardId != null
+                        ? const Color(0xFFFFD36A)
+                        : TinniPalette.bronze,
+                    width: profileCardId != null ? 1.6 : 1,
+                  ),
+                  boxShadow: profileCardId != null
+                      ? const <BoxShadow>[
+                          BoxShadow(
+                            color: Color(0x44FFD36A),
+                            blurRadius: 16,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
                 children: [
                   VipAnimatedFrame(
                     size: 72,
@@ -354,13 +394,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         state.hasVipPrivilege('dynamic_avatar'),
                     styleId: state.activeFrameId,
                     child: Container(
-                      padding: const EdgeInsets.all(2),
+                      padding: EdgeInsets.all(ringId == null ? 2 : 4),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: TinniPalette.brightGold,
-                          width: 1.5,
-                        ),
+                        gradient: ringId == null
+                            ? null
+                            : const SweepGradient(
+                                colors: <Color>[
+                                  Color(0xFFFFE47A),
+                                  Color(0xFFFF6FB7),
+                                  Color(0xFF8C6CFF),
+                                  Color(0xFFFFE47A),
+                                ],
+                              ),
+                        border: ringId == null
+                            ? Border.all(
+                                color: TinniPalette.brightGold,
+                                width: 1.5,
+                              )
+                            : null,
+                        boxShadow: ringId == null
+                            ? null
+                            : const <BoxShadow>[
+                                BoxShadow(
+                                  color: Color(0x66FFB5F1),
+                                  blurRadius: 12,
+                                ),
+                              ],
                       ),
                       child: CircleAvatar(
                         radius: 32,
@@ -439,6 +499,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ],
+              ),
               ),
             ),
             const SizedBox(height: 13),
