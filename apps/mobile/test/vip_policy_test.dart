@@ -24,10 +24,12 @@ void main() {
     expect(light.isUnlockedAt(18), false);
   });
 
-  test('room seats and show id follow VIP rules', () {
-    expect(VipPolicy.maxRoomSeats(6), 12);
-    expect(VipPolicy.maxRoomSeats(7), 20);
-    expect(VipPolicy.maxRoomSeats(10), 30);
+  test('room seats stay at 42 and show id follows VIP rules', () {
+    expect(VipPolicy.maxRoomSeats(0), 42);
+    expect(VipPolicy.maxRoomSeats(6), 42);
+    expect(VipPolicy.maxRoomSeats(7), 42);
+    expect(VipPolicy.maxRoomSeats(10), 42);
+    expect(VipPolicy.maxRoomSeats(18), 42);
     expect(VipPolicy.showIdStyleLevel(14), 14);
     expect(VipPolicy.showIdStyleLevel(18), 14);
     final uniqueId = VipPolicy.privileges.firstWhere((p) => p.id == 'unique_id');
