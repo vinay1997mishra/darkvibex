@@ -46,10 +46,6 @@ jobs:
         working-directory: apps/worker
         run: npm test
 
-      - name: Apply one-time room creation repair
-        working-directory: apps/worker
-        run: npx wrangler d1 execute darkvibex-db --remote --file=migrations/20261013_room_creation_repair.sql
-
       - name: Deploy Worker
         working-directory: apps/worker
         run: npx wrangler deploy
