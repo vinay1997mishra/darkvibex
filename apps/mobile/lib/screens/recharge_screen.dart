@@ -188,7 +188,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                     ),
                                   ),
                                   const Text(
-                                    'Open secured role wallet, transfers and withdrawal.',
+                                    'Open secured role wallet and coin transfers.',
                                     style: TextStyle(
                                       color: TinniPalette.muted,
                                       fontSize: 10,
