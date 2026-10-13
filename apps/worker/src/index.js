@@ -918,6 +918,46 @@ async function handleApi(request, env, url) {
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
   }
 
+  if (url.pathname === "/api/profile/trends" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const targetId = userId || String(session.sub);
+    const user = await db.prepare("SELECT id FROM users WHERE id=? LIMIT 1")
+      .bind(targetId).first();
+    if (!user) return json({ ok:false,error:"user_not_found" }, { status:404 });
+    return json({
+      ok:true,
+      trends:await profileTrends(
+        db,
+        targetId,
+        url.searchParams.get("limit") ?? 40,
+      ),
+    });
+  }
+
+  if (url.pathname === "/api/profile/trends" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({
+        ok:true,
+        trend:await addProfileTrend(db,userId,body.text),
+      }, { status:201 });
+    } catch (error) {
+      return json(
+        { ok:false,error:String(error?.message ?? error) },
+        { status:400 },
+      );
+    }
+  }
+
   if (url.pathname === "/api/messages/official" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
