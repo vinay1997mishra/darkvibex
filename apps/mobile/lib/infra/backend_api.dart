@@ -1066,16 +1066,28 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> fruitPartyState() =>
+      _json(
+        'GET',
+        '/api/games/fruit-party/state',
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> fruitPartyBet({
     required String userId,
-    required int stake,
+    required String fruitKey,
+    required int amount,
+    required String requestId,
   }) =>
       _json(
         'POST',
         '/api/games/fruit-party/bet',
+        returnErrorBody: true,
         body: <String, dynamic>{
           'user_id': userId,
-          'stake': stake,
+          'fruit_key': fruitKey,
+          'amount': amount,
+          'request_id': requestId,
         },
       );
 
