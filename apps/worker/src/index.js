@@ -1406,6 +1406,38 @@ async function handleApi(request, env, url) {
     return json({ ok: true, seat_index: seatIndex, mic_muted: Boolean(effectiveMuted) });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "gift-ranking" && request.method === "GET") {
+    const roomId = parts[2];
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?"
+    ).bind(roomId, String(session.sub)).first();
+    if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
+    const total = await db.prepare(
+      "SELECT COALESCE(SUM(coin_cost),0) AS lifetime_total FROM gift_events WHERE room_id=?"
+    ).bind(roomId).first();
+    const ranking = await db.prepare(
+      `SELECT g.sender_user_id AS user_id,
+              COALESCE(u.display_name,'User') AS display_name,
+              u.avatar_key,
+              SUM(g.coin_cost) AS sent_coins,
+              COUNT(*) AS gift_count
+         FROM gift_events g
+         LEFT JOIN users u ON u.id=g.sender_user_id
+        WHERE g.room_id=?
+        GROUP BY g.sender_user_id,u.display_name,u.avatar_key
+        ORDER BY sent_coins DESC,gift_count DESC
+        LIMIT 20`
+    ).bind(roomId).all();
+    return json({
+      ok:true,
+      lifetime_total:Number(total?.lifetime_total ?? 0),
+      ranking:ranking.results ?? [],
+    });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "messages") {
     const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
