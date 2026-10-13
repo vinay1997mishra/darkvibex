@@ -2920,6 +2920,57 @@ async function handleApi(request, env, url) {
     return json({ ok: true, amount: Number(claim.amount) });
   }
 
+  if (url.pathname === "/api/custom-gifts" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId || undefined);
+    if (authError) return authError;
+    await ensureCustomGiftSchema(db);
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const actor = String(session.sub);
+    const rows = await db.prepare(
+      `SELECT id,user_id,name,asset_key,coin_cost,status,created_at,updated_at
+         FROM custom_gifts
+        WHERE user_id=? OR status='approved'
+        ORDER BY CASE WHEN user_id=? THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 200`
+    ).bind(actor, actor).all();
+    return json({ ok: true, gifts: rows.results ?? [] });
+  }
+
+  if (url.pathname === "/api/custom-gifts" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    await ensureCustomGiftSchema(db);
+    const name = String(body.name ?? "").trim().slice(0, 40);
+    const assetKey = String(body.asset_key ?? "").trim();
+    const coinCost = Math.max(100, Math.min(10000000, Math.trunc(Number(body.coin_cost ?? 5000))));
+    if (!name || !assetKey.startsWith(`custom-gifts/${userId}/`) ||
+        !/\.(jpg|jpeg|png|webp|mp4)$/i.test(assetKey) ||
+        !Number.isSafeInteger(coinCost)) {
+      return json({ ok: false, error: "invalid_custom_gift" }, { status: 400 });
+    }
+    const giftId = "custom-" + id();
+    const ts = now();
+    await db.prepare(
+      "INSERT INTO custom_gifts (id,user_id,name,asset_key,coin_cost,status,created_at,updated_at) VALUES (?,?,?,?,?,'approved',?,?)"
+    ).bind(giftId, userId, name, assetKey, coinCost, ts, ts).run();
+    return json({
+      ok: true,
+      gift: {
+        id: giftId,
+        user_id: userId,
+        name,
+        asset_key: assetKey,
+        coin_cost: coinCost,
+        status: "approved",
+        category: "custom",
+      },
+    }, { status: 201 });
+  }
+
   if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
