@@ -164,6 +164,7 @@ jobs:
           name: DarkVibeX-live-debug-apk
           path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+          retention-days: 1
 
       - name: Upload signed release APK
         if: env.ANDROID_KEYSTORE_PATH != ''
@@ -172,3 +173,4 @@ jobs:
           name: DarkVibeX-live-release-apk
           path: apps/mobile/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+          retention-days: 1
