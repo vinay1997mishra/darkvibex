@@ -131,9 +131,11 @@ class AppSettingsScreen extends StatelessWidget {
                   ),
                   title: const Text('Sign out'),
                   subtitle: Text(
-                    state.authProvider == 'google'
-                        ? 'Google account'
-                        : 'Guest session',
+                    switch (state.authProvider) {
+                      'google' => 'Google account',
+                      'email' => 'Email account',
+                      _ => 'Guest session',
+                    },
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () async {
