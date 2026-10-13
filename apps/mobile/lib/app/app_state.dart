@@ -264,6 +264,16 @@ class AppState extends ChangeNotifier {
           'Google sign-in token was rejected. Please sign in again.',
         'google_email_not_verified' =>
           'This Google account email is not verified.',
+        'google_session_storage_failed' =>
+          'Login storage is being repaired on the server. Please try again.',
+        'google_session_policy_failed' =>
+          'Login reached the server but account checks could not finish.',
+        'google_session_token_failed' =>
+          'Login reached the server but the session token could not be created.',
+        'user_banned' =>
+          'This account is banned.',
+        'user_suspended' =>
+          'This account is suspended.',
         _ => 'Google Login reached the server, but the session could not be created.',
       };
       if (notify) notifyListeners();
