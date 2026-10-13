@@ -400,3 +400,108 @@ CREATE INDEX IF NOT EXISTS idx_lamp_user_days_room_day
   ON lamp_room_user_days(room_id, day_key);
 CREATE INDEX IF NOT EXISTS idx_room_followers_room
   ON room_followers(room_id);
+
+
+-- Tinnistar-style social surfaces used by DarkVibeX.
+CREATE TABLE IF NOT EXISTS official_notices (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_follows (
+  follower_id TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (follower_id, target_id),
+  CHECK (follower_id <> target_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_task_claims (
+  user_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  reward_coins INTEGER NOT NULL,
+  claimed_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, task_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_feedback (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'submitted',
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS families (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  leader_user_id TEXT NOT NULL,
+  notice TEXT NOT NULL DEFAULT '',
+  experience INTEGER NOT NULL DEFAULT 0,
+  wallet_coins INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS family_members (
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (family_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS family_join_requests (
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (family_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS family_daily_logins (
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  day_key TEXT NOT NULL,
+  exp_awarded INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (family_id, user_id, day_key)
+);
+
+CREATE TABLE IF NOT EXISTS cp_relationships (
+  user_a TEXT NOT NULL,
+  user_b TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  intimacy INTEGER NOT NULL DEFAULT 0,
+  level INTEGER NOT NULL DEFAULT 1,
+  requested_by TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_a, user_b)
+);
+
+CREATE TABLE IF NOT EXISTS cp_memories (
+  id TEXT PRIMARY KEY,
+  user_a TEXT NOT NULL,
+  user_b TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vs_relationships (
+  user_a TEXT NOT NULL,
+  user_b TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  rivalry INTEGER NOT NULL DEFAULT 0,
+  level INTEGER NOT NULL DEFAULT 1,
+  requested_by TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_a, user_b)
+);
