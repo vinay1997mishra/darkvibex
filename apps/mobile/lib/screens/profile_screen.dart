@@ -1179,6 +1179,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Map<String, dynamic>? user;
   Map<String, dynamic> socialStats = const <String, dynamic>{};
   List<Map<String, dynamic>> trends = const <Map<String, dynamic>>[];
+  Map<String, String?> media = const <String, String?>{};
   bool loading = true;
   bool isFriend = false;
   bool isFollowing = false;
@@ -1224,6 +1225,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         else
           Future<bool>.value(false),
         widget.state.backend.profileTrends(userId: targetId),
+        widget.state.backend.profileMedia(userId: targetId),
       ]);
       final friends = values[0] is List
           ? (values[0] as List).whereType<Map>().toList()
@@ -1246,6 +1248,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               .toList(growable: false)
           : const <Map<String, dynamic>>[];
       trends = trendRows;
+      if (values[5] is Map) {
+        media = (values[5] as Map).map(
+          (key, value) => MapEntry(key.toString(), value?.toString()),
+        );
+      }
     }
 
     if (!mounted) return;
@@ -1260,6 +1267,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
       user?['privacy_protection_enabled'] == true,
+    );
+  }
+
+  ImageProvider<Object>? _publicMediaProvider(String? key) {
+    final value = key?.trim() ?? '';
+    if (value.isEmpty) return null;
+    return NetworkImage(
+      widget.state.backend.fileUrl(value),
+      headers: widget.state.backend.fileHeaders,
     );
   }
 
@@ -1356,10 +1372,27 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ? const Center(child: CircularProgressIndicator())
             : user == null
                 ? const Center(child: Text('Profile could not be loaded'))
-                : Center(
-                    child: Column(
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                    child: Center(
+                      child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (_publicMediaProvider(media['cover']) != null) ...[
+                          Container(
+                            width: 420,
+                            height: 180,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: TinniPalette.bronze),
+                              image: DecorationImage(
+                                image: _publicMediaProvider(media['cover'])!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Container(
                           padding: EdgeInsets.all(
                             user!['active_ring_id']?.toString().isNotEmpty == true
@@ -1477,6 +1510,52 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             label: Text('Trends (${trends.length})'),
                           ),
                         ),
+                        if ([
+                          media['life_1'],
+                          media['travel'],
+                          media['life_2'],
+                          media['life_3'],
+                        ].any((value) => value?.isNotEmpty == true)) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Photos',
+                            style: TextStyle(
+                              color: TinniPalette.gold,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final entry in <(String, String)>[
+                                ('life_1', 'Life'),
+                                ('travel', 'Travel'),
+                                ('life_2', 'Life'),
+                                ('life_3', 'Life'),
+                              ])
+                                if (_publicMediaProvider(media[entry.$1]) != null)
+                                  Container(
+                                    width: 92,
+                                    height: 92,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: TinniPalette.bronze,
+                                      ),
+                                      image: DecorationImage(
+                                        image: _publicMediaProvider(
+                                          media[entry.$1],
+                                        )!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        ],
                         if (!_isSelf) ...[
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
@@ -1540,6 +1619,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       ],
                     ),
                   ),
+                ),
       );
   }
 
