@@ -3,20 +3,29 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import 'legal_policy_screen.dart';
+import 'mine_social_screens.dart';
+import 'settings_function_screens.dart';
 
-class AppSettingsScreen extends StatefulWidget {
+class AppSettingsScreen extends StatelessWidget {
   const AppSettingsScreen({super.key, required this.state});
 
   final AppState state;
 
-  @override
-  State<AppSettingsScreen> createState() => _AppSettingsScreenState();
-}
-
-class _AppSettingsScreenState extends State<AppSettingsScreen> {
-  bool roomNotifications = true;
-  bool messageNotifications = true;
-  String language = 'English';
+  Widget _row(
+    BuildContext context, {
+    required Key key,
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      key: key,
+      leading: Icon(icon, color: TinniPalette.gold),
+      title: Text(title),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: onTap,
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -26,155 +35,111 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
             children: [
-              const TinniPanel(
-                child: ListTile(
-                  leading: TinniGlowIcon(
-                    icon: Icons.settings_rounded,
-                    size: 18,
-                    boxSize: 34,
-                  ),
-                  title: Text(
-                    'App settings',
-                    style: TextStyle(
-                      color: TinniPalette.cream,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  subtitle: Text('DarkVibeX account and preferences'),
-                ),
-              ),
-              const SizedBox(height: 9),
               TinniPanel(
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    SwitchListTile(
-                      secondary: const Icon(
-                        Icons.notifications_active_outlined,
-                        color: TinniPalette.gold,
+                    _row(
+                      context,
+                      key: const Key('setting-message-notification'),
+                      icon: Icons.notifications_active_rounded,
+                      title: 'Message notification',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              MessageNotificationScreen(state: state),
+                        ),
                       ),
-                      title: const Text('Room notifications'),
-                      value: roomNotifications,
-                      onChanged: (value) =>
-                          setState(() => roomNotifications = value),
                     ),
-                    SwitchListTile(
-                      secondary: const Icon(
-                        Icons.mark_chat_unread_outlined,
-                        color: TinniPalette.gold,
+                    _row(
+                      context,
+                      key: const Key('setting-bind-account'),
+                      icon: Icons.link_rounded,
+                      title: 'Bind account',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => BindAccountScreen(state: state),
+                        ),
                       ),
-                      title: const Text('Message notification'),
-                      value: messageNotifications,
-                      onChanged: (value) =>
-                          setState(() => messageNotifications = value),
                     ),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.language_rounded,
-                        color: TinniPalette.gold,
+                    _row(
+                      context,
+                      key: const Key('setting-language'),
+                      icon: Icons.language_rounded,
+                      title: 'Language settings',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const LanguageSettingsScreen(),
+                        ),
                       ),
-                      title: const Text('Language'),
-                      subtitle: Text(language),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () async {
-                        final selected =
-                            await showModalBottomSheet<String>(
-                          context: context,
-                          backgroundColor: TinniPalette.nearBlack,
-                          builder: (sheetContext) => SafeArea(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (final value in const [
-                                  'English',
-                                  'हिन्दी',
-                                ])
-                                  ListTile(
-                                    title: Text(value),
-                                    onTap: () => Navigator.pop(
-                                      sheetContext,
-                                      value,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                        if (selected != null) {
-                          setState(() => language = selected);
-                        }
-                      },
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 9),
-              TinniPanel(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(
-                        Icons.security_rounded,
-                        color: TinniPalette.gold,
+                    _row(
+                      context,
+                      key: const Key('setting-about'),
+                      icon: Icons.info_outline_rounded,
+                      title: 'About DarkVibeX',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AboutDarkVibeXScreen(),
+                        ),
                       ),
-                      title: const Text('Privacy & Safety'),
-                      subtitle: const Text(
-                        'Account protection, reports and privacy controls',
+                    ),
+                    _row(
+                      context,
+                      key: const Key('setting-feedback'),
+                      icon: Icons.chat_bubble_outline_rounded,
+                      title: 'Feedback',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => FeedbackScreen(state: state),
+                        ),
                       ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
+                    ),
+                    _row(
+                      context,
+                      key: const Key('setting-blocklist'),
+                      icon: Icons.block_rounded,
+                      title: 'Blocklist',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => BlocklistScreen(state: state),
+                        ),
+                      ),
+                    ),
+                    _row(
+                      context,
+                      key: const Key('setting-privacy-statement'),
+                      icon: Icons.privacy_tip_outlined,
+                      title: 'Privacy statement',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const LegalPolicyScreen(),
                         ),
                       ),
                     ),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.privacy_tip_outlined,
-                        color: TinniPalette.gold,
-                      ),
-                      title: const Text('Terms & Privacy'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const LegalPolicyScreen(),
-                        ),
-                      ),
-                    ),
-                    const ListTile(
-                      leading: Icon(
-                        Icons.info_outline_rounded,
-                        color: TinniPalette.gold,
-                      ),
-                      title: Text('About DarkVibeX'),
-                      subtitle: Text('Free social voice-room app'),
-                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 9),
+              const SizedBox(height: 10),
               TinniPanel(
                 padding: EdgeInsets.zero,
                 child: ListTile(
+                  key: const Key('setting-sign-out'),
                   leading: const Icon(
                     Icons.logout_rounded,
                     color: Colors.redAccent,
                   ),
                   title: const Text('Sign out'),
                   subtitle: Text(
-                    widget.state.authProvider == 'google'
+                    state.authProvider == 'google'
                         ? 'Google account'
                         : 'Guest session',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () async {
-                    await widget.state.signOut();
-                    if (context.mounted) {
-                      Navigator.of(context).popUntil(
-                        (route) => route.isFirst,
-                      );
-                    }
+                    await state.signOut();
+                    if (!context.mounted) return;
+                    Navigator.of(context).popUntil((route) => route.isFirst);
                   },
                 ),
               ),
