@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../i18n/darkvibex_localization.dart';
 import '../infra/backend_api.dart';
 import '../vip/vip_policy.dart';
 
@@ -63,6 +64,10 @@ class AppState extends ChangeNotifier {
   String userRole = 'user';
   String? avatarKey;
   String? dateOfBirth;
+  String countryCode = '';
+  String countryName = '';
+  String flagEmoji = '';
+  final ValueNotifier<String> languagePreference = ValueNotifier<String>('English');
   String? sessionToken;
   String? authProvider;
   bool backendConnected = false;
@@ -520,6 +525,16 @@ class AppState extends ChangeNotifier {
     userRole = user['role']?.toString() ?? userRole;
     avatarKey = user['avatar_key']?.toString();
     dateOfBirth = user['date_of_birth']?.toString();
+    countryCode = user['country_code']?.toString().trim() ?? '';
+    countryName = user['country_name']?.toString().trim() ?? '';
+    flagEmoji = user['flag_emoji']?.toString().trim() ?? '';
+    var restoredLanguage = user['language']?.toString().trim() ?? '';
+    if (!darkVibeXIsSupportedLanguage(restoredLanguage)) {
+      restoredLanguage =
+          (await SharedPreferences.getInstance()).getString('dvx.language') ??
+              'English';
+    }
+    setLanguagePreference(restoredLanguage);
     if (dateOfBirth == null || dateOfBirth!.trim().isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       dateOfBirth = prefs.getString(_sessionDateOfBirthKey);
@@ -614,6 +629,11 @@ class AppState extends ChangeNotifier {
     displayName = 'DarkVibeX User';
     userRole = 'user';
     avatarKey = null;
+    dateOfBirth = null;
+    countryCode = '';
+    countryName = '';
+    flagEmoji = '';
+    languagePreference.value = 'English';
     messages.clear();
     coins = 2500000;
     diamonds = 120;
@@ -807,6 +827,10 @@ class AppState extends ChangeNotifier {
   Future<bool> completeLoginProfile({
     required String name,
     required String dateOfBirthValue,
+    String? countryCodeValue,
+    String? countryNameValue,
+    String? flagEmojiValue,
+    String? languageValue,
     Uint8List? avatarBytes,
     String avatarExtension = 'jpg',
     String avatarContentType = 'image/jpeg',
@@ -815,19 +839,39 @@ class AppState extends ChangeNotifier {
     final cleanName = name.trim();
     if (cleanName.isEmpty) return false;
 
+    final nextCountryCode = (countryCodeValue ?? countryCode).trim().toUpperCase();
+    final nextCountryName = (countryNameValue ?? countryName).trim();
+    final nextFlagEmoji = (flagEmojiValue ?? flagEmoji).trim();
+    final requestedLanguage =
+        (languageValue ?? languagePreference.value).trim();
+    final nextLanguage = darkVibeXIsSupportedLanguage(requestedLanguage)
+        ? requestedLanguage
+        : 'English';
+
     final profile = await backend.saveUserProfile(
       userId: userId,
       displayName: cleanName,
       dateOfBirth: dateOfBirthValue.trim(),
+      countryCode: nextCountryCode,
+      countryName: nextCountryName,
+      flagEmoji: nextFlagEmoji,
+      language: nextLanguage,
     );
     if (profile?['ok'] != true) {
-      authError = 'Profile details could not be saved.';
+      authError = profile?['error']?.toString() ??
+          'Profile details could not be saved.';
       notifyListeners();
       return false;
     }
 
     displayName = cleanName;
     dateOfBirth = dateOfBirthValue.trim();
+    countryCode = nextCountryCode;
+    countryName = nextCountryName;
+    flagEmoji = nextFlagEmoji;
+    setLanguagePreference(nextLanguage);
+    await (await SharedPreferences.getInstance())
+        .setString('dvx.language', nextLanguage);
 
     if (avatarBytes != null && avatarBytes.isNotEmpty) {
       final ext = avatarExtension.toLowerCase() == 'jpeg'
@@ -847,6 +891,35 @@ class AppState extends ChangeNotifier {
     authError = null;
     await _persistSession();
     notifyListeners();
+    return true;
+  }
+
+  void setLanguagePreference(String value) {
+    final normalized = value.trim();
+    languagePreference.value =
+        darkVibeXIsSupportedLanguage(normalized) ? normalized : 'English';
+  }
+
+  Future<bool> saveLanguagePreference(String value) async {
+    final normalized = value.trim();
+    if (!darkVibeXIsSupportedLanguage(normalized)) return false;
+    if (!isAuthenticated || !backendConnected) return false;
+
+    final result = await backend.setUserLanguage(
+      userId: userId,
+      language: normalized,
+    );
+    if (result?['ok'] != true) {
+      authError = result?['error']?.toString() ??
+          'Language preference could not be saved.';
+      notifyListeners();
+      return false;
+    }
+
+    setLanguagePreference(normalized);
+    await (await SharedPreferences.getInstance())
+        .setString('dvx.language', normalized);
+    authError = null;
     return true;
   }
 
