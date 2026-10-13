@@ -13,12 +13,14 @@ class RoomSummary {
     required this.online,
     this.seatCount = 12,
     this.avatarKey,
+    this.ownerCountryCode = '',
   });
 
   final String id;
   final String name;
   final String ownerName;
   final String ownerUserId;
+  final String ownerCountryCode;
   final int online;
   final int seatCount;
   final String? avatarKey;
@@ -47,6 +49,9 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String userRole = 'user';
+  String countryCode = '';
+  String gender = '';
   String? avatarKey;
   String? sessionToken;
   String? authProvider;
@@ -91,6 +96,7 @@ class AppState extends ChangeNotifier {
 
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
 
+  final List<Map<String, dynamic>> publicAnnouncements = <Map<String, dynamic>>[];
   final List<RoomSummary> rooms = <RoomSummary>[
     const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
     const RoomSummary(id: '100002', name: 'Music Night', ownerName: 'Mika', ownerUserId: '92000002', online: 9, seatCount: 10),
@@ -238,6 +244,9 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    userRole = (user['role']?.toString() ?? userRole).toLowerCase();
+    countryCode = user['country_code']?.toString() ?? countryCode;
+    gender = user['gender']?.toString() ?? gender;
     avatarKey = user['avatar_key']?.toString();
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
@@ -253,6 +262,7 @@ class AppState extends ChangeNotifier {
     await refreshVip(notify: false);
     await refreshIdLevel(notify: false);
     await refreshCosmetics(notify: false);
+    await refreshPublicConfig(notify: false);
 
     final remoteRooms = await backend.listRooms();
     if (remoteRooms.isNotEmpty) {
@@ -266,10 +276,22 @@ class AppState extends ChangeNotifier {
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
+              ownerCountryCode: row['owner_country_code']?.toString() ?? '',
             )));
     }
 
     await refreshInbox(notify: false);
+  }
+
+  Future<void> refreshPublicConfig({bool notify = true}) async {
+    final value = await backend.publicConfig();
+    final raw = value?['announcements'];
+    if (raw is List) {
+      publicAnnouncements
+        ..clear()
+        ..addAll(raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)));
+    }
+    if (notify) notifyListeners();
   }
 
   Future<void> refreshRooms({bool notify = true}) async {
@@ -286,6 +308,7 @@ class AppState extends ChangeNotifier {
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
+              ownerCountryCode: row['owner_country_code']?.toString() ?? '',
             )));
     }
     if (notify) notifyListeners();
@@ -321,6 +344,7 @@ class AppState extends ChangeNotifier {
     authError = null;
     userId = '91000001';
     displayName = 'DarkVibeX User';
+    userRole = 'user';
     avatarKey = null;
     messages.clear();
     coins = 2500000;
@@ -567,6 +591,54 @@ class AppState extends ChangeNotifier {
     if (amount <= 0) return;
     diamonds += amount;
     notifyListeners();
+  }
+
+  Future<bool> linkGoogleAccount() async {
+    try {
+      if (!googleSignInReady) {
+        final config = await backend.googleAuthConfig();
+        _googleWebClientId = config?['google_web_client_id']?.toString().trim();
+        if (_googleWebClientId == null || _googleWebClientId!.isEmpty) return false;
+        await GoogleSignIn.instance.initialize(serverClientId: _googleWebClientId);
+        googleSignInReady = true;
+      }
+      if (!GoogleSignIn.instance.supportsAuthenticate()) return false;
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) return false;
+      final linked = await backend.linkMineGoogle(userId: userId, idToken: idToken);
+      return linked != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> saveProfile({
+    required String displayName,
+    required String countryCode,
+    required String gender,
+  }) async {
+    final name = displayName.trim();
+    final country = countryCode.trim().toUpperCase();
+    final normalizedGender = gender.trim().toLowerCase();
+    final validCountry = country.length == 2 &&
+        country.codeUnits.every((code) => code >= 65 && code <= 90);
+    if (name.isEmpty || !validCountry ||
+        !const {'male', 'female', 'other'}.contains(normalizedGender)) {
+      return false;
+    }
+    final ok = await backend.updateUserProfile(
+      userId: userId,
+      displayName: name,
+      countryCode: country,
+      gender: normalizedGender,
+    );
+    if (!ok) return false;
+    this.displayName = name;
+    this.countryCode = country;
+    this.gender = normalizedGender;
+    notifyListeners();
+    return true;
   }
 
   void setCoinBalance(int value) {

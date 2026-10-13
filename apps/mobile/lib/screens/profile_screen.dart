@@ -13,6 +13,11 @@ import 'coin_seller_screen.dart';
 import 'vip_support_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'id_level_screen.dart';
+import 'family_screen.dart';
+import 'cp_screen.dart';
+import 'mine_feature_screen.dart';
+import 'profile_visitors_screen.dart';
+import 'edit_profile_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 
@@ -58,34 +63,20 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showVisitors(BuildContext context) async {
-    if (!state.hasVipPrivilege('view_visitors')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Active VIP1 unlocks profile visitors')));
-      return;
-    }
-    final visitors = await state.backend.profileVisitors(userId: state.userId);
-    if (!context.mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .6,
-          child: visitors.isEmpty
-              ? const Center(child: Text('No visitors yet'))
-              : ListView.builder(
-                  itemCount: visitors.length,
-                  itemBuilder: (context, index) {
-                    final visitor = visitors[index];
-                    final name = visitor['display_name']?.toString() ?? 'User';
-                    return ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
-                      title: Text(name),
-                      subtitle: Text('Visited ${visitor['visit_count'] ?? 1} times'),
-                    );
-                  },
-                ),
-        ),
+  void _openPublicProfile(BuildContext context, String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(state: state, userId: userId),
+      ),
+    );
+  }
+
+  void _showVisitors(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileVisitorsScreen(state: state, onOpenProfile: (userId) => _openPublicProfile(context, userId)),
       ),
     );
   }
@@ -209,11 +200,27 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-                  IconButton(onPressed: () => _pickAvatar(context), icon: const Icon(Icons.edit_rounded)),
+                  IconButton(
+                    tooltip: 'View my profile',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => PublicProfileScreen(state: state, userId: state.userId),
+                      ),
+                    ),
+                    icon: const Icon(Icons.account_circle_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Change profile photo',
+                    onPressed: () => _pickAvatar(context),
+                    icon: const Icon(Icons.edit_rounded),
+                  ),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 14),
+          MineCharmVisitorsStrip(state: state, onOpenProfile: (userId) => _openPublicProfile(context, userId)),
           const SizedBox(height: 22),
           Card(
             child: Column(
@@ -227,15 +234,7 @@ class ProfileScreen extends StatelessWidget {
                     builder: (_) => WalletScreen(state: state),
                   )),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.storefront_rounded),
-                  title: const Text('Coin Seller'),
-                  subtitle: const Text('Coin seller tools'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
-                    builder: (_) => CoinSellerScreen(state: state),
-                  )),
-                ),
+                _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
                 ListTile(
                   leading: const Icon(Icons.workspace_premium_rounded),
                   title: const Text('VIP'),
@@ -243,11 +242,17 @@ class ProfileScreen extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => VipScreen(state: state),
-                    ),
+                    MaterialPageRoute<void>(builder: (_) => VipScreen(state: state)),
                   ),
                 ),
+                _item(context, state, Icons.diamond_rounded, 'Wealth Level', 'Lifetime gift spending level'),
+                _item(context, state, Icons.hexagon_rounded, 'Medal of Honor', 'Your profile medals'),
+                _item(context, state, Icons.store_rounded, 'Store', 'Frames, vehicles and entry effects'),
+                _item(context, state, Icons.task_alt_rounded, 'Task', 'Daily and account tasks'),
+                _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
+                _item(context, state, Icons.chat_bubble_rounded, 'Feedback', 'Send feedback and view history'),
+                _item(context, state, Icons.edit_rounded, 'Edit Profile', 'Name, country and gender'),
+                _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
                 ListTile(
                   leading: const Icon(Icons.military_tech_rounded, color: Color(0xFFFFD88A)),
                   title: const Text('ID Level'),
@@ -266,10 +271,21 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 ListTile(
                   leading: const Icon(Icons.visibility_rounded),
-                  title: const Text('Profile visitors'),
-                  subtitle: Text(state.hasVipPrivilege('view_visitors') ? 'See who viewed your profile' : 'Unlocks at VIP1'),
+                  title: const Text('Visitors'),
+                  subtitle: Text(state.hasVipPrivilege('view_visitors') ? 'See profile visits' : 'Unlocks at VIP1'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _showVisitors(context),
+                ),
+                _item(context, state, Icons.security_rounded, 'Blacklist', 'Blocked profiles and unblock controls'),
+                if (state.userRole == 'coin_seller')
+                ListTile(
+                  leading: const Icon(Icons.storefront_rounded),
+                  title: const Text('Coin Seller'),
+                  subtitle: const Text('Coin seller tools'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+                    builder: (_) => CoinSellerScreen(state: state),
+                  )),
                 ),
                 if (state.hasVipPrivilege('customer_service'))
                   ListTile(
@@ -279,11 +295,6 @@ class ProfileScreen extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => VipSupportScreen(state: state))),
                   ),
-                _item(context, state, Icons.badge_rounded, 'Unique ID', state.customVipId?.isNotEmpty == true ? state.customVipId! : state.userId),
-                _item(context, state, Icons.family_restroom_rounded, 'Family', 'Community and rankings'),
-                _item(context, state, Icons.favorite_rounded, 'CP', 'Relationship level and gifts'),
-                _item(context, state, Icons.store_rounded, 'Store', 'Frames, vehicles and entry effects'),
-                _item(context, state, Icons.security_rounded, 'Privacy & Safety', 'Block, report and controls'),
                 _item(context, state, Icons.settings_rounded, 'Settings', 'Language, account and app settings'),
                 _item(context, state, Icons.description_outlined, 'Terms & Privacy', 'Room rules, terms and privacy notice'),
                 ListTile(
@@ -310,7 +321,19 @@ class ProfileScreen extends StatelessWidget {
       onTap: () async {
         if (title == 'Settings') {
           await Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => const AppSettingsScreen(),
+            builder: (_) => AppSettingsScreen(state: state),
+          ));
+          return;
+        }
+        if (title == 'Edit Profile') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => EditProfileScreen(state: state),
+          ));
+          return;
+        }
+        if (title == 'Wealth Level' || title == 'Feedback' || title == 'Blacklist' || title == 'Task' || title == 'Medal of Honor') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => MineFeatureScreen(state: state, kind: title),
           ));
           return;
         }
@@ -329,6 +352,18 @@ class ProfileScreen extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Unique ID copied')),
           );
+          return;
+        }
+        if (title == 'Family') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => FamilyScreen(state: state),
+          ));
+          return;
+        }
+        if (title == 'CP') {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CpScreen(state: state),
+          ));
           return;
         }
         if (title == 'Store') {
@@ -370,6 +405,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Map<String, dynamic>? user;
   bool loading = true;
   bool isFriend = false;
+  bool isFollowing = false;
 
   @override
   void initState() {
@@ -381,11 +417,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final response = await widget.state.backend.userProfile(userId: widget.userId);
     final friends = await widget.state.backend.friends(userId: widget.state.userId);
     final friendStatus = friends.any((row) => row['id']?.toString() == widget.userId);
+    final followStatus = await widget.state.backend.isFollowing(userId: widget.state.userId, targetUserId: widget.userId);
     if (!mounted) return;
     setState(() {
       user = response?['user'] is Map ? Map<String, dynamic>.from(response!['user'] as Map) : null;
       loading = false;
       isFriend = friendStatus;
+      isFollowing = followStatus;
     });
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
@@ -446,7 +484,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               label: Text(isFriend ? 'Friend' : 'Add friend'),
                             ),
                           ),
-                        if (widget.state.hasVipPrivilege('free_say_hi'))
+                        if (widget.userId != widget.state.userId)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: OutlinedButton.icon(
+                              onPressed: _toggleFollow,
+                              icon: Icon(isFollowing ? Icons.person_remove_alt_1_rounded : Icons.person_add_alt_rounded),
+                              label: Text(isFollowing ? 'Following' : 'Follow'),
+                            ),
+                          ),
+                        if (widget.userId != widget.state.userId && widget.state.hasVipPrivilege('free_say_hi'))
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
                             child: FilledButton.icon(
@@ -461,6 +508,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     ),
                   ),
       );
+  }
+
+  Future<void> _toggleFollow() async {
+    final next = !isFollowing;
+    final ok = await widget.state.backend.setFollowing(
+      userId: widget.state.userId,
+      targetUserId: widget.userId,
+      followed: next,
+    );
+    if (!mounted) return;
+    if (ok) setState(() => isFollowing = next);
   }
 
   Future<void> _addFriend() async {

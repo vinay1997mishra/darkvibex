@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   display_name TEXT NOT NULL DEFAULT '',
   avatar_key TEXT,
+  country_code TEXT NOT NULL DEFAULT '',
+  gender TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT 'user'
     CHECK (role IN (
       'user',
@@ -179,6 +181,47 @@ CREATE TABLE IF NOT EXISTS user_friends (
   CHECK (user_id <> friend_user_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (friend_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS account_identities (
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (provider, subject),
+  UNIQUE (user_id, provider)
+);
+
+CREATE TABLE IF NOT EXISTS user_follows (
+  follower_user_id TEXT NOT NULL,
+  followed_user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (follower_user_id, followed_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_blocks (
+  blocker_user_id TEXT NOT NULL,
+  blocked_user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (blocker_user_id, blocked_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_feedback (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'received',
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_task_claims (
+  user_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  reward_coins INTEGER NOT NULL,
+  claimed_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, task_id)
 );
 
 CREATE TABLE IF NOT EXISTS game_rooms (
