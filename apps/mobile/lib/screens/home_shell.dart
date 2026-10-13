@@ -127,6 +127,8 @@ class _RoomsHome extends StatefulWidget {
 class _RoomsHomeState extends State<_RoomsHome> {
   AppState get state => widget.state;
   bool popular = true;
+  int topPage = 1;
+  final List<String> recentRoomIds = <String>[];
 
   Future<void> _openFourBoxMenu(BuildContext context) async {
     const entries = <(String, IconData, int)>[
@@ -298,6 +300,14 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   void _openRoom(RoomSummary room) {
+    setState(() {
+      recentRoomIds
+        ..remove(room.id)
+        ..insert(0, room.id);
+      if (recentRoomIds.length > 4) {
+        recentRoomIds.removeRange(4, recentRoomIds.length);
+      }
+    });
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -306,44 +316,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildPartyPage(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => TinniBackground(
         child: CustomScrollView(
           slivers: [
-            SliverAppBar(
-              floating: true,
-              backgroundColor: Colors.transparent,
-              title: const Text(
-                'DarkVibeX',
-                style: TextStyle(
-                  color: TinniPalette.gold,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              actions: [
-                IconButton(
-                  onPressed: () => _openFourBoxMenu(context),
-                  tooltip: 'Quick menu',
-                  icon: const TinniGlowIcon(
-                    icon: Icons.grid_view_rounded,
-                    size: 18,
-                    boxSize: 34,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => _createRoom(context),
-                  tooltip: 'Create room',
-                  icon: const TinniGlowIcon(
-                    icon: Icons.add_rounded,
-                    size: 19,
-                    boxSize: 34,
-                  ),
-                ),
-              ],
-            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -523,8 +501,394 @@ class _RoomsHomeState extends State<_RoomsHome> {
       ),
     );
   }
-}
 
+  Future<void> _showHomeNotifications() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .62,
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(
+                  Icons.notifications_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: TinniPalette.gold,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: state.messages.isEmpty
+                    ? const Center(child: Text('No notifications yet'))
+                    : ListView.builder(
+                        itemCount: state.messages.length,
+                        itemBuilder: (context, index) {
+                          final item = state.messages[index];
+                          return ListTile(
+                            leading: const Icon(Icons.mail_rounded),
+                            title: Text(item.name),
+                            subtitle: Text(
+                              item.preview,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: item.unread > 0
+                                ? Badge(label: Text(item.unread.toString()))
+                                : null,
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              widget.onSelect(2);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _topTabs() {
+    const labels = <String>['Mine', 'Party', 'Events', 'Country'];
+    return Row(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var i = 0; i < labels.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: TextButton(
+                      onPressed: () => setState(() => topPage = i),
+                      style: TextButton.styleFrom(
+                        foregroundColor: topPage == i
+                            ? TinniPalette.gold
+                            : TinniPalette.muted,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            labels[i],
+                            style: TextStyle(
+                              fontWeight: topPage == i
+                                  ? FontWeight.w900
+                                  : FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            width: topPage == i ? 22 : 0,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              color: TinniPalette.gold,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Rankings',
+          onPressed: () => _showRoomRanking(context),
+          icon: const TinniGlowIcon(
+            icon: Icons.leaderboard_rounded,
+            size: 18,
+            boxSize: 34,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Notifications',
+          onPressed: _showHomeNotifications,
+          icon: const TinniGlowIcon(
+            icon: Icons.notifications_rounded,
+            size: 18,
+            boxSize: 34,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Search',
+          onPressed: () => widget.onSelect(1),
+          icon: const TinniGlowIcon(
+            icon: Icons.search_rounded,
+            size: 18,
+            boxSize: 34,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHomeMinePage() {
+    final owned = state.rooms
+        .where((room) => room.ownerUserId == state.userId)
+        .toList(growable: false);
+    final recent = recentRoomIds
+        .map((id) {
+          for (final room in state.rooms) {
+            if (room.id == id) return room;
+          }
+          return null;
+        })
+        .whereType<RoomSummary>()
+        .toList(growable: false);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+      children: [
+        const Text(
+          'My room',
+          style: TextStyle(
+            color: TinniPalette.gold,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (owned.isEmpty)
+          TinniPanel(
+            onTap: () => _createRoom(context),
+            child: const Row(
+              children: [
+                TinniGlowIcon(
+                  icon: Icons.add_home_rounded,
+                  size: 28,
+                  boxSize: 54,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Create my room',
+                        style: TextStyle(
+                          color: TinniPalette.cream,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        'Your own room will appear here.',
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: TinniPalette.gold,
+                ),
+              ],
+            ),
+          )
+        else
+          _RoomCard(
+            state: state,
+            room: owned.first,
+            onTap: () => _openRoom(owned.first),
+          ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Recents',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            if (recent.isNotEmpty)
+              IconButton(
+                tooltip: 'Clear recents',
+                onPressed: () => setState(recentRoomIds.clear),
+                icon: const Icon(
+                  Icons.delete_sweep_rounded,
+                  color: TinniPalette.gold,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (recent.isEmpty)
+          TinniPanel(
+            onTap: () => setState(() => topPage = 1),
+            child: const Text(
+              'No recent rooms yet. Tap to open Party.',
+              style: TextStyle(color: TinniPalette.cream),
+            ),
+          )
+        else
+          SizedBox(
+            height: 120,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: recent.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 9),
+              itemBuilder: (context, index) {
+                final room = recent[index];
+                return SizedBox(
+                  width: 156,
+                  child: _TopRoomCard(
+                    state: state,
+                    room: room,
+                    rank: index + 1,
+                    onTap: () => _openRoom(room),
+                  ),
+                );
+              },
+            ),
+          ),
+        const SizedBox(height: 20),
+        const Text(
+          'My followings',
+          style: TextStyle(
+            color: TinniPalette.gold,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 42),
+          child: Column(
+            children: [
+              TinniGlowIcon(
+                icon: Icons.inventory_2_outlined,
+                size: 36,
+                boxSize: 62,
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Following rooms will appear here',
+                style: TextStyle(color: TinniPalette.muted),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEventsPage() {
+    final rooms = state.rooms
+        .where((room) => room.partyMode == 'Event hosting mode')
+        .toList(growable: false);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+      children: [
+        const Text(
+          'Events',
+          style: TextStyle(
+            color: TinniPalette.gold,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (rooms.isEmpty)
+          const TinniPanel(
+            child: Text(
+              'No event rooms are live right now.',
+              style: TextStyle(color: TinniPalette.muted),
+            ),
+          )
+        else
+          for (final room in rooms)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: _RoomCard(
+                state: state,
+                room: room,
+                onTap: () => _openRoom(room),
+              ),
+            ),
+      ],
+    );
+  }
+
+  Widget _buildCountryPage() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+      children: [
+        const Text(
+          'Country',
+          style: TextStyle(
+            color: TinniPalette.gold,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Rooms by country',
+          style: TextStyle(color: TinniPalette.muted),
+        ),
+        const SizedBox(height: 12),
+        for (final room in state.rooms)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 9),
+            child: _RoomCard(
+              state: state,
+              room: room,
+              onTap: () => _openRoom(room),
+            ),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) => TinniBackground(
+        child: Column(
+          children: [
+            _topTabs(),
+            const SizedBox(height: 6),
+            Expanded(
+              child: IndexedStack(
+                index: topPage,
+                children: [
+                  _buildHomeMinePage(),
+                  _buildPartyPage(context),
+                  _buildEventsPage(),
+                  _buildCountryPage(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+}
 class _DiscoverHome extends StatefulWidget {
   const _DiscoverHome({required this.state});
   final AppState state;
