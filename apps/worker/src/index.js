@@ -291,6 +291,11 @@ async function ensureUsersSchema(db) {
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
       date_of_birth TEXT,
+      gender TEXT NOT NULL DEFAULT '',
+      call_verified INTEGER NOT NULL DEFAULT 0,
+      call_verification_status TEXT NOT NULL DEFAULT 'unverified',
+      call_verified_at INTEGER,
+      call_verification_revoked_at INTEGER,
       role TEXT NOT NULL DEFAULT 'user',
       coins INTEGER NOT NULL DEFAULT 0,
       diamonds INTEGER NOT NULL DEFAULT 0,
@@ -308,6 +313,11 @@ async function ensureUsersSchema(db) {
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
     ["date_of_birth", "TEXT"],
+    ["gender", "TEXT NOT NULL DEFAULT ''"],
+    ["call_verified", "INTEGER NOT NULL DEFAULT 0"],
+    ["call_verification_status", "TEXT NOT NULL DEFAULT 'unverified'"],
+    ["call_verified_at", "INTEGER"],
+    ["call_verification_revoked_at", "INTEGER"],
     ["role", "TEXT NOT NULL DEFAULT 'user'"],
     ["coins", "INTEGER NOT NULL DEFAULT 0"],
     ["diamonds", "INTEGER NOT NULL DEFAULT 0"],
@@ -706,6 +716,52 @@ async function ensureDirectCallTable(db) {
   await db.prepare(
     "CREATE INDEX IF NOT EXISTS idx_direct_calls_caller_state ON direct_calls(caller_user_id,state,created_at DESC)"
   ).run();
+  const callInfo = await db.prepare("PRAGMA table_info(direct_calls)").all();
+  const callColumns = new Set((callInfo.results ?? []).map((row) => String(row.name ?? "")));
+  const callAdditions = [
+    ["call_kind", "TEXT NOT NULL DEFAULT 'direct'"],
+    ["cost_coins_per_minute", "INTEGER NOT NULL DEFAULT 0"],
+    ["receiver_diamonds_per_minute", "INTEGER NOT NULL DEFAULT 0"],
+    ["receiver_earning_eligible", "INTEGER NOT NULL DEFAULT 0"],
+    ["billed_minutes", "INTEGER NOT NULL DEFAULT 0"],
+    ["caller_cost_coins", "INTEGER NOT NULL DEFAULT 0"],
+    ["receiver_reward_diamonds", "INTEGER NOT NULL DEFAULT 0"],
+    ["end_reason", "TEXT"],
+  ];
+  for (const [name, definition] of callAdditions) {
+    if (callColumns.has(name)) continue;
+    await db.prepare(`ALTER TABLE direct_calls ADD COLUMN ${name} ${definition}`).run();
+  }
+}
+
+async function ensureCallVerificationSchema(db) {
+  await ensureUsersSchema(db);
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS call_verification_submissions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_owner',
+      system_passed INTEGER NOT NULL DEFAULT 0,
+      photo_front_key TEXT NOT NULL,
+      photo_left_key TEXT NOT NULL,
+      photo_right_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      reviewed_at INTEGER,
+      review_note TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_call_verify_status_time ON call_verification_submissions(status,created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS random_call_stats (
+      user_id TEXT PRIMARY KEY,
+      offers INTEGER NOT NULL DEFAULT 0,
+      answered INTEGER NOT NULL DEFAULT 0,
+      completed_calls INTEGER NOT NULL DEFAULT 0,
+      total_minutes INTEGER NOT NULL DEFAULT 0,
+      last_offer_at INTEGER,
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+  ]);
 }
 
 async function expireDirectCalls(db, ts = now()) {
