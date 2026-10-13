@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
@@ -3571,6 +3572,104 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<Map<String, dynamic>?> _createRoomCustomGift() async {
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connect to the server before creating a Custom Gift.')),
+      );
+      return null;
+    }
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['png', 'jpg', 'jpeg', 'webp', 'mp4'],
+    );
+    if (files.isEmpty || !mounted) return null;
+    final file = files.first;
+    final path = file.path;
+    if (path == null || path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This custom gift file could not be opened.')),
+      );
+      return null;
+    }
+    final lower = file.name.toLowerCase();
+    final extension = lower.contains('.') ? lower.split('.').last : '';
+    final contentType = switch (extension) {
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'mp4' => 'video/mp4',
+      _ => '',
+    };
+    if (contentType.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose PNG, JPG, WebP or MP4.')),
+      );
+      return null;
+    }
+
+    final nameController = TextEditingController(
+      text: file.name.contains('.')
+          ? file.name.substring(0, file.name.lastIndexOf('.'))
+          : file.name,
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Custom Gift'),
+        content: TextField(
+          controller: nameController,
+          maxLength: 40,
+          decoration: const InputDecoration(labelText: 'Gift name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = nameController.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    if (name == null || name.trim().isEmpty || !mounted) return null;
+
+    try {
+      final bytes = await File(path).readAsBytes();
+      final normalizedExtension = extension == 'jpeg' ? 'jpg' : extension;
+      final key = await widget.state.backend.uploadImage(
+        key: 'custom-gifts/${widget.state.userId}/gift-${DateTime.now().microsecondsSinceEpoch}.$normalizedExtension',
+        bytes: bytes,
+        contentType: contentType,
+      );
+      if (key == null) throw StateError('upload_failed');
+      final result = await widget.state.backend.createCustomGift(
+        userId: widget.state.userId,
+        name: name.trim(),
+        assetKey: key,
+      );
+      final gift = result?['gift'];
+      if (gift is! Map) throw StateError('create_failed');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(name.trim() + ' added to Custom Gifts.')),
+      );
+      return Map<String, dynamic>.from(gift);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Custom Gift could not be created.')),
+        );
+      }
+      return null;
+    }
+  }
+
   Future<void> _sendGift() async {
     String receiverId = widget.room.ownerUserId;
     if (isRoomHost) {
@@ -3592,6 +3691,24 @@ class _RoomScreenState extends State<RoomScreen> {
       builder: (sheetContext) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
           const Padding(padding: EdgeInsets.all(18), child: Text('Choose a gift', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+          ListTile(
+            key: const Key('room-create-custom-gift'),
+            leading: const TinniGlowIcon(
+              icon: Icons.add_photo_alternate_rounded,
+              size: 20,
+              boxSize: 38,
+            ),
+            title: const Text('Custom Gift'),
+            subtitle: const Text('Create with PNG, JPG, WebP or MP4'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              final created = await _createRoomCustomGift();
+              if (created == null || !mounted) return;
+              await _sendGiftByDefinition(created, receiverId);
+            },
+          ),
+          const Divider(height: 1),
           ...gifts.map((item) => ListTile(
             leading: Text(item['emoji']?.toString() ?? '🎁', style: const TextStyle(fontSize: 30)),
             title: Text(item['name']?.toString() ?? 'Gift'),
@@ -3602,29 +3719,10 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
     );
     if (!mounted || gift == null) return;
-    final giftId = gift['id']?.toString() ?? 'basic-star';
-    final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
     if (widget.state.backendConnected && receiverId.isNotEmpty) {
-      final result = await widget.state.backend.sendGift(
-        roomId: widget.room.id, senderUserId: widget.state.userId,
-        receiverUserId: receiverId, giftId: giftId, coinCost: giftCost,
-      );
-      final remoteBalance = int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
-      if (remoteBalance != null) {
-        widget.state.setCoinBalance(remoteBalance);
-        await widget.state.refreshIdLevel(notify: false);
-        if (!mounted) return;
-        unawaited(_loadRoomGiftRanking());
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins')));
-        return;
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gift was not sent. Check VIP access and coin balance.')));
+      await _sendGiftByDefinition(gift, receiverId);
       return;
     }
-    final ok = widget.state.spendCoins(giftCost);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins' : 'Not enough coins')));
   }
 
   Future<void> _sendInlineMessage([String? override]) async {
