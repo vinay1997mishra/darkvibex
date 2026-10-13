@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
 import 'vip_screen.dart';
@@ -344,47 +342,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$day/$month/${value.year} $hour:$minute';
   }
 
-  Future<void> _pickAvatar(BuildContext context) async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-      maxHeight: 1024,
-    );
-    if (file == null) return;
-    final ext = file.name.split('.').last.toLowerCase();
-    final type = switch (ext) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'jpg' || 'jpeg' => 'image/jpeg',
-      _ => null,
-    };
-    if (type == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
-        );
-      }
-      return;
-    }
-    final key = await state.backend.uploadImage(
-      key: 'users/${state.userId}/avatar-${DateTime.now().microsecondsSinceEpoch}.${ext == 'jpeg' ? 'jpg' : ext}',
-      bytes: await file.readAsBytes(),
-      contentType: type,
-    );
-    if (key == null || !await state.backend.setUserAvatar(
-      userId: state.userId,
-      avatarKey: key,
-    )) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo could not be saved')),
-        );
-      }
-      return;
-    }
-    state.setAvatarKey(key);
-  }
 
   @override
   Widget build(BuildContext context) {
