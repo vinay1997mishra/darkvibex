@@ -24,6 +24,7 @@
       "bucket_name": "darkvibex-files"
     }
   ],
+  "send_email": [{ "name": "EMAIL" }],
   "triggers": {
     "crons": ["*/5 * * * *"]
   }
@@ -35,4 +36,5 @@
   //   LIVEKIT_API_KEY
   //   LIVEKIT_API_SECRET
   //   GOOGLE_WEB_CLIENT_ID
+  //   MINE_OTP_FROM_EMAIL (verified Cloudflare Email Service sender address)
 }
