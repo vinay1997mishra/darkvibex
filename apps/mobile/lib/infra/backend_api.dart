@@ -414,6 +414,23 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> globalRanking({
+    required String kind,
+    required String period,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rankings?kind=${Uri.encodeQueryComponent(kind)}'
+      '&period=${Uri.encodeQueryComponent(period)}',
+    );
+    final rows = value?['ranking'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
   Future<Map<String, dynamic>?> roomGiftRanking({required String roomId}) =>
       _json(
         'GET',
