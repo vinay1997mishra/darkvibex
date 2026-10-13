@@ -205,8 +205,39 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   Future<void> _sendImage() async {
     if (!widget.state.backendConnected || uploadingImage) return;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () =>
+                      Navigator.pop(sheetContext, ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_rounded),
+                  label: const Text('Gallery'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      Navigator.pop(sheetContext, ImageSource.camera),
+                  icon: const Icon(Icons.photo_camera_rounded),
+                  label: const Text('Camera'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
     final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
+      source: source,
       imageQuality: 85,
       maxWidth: 1600,
       maxHeight: 1600,
