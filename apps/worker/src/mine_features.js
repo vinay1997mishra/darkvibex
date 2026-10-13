@@ -152,36 +152,6 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
     return json({ ok: true, medals });
   }
 
-  if (path === "/api/mine/guardian" && request.method === "GET") {
-    const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    const windowDays = 30;
-    const threshold = 5000000;
-    const rows = await db.prepare(
-      `SELECT g.sender_user_id AS user_id, u.display_name, u.avatar_key,
-              SUM(g.coin_cost) AS gift_coins
-         FROM gift_events g
-         JOIN users u ON u.id = g.sender_user_id
-        WHERE g.receiver_user_id = ? AND g.created_at >= ?
-        GROUP BY g.sender_user_id, u.display_name, u.avatar_key
-        ORDER BY gift_coins DESC, g.sender_user_id ASC
-        LIMIT 50`
-    ).bind(userId, now() - windowDays * 24 * 60 * 60 * 1000).all();
-    const supporters = (rows.results ?? []).map((row, index) => {
-      const coins = Math.max(0, Number(row.gift_coins ?? 0));
-      return { ...row, rank: index + 1, coins, points: coins, guardian_eligible: coins >= threshold };
-    });
-    const first = supporters[0] ?? null;
-    const guardian = first?.guardian_eligible
-      ? { ...first, threshold, progress: first.coins }
-      : null;
-    return json({
-      ok: true, guardian, supporters, candidate_threshold: threshold,
-      guardian_threshold: threshold, guardian_threshold_coins: threshold, window_days: windowDays,
-    });
-  }
-
   if (path === "/api/mine/feedback" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
