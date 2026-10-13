@@ -775,6 +775,19 @@ class _RoomScreenState extends State<RoomScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room settings could not be saved')));
       return;
     }
+    final savedRoomMode = result['room_mode'] as String;
+    if (savedRoomMode != 'live' && cameraPublished && rtc is LiveKitRtcAdapter) {
+      try {
+        await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+        if (mounted) {
+          setState(() {
+            cameraPublished = false;
+            localVideoTrack = null;
+          });
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
     setState(() {
       roomName = result['name'] as String;
       roomSeatCount = result['seat_count'] as int;
@@ -782,7 +795,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomPasswordSet = roomLocked;
       roomThemeId = result['theme_id'] as String;
       roomPartyMode = result['party_mode'] as String;
-      roomMode = result['room_mode'] as String;
+      roomMode = savedRoomMode;
       groupPkEnabled = result['group_pk_enabled'] as bool;
       final welcomeKey = result['welcome_image_key'] as String;
       roomWelcomeImageKey = welcomeKey.isEmpty ? null : welcomeKey;
@@ -3128,6 +3141,7 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Widget _videoStage() {
+    if (roomMode != 'live') return const SizedBox.shrink();
     final entries = <MapEntry<String, VideoTrack>>[];
     if (localVideoTrack != null) {
       entries.add(MapEntry<String, VideoTrack>('You', localVideoTrack!));
@@ -3205,6 +3219,28 @@ class _RoomScreenState extends State<RoomScreen> {
           ],
         ),
         actions: [
+          if (roomMode == 'live')
+            IconButton(
+              onPressed: mySeat == null ? null : _toggleCamera,
+              tooltip: cameraPublished ? 'Turn camera off' : 'Turn camera on',
+              icon: TinniGlowIcon(
+                icon: cameraPublished
+                    ? Icons.videocam_off_rounded
+                    : Icons.videocam_rounded,
+                size: 18,
+                boxSize: 34,
+              ),
+            ),
+          if (roomMode == 'game')
+            IconButton(
+              onPressed: _openGames,
+              tooltip: 'Open Game Center',
+              icon: const TinniGlowIcon(
+                icon: Icons.sports_esports_rounded,
+                size: 18,
+                boxSize: 34,
+              ),
+            ),
           IconButton(
             onPressed: _shareRoomId,
             tooltip: 'Share room',
