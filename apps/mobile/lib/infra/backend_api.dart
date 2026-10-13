@@ -270,6 +270,35 @@ class BackendApi {
         '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-number',
       );
 
+  Future<Map<String, dynamic>?> roomThemes({
+    required String roomId,
+  }) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/themes',
+      );
+
+  Future<Map<String, dynamic>?> createRoomTheme({
+    required String roomId,
+    required String name,
+    required String assetKey,
+    bool policyConfirmed = true,
+    int durationDays = 7,
+    bool permanent = false,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/themes',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'name': name,
+          'asset_key': assetKey,
+          'policy_confirmed': policyConfirmed,
+          'duration_days': durationDays,
+          'permanent': permanent,
+        },
+      );
+
   Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
       _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
 
