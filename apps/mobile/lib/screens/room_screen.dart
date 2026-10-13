@@ -3862,6 +3862,55 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _sendGiftByDefinition(
+    Map<String, dynamic> gift,
+    String receiverId,
+  ) async {
+    final giftId = gift['id']?.toString() ?? '';
+    final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
+    if (giftId.isEmpty || giftCost <= 0 || receiverId.isEmpty) return;
+    final result = await widget.state.backend.sendGift(
+      roomId: widget.room.id,
+      senderUserId: widget.state.userId,
+      receiverUserId: receiverId,
+      giftId: giftId,
+      coinCost: giftCost,
+    );
+    final remoteBalance =
+        int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
+    if (remoteBalance != null) {
+      widget.state.setCoinBalance(remoteBalance);
+      _playGiftEffect(gift);
+      await widget.state.refreshIdLevel(notify: false);
+      if (!mounted) return;
+      unawaited(_loadRoomGiftRanking());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (gift['emoji']?.toString() ?? '🎁') +
+                ' ' +
+                (gift['name']?.toString() ?? 'Gift') +
+                ' sent • ' +
+                giftCost.toString() +
+                ' coins',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final error = result?['error']?.toString() ?? '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error.isEmpty
+              ? 'Gift was not sent. Check access and coin balance.'
+              : error.replaceAll('_', ' '),
+        ),
+      ),
+    );
+  }
+
   Future<void> _sendGift() async {
     String receiverId = widget.room.ownerUserId;
     if (isRoomHost) {
