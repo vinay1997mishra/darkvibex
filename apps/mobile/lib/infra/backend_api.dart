@@ -829,6 +829,31 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> officialMessages() async {
+    final value = await _json('GET', '/api/messages/official');
+    final rows = value?['notices'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> activityMessages({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/messages/activity?user_id=${Uri.encodeQueryComponent(userId)}',
+    );
+    final rows = value?['activity'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
   Future<Map<String, dynamic>?> socialStats({
     required String userId,
   }) =>
