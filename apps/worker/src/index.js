@@ -315,6 +315,10 @@ async function ensureUsersSchema(db) {
       country_code TEXT,
       country_name TEXT,
       flag_emoji TEXT,
+      gender TEXT,
+      age_change_count INTEGER NOT NULL DEFAULT 0,
+      country_change_count INTEGER NOT NULL DEFAULT 0,
+      gender_change_count INTEGER NOT NULL DEFAULT 0,
       language TEXT NOT NULL DEFAULT 'English',
       role TEXT NOT NULL DEFAULT 'user',
       coins INTEGER NOT NULL DEFAULT 0,
@@ -336,6 +340,10 @@ async function ensureUsersSchema(db) {
     ["country_code", "TEXT"],
     ["country_name", "TEXT"],
     ["flag_emoji", "TEXT"],
+    ["gender", "TEXT"],
+    ["age_change_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["country_change_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["gender_change_count", "INTEGER NOT NULL DEFAULT 0"],
     ["language", "TEXT NOT NULL DEFAULT 'English'"],
     ["role", "TEXT NOT NULL DEFAULT 'user'"],
     ["coins", "INTEGER NOT NULL DEFAULT 0"],
@@ -361,7 +369,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
   return db.prepare(
-    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, language FROM users WHERE id = ?"
+    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -375,6 +383,7 @@ async function ensureRoomCoreSchema(db) {
       name TEXT NOT NULL,
       seat_count INTEGER NOT NULL DEFAULT 12,
       locked INTEGER NOT NULL DEFAULT 0,
+      country_code TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (owner_user_id) REFERENCES users(id)
@@ -388,6 +397,7 @@ async function ensureRoomCoreSchema(db) {
     ["name", "TEXT NOT NULL DEFAULT ''"],
     ["seat_count", "INTEGER NOT NULL DEFAULT 12"],
     ["locked", "INTEGER NOT NULL DEFAULT 0"],
+    ["country_code", "TEXT NOT NULL DEFAULT ''"],
     ["created_at", "INTEGER NOT NULL DEFAULT 0"],
     ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
   ];
@@ -395,6 +405,15 @@ async function ensureRoomCoreSchema(db) {
     if (roomColumns.has(name)) continue;
     await db.prepare(`ALTER TABLE rooms ADD COLUMN ${name} ${definition}`).run();
   }
+  await db.prepare(
+    `UPDATE rooms
+        SET country_code = COALESCE(
+          NULLIF((SELECT country_code FROM users WHERE users.id = rooms.owner_user_id), ''),
+          country_code,
+          ''
+        )
+      WHERE COALESCE(country_code, '') = ''`
+  ).run();
 
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_members (
@@ -868,12 +887,17 @@ async function ensureImageTables(db) {
   ).run();
 }
 
-async function listRooms(db) {
+async function listRooms(db, viewerUserId) {
   await ensureImageTables(db);
   await ensureRoomSettingsTable(db);
   await ensureVipSchema(db);
+  const viewer = await db.prepare(
+    "SELECT country_code FROM users WHERE id=? LIMIT 1"
+  ).bind(viewerUserId).first();
+  const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
+  if (!viewerCountry) return [];
   const result = await db.prepare(
-    `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
+    `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
             COALESCE(rs.room_mode, 'voice') AS room_mode,
@@ -886,9 +910,10 @@ async function listRooms(db) {
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
+      WHERE r.country_code = ?
       ORDER BY r.updated_at DESC
       LIMIT 100`
-  ).bind(now()).all();
+  ).bind(now(), viewerCountry).all();
   return result.results ?? [];
 }
 
@@ -2493,18 +2518,32 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureLampSchema(db);
+    await ensureRoomSettingsTable(db);
+    const viewer = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
+    if (!viewerCountry) return json({ ok:true,rooms:[] });
     const rows = await db.prepare(
-      `SELECT r.id,r.name,r.owner_name,r.owner_user_id,r.online,r.seat_count,
-              r.avatar_key,COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
+      `SELECT r.id,r.name,
+              COALESCE(u.display_name,'Owner') AS owner_name,
+              r.owner_user_id,
+              COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
+              r.seat_count,
+              ri.image_key AS avatar_key,
+              r.country_code,
+              COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
               COALESCE(s.room_mode,'voice') AS room_mode,
               rf.followed_at
          FROM room_followers rf
          JOIN rooms r ON r.id=rf.room_id
+         LEFT JOIN users u ON u.id=r.owner_user_id
+         LEFT JOIN room_images ri ON ri.room_id=r.id
          LEFT JOIN room_settings s ON s.room_id=r.id
-        WHERE rf.user_id=?
+        WHERE rf.user_id=? AND r.country_code=?
         ORDER BY rf.updated_at DESC LIMIT 100`
-    ).bind(userId).all();
-    return json({ ok: true, rooms: rows.results ?? [] });
+    ).bind(userId,viewerCountry).all();
+    return json({ ok:true,rooms:rows.results ?? [] });
   }
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
@@ -2703,7 +2742,7 @@ async function handleApi(request, env, url) {
         ).bind(String(body.date_of_birth),now(),userId).run();
       }
       const latest=await db.prepare(
-        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,language FROM users WHERE id=?"
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=?"
       ).bind(userId).first();
       const token=await createSessionToken(env,userId,latest?.display_name ?? userId);
       return json({ok:true,token,user:latest,provider:"email"});
@@ -2719,7 +2758,7 @@ async function handleApi(request, env, url) {
       const userId=await emailPasswordLogin(db,body.email,body.password);
       await ensureUserAllowed(db,userId);
       const user=await db.prepare(
-        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,language FROM users WHERE id=? LIMIT 1"
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       if(!user) throw new Error("user_not_found");
       const token=await createSessionToken(env,userId,user.display_name);
@@ -2887,52 +2926,134 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const displayName = String(body.display_name ?? "").trim().slice(0, 60);
+    const hasDob = Object.prototype.hasOwnProperty.call(body, "date_of_birth");
+    const hasCountry = Object.prototype.hasOwnProperty.call(body, "country_code") ||
+      Object.prototype.hasOwnProperty.call(body, "country_name");
+    const hasGender = Object.prototype.hasOwnProperty.call(body, "gender");
+    const hasLanguage = Object.prototype.hasOwnProperty.call(body, "language");
     const dateOfBirth = String(body.date_of_birth ?? "").trim();
     const countryCode = String(body.country_code ?? "").trim().toUpperCase();
     const countryName = String(body.country_name ?? "").trim().slice(0, 80);
     const flagEmoji = String(body.flag_emoji ?? "").trim().slice(0, 24);
+    const gender = String(body.gender ?? "").trim().toLowerCase();
     const language = String(body.language ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
-    if (!displayName) return json({ ok: false, error: "display_name_required" }, { status: 400 });
-    if (dateOfBirth && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
-      return json({ ok: false, error: "invalid_date_of_birth" }, { status: 400 });
+    if (!userId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    if (!displayName) return json({ ok:false,error:"display_name_required" }, { status:400 });
+    if (hasDob && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+      return json({ ok:false,error:"invalid_date_of_birth" }, { status:400 });
     }
-    if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) {
-      return json({ ok: false, error: "invalid_country_code" }, { status: 400 });
+    if (hasCountry && (!/^[A-Z]{2}$/.test(countryCode) || !countryName)) {
+      return json({ ok:false,error:"country_incomplete" }, { status:400 });
     }
-    if ((countryCode && !countryName) || (!countryCode && countryName)) {
-      return json({ ok: false, error: "country_incomplete" }, { status: 400 });
+    if (hasGender && !new Set(["male","female"]).has(gender)) {
+      return json({ ok:false,error:"invalid_gender" }, { status:400 });
     }
-    if (language && !DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
-      return json({ ok: false, error: "unsupported_language" }, { status: 400 });
+    if (hasLanguage && !DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
+      return json({ ok:false,error:"unsupported_language" }, { status:400 });
     }
+
     await ensureUsersSchema(db);
-    await db.prepare(
+    await ensureRoomCoreSchema(db);
+    const current = await db.prepare(
+      `SELECT date_of_birth,country_code,country_name,flag_emoji,gender,language,
+              age_change_count,country_change_count,gender_change_count
+         FROM users WHERE id=? LIMIT 1`
+    ).bind(userId).first();
+    if (!current) return json({ ok:false,error:"user_not_found" }, { status:404 });
+
+    const oldDob = String(current.date_of_birth ?? "").trim();
+    const oldCountry = String(current.country_code ?? "").trim().toUpperCase();
+    const oldGender = String(current.gender ?? "").trim().toLowerCase();
+    const nextDob = hasDob ? dateOfBirth : oldDob;
+    const nextCountry = hasCountry ? countryCode : oldCountry;
+    const nextCountryName = hasCountry ? countryName : String(current.country_name ?? "").trim();
+    const nextFlag = hasCountry ? flagEmoji : String(current.flag_emoji ?? "").trim();
+    const nextGender = hasGender ? gender : oldGender;
+    const nextLanguage = hasLanguage ? language : String(current.language ?? "English").trim();
+
+    const ageChanged = Boolean(oldDob) && nextDob !== oldDob;
+    const countryChanged = Boolean(oldCountry) && nextCountry !== oldCountry;
+    const genderChanged = Boolean(oldGender) && nextGender !== oldGender;
+    const ageChanges = Number(current.age_change_count ?? 0);
+    const countryChanges = Number(current.country_change_count ?? 0);
+    const genderChanges = Number(current.gender_change_count ?? 0);
+
+    if (ageChanged && ageChanges >= 3) {
+      return json({ ok:false,error:"age_change_limit_reached",remaining:0 }, { status:409 });
+    }
+    if (countryChanged && countryChanges >= 3) {
+      return json({ ok:false,error:"country_change_limit_reached",remaining:0 }, { status:409 });
+    }
+    if (genderChanged && genderChanges >= 3) {
+      return json({ ok:false,error:"gender_change_limit_reached",remaining:0 }, { status:409 });
+    }
+
+    const nextAgeCount = ageChanges + (ageChanged ? 1 : 0);
+    const nextCountryCount = countryChanges + (countryChanged ? 1 : 0);
+    const nextGenderCount = genderChanges + (genderChanged ? 1 : 0);
+    const ts = now();
+    const update = await db.prepare(
       `UPDATE users
-          SET display_name = ?,
-              date_of_birth = ?,
-              country_code = CASE WHEN ? <> '' THEN ? ELSE country_code END,
-              country_name = CASE WHEN ? <> '' THEN ? ELSE country_name END,
-              flag_emoji = CASE WHEN ? <> '' THEN ? ELSE flag_emoji END,
-              language = CASE WHEN ? <> '' THEN ? ELSE language END,
-              updated_at = ?
-        WHERE id = ?`
+          SET display_name=?,
+              date_of_birth=?,
+              country_code=?,
+              country_name=?,
+              flag_emoji=?,
+              gender=?,
+              language=?,
+              age_change_count=?,
+              country_change_count=?,
+              gender_change_count=?,
+              updated_at=?
+        WHERE id=?
+          AND age_change_count=?
+          AND country_change_count=?
+          AND gender_change_count=?`
     ).bind(
       displayName,
-      dateOfBirth || null,
-      countryCode, countryCode,
-      countryName, countryName,
-      flagEmoji, flagEmoji,
-      language, language,
-      now(),
+      nextDob || null,
+      nextCountry || null,
+      nextCountryName || null,
+      nextFlag || null,
+      nextGender || null,
+      nextLanguage || "English",
+      nextAgeCount,
+      nextCountryCount,
+      nextGenderCount,
+      ts,
       userId,
+      ageChanges,
+      countryChanges,
+      genderChanges,
     ).run();
+    if (Number(update.meta?.changes ?? 0) !== 1) {
+      return json({ ok:false,error:"profile_change_conflict_retry" }, { status:409 });
+    }
+
+    if (nextCountry && nextCountry !== oldCountry) {
+      await db.prepare(
+        "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=?"
+      ).bind(nextCountry,ts,userId).run();
+    } else if (nextCountry && !oldCountry) {
+      await db.prepare(
+        "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=? AND COALESCE(country_code,'')=''"
+      ).bind(nextCountry,ts,userId).run();
+    }
+
     const user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, language FROM users WHERE id = ?"
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(userId).first();
-    return json({ ok: true, user });
+    return json({
+      ok:true,
+      user,
+      change_limits:{
+        age_remaining:Math.max(0,3-nextAgeCount),
+        country_remaining:Math.max(0,3-nextCountryCount),
+        gender_remaining:Math.max(0,3-nextGenderCount),
+      },
+    });
   }
 
   if (url.pathname === "/api/users/language" && request.method === "POST") {
@@ -2993,11 +3114,11 @@ async function handleApi(request, env, url) {
     await ensureVipSchema(db);
     let viewedUserId = requestedUserId;
     let user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, language FROM users WHERE id = ?"
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (!user && requestedUserId) {
       const byPublicId = await db.prepare(
-        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.language
+        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.gender,u.age_change_count,u.country_change_count,u.gender_change_count,u.language
            FROM user_vip v
            JOIN users u ON u.id=v.user_id
           WHERE v.custom_id=?
@@ -3789,7 +3910,16 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/rooms" && request.method === "GET") {
-    return json({ ok: true, rooms: await listRooms(db) });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    return json({
+      ok:true,
+      rooms:await listRooms(db,String(session.sub)),
+    });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "avatar" && request.method === "POST") {
@@ -3857,6 +3987,13 @@ async function handleApi(request, env, url) {
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, ownerId);
     await ensureRoomSettingsTable(db);
+    const ownerProfile = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(ownerId).first();
+    const ownerCountry = String(ownerProfile?.country_code ?? "").trim().toUpperCase();
+    if (!ownerCountry) {
+      return json({ ok:false,error:"country_required_for_room" }, { status:409 });
+    }
 
     const seatCount = requestedSeatCount;
     const requestedRoomId = String(body.id ?? "").trim();
@@ -3880,8 +4017,8 @@ async function handleApi(request, env, url) {
     try {
       await db.batch([
         db.prepare(
-          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
-        ).bind(roomId, ownerId, name, seatCount, ts, ts),
+          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, country_code, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)"
+        ).bind(roomId, ownerId, name, seatCount, ownerCountry, ts, ts),
         db.prepare(
           "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
         ).bind(roomId, partyMode, roomMode, ts),
@@ -3932,12 +4069,20 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
-      `SELECT r.owner_user_id,r.locked,COALESCE(s.lock_password_hash,'') AS lock_password_hash
+      `SELECT r.owner_user_id,r.locked,r.country_code,COALESCE(s.lock_password_hash,'') AS lock_password_hash
          FROM rooms r
          LEFT JOIN room_settings s ON s.room_id=r.id
         WHERE r.id=?`
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const userCountryRow = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    const userCountry = String(userCountryRow?.country_code ?? "").trim().toUpperCase();
+    const roomCountry = String(roomAccess.country_code ?? "").trim().toUpperCase();
+    if (!userCountry || !roomCountry || userCountry !== roomCountry) {
+      return json({ ok:false,error:"room_country_mismatch" }, { status:403 });
+    }
     await ensureRoomSafetyTables(db);
     const roomBan = await db.prepare(
       "SELECT 1 AS blocked FROM room_bans WHERE room_id = ? AND user_id = ?"
@@ -5417,8 +5562,17 @@ async function handleApi(request, env, url) {
         ? 7 * 24 * 60 * 60 * 1000
         : 24 * 60 * 60 * 1000;
     const cutoff = now() - windowMs;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const viewer = await db.prepare(
+      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+    ).bind(String(session.sub)).first();
+    const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
     let rows;
     if (kind === "room") {
+      if (!viewerCountry) return json({ ok:true,kind,period,ranking:[] });
       rows = await db.prepare(
         `SELECT r.id AS room_id,
                 r.name AS room_name,
@@ -5430,9 +5584,10 @@ async function handleApi(request, env, url) {
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
+          WHERE r.country_code=?
           ORDER BY score DESC, online DESC, r.updated_at DESC
           LIMIT 100`
-      ).bind(cutoff).all();
+      ).bind(cutoff,viewerCountry).all();
     } else if (kind === "charm") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
