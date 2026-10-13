@@ -1141,6 +1141,37 @@ class BackendApi {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> profileTrends({
+    required String userId,
+    int limit = 40,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/profile/trends?user_id=${Uri.encodeQueryComponent(userId)}&limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['trends'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> addProfileTrend({
+    required String userId,
+    required String text,
+  }) =>
+      _json(
+        'POST',
+        '/api/profile/trends',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'text': text,
+        },
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> socialStats({
     required String userId,
   }) =>
