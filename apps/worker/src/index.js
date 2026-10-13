@@ -1179,6 +1179,259 @@ function randomFiveDigitRoomCode() {
   return String(10000 + (values[0] % 90000));
 }
 
+const LUDO_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
+const LUDO_OFFSETS = Object.freeze({ red: 0, green: 13, yellow: 26, blue: 39 });
+const LUDO_SAFE_TRACK = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+
+function ludoInitialState() {
+  return {
+    current_player: "red",
+    rolled: null,
+    winner: null,
+    status: "RED starts. Roll the dice.",
+    tokens: {
+      red: [-1, -1, -1, -1],
+      green: [-1, -1, -1, -1],
+      yellow: [-1, -1, -1, -1],
+      blue: [-1, -1, -1, -1],
+    },
+  };
+}
+
+function ludoTrackIndex(color, progress) {
+  if (!(color in LUDO_OFFSETS) || progress < 0 || progress >= 52) return -1;
+  return (LUDO_OFFSETS[color] + progress) % 52;
+}
+
+function ludoMovableIndexes(state) {
+  const dice = Number(state?.rolled ?? 0);
+  const color = String(state?.current_player ?? "red");
+  const tokens = Array.isArray(state?.tokens?.[color]) ? state.tokens[color] : [];
+  if (!dice || state?.winner) return [];
+  const result = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const progress = Number(tokens[index]);
+    if (progress >= 57) continue;
+    if (progress < 0) {
+      if (dice === 6) result.push(index);
+    } else if (progress + dice <= 57) {
+      result.push(index);
+    }
+  }
+  return result;
+}
+
+async function ensureLudoSchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS ludo_room_sessions (
+      room_id TEXT PRIMARY KEY,
+      state_json TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS ludo_room_players (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      color TEXT NOT NULL,
+      joined_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      UNIQUE (room_id, color),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+  ]);
+}
+
+async function requireLudoRoomMember(db, roomId, userId) {
+  const room = await db.prepare(
+    "SELECT id,owner_user_id FROM rooms WHERE id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!room) throw new Error("room_not_found");
+  const member = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1"
+  ).bind(roomId, userId).first();
+  if (!member) throw new Error("room_membership_required");
+  return room;
+}
+
+async function loadLudoState(db, roomId) {
+  await ensureLudoSchema(db);
+  let row = await db.prepare(
+    "SELECT state_json,version,updated_at FROM ludo_room_sessions WHERE room_id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!row) {
+    const state = ludoInitialState();
+    const ts = now();
+    await db.prepare(
+      "INSERT OR IGNORE INTO ludo_room_sessions(room_id,state_json,version,updated_at) VALUES(?,?,1,?)"
+    ).bind(roomId, JSON.stringify(state), ts).run();
+    row = await db.prepare(
+      "SELECT state_json,version,updated_at FROM ludo_room_sessions WHERE room_id=? LIMIT 1"
+    ).bind(roomId).first();
+  }
+  let state;
+  try {
+    state = JSON.parse(String(row?.state_json ?? "{}"));
+  } catch (_) {
+    state = ludoInitialState();
+  }
+  for (const color of LUDO_COLORS) {
+    if (!Array.isArray(state?.tokens?.[color]) || state.tokens[color].length !== 4) {
+      state.tokens ??= {};
+      state.tokens[color] = [-1, -1, -1, -1];
+    }
+  }
+  return {
+    state,
+    version: Math.max(1, Number(row?.version ?? 1)),
+    updated_at: Number(row?.updated_at ?? 0),
+  };
+}
+
+async function saveLudoState(db, roomId, state, expectedVersion) {
+  const ts = now();
+  const result = await db.prepare(
+    "UPDATE ludo_room_sessions SET state_json=?,version=version+1,updated_at=? WHERE room_id=? AND version=?"
+  ).bind(JSON.stringify(state), ts, roomId, expectedVersion).run();
+  if (Number(result?.meta?.changes ?? 0) !== 1) {
+    throw new Error("game_state_changed");
+  }
+  return { state, version: expectedVersion + 1, updated_at: ts };
+}
+
+async function ludoOccupiedColors(db, roomId) {
+  const rows = await db.prepare(
+    "SELECT color FROM ludo_room_players WHERE room_id=? ORDER BY joined_at ASC"
+  ).bind(roomId).all();
+  return new Set((rows.results ?? []).map((row) => String(row.color)));
+}
+
+async function ludoAdvancePlayer(db, roomId, state, keepTurn = false) {
+  const previousRoll = Number(state.rolled ?? 0);
+  state.rolled = null;
+  if (state.winner) return;
+  if (keepTurn && previousRoll === 6) {
+    state.status = String(state.current_player).toUpperCase() + " gets another roll.";
+    return;
+  }
+  const occupied = await ludoOccupiedColors(db, roomId);
+  const currentIndex = LUDO_COLORS.indexOf(String(state.current_player));
+  for (let offset = 1; offset <= LUDO_COLORS.length; offset += 1) {
+    const next = LUDO_COLORS[(Math.max(0, currentIndex) + offset) % LUDO_COLORS.length];
+    if (occupied.has(next)) {
+      state.current_player = next;
+      state.status = next.toUpperCase() + " turn.";
+      return;
+    }
+  }
+  state.status = String(state.current_player).toUpperCase() + " turn.";
+}
+
+async function cleanupLudoPlayers(db, roomId) {
+  const stale = await db.prepare(
+    `SELECT p.user_id,p.color
+       FROM ludo_room_players p
+       LEFT JOIN room_members m
+         ON m.room_id=p.room_id AND m.user_id=p.user_id
+      WHERE p.room_id=? AND m.user_id IS NULL`
+  ).bind(roomId).all();
+  if (!(stale.results ?? []).length) return;
+  const loaded = await loadLudoState(db, roomId);
+  let changed = false;
+  for (const row of stale.results ?? []) {
+    const color = String(row.color);
+    await db.prepare(
+      "DELETE FROM ludo_room_players WHERE room_id=? AND user_id=?"
+    ).bind(roomId, String(row.user_id)).run();
+    if (loaded.state.tokens?.[color]) {
+      loaded.state.tokens[color] = [-1, -1, -1, -1];
+      changed = true;
+    }
+    if (loaded.state.current_player === color) {
+      loaded.state.rolled = null;
+      await ludoAdvancePlayer(db, roomId, loaded.state, false);
+      changed = true;
+    }
+  }
+  const remaining = await db.prepare(
+    "SELECT 1 AS yes FROM ludo_room_players WHERE room_id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!remaining) {
+    loaded.state = ludoInitialState();
+    changed = true;
+  }
+  if (changed) {
+    try {
+      await saveLudoState(db, roomId, loaded.state, loaded.version);
+    } catch (_) {}
+  }
+}
+
+async function ensureLudoPlayer(db, roomId, userId) {
+  await requireLudoRoomMember(db, roomId, userId);
+  await cleanupLudoPlayers(db, roomId);
+  let player = await db.prepare(
+    "SELECT color,joined_at FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
+  ).bind(roomId, userId).first();
+  if (player) return String(player.color);
+  for (const color of LUDO_COLORS) {
+    const ts = now();
+    await db.prepare(
+      "INSERT OR IGNORE INTO ludo_room_players(room_id,user_id,color,joined_at) VALUES(?,?,?,?)"
+    ).bind(roomId, userId, color, ts).run();
+    player = await db.prepare(
+      "SELECT color,joined_at FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
+    ).bind(roomId, userId).first();
+    if (player) return String(player.color);
+  }
+  return null;
+}
+
+async function publicLudoState(db, roomId, userId, loadedValue = null) {
+  const loaded = loadedValue ?? await loadLudoState(db, roomId);
+  const rows = await db.prepare(
+    `SELECT p.user_id,p.color,p.joined_at,u.display_name,u.avatar_key,
+            m.seat_index,m.mic_muted
+       FROM ludo_room_players p
+       JOIN users u ON u.id=p.user_id
+       LEFT JOIN room_members m
+         ON m.room_id=p.room_id AND m.user_id=p.user_id
+      WHERE p.room_id=?
+      ORDER BY p.joined_at ASC`
+  ).bind(roomId).all();
+  const players = (rows.results ?? []).map((row) => ({
+    user_id: String(row.user_id),
+    color: String(row.color),
+    display_name: String(row.display_name ?? row.user_id),
+    avatar_key: String(row.avatar_key ?? ""),
+    joined_at: Number(row.joined_at ?? 0),
+    seat_index: row.seat_index == null ? null : Number(row.seat_index),
+    mic_muted: Number(row.mic_muted ?? 1) === 1,
+  }));
+  const mine = players.find((row) => row.user_id === userId) ?? null;
+  return {
+    ok: true,
+    room_id: roomId,
+    player_color: mine?.color ?? null,
+    spectator: !mine,
+    players,
+    version: loaded.version,
+    updated_at: loaded.updated_at,
+    ...loaded.state,
+    movable_indexes: ludoMovableIndexes(loaded.state),
+  };
+}
+
+async function secureDieRoll() {
+  const values = new Uint32Array(1);
+  const accepted = Math.floor(0x100000000 / 6) * 6;
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= accepted);
+  return Number(values[0] % 6) + 1;
+}
+
 const FRUIT_PARTY_ROUND_MS = 21000;
 const FRUIT_PARTY_RESULT_MS = 5000;
 const FRUIT_PARTY_CYCLE_MS = FRUIT_PARTY_ROUND_MS + FRUIT_PARTY_RESULT_MS;
@@ -5129,6 +5382,163 @@ async function handleApi(request, env, url) {
       vs_progress: Number(vsProgress?.progress ?? 0),
       vs_state: vsProgress?.vs ?? null,
     });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts[3] === "ludo") {
+    const roomId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+
+    try {
+      await ensureLudoSchema(db);
+      await requireLudoRoomMember(db, roomId, userId);
+
+      if (parts.length === 4 && request.method === "GET") {
+        const color = await ensureLudoPlayer(db, roomId, userId);
+        const state = await publicLudoState(db, roomId, userId);
+        if (!color) state.spectator = true;
+        return json(state);
+      }
+
+      if (parts.length === 5 && parts[4] === "roll" && request.method === "POST") {
+        const color = await ensureLudoPlayer(db, roomId, userId);
+        if (!color) return json({ ok:false,error:"ludo_table_full" }, { status:409 });
+        const loaded = await loadLudoState(db, roomId);
+        if (loaded.state.winner) return json(await publicLudoState(db, roomId, userId, loaded));
+        if (String(loaded.state.current_player) !== color) {
+          return json({ ok:false,error:"not_your_turn",state:await publicLudoState(db,roomId,userId,loaded) }, { status:409 });
+        }
+        if (loaded.state.rolled != null) {
+          return json(await publicLudoState(db, roomId, userId, loaded));
+        }
+        loaded.state.rolled = await secureDieRoll();
+        loaded.state.status = color.toUpperCase() + " rolled " + loaded.state.rolled + ".";
+        if (ludoMovableIndexes(loaded.state).length === 0) {
+          await ludoAdvancePlayer(db, roomId, loaded.state, false);
+        }
+        const saved = await saveLudoState(
+          db, roomId, loaded.state, loaded.version,
+        );
+        return json(await publicLudoState(db, roomId, userId, saved));
+      }
+
+      if (parts.length === 5 && parts[4] === "move" && request.method === "POST") {
+        const color = await ensureLudoPlayer(db, roomId, userId);
+        if (!color) return json({ ok:false,error:"ludo_table_full" }, { status:409 });
+        const body = await bodyJson(request);
+        const tokenIndex = Number(body.token_index);
+        if (!Number.isInteger(tokenIndex) || tokenIndex < 0 || tokenIndex > 3) {
+          return json({ ok:false,error:"invalid_ludo_token" }, { status:400 });
+        }
+        const loaded = await loadLudoState(db, roomId);
+        if (loaded.state.winner) return json(await publicLudoState(db, roomId, userId, loaded));
+        if (String(loaded.state.current_player) !== color) {
+          return json({ ok:false,error:"not_your_turn",state:await publicLudoState(db,roomId,userId,loaded) }, { status:409 });
+        }
+        const dice = Number(loaded.state.rolled ?? 0);
+        if (!dice) return json({ ok:false,error:"roll_dice_first" }, { status:409 });
+        const movable = ludoMovableIndexes(loaded.state);
+        if (!movable.includes(tokenIndex)) {
+          return json({ ok:false,error:"token_cannot_move" }, { status:409 });
+        }
+
+        const tokens = loaded.state.tokens[color];
+        const current = Number(tokens[tokenIndex]);
+        const next = current < 0 ? 0 : current + dice;
+        tokens[tokenIndex] = next;
+
+        if (next < 52) {
+          const sharedIndex = ludoTrackIndex(color, next);
+          if (!LUDO_SAFE_TRACK.has(sharedIndex)) {
+            for (const opponent of LUDO_COLORS) {
+              if (opponent === color) continue;
+              for (let index = 0; index < loaded.state.tokens[opponent].length; index += 1) {
+                const progress = Number(loaded.state.tokens[opponent][index]);
+                if (
+                  progress >= 0 &&
+                  progress < 52 &&
+                  ludoTrackIndex(opponent, progress) === sharedIndex
+                ) {
+                  loaded.state.tokens[opponent][index] = -1;
+                }
+              }
+            }
+          }
+        }
+
+        if (loaded.state.tokens[color].every((progress) => Number(progress) >= 57)) {
+          loaded.state.winner = color;
+          loaded.state.rolled = null;
+          loaded.state.status = color.toUpperCase() + " wins!";
+        } else {
+          loaded.state.status =
+            color.toUpperCase() + " moved token " + (tokenIndex + 1) + ".";
+          await ludoAdvancePlayer(db, roomId, loaded.state, dice === 6);
+        }
+        const saved = await saveLudoState(
+          db, roomId, loaded.state, loaded.version,
+        );
+        return json(await publicLudoState(db, roomId, userId, saved));
+      }
+
+      if (parts.length === 5 && parts[4] === "leave" && request.method === "POST") {
+        const player = await db.prepare(
+          "SELECT color FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
+        ).bind(roomId, userId).first();
+        if (!player) return json({ ok:true });
+        const color = String(player.color);
+        await db.prepare(
+          "DELETE FROM ludo_room_players WHERE room_id=? AND user_id=?"
+        ).bind(roomId, userId).run();
+        const loaded = await loadLudoState(db, roomId);
+        loaded.state.tokens[color] = [-1, -1, -1, -1];
+        if (loaded.state.current_player === color) {
+          loaded.state.rolled = null;
+          await ludoAdvancePlayer(db, roomId, loaded.state, false);
+        }
+        const any = await db.prepare(
+          "SELECT 1 AS yes FROM ludo_room_players WHERE room_id=? LIMIT 1"
+        ).bind(roomId).first();
+        if (!any) loaded.state = ludoInitialState();
+        try {
+          await saveLudoState(db, roomId, loaded.state, loaded.version);
+        } catch (_) {}
+        return json({ ok:true });
+      }
+
+      if (parts.length === 5 && parts[4] === "reset" && request.method === "POST") {
+        const room = await requireLudoRoomMember(db, roomId, userId);
+        if (String(room.owner_user_id) !== userId) {
+          return json({ ok:false,error:"room_owner_required" }, { status:403 });
+        }
+        const loaded = await loadLudoState(db, roomId);
+        const state = ludoInitialState();
+        const occupied = await ludoOccupiedColors(db, roomId);
+        if (!occupied.has("red") && occupied.size > 0) {
+          state.current_player = LUDO_COLORS.find((color) => occupied.has(color)) ?? "red";
+          state.status = state.current_player.toUpperCase() + " starts. Roll the dice.";
+        }
+        const saved = await saveLudoState(db, roomId, state, loaded.version);
+        return json(await publicLudoState(db, roomId, userId, saved));
+      }
+
+      return json({ ok:false,error:"method_not_allowed" }, { status:405 });
+    } catch (error) {
+      const message = String(error?.message ?? error ?? "ludo_error");
+      const status = message === "room_not_found" ? 404 :
+        message === "room_membership_required" ? 403 :
+        message === "game_state_changed" ? 409 : 400;
+      return json({ ok:false,error:message }, { status });
+    }
   }
 
   if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
