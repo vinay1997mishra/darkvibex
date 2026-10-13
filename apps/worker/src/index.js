@@ -3846,15 +3846,6 @@ async function handleApi(request, env, url) {
     const receiverReward = gender === "female" ? 400000 : 0;
     const callId = id();
     const ts = now();
-    await db.batch([
-      db.prepare(
-        `INSERT INTO direct_calls
-          (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
-           call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
-           receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
-         VALUES (?,?,?,'ringing',?,NULL,NULL?,'random',?,?,?,0,0,0)`
-      ),
-    ]);
     await db.prepare(
       `INSERT INTO direct_calls
         (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
@@ -3933,13 +3924,6 @@ async function handleApi(request, env, url) {
 
     const callId = id();
     const createdAt = now();
-    await db.prepare(
-      `INSERT INTO direct_calls
-        (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
-         call_kind,cost_coins_per_minute,receiver_diamonds_per_minute,
-         receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
-       VALUES(?,?,?,'ringing',?,NULL,NULL?,'direct',?,?,?,0,0,0)`
-    );
     await db.prepare(
       `INSERT INTO direct_calls
         (id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at,
