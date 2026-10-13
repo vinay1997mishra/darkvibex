@@ -46,6 +46,10 @@ jobs:
         working-directory: apps/worker
         run: npm test
 
+      - name: Apply one-time room creation repair
+        working-directory: apps/worker
+        run: npx wrangler d1 execute darkvibex-db --remote --file=migrations/20261013_room_creation_repair.sql
+
       - name: Deploy Worker
         working-directory: apps/worker
         run: npx wrangler deploy
@@ -59,5 +63,7 @@ jobs:
           echo
           curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/api/auth/config" |
             node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s);if(!c.ok||!c.google_web_client_id){console.error("Google auth config is missing.");process.exit(1)}console.log("Google auth config is present.")})'
+          app_config="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/api/config")"
+          APP_CONFIG="$app_config" node -e 'const c=JSON.parse(process.env.APP_CONFIG||"{}");const r=c?.settings?.["feature.room_creation"];if(!c.ok||r?.enabled===false){console.error("Room creation is disabled after deploy.");process.exit(1)}console.log("Room creation is enabled.")'
           auth_probe="$(curl --silent --show-error --request POST "$base/api/session/google" -H 'content-type: application/json' --data '{"id_token":""}')"
           AUTH_PROBE="$auth_probe" node -e 'const c=JSON.parse(process.env.AUTH_PROBE||"{}");if(c.error!=="google_id_token_required"){console.error("Google session endpoint is not ready:",c.error||"unknown_error");process.exit(1)}console.log("Google session endpoint and SESSION_SECRET are ready.")'
