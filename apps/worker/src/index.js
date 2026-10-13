@@ -336,6 +336,7 @@ async function ensureRoomSettingsTable(db) {
       group_pk_enabled INTEGER NOT NULL DEFAULT 0,
       welcome_image_key TEXT NOT NULL DEFAULT '',
       party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
+      room_mode TEXT NOT NULL DEFAULT 'voice',
       seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold',
       mic_mode TEXT NOT NULL DEFAULT 'free',
       public_screen_enabled INTEGER NOT NULL DEFAULT 1,
@@ -354,6 +355,9 @@ async function ensureRoomSettingsTable(db) {
   } catch (_) {}
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN party_mode TEXT NOT NULL DEFAULT 'Friends-making Party'").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN room_mode TEXT NOT NULL DEFAULT 'voice'").run();
   } catch (_) {}
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold'").run();
@@ -639,6 +643,7 @@ async function listRooms(db) {
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
+            COALESCE(rs.room_mode, 'voice') AS room_mode,
             CASE WHEN ov.level >= 18 AND ov.active_until > ?
                        AND json_extract(ov.preferences_json, '$.anonymous_everywhere') = 1
                  THEN 'Anonymous' ELSE COALESCE(u.display_name, '') END AS owner_name,
@@ -1053,6 +1058,7 @@ async function handleApi(request, env, url) {
     const rows = await db.prepare(
       `SELECT r.id,r.name,r.owner_name,r.owner_user_id,r.online,r.seat_count,
               r.avatar_key,COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
+              COALESCE(s.room_mode,'voice') AS room_mode,
               rf.followed_at
          FROM room_followers rf
          JOIN rooms r ON r.id=rf.room_id
@@ -1710,6 +1716,7 @@ async function handleApi(request, env, url) {
       `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
               COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled,
               COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
+              COALESCE(s.room_mode, 'voice') AS room_mode,
               COALESCE(s.seat_theme_id, 'royal-gold') AS seat_theme_id,
               CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
               CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
@@ -1802,6 +1809,14 @@ async function handleApi(request, env, url) {
         ? String(body.party_mode ?? room.party_mode ?? "Friends-making Party").trim()
         : String(room.party_mode ?? "Friends-making Party");
       const partyMode = requestedPartyMode === "Event hosting mode" ? "Event hosting mode" : "Friends-making Party";
+      const requestedRoomMode = actorIsOwner
+        ? String(body.room_mode ?? room.room_mode ?? "voice").trim().toLowerCase()
+        : String(room.room_mode ?? "voice").trim().toLowerCase();
+      const allowedRoomModes = new Set(["voice", "game", "live"]);
+      if (!allowedRoomModes.has(requestedRoomMode)) {
+        return json({ ok: false, error: "invalid_room_mode" }, { status: 400 });
+      }
+      const roomMode = requestedRoomMode;
       const allowedSeatThemes = new Set(["royal-gold", "neon-blue", "rose-glow"]);
       const seatThemeId = actorIsOwner
         ? String(body.seat_theme_id ?? room.seat_theme_id ?? "royal-gold")
@@ -1821,10 +1836,10 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, seat_theme_id = excluded.seat_theme_id, lock_password_hash = excluded.lock_password_hash, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, seatThemeId, lockPasswordHash, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, room_mode = excluded.room_mode, seat_theme_id = excluded.seat_theme_id, lock_password_hash = excluded.lock_password_hash, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, roomMode, seatThemeId, lockPasswordHash, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey, party_mode: partyMode, seat_theme_id: seatThemeId, lock_password_set: lockPasswordHash ? 1 : 0 } });
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey, party_mode: partyMode, room_mode: roomMode, seat_theme_id: seatThemeId, lock_password_set: lockPasswordHash ? 1 : 0 } });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
@@ -1864,6 +1879,11 @@ async function handleApi(request, env, url) {
     const requestedSeatCount = Number(body.seat_count ?? 12);
     const requestedPartyMode = String(body.party_mode ?? "Friends-making Party").trim();
     const partyMode = requestedPartyMode === "Event hosting mode" ? "Event hosting mode" : "Friends-making Party";
+    const requestedRoomMode = String(body.room_mode ?? "voice").trim().toLowerCase();
+    if (!new Set(["voice", "live"]).has(requestedRoomMode)) {
+      return json({ ok: false, error: "invalid_create_room_mode" }, { status: 400 });
+    }
+    const roomMode = requestedRoomMode;
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
     if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
       return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
@@ -1878,12 +1898,12 @@ async function handleApi(request, env, url) {
     ).bind(roomId, ownerId, name, seatCount, ts, ts).run();
     await ensureRoomSettingsTable(db);
     await db.prepare(
-      "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, updated_at = excluded.updated_at"
-    ).bind(roomId, partyMode, ts).run();
+      "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
+    ).bind(roomId, partyMode, roomMode, ts).run();
     await db.prepare(
       "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
     ).bind(roomId, ownerId, ts, ts).run();
-    return json({ ok: true, room_id: roomId, party_mode: partyMode }, { status: 201 });
+    return json({ ok: true, room_id: roomId, party_mode: partyMode, room_mode: roomMode }, { status: 201 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "join" && request.method === "POST") {
