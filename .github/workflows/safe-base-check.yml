@@ -1,11 +1,8 @@
 name: DarkVibeX Safe Base Check
 
 on:
-  push:
-    branches:
-      - main
-      - "bootstrap/**"
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: darkvibex-policy-${{ github.ref }}
