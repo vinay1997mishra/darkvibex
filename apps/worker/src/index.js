@@ -954,7 +954,7 @@ async function handleApi(request, env, url) {
       if (room.owner_user_id !== userId) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
       const name = String(body.name ?? "").trim().slice(0, 80);
       const requestedSeatCount = Number(body.seat_count ?? room.seat_count);
-      if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42 || requestedSeatCount === 11) {
+      if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
         return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
       }
       const vipStatus = await getVipStatus(db, userId);
@@ -1041,7 +1041,7 @@ async function handleApi(request, env, url) {
     const requestedPartyMode = String(body.party_mode ?? "Friends-making Party").trim();
     const partyMode = requestedPartyMode === "Event hosting mode" ? "Event hosting mode" : "Friends-making Party";
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
-    if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42 || requestedSeatCount === 11) {
+    if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
       return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
     }
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
