@@ -15,9 +15,18 @@ import 'vip_screen.dart';
 import 'room_screen.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.state});
+  const HomeShell({
+    super.key,
+    required this.state,
+    this.minimizedRoom,
+    this.onResumeRoom,
+    this.onCloseMinimizedRoom,
+  });
 
   final AppState state;
+  final RoomSummary? minimizedRoom;
+  final VoidCallback? onResumeRoom;
+  final Future<void> Function()? onCloseMinimizedRoom;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -45,11 +54,24 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       backgroundColor: TinniPalette.black,
       body: SafeArea(
-        child: IndexedStack(
-          index: index,
+        child: Column(
           children: [
-            for (var i = 0; i < pages.length; i++)
-              visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+            Expanded(
+              child: IndexedStack(
+                index: index,
+                children: [
+                  for (var i = 0; i < pages.length; i++)
+                    visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+                ],
+              ),
+            ),
+            if (widget.minimizedRoom != null)
+              _MiniActiveRoomBar(
+                state: widget.state,
+                room: widget.minimizedRoom!,
+                onResume: widget.onResumeRoom,
+                onClose: widget.onCloseMinimizedRoom,
+              ),
           ],
         ),
       ),
