@@ -665,6 +665,17 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
+class _MineDivider extends StatelessWidget {
+  const _MineDivider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 1,
+        height: 30,
+        color: TinniPalette.deepGold.withValues(alpha: .45),
+      );
+}
+
 class PublicProfileScreen extends StatefulWidget {
   const PublicProfileScreen({super.key, required this.state, required this.userId});
 
