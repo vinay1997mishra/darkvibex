@@ -49,6 +49,7 @@ class DirectMessage {
 class AppState extends ChangeNotifier {
   AppState();
 
+  // Persist the signed-in account so normal app restarts do not return to Login.
   static const String _sessionTokenKey = 'darkvibex.session_token';
   static const String _sessionProviderKey = 'darkvibex.session_provider';
   static const String _sessionUserIdKey = 'darkvibex.session_user_id';
