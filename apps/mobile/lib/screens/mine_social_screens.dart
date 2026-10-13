@@ -1271,10 +1271,8 @@ class _VsScreenState extends State<VsScreen> {
     );
   }
 
-  Future<void> _request() async {
-    if (busy) return;
-    final id = await _chooseFriend();
-    if (id == null || id.isEmpty || !mounted) return;
+  Future<void> _requestTo(String id) async {
+    if (busy || id.isEmpty) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1312,6 +1310,13 @@ class _VsScreenState extends State<VsScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> _request() async {
+    if (busy) return;
+    final id = await _chooseFriend();
+    if (id == null || id.isEmpty || !mounted) return;
+    await _requestTo(id);
   }
 
   Future<void> _respond(bool accept) async {
@@ -1501,22 +1506,9 @@ class _VsScreenState extends State<VsScreen> {
                           child: TinniPanel(
                             onTap: busy
                                 ? null
-                                : () async {
-                                    final id = friend['id']?.toString() ?? '';
-                                    if (id.isEmpty) return;
-                                    final result =
-                                        await widget.state.backend.vsRequest(
-                                      userId: widget.state.userId,
-                                      targetUserId: id,
-                                    );
-                                    if (result?['ok'] != true) {
-                                      _notice(
-                                        result?['error']?.toString() ??
-                                            'VS challenge failed',
-                                      );
-                                    }
-                                    await _load();
-                                  },
+                                : () => _requestTo(
+                                      friend['id']?.toString() ?? '',
+                                    ),
                             child: Row(
                               children: [
                                 const Icon(
