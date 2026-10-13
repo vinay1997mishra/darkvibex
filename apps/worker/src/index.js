@@ -327,7 +327,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId).first();
 }
 
-// Keep core room tables self-healing because Worker deploys do not auto-apply schema.sql to D1.
+// Keep core room tables self-healing because Worker deployments do not auto-apply schema.sql to D1.
 async function ensureRoomCoreSchema(db) {
   await ensureUsersSchema(db);
   await db.prepare(
