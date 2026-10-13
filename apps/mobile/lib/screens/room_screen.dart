@@ -1292,6 +1292,15 @@ class _RoomScreenState extends State<RoomScreen> {
                     icon: const Icon(Icons.music_note_rounded), label: const Text('Music / KTV'),
                   ),
                   FilledButton.tonalIcon(
+                    onPressed: uploadingRoomImage ? null : () { Navigator.pop(sheetContext); _sendRoomImage(); },
+                    icon: const Icon(Icons.image_rounded), label: const Text('Photo message'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: mySeat == null ? null : () { Navigator.pop(sheetContext); _toggleCamera(); },
+                    icon: Icon(cameraPublished ? Icons.videocam_rounded : Icons.videocam_off_rounded),
+                    label: const Text('Camera'),
+                  ),
+                  FilledButton.tonalIcon(
                     onPressed: () { Navigator.pop(sheetContext); _showLuckyPouch(); },
                     icon: const Icon(Icons.redeem_rounded), label: const Text('Lucky Pouch'),
                   ),
@@ -1771,7 +1780,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 children: [
                   Text(roomName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
-                    'ID ${widget.room.id} • $voiceStatus',
+                    'ID ${widget.room.id} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -1780,30 +1789,23 @@ class _RoomScreenState extends State<RoomScreen> {
           ],
         ),
         actions: [
-          if (isRoomHost)
-            IconButton(onPressed: _pickRoomAvatar, tooltip: 'Change room photo', icon: const Icon(Icons.add_a_photo_outlined)),
-          if (!isRoomHost)
-            IconButton(
-              onPressed: followBusy ? null : _toggleRoomFollow,
-              tooltip: followingRoom ? 'Unfollow room' : 'Follow room',
-              icon: Icon(
-                followingRoom
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                color: followingRoom ? const Color(0xFFFF5D8F) : null,
-              ),
-            ),
-          if (isRoomHost)
-            IconButton(onPressed: _openRoomSettings, tooltip: 'Room settings', icon: const Icon(Icons.settings_rounded)),
           IconButton(
-            onPressed: _showRoomTools,
-            tooltip: 'Room tools',
-            icon: const Icon(Icons.grid_view_rounded),
+            onPressed: _shareRoomId,
+            tooltip: 'Share room',
+            icon: const TinniGlowIcon(
+              icon: Icons.share_rounded,
+              size: 18,
+              boxSize: 34,
+            ),
           ),
           IconButton(
             onPressed: _openRoomMenu,
             tooltip: 'Room options',
-            icon: const Icon(Icons.more_horiz_rounded),
+            icon: const TinniGlowIcon(
+              icon: Icons.power_settings_new_rounded,
+              size: 18,
+              boxSize: 34,
+            ),
           ),
         ],
       ),
@@ -1812,6 +1814,52 @@ class _RoomScreenState extends State<RoomScreen> {
           Positioned.fill(
             child: Column(
               children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 2),
+            child: Row(
+              children: [
+                TinniPanel(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  onTap: _showRoomTools,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.celebration_rounded, size: 16, color: TinniPalette.gold),
+                      const SizedBox(width: 5),
+                      Text(
+                        roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party',
+                        style: const TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                TinniPanel(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  onTap: _openRoomMembers,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.groups_rounded, size: 17, color: TinniPalette.cream),
+                      const SizedBox(width: 5),
+                      Text(
+                        knownRoomMembers.length.toString(),
+                        style: const TextStyle(
+                          color: TinniPalette.cream,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
           _videoStage(),
           Expanded(
             flex: 5,
@@ -2044,37 +2092,80 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          decoration: const BoxDecoration(
+            color: TinniPalette.black,
+            border: Border(top: BorderSide(color: TinniPalette.bronze)),
+          ),
           child: Row(
             children: [
-              IconButton.filledTonal(
-                onPressed: _sendMessage,
-                icon: const Icon(Icons.chat_rounded),
+              Expanded(
+                child: TextField(
+                  controller: roomChatController,
+                  textInputAction: TextInputAction.send,
+                  maxLength: 200,
+                  buildCounter: (
+                    BuildContext context, {
+                    required int currentLength,
+                    required bool isFocused,
+                    required int? maxLength,
+                  }) => null,
+                  decoration: const InputDecoration(
+                    hintText: 'Chat',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
+                  ),
+                  onSubmitted: (_) => _sendInlineMessage(),
+                ),
               ),
-              const SizedBox(width: 4),
-              IconButton.filledTonal(
-                onPressed: uploadingRoomImage ? null : _sendRoomImage,
-                tooltip: 'Send room photo (VIP10)',
-                icon: uploadingRoomImage
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.image_rounded),
+              IconButton(
+                tooltip: 'Emoji & Emotes',
+                onPressed: _showEmojiPicker,
+                icon: const TinniGlowIcon(
+                  icon: Icons.emoji_emotions_rounded,
+                  size: 20,
+                  boxSize: 36,
+                ),
               ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
+              IconButton(
+                tooltip: 'Microphone',
                 onPressed: mySeat == null ? null : _toggleMic,
-                icon: Icon(muted ? Icons.mic_off_rounded : Icons.mic_rounded),
+                icon: TinniGlowIcon(
+                  icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                  size: 20,
+                  boxSize: 36,
+                ),
               ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: mySeat == null ? null : _toggleCamera,
-                icon: Icon(cameraPublished ? Icons.videocam_rounded : Icons.videocam_off_rounded),
-              ),
-              const Spacer(),
-              FilledButton.icon(
+              IconButton(
+                tooltip: 'Gifts',
                 onPressed: _sendGift,
-                icon: const Icon(Icons.card_giftcard_rounded),
-                label: const Text('Gift'),
+                icon: const TinniGlowIcon(
+                  icon: Icons.card_giftcard_rounded,
+                  size: 20,
+                  boxSize: 36,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Messages',
+                onPressed: _openRoomInbox,
+                icon: const TinniGlowIcon(
+                  icon: Icons.mark_chat_unread_rounded,
+                  size: 20,
+                  boxSize: 36,
+                ),
+              ),
+              IconButton(
+                tooltip: '4-Box',
+                onPressed: _showRoomTools,
+                icon: const TinniGlowIcon(
+                  icon: Icons.grid_view_rounded,
+                  size: 20,
+                  boxSize: 36,
+                ),
               ),
             ],
           ),
