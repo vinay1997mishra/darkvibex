@@ -375,7 +375,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute<void>(
-                            builder: (_) => FamilyScreen(state: state),
+                            builder: (_) => FamilyRankingScreen(state: state),
                           ),
                         ),
                       ),
