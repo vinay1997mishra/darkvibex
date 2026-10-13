@@ -123,6 +123,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _sendEnvelope() async {
+    if (!isFriend) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Both users must follow each other first.')),
+      );
+      return;
+    }
     if (sendingEnvelope || !widget.state.hasVipPrivilege('red_envelope')) return;
     final amountController = TextEditingController();
     final amount = await showDialog<int>(
@@ -177,6 +183,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _send() async {
+    if (!isFriend) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Both users must follow each other before messaging.')),
+      );
+      return;
+    }
     final text = controller.text.trim();
     if (text.isEmpty) return;
 
@@ -213,6 +225,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _sendImage() async {
+    if (!isFriend) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Photos can only be sent to mutual friends.')),
+      );
+      return;
+    }
     if (!widget.state.backendConnected || uploadingImage) return;
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -355,7 +373,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           if (widget.state.hasVipPrivilege('red_envelope'))
             IconButton(
               tooltip: 'Send red envelope',
-              onPressed: sendingEnvelope ? null : _sendEnvelope,
+              onPressed: !isFriend || sendingEnvelope ? null : _sendEnvelope,
               icon: sendingEnvelope ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.redeem_rounded, color: Color(0xFFFF7070)),
             ),
         ],
@@ -471,7 +489,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: uploadingImage ? null : _sendImage,
+                    onPressed: !isFriend || uploadingImage ? null : _sendImage,
                     tooltip: 'Share photo',
                     icon: uploadingImage
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
@@ -481,10 +499,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   Expanded(
                     child: TextField(
                       controller: controller,
+                      enabled: isFriend,
                       maxLength: 1000,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         counterText: '',
-                        hintText: 'Message…',
+                        hintText: isFriend
+                            ? 'Message…'
+                            : 'Mutual follow required',
                         border: OutlineInputBorder(),
                       ),
                       onSubmitted: (_) => _send(),
@@ -492,7 +513,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
-                    onPressed: _send,
+                    onPressed: isFriend ? _send : null,
                     icon: const Icon(Icons.send_rounded),
                   ),
                 ],
