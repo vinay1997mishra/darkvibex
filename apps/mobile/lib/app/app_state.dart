@@ -71,9 +71,9 @@ class AppState extends ChangeNotifier {
   int ageChangeCount = 0;
   int countryChangeCount = 0;
   int genderChangeCount = 0;
-  int get ageChangesRemaining => (3 - ageChangeCount).clamp(0, 3);
-  int get countryChangesRemaining => (3 - countryChangeCount).clamp(0, 3);
-  int get genderChangesRemaining => (3 - genderChangeCount).clamp(0, 3);
+  int get ageChangesRemaining => (3 - ageChangeCount).clamp(0, 3).toInt();
+  int get countryChangesRemaining => (3 - countryChangeCount).clamp(0, 3).toInt();
+  int get genderChangesRemaining => (3 - genderChangeCount).clamp(0, 3).toInt();
   final ValueNotifier<String> languagePreference = ValueNotifier<String>('English');
   String? sessionToken;
   String? authProvider;
@@ -875,8 +875,20 @@ class AppState extends ChangeNotifier {
       language: nextLanguage,
     );
     if (profile?['ok'] != true) {
-      authError = profile?['error']?.toString() ??
-          'Profile details could not be saved.';
+      final code = profile?['error']?.toString() ?? '';
+      authError = switch (code) {
+        'age_change_limit_reached' =>
+          'Age/date of birth can only be changed 3 times.',
+        'country_change_limit_reached' =>
+          'Country can only be changed 3 times.',
+        'gender_change_limit_reached' =>
+          'Gender can only be changed 3 times.',
+        'profile_change_conflict_retry' =>
+          'Profile changed elsewhere. Reopen profile and try again.',
+        _ => code.isEmpty
+            ? 'Profile details could not be saved.'
+            : code.replaceAll('_', ' '),
+      };
       notifyListeners();
       return false;
     }
