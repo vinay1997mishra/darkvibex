@@ -4,6 +4,7 @@ import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, owned
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
+import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
 import {
   ensureTinniSocialSchema,
@@ -1582,6 +1583,8 @@ async function handleApi(request, env, url) {
     if (user) {
       const targetVip = await getVipStatus(db, viewedUserId);
       user.active_vip_level = targetVip.active ? targetVip.level : 0;
+      user.public_id = targetVip.custom_id || user.id;
+      user.public_id_expires_at = targetVip.custom_id_expires_at ?? null;
       user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
     }
     if (user && viewerId !== viewedUserId) {
@@ -3414,6 +3417,35 @@ async function handleApi(request, env, url) {
     await ensureUser(db, userId);
     const result = await claimIdLevelReward(db, userId, level, now());
     return json(result, { status: result.ok ? 200 : 409 });
+  }
+
+  if (url.pathname === "/api/unique-ids/catalog" && request.method === "GET") {
+    const authError=await requireSession(request,env);
+    if(authError) return authError;
+    await ensureUniqueIdStoreSchema(db);
+    return json({ok:true,unique_ids:await uniqueIdCatalog(db,now())});
+  }
+
+  if (url.pathname === "/api/unique-ids/purchase" && request.method === "POST") {
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim();
+    const publicId=String(body.public_id ?? "").trim();
+    const authError=await requireSession(request,env,userId);
+    if(authError) return authError;
+    await ensureUser(db,userId);
+    await ensureUserAllowed(db,userId);
+    try{
+      const result=await purchaseUniqueId(db,userId,publicId,now());
+      return json({
+        ok:true,
+        ...result,
+        vip:await getVipStatus(db,userId,now()),
+      });
+    }catch(error){
+      const code=String(error?.message ?? error);
+      const status=code==="insufficient_coins"||code==="unique_id_taken"?409:400;
+      return json({ok:false,error:code},{status});
+    }
   }
 
   if (url.pathname === "/api/rankings" && request.method === "GET") {
