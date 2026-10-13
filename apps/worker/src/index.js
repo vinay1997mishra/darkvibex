@@ -1594,11 +1594,26 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
     const viewerId = String(session.sub);
-    const viewedUserId = String(parts[2] ?? "").trim();
+    const requestedUserId = String(parts[2] ?? "").trim();
     await ensureVipSchema(db);
-    const user = await db.prepare(
+    let viewedUserId = requestedUserId;
+    let user = await db.prepare(
       "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
+    if (!user && requestedUserId) {
+      const byPublicId = await db.prepare(
+        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth
+           FROM user_vip v
+           JOIN users u ON u.id=v.user_id
+          WHERE v.custom_id=?
+            AND (v.custom_id_expires_at IS NULL OR v.custom_id_expires_at>?)
+          LIMIT 1`
+      ).bind(requestedUserId,now()).first();
+      if (byPublicId) {
+        user = byPublicId;
+        viewedUserId = String(byPublicId.id);
+      }
+    }
     if (user) {
       const targetVip = await getVipStatus(db, viewedUserId);
       user.active_vip_level = targetVip.active ? targetVip.level : 0;
