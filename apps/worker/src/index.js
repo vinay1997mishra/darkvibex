@@ -862,10 +862,15 @@ async function handleApi(request, env, url) {
        ON CONFLICT(user_id,blocked_user_id)
        DO UPDATE SET created_at=excluded.created_at`
     ).bind(userId,targetId,now()).run();
+    await ensureTinniSocialSchema(db);
     await db.batch([
       db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?")
         .bind(userId,targetId),
       db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?")
+        .bind(targetId,userId),
+      db.prepare("DELETE FROM user_follows WHERE follower_id=? AND target_id=?")
+        .bind(userId,targetId),
+      db.prepare("DELETE FROM user_follows WHERE follower_id=? AND target_id=?")
         .bind(targetId,userId),
     ]);
     return json({ ok:true, blocked:true });
