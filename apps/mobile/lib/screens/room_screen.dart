@@ -80,6 +80,8 @@ class _RoomScreenState extends State<RoomScreen> {
   final Set<int> lockedSeats = <int>{};
   final Set<int> roomMutedSeats = <int>{};
   List<Map<String, dynamic>> seatRequests = <Map<String, dynamic>>[];
+  Map<String, dynamic>? pendingSeatInvite;
+  bool seatInviteDialogVisible = false;
   bool effectsEnabled = true;
   final KtvService roomMusic = KtvService();
 
@@ -402,6 +404,10 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     }
     final rawRequests = value?['seat_requests'];
+    final rawInvite = value?['seat_invite'];
+    final nextInvite = rawInvite is Map
+        ? Map<String, dynamic>.from(rawInvite)
+        : null;
     setState(() {
       roomMicMode = value?['mic_mode']?.toString() == 'apply' ? 'apply' : 'free';
       publicScreenEnabled = value?['public_screen_enabled'] != false;
@@ -418,7 +424,60 @@ class _RoomScreenState extends State<RoomScreen> {
               .map((row) => Map<String, dynamic>.from(row))
               .toList(growable: false)
           : <Map<String, dynamic>>[];
+      pendingSeatInvite = nextInvite;
     });
+    if (nextInvite != null && !seatInviteDialogVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_maybeShowSeatInvite());
+      });
+    }
+  }
+
+  Future<void> _maybeShowSeatInvite() async {
+    final invite = pendingSeatInvite;
+    if (invite == null || seatInviteDialogVisible || !mounted) return;
+    final seat =
+        int.tryParse(invite['seat_index']?.toString() ?? '') ?? 0;
+    final inviter =
+        invite['invited_by_name']?.toString().trim();
+    seatInviteDialogVisible = true;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Mic invitation'),
+        content: Text(
+          '${inviter == null || inviter.isEmpty ? 'Room owner/admin' : inviter} invited you to Seat ${seat + 1}.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Reject'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.mic_rounded),
+            label: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) {
+      final result = await widget.state.backend.setRoomControl(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        action: 'seat_invite_respond',
+        accepted: accepted == true,
+      );
+      if (result?['ok'] == true && accepted == true) {
+        await _loadRoomMembers();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Joined Seat ${seat + 1}')),
+        );
+      }
+    }
+    seatInviteDialogVisible = false;
+    if (mounted) await _loadRoomControls();
   }
 
   Future<void> _loadRoomSettings() async {
@@ -1080,6 +1139,167 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<void> _inviteMemberToMic(
+    String targetUserId,
+    String targetName,
+  ) async {
+    if (!isRoomAdmin) return;
+    await _loadRoomControls();
+    if (!mounted) return;
+    final availableSeats = <int>[
+      for (var seat = 0; seat < roomSeatCount; seat++)
+        if (!membersBySeat.containsKey(seat) && !lockedSeats.contains(seat))
+          seat,
+    ];
+    if (availableSeats.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No unlocked empty mic is available')),
+      );
+      return;
+    }
+    final seat = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Text(
+                'Invite ${targetName} to mic',
+                style: const TextStyle(
+                  color: TinniPalette.gold,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            for (final value in availableSeats)
+              ListTile(
+                leading: const Icon(
+                  Icons.mic_external_on_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: Text('Seat ${value + 1}'),
+                onTap: () => Navigator.pop(sheetContext, value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (seat == null || !mounted) return;
+    final result = await widget.state.backend.setRoomControl(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      action: 'seat_invite',
+      targetUserId: targetUserId,
+      seatIndex: seat,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result?['ok'] == true
+              ? 'Mic invite sent to ${targetName}'
+              : 'Mic invite could not be sent',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRoomBlacklist() async {
+    if (!isRoomAdmin) return;
+    var rows =
+        await widget.state.backend.roomBlacklist(roomId: widget.room.id);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .62,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Room Blacklist',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Text('${rows.length} blocked'),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: rows.isEmpty
+                      ? const Center(
+                          child: Text('No users are blocked from this room'),
+                        )
+                      : ListView.builder(
+                          itemCount: rows.length,
+                          itemBuilder: (context, index) {
+                            final row = rows[index];
+                            final userId =
+                                row['user_id']?.toString() ?? '';
+                            final name =
+                                row['display_name']?.toString() ?? 'User';
+                            final avatar =
+                                row['avatar_key']?.toString() ?? '';
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: avatar.isEmpty
+                                    ? null
+                                    : NetworkImage(
+                                        widget.state.backend.fileUrl(avatar),
+                                        headers:
+                                            widget.state.backend.fileHeaders,
+                                      ),
+                                child: avatar.isEmpty
+                                    ? const Icon(Icons.person_off_rounded)
+                                    : null,
+                              ),
+                              title: Text(name),
+                              subtitle: Text('ID ${userId}'),
+                              trailing: TextButton(
+                                onPressed: () async {
+                                  final ok = await widget.state.backend
+                                      .unblockRoomMember(
+                                    roomId: widget.room.id,
+                                    targetUserId: userId,
+                                  );
+                                  if (!ok) return;
+                                  rows = await widget.state.backend
+                                      .roomBlacklist(roomId: widget.room.id);
+                                  if (sheetContext.mounted) refresh(() {});
+                                },
+                                child: const Text('Unblock'),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openRoomMembers() async {
     final members = await widget.state.backend.roomMembers(roomId: widget.room.id);
     if (!mounted) return;
@@ -1169,6 +1389,11 @@ class _RoomScreenState extends State<RoomScreen> {
                                         await _setChatBan(userId, true);
                                       } else if (action == 'chat_unban') {
                                         await _setChatBan(userId, false);
+                                      } else if (action == 'invite_mic') {
+                                        await _inviteMemberToMic(
+                                          userId,
+                                          name?.isNotEmpty == true ? name! : 'User',
+                                        );
                                       } else {
                                         await _removeRoomMember(userId, ban: action == 'block');
                                       }
@@ -1178,6 +1403,11 @@ class _RoomScreenState extends State<RoomScreen> {
                                         PopupMenuItem(
                                           value: (member['is_admin'] == true || member['is_admin']?.toString() == '1') ? 'remove_admin' : 'set_admin',
                                           child: Text((member['is_admin'] == true || member['is_admin']?.toString() == '1') ? 'Remove admin role' : 'Make room admin'),
+                                        ),
+                                      if (seat == null)
+                                        const PopupMenuItem(
+                                          value: 'invite_mic',
+                                          child: Text('Invite to mic'),
                                         ),
                                       PopupMenuItem(
                                         value: (member['chat_banned'] == true || member['chat_banned']?.toString() == '1')
