@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import 'family_wallet_screen.dart';
 import 'gifts_screen.dart';
 
 class TrendsScreen extends StatefulWidget {
@@ -890,23 +891,48 @@ class _FamilyScreenState extends State<FamilyScreen> {
           ),
         ),
         const SizedBox(height: 9),
-        FilledButton.icon(
-          onPressed: () async {
-            final value = await widget.state.backend.familyCheckIn(userId: widget.state.userId);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  value?['already_checked_in'] == true
-                      ? 'Already checked in today'
-                      : '+${value?['exp_awarded'] ?? 0} Family EXP',
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final value = await widget.state.backend.familyCheckIn(
+                    userId: widget.state.userId,
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        value?['already_checked_in'] == true
+                            ? 'Already checked in today'
+                            : '+${value?['exp_awarded'] ?? 0} Family EXP',
+                      ),
+                    ),
+                  );
+                  await _load();
+                },
+                icon: const Icon(Icons.task_alt_rounded),
+                label: const Text('Daily check-in'),
               ),
-            );
-            await _load();
-          },
-          icon: const Icon(Icons.task_alt_rounded),
-          label: const Text('Daily check-in'),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                key: const Key('family-wallet-open'),
+                onPressed: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => FamilyWalletScreen(
+                      state: widget.state,
+                      familyName: family?['name']?.toString() ?? 'Family',
+                    ),
+                  ),
+                ).then((_) => _load()),
+                icon: const Icon(Icons.account_balance_wallet_rounded),
+                label: const Text('Family Wallet'),
+              ),
+            ),
+          ],
         ),
         if (requests.isNotEmpty) ...[
           const SizedBox(height: 14),
