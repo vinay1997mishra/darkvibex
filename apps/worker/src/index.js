@@ -1869,7 +1869,28 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/rooms" && request.method === "POST") {
-    const roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
+    let roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
+    if (roomCreation.enabled === false) {
+      await db.prepare(
+        "CREATE TABLE IF NOT EXISTS app_migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)"
+      ).run();
+      const repairId = "20261013_room_creation_repair";
+      const alreadyRepaired = await db.prepare(
+        "SELECT 1 AS applied FROM app_migrations WHERE id = ? LIMIT 1"
+      ).bind(repairId).first();
+      if (!alreadyRepaired) {
+        const repairTs = now();
+        await db.batch([
+          db.prepare(
+            "UPDATE owner_settings SET value_json = ?, updated_at = ? WHERE key = ?"
+          ).bind(JSON.stringify({ enabled: true }), repairTs, "feature.room_creation"),
+          db.prepare(
+            "INSERT OR IGNORE INTO app_migrations (id, applied_at) VALUES (?, ?)"
+          ).bind(repairId, repairTs),
+        ]);
+        roomCreation = { enabled: true };
+      }
+    }
     if (roomCreation.enabled === false) return json({ ok: false, error: "room_creation_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
