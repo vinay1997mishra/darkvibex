@@ -345,6 +345,7 @@ class AppState extends ChangeNotifier {
     authError = null;
     userId = '91000001';
     displayName = 'DarkVibeX User';
+    userRole = 'user';
     avatarKey = null;
     messages.clear();
     coins = 2500000;
