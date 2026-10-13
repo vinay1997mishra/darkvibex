@@ -699,13 +699,16 @@ async function handleApi(request, env, url) {
               CASE WHEN av.level >= 18 AND av.active_until > ?
                          AND json_extract(av.preferences_json, '$.anonymous_everywhere') = 1
                    THEN 'Anonymous' ELSE u.display_name END AS display_name,
-              u.avatar_key, v.first_visited_at, v.last_visited_at, v.visit_count
+              CASE WHEN av.level >= 18 AND av.active_until > ?
+                         AND json_extract(av.preferences_json, '$.anonymous_everywhere') = 1
+                   THEN '' ELSE u.avatar_key END AS avatar_key,
+              v.first_visited_at, v.last_visited_at, v.visit_count
          FROM profile_visitors v
          JOIN users u ON u.id = v.visitor_user_id
          LEFT JOIN user_vip av ON av.user_id = v.visitor_user_id
         WHERE v.viewed_user_id = ?
         ORDER BY v.last_visited_at DESC LIMIT 100`
-    ).bind(now(), userId).all();
+    ).bind(now(), now(), userId).all();
     return json({ ok: true, visitors: rows.results ?? [] });
   }
 
