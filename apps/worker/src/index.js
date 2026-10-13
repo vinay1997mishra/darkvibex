@@ -1179,6 +1179,368 @@ function randomFiveDigitRoomCode() {
   return String(10000 + (values[0] % 90000));
 }
 
+const FRUIT_PARTY_ROUND_MS = 21000;
+const FRUIT_PARTY_RESULT_MS = 5000;
+const FRUIT_PARTY_CYCLE_MS = FRUIT_PARTY_ROUND_MS + FRUIT_PARTY_RESULT_MS;
+const FRUIT_PARTY_LUCKY_WINDOW_MS = 2 * 60 * 60 * 1000;
+const FRUIT_PARTY_BET_AMOUNTS = Object.freeze([
+  5000, 25000, 100000, 500000, 2000000, 10000000,
+]);
+const FRUIT_PARTY_FRUITS = Object.freeze([
+  { key: "lemon", emoji: "🍋", label: "Lemon", multiplier: 5 },
+  { key: "raspberry", emoji: "🫐", label: "Raspberry", multiplier: 5 },
+  { key: "kiwi", emoji: "🥝", label: "Kiwi", multiplier: 5 },
+  { key: "plum", emoji: "🍑", label: "Plum", multiplier: 5 },
+  { key: "banana", emoji: "🍌", label: "Banana", multiplier: 10 },
+  { key: "strawberry", emoji: "🍓", label: "Strawberry", multiplier: 15 },
+  { key: "watermelon", emoji: "🍉", label: "Watermelon", multiplier: 25 },
+  { key: "cherry", emoji: "🍒", label: "Cherry", multiplier: 45 },
+]);
+const FRUIT_PARTY_BY_KEY = new Map(
+  FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, fruit]),
+);
+const FRUIT_PARTY_X5 = FRUIT_PARTY_FRUITS.filter((fruit) => fruit.multiplier === 5);
+const FRUIT_PARTY_MID = FRUIT_PARTY_FRUITS.filter(
+  (fruit) => fruit.multiplier === 10 ||
+    fruit.multiplier === 15 ||
+    fruit.multiplier === 25,
+);
+const FRUIT_PARTY_HIGH = FRUIT_PARTY_FRUITS.filter(
+  (fruit) => fruit.multiplier === 45,
+);
+
+function secureIndex(length) {
+  if (length <= 1) return 0;
+  const values = new Uint32Array(1);
+  const ceiling = Math.floor(0x100000000 / length) * length;
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= ceiling);
+  return values[0] % length;
+}
+
+function fruitPartyWeightedFruit() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  const roll = values[0] % 100;
+  if (roll < 75) return FRUIT_PARTY_X5[secureIndex(FRUIT_PARTY_X5.length)];
+  if (roll < 95) return FRUIT_PARTY_MID[secureIndex(FRUIT_PARTY_MID.length)];
+  return FRUIT_PARTY_HIGH[secureIndex(FRUIT_PARTY_HIGH.length)];
+}
+
+function fruitPartyDistinctFruits(count) {
+  const pool = [...FRUIT_PARTY_FRUITS];
+  const picked = [];
+  while (pool.length && picked.length < count) {
+    picked.push(pool.splice(secureIndex(pool.length), 1)[0]);
+  }
+  return picked;
+}
+
+function fruitPartyRoundId(ts) {
+  return Math.floor(ts / FRUIT_PARTY_CYCLE_MS);
+}
+function fruitPartyRoundStart(roundId) {
+  return roundId * FRUIT_PARTY_CYCLE_MS;
+}
+function fruitPartyBetEnd(roundId) {
+  return fruitPartyRoundStart(roundId) + FRUIT_PARTY_ROUND_MS;
+}
+function fruitPartyCycleEnd(roundId) {
+  return fruitPartyRoundStart(roundId) + FRUIT_PARTY_CYCLE_MS;
+}
+
+async function ensureFruitPartySchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_bets (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      round_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      fruit_key TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, request_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_results (
+      round_id INTEGER PRIMARY KEY,
+      fruit_key TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      bonus_fruits_json TEXT NOT NULL DEFAULT '[]',
+      total_bet INTEGER NOT NULL DEFAULT 0,
+      total_payout INTEGER NOT NULL DEFAULT 0,
+      active_players INTEGER NOT NULL DEFAULT 0,
+      top_winners_json TEXT NOT NULL DEFAULT '[]',
+      settled_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_lucky_windows (
+      window_id INTEGER PRIMARY KEY,
+      rounds_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_fruit_party_bets_round ON fruit_party_bets(round_id)"
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_fruit_party_results_time ON fruit_party_results(settled_at DESC)"
+    ),
+  ]);
+}
+
+async function fruitPartyLuckyRounds(db, roundId) {
+  const windowId = Math.floor(
+    fruitPartyRoundStart(roundId) / FRUIT_PARTY_LUCKY_WINDOW_MS,
+  );
+  let row = await db.prepare(
+    "SELECT rounds_json FROM fruit_party_lucky_windows WHERE window_id=?"
+  ).bind(windowId).first();
+  if (!row) {
+    const windowStart = windowId * FRUIT_PARTY_LUCKY_WINDOW_MS;
+    const windowEnd = windowStart + FRUIT_PARTY_LUCKY_WINDOW_MS;
+    const firstRound = Math.ceil(windowStart / FRUIT_PARTY_CYCLE_MS);
+    const lastRound = Math.floor((windowEnd - 1) / FRUIT_PARTY_CYCLE_MS);
+    const totalRounds = Math.max(1, lastRound - firstRound + 1);
+    const count = 3 + secureIndex(2);
+    const selected = new Set();
+    while (selected.size < Math.min(count, totalRounds)) {
+      selected.add(firstRound + secureIndex(totalRounds));
+    }
+    const rounds = [...selected].sort((a, b) => a - b);
+    await db.prepare(
+      "INSERT OR IGNORE INTO fruit_party_lucky_windows(window_id,rounds_json,created_at) VALUES(?,?,?)"
+    ).bind(windowId, JSON.stringify(rounds), now()).run();
+    row = await db.prepare(
+      "SELECT rounds_json FROM fruit_party_lucky_windows WHERE window_id=?"
+    ).bind(windowId).first();
+  }
+  try {
+    const parsed = JSON.parse(String(row?.rounds_json ?? "[]"));
+    return Array.isArray(parsed) ? parsed.map(Number) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function settleFruitPartyRound(db, roundId) {
+  const existing = await db.prepare(
+    "SELECT round_id FROM fruit_party_results WHERE round_id=? LIMIT 1"
+  ).bind(roundId).first();
+  if (existing) return;
+
+  const rows = await db.prepare(
+    `SELECT b.user_id,b.fruit_key,b.amount,u.display_name,u.avatar_key
+       FROM fruit_party_bets b
+       JOIN users u ON u.id=b.user_id
+      WHERE b.round_id=?
+      ORDER BY b.created_at ASC`
+  ).bind(roundId).all();
+  const bets = rows.results ?? [];
+  const luckyRounds = await fruitPartyLuckyRounds(db, roundId);
+  const lucky11 = luckyRounds.includes(roundId);
+  const bonus = lucky11 ? fruitPartyDistinctFruits(4) : [];
+  let winner = lucky11 ? bonus[0] : fruitPartyWeightedFruit();
+
+  if (!lucky11) {
+    const previous = await db.prepare(
+      "SELECT fruit_key FROM fruit_party_results WHERE round_id<? ORDER BY round_id DESC LIMIT 1"
+    ).bind(roundId).first();
+    if (previous && String(previous.fruit_key) === winner.key) {
+      const alternatives = FRUIT_PARTY_FRUITS.filter(
+        (fruit) => fruit.key !== String(previous.fruit_key),
+      );
+      winner = alternatives[secureIndex(alternatives.length)];
+    }
+  }
+
+  const winningKeys = new Set(
+    lucky11 ? bonus.map((fruit) => fruit.key) : [winner.key],
+  );
+  const payouts = new Map();
+  const profiles = new Map();
+  let totalBet = 0;
+  for (const bet of bets) {
+    const amount = Number(bet.amount ?? 0);
+    totalBet += amount;
+    profiles.set(String(bet.user_id), {
+      display_name: String(bet.display_name ?? bet.user_id ?? "User"),
+      avatar_key: String(bet.avatar_key ?? ""),
+    });
+    if (!winningKeys.has(String(bet.fruit_key))) continue;
+    const fruit = FRUIT_PARTY_BY_KEY.get(String(bet.fruit_key));
+    if (!fruit) continue;
+    const payout = amount * fruit.multiplier;
+    payouts.set(
+      String(bet.user_id),
+      Number(payouts.get(String(bet.user_id)) ?? 0) + payout,
+    );
+  }
+  const totalPayout = [...payouts.values()].reduce(
+    (sum, value) => sum + Number(value),
+    0,
+  );
+  const topWinners = [...payouts.entries()]
+    .filter(([, amount]) => Number(amount) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
+    .map(([userId, amount]) => ({
+      user_id: userId,
+      display_name: profiles.get(userId)?.display_name ?? userId,
+      avatar_key: profiles.get(userId)?.avatar_key ?? "",
+      winning_coins: Number(amount),
+    }));
+  const ts = now();
+
+  const statements = [
+    db.prepare(
+      `INSERT INTO fruit_party_results(
+        round_id,fruit_key,mode,bonus_fruits_json,total_bet,total_payout,
+        active_players,top_winners_json,settled_at
+      ) VALUES(?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      roundId,
+      winner.key,
+      lucky11 ? "lucky_11_random_4" : "weighted_random",
+      JSON.stringify(bonus.map((fruit) => fruit.key)),
+      totalBet,
+      totalPayout,
+      new Set(bets.map((bet) => String(bet.user_id))).size,
+      JSON.stringify(topWinners),
+      ts,
+    ),
+  ];
+  for (const [userId, payout] of payouts.entries()) {
+    const reference = `fruit-party:${roundId}:${userId}`;
+    statements.push(
+      db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+        .bind(Number(payout), ts, userId),
+      db.prepare(
+        `INSERT INTO wallet_ledger(
+          id,user_id,kind,amount,balance_after,reference_id,created_at
+        )
+        SELECT ?,u.id,'fruit_party_win',?,u.coins,?,?
+          FROM users u WHERE u.id=?`
+      ).bind(id(), Number(payout), reference, ts, userId),
+    );
+  }
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    const after = await db.prepare(
+      "SELECT round_id FROM fruit_party_results WHERE round_id=?"
+    ).bind(roundId).first();
+    if (!after) throw error;
+  }
+
+  await db.prepare(
+    "DELETE FROM fruit_party_results WHERE round_id NOT IN (SELECT round_id FROM fruit_party_results ORDER BY round_id DESC LIMIT 100)"
+  ).run();
+  await db.prepare(
+    "DELETE FROM fruit_party_bets WHERE round_id<?"
+  ).bind(roundId - 120).run();
+}
+
+async function syncFruitParty(db, ts = now()) {
+  await ensureFruitPartySchema(db);
+  const currentRound = fruitPartyRoundId(ts);
+  const eligible =
+    ts >= fruitPartyBetEnd(currentRound) ? currentRound : currentRound - 1;
+  const start = Math.max(0, eligible - 7);
+  for (let round = start; round <= eligible; round++) {
+    await settleFruitPartyRound(db, round);
+  }
+}
+
+async function fruitPartyState(db, userId, ts = now()) {
+  await syncFruitParty(db, ts);
+  const roundId = fruitPartyRoundId(ts);
+  const betEnd = fruitPartyBetEnd(roundId);
+  const cycleEnd = fruitPartyCycleEnd(roundId);
+  const inResultSpin = ts >= betEnd;
+  const myRows = await db.prepare(
+    "SELECT fruit_key,COALESCE(SUM(amount),0) AS amount FROM fruit_party_bets WHERE round_id=? AND user_id=? GROUP BY fruit_key"
+  ).bind(roundId, userId).all();
+  const myBets = Object.fromEntries(
+    FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, 0]),
+  );
+  for (const row of myRows.results ?? []) {
+    if (Object.prototype.hasOwnProperty.call(myBets, row.fruit_key)) {
+      myBets[row.fruit_key] = Number(row.amount ?? 0);
+    }
+  }
+  const totals = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS total_bet,COUNT(DISTINCT user_id) AS active_players FROM fruit_party_bets WHERE round_id=?"
+  ).bind(roundId).first();
+  const historyRows = await db.prepare(
+    `SELECT round_id,fruit_key,mode,bonus_fruits_json,total_bet,total_payout,
+            active_players,top_winners_json,settled_at
+       FROM fruit_party_results
+      ORDER BY round_id DESC
+      LIMIT 7`
+  ).all();
+  const history = (historyRows.results ?? []).map((row) => {
+    let bonusKeys = [];
+    let topWinners = [];
+    try { bonusKeys = JSON.parse(String(row.bonus_fruits_json ?? "[]")); } catch (_) {}
+    try { topWinners = JSON.parse(String(row.top_winners_json ?? "[]")); } catch (_) {}
+    return {
+      round_id: Number(row.round_id),
+      fruit: FRUIT_PARTY_BY_KEY.get(String(row.fruit_key)) ?? null,
+      mode: String(row.mode ?? ""),
+      lucky11: String(row.mode ?? "").startsWith("lucky_11_"),
+      bonus_fruits: bonusKeys
+        .map((key) => FRUIT_PARTY_BY_KEY.get(String(key)))
+        .filter(Boolean),
+      total_bet: Number(row.total_bet ?? 0),
+      total_payout: Number(row.total_payout ?? 0),
+      active_players: Number(row.active_players ?? 0),
+      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
+      settled_at: Number(row.settled_at ?? 0),
+    };
+  });
+  const wallet = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  const dayStart = Math.floor(ts / 86400000) * 86400000;
+  const winRow = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='fruit_party_win' AND created_at>=?"
+  ).bind(userId, dayStart).first();
+
+  return {
+    ok: true,
+    server_time: ts,
+    round: {
+      round_id: roundId,
+      round_start: fruitPartyRoundStart(roundId),
+      round_end: betEnd,
+      cycle_end: cycleEnd,
+      remaining_ms: Math.max(0, betEnd - ts),
+      result_spin_remaining_ms: inResultSpin
+        ? Math.max(0, cycleEnd - ts)
+        : 0,
+      result_spin_ms: FRUIT_PARTY_RESULT_MS,
+      phase: inResultSpin ? "result_spin" : "betting",
+      round_duration_ms: FRUIT_PARTY_ROUND_MS,
+      round_cycle_ms: FRUIT_PARTY_CYCLE_MS,
+      betting_open: !inResultSpin && betEnd > ts,
+      total_bet: Number(totals?.total_bet ?? 0),
+      active_players: Number(totals?.active_players ?? 0),
+    },
+    config: {
+      bet_amounts: FRUIT_PARTY_BET_AMOUNTS,
+      lucky_window_ms: FRUIT_PARTY_LUCKY_WINDOW_MS,
+      lucky_rounds_min: 3,
+      lucky_rounds_max: 4,
+      lucky_fruit_count: 4,
+      fruits: FRUIT_PARTY_FRUITS,
+    },
+    wallet_balance: Number(wallet?.coins ?? 0),
+    today_winnings: Number(winRow?.winnings ?? 0),
+    my_bets: myBets,
+    history,
+  };
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -4769,31 +5131,90 @@ async function handleApi(request, env, url) {
     });
   }
 
+  if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await fruitPartyState(db, userId, now()));
+  }
+
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) return json({ ok: false, error: "games_disabled" }, { status: 403 });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
-    const stake = Number(body.stake ?? 0);
+    const fruitKey = String(body.fruit_key ?? "").trim();
+    const amount = Number(body.amount ?? 0);
+    const requestId = String(body.request_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!userId || stake !== 5000) {
-      return json({ ok: false, error: "invalid_bet" }, { status: 400 });
+    if (!FRUIT_PARTY_BY_KEY.has(fruitKey) ||
+        !FRUIT_PARTY_BET_AMOUNTS.includes(amount) ||
+        !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
+      return json({ ok:false,error:"invalid_bet" }, { status:400 });
     }
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
-    const betId = id();
-    const afterStake = await walletChange(db, userId, -stake, "game_bet", betId);
-    const symbols = ["apple", "orange", "watermelon", "grape", "kiwi", "strawberry", "cherry", "lemon"];
-    const result = symbols[Math.floor(Math.random() * symbols.length)];
-    const won = Math.random() < 0.28;
-    const payout = won ? stake * 5 : 0;
-    let balance = afterStake;
-    if (payout > 0) balance = await walletChange(db, userId, payout, "game_win", betId);
-    await db.prepare(
-      "INSERT INTO game_bets (id, game_id, user_id, stake, result, payout, created_at) VALUES (?, 'fruit-party', ?, ?, ?, ?, ?)"
-    ).bind(betId, userId, stake, result, payout, now()).run();
-    return json({ ok: true, bet_id: betId, result, payout, coin_balance: balance });
+    await ensureFruitPartySchema(db);
+    const ts = now();
+    await syncFruitParty(db, ts);
+    const roundId = fruitPartyRoundId(ts);
+    if (ts >= fruitPartyBetEnd(roundId)) {
+      return json(
+        { ok:false,error:"betting_locked",state:await fruitPartyState(db,userId,ts) },
+        { status:409 },
+      );
+    }
+    const betId = `fruit-party:${userId}:${requestId}`;
+    const prior = await db.prepare(
+      "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
+    ).bind(userId, requestId).first();
+    if (prior) return json(await fruitPartyState(db, userId, ts));
+
+    await db.batch([
+      db.prepare(
+        `INSERT INTO fruit_party_bets(
+          id,request_id,round_id,user_id,fruit_key,amount,created_at
+        )
+        SELECT ?,?,?,?,?,?,?
+         WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
+      ).bind(
+        betId,requestId,roundId,userId,fruitKey,amount,ts,userId,amount,
+      ),
+      db.prepare(
+        "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)"
+      ).bind(amount,ts,userId,betId),
+      db.prepare(
+        `INSERT INTO wallet_ledger(
+          id,user_id,kind,amount,balance_after,reference_id,created_at
+        )
+        SELECT ?,u.id,'fruit_party_bet',?,u.coins,?,?
+          FROM users u
+         WHERE u.id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)`
+      ).bind(id(),-amount,betId,ts,userId,betId),
+    ]);
+    const accepted = await db.prepare(
+      "SELECT id FROM fruit_party_bets WHERE id=? LIMIT 1"
+    ).bind(betId).first();
+    if (!accepted) {
+      return json(
+        { ok:false,error:"insufficient_coins",state:await fruitPartyState(db,userId,ts) },
+        { status:409 },
+      );
+    }
+    return json(await fruitPartyState(db, userId, now()), { status:201 });
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
