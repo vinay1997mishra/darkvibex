@@ -87,6 +87,10 @@ class BackendApi {
     required String userId,
     required String displayName,
     required String dateOfBirth,
+    String countryCode = '',
+    String countryName = '',
+    String flagEmoji = '',
+    String language = '',
   }) =>
       _json(
         'POST',
@@ -95,6 +99,24 @@ class BackendApi {
           'user_id': userId,
           'display_name': displayName,
           'date_of_birth': dateOfBirth,
+          if (countryCode.trim().isNotEmpty) 'country_code': countryCode.trim(),
+          if (countryName.trim().isNotEmpty) 'country_name': countryName.trim(),
+          if (flagEmoji.trim().isNotEmpty) 'flag_emoji': flagEmoji.trim(),
+          if (language.trim().isNotEmpty) 'language': language.trim(),
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> setUserLanguage({
+    required String userId,
+    required String language,
+  }) =>
+      _json(
+        'POST',
+        '/api/users/language',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'language': language,
         },
         returnErrorBody: true,
       );
