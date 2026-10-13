@@ -1066,6 +1066,53 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> ludoState({
+    required String roomId,
+  }) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> ludoRoll({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/roll',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> ludoMove({
+    required String roomId,
+    required int tokenIndex,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/move',
+        returnErrorBody: true,
+        body: <String, dynamic>{'token_index': tokenIndex},
+      );
+
+  Future<Map<String, dynamic>?> ludoLeave({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/leave',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> ludoReset({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo/reset',
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> fruitPartyState() =>
       _json(
         'GET',
