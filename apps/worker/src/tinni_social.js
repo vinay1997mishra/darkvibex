@@ -76,6 +76,7 @@ export async function ensureTinniSocialSchema(db) {
       intimacy INTEGER NOT NULL DEFAULT 0,
       level INTEGER NOT NULL DEFAULT 1,
       requested_by TEXT,
+      ring_id TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
@@ -129,6 +130,9 @@ export async function ensureTinniSocialSchema(db) {
     )`,
   ];
   for (const sql of statements) await db.prepare(sql).run();
+  try {
+    await db.prepare("ALTER TABLE cp_relationships ADD COLUMN ring_id TEXT").run();
+  } catch (_) {}
   await db.prepare(
     "INSERT OR IGNORE INTO official_notices(id,title,body,created_at) VALUES(?,?,?,?)"
   ).bind(
