@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
+import 'vip_support_screen.dart';
 
 class VipScreen extends StatelessWidget {
   const VipScreen({super.key, required this.state});
@@ -67,6 +68,25 @@ class VipScreen extends StatelessWidget {
                   progress: progress,
                   activeUntil: state.vipActiveUntil,
                 ),
+                if (state.hasVipPrivilege('customer_service')) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.support_agent_rounded,
+                        color: Color(0xFFFFD88A),
+                      ),
+                      title: const Text('VIP Customer Service'),
+                      subtitle: const Text('Private VIP support tickets'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => VipSupportScreen(state: state),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 const Text(
                   'VIP exclusive privileges',
