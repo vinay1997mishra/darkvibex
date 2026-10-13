@@ -248,6 +248,15 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
     if (linked && String(linked.user_id) !== userId) {
       return json({ ok: false, error: "email_already_linked" }, { status: 409 });
     }
+    const userEmail = await db.prepare(
+      "SELECT subject FROM account_identities WHERE user_id = ? AND provider = 'email'"
+    ).bind(userId).first();
+    if (userEmail) {
+      return json({
+        ok: false,
+        error: String(userEmail.subject) === email ? "email_already_verified" : "email_already_bound",
+      }, { status: 409 });
+    }
 
     const currentTime = now();
     await db.prepare("DELETE FROM mine_email_otp_challenges WHERE expires_at <= ?").bind(currentTime).run();
@@ -345,6 +354,13 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
     await db.prepare(`INSERT OR IGNORE INTO account_identities
       (user_id,provider,subject,email,created_at) VALUES (?,'email',?,?,?)`)
       .bind(userId, email, email, now()).run();
+    const verifiedIdentity = await db.prepare(
+      "SELECT subject FROM account_identities WHERE user_id = ? AND provider = 'email'"
+    ).bind(userId).first();
+    if (!verifiedIdentity || String(verifiedIdentity.subject) !== email) {
+      await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
+      return json({ ok: false, error: "email_already_bound" }, { status: 409 });
+    }
     await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
     const result = await db.prepare(
       "SELECT provider,subject,email,created_at FROM account_identities WHERE user_id = ? ORDER BY created_at"
