@@ -207,6 +207,7 @@ class BackendApi {
     bool? locked,
     bool? muted,
     bool? banned,
+    bool? accepted,
     String? micMode,
   }) =>
       _json(
@@ -222,6 +223,7 @@ class BackendApi {
           if (locked != null) 'locked': locked,
           if (muted != null) 'muted': muted,
           if (banned != null) 'banned': banned,
+          if (accepted != null) 'accepted': accepted,
           if (micMode != null) 'mic_mode': micMode,
         },
       );
@@ -429,6 +431,33 @@ class BackendApi {
         'target_user_id': targetUserId,
         'ban': ban,
       },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> roomBlacklist({
+    required String roomId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/blacklist',
+    );
+    final rows = value?['blacklist'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<bool> unblockRoomMember({
+    required String roomId,
+    required String targetUserId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/blacklist',
+      body: <String, dynamic>{'target_user_id': targetUserId},
     );
     return value?['ok'] == true;
   }
