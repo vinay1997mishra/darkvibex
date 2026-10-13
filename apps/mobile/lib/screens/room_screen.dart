@@ -2814,7 +2814,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     required bool isFocused,
                     required int? maxLength,
                   }) => null,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: chatBanned
                         ? 'Chat banned'
                         : (!publicScreenEnabled && !isRoomAdmin
