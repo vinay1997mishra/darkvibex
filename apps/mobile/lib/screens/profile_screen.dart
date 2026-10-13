@@ -1015,6 +1015,7 @@ class PublicProfileScreen extends StatefulWidget {
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final Object _privacyScope = Object();
   Map<String, dynamic>? user;
+  Map<String, dynamic> socialStats = const <String, dynamic>{};
   bool loading = true;
   bool isFriend = false;
   bool isFollowing = false;
@@ -1029,31 +1030,57 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     _load();
   }
 
+  String get _resolvedUserId =>
+      user?['id']?.toString() ?? widget.userId;
+
+  bool get _isSelf => _resolvedUserId == widget.state.userId;
+
   Future<void> _load() async {
     final response = await widget.state.backend.userProfile(
       userId: widget.userId,
     );
-    final friends = await widget.state.backend.friends(
-      userId: widget.state.userId,
-    );
-    final blocked = await widget.state.backend.blockedUsers(
-      userId: widget.state.userId,
-    );
-    final friendStatus =
-        friends.any((row) => row['id']?.toString() == widget.userId);
-    final blockedStatus =
-        blocked.any((row) => row['user_id']?.toString() == widget.userId);
-    final following = widget.userId == widget.state.userId
-        ? false
-        : await widget.state.backend.followStatus(
+    final loadedUser = response?['user'] is Map
+        ? Map<String, dynamic>.from(response!['user'] as Map)
+        : null;
+    final targetId = loadedUser?['id']?.toString() ?? widget.userId;
+
+    var friendStatus = false;
+    var blockedStatus = false;
+    var following = false;
+    Map<String, dynamic> stats = const <String, dynamic>{};
+    if (loadedUser != null) {
+      final values = await Future.wait<Object?>([
+        widget.state.backend.friends(userId: widget.state.userId),
+        widget.state.backend.blockedUsers(userId: widget.state.userId),
+        widget.state.backend.socialStats(userId: targetId),
+        if (targetId != widget.state.userId)
+          widget.state.backend.followStatus(
             userId: widget.state.userId,
-            targetUserId: widget.userId,
-          );
+            targetUserId: targetId,
+          )
+        else
+          Future<bool>.value(false),
+      ]);
+      final friends = values[0] is List
+          ? (values[0] as List).whereType<Map>().toList()
+          : const <Map>[];
+      final blocked = values[1] is List
+          ? (values[1] as List).whereType<Map>().toList()
+          : const <Map>[];
+      friendStatus =
+          friends.any((row) => row['id']?.toString() == targetId);
+      blockedStatus =
+          blocked.any((row) => row['user_id']?.toString() == targetId);
+      if (values[2] is Map) {
+        stats = Map<String, dynamic>.from(values[2] as Map);
+      }
+      following = values[3] == true;
+    }
+
     if (!mounted) return;
     setState(() {
-      user = response?['user'] is Map
-          ? Map<String, dynamic>.from(response!['user'] as Map)
-          : null;
+      user = loadedUser;
+      socialStats = stats;
       loading = false;
       isFriend = friendStatus;
       isFollowing = following;
@@ -1078,7 +1105,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         appBar: AppBar(
           title: Text(user?['display_name']?.toString() ?? 'Profile'),
           actions: [
-            if (widget.userId != widget.state.userId)
+            if (!_isSelf)
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'block') _toggleBlock();
@@ -1100,22 +1127,106 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        VipAnimatedFrame(
-                          size: 88,
-                          enabled: (int.tryParse(user!['active_vip_level']?.toString() ?? '') ?? 0) >= 7,
-                          child: CircleAvatar(
-                            radius: 40,
-                            backgroundImage: user!['avatar_key']?.toString().isNotEmpty == true
-                                ? NetworkImage(widget.state.backend.fileUrl(user!['avatar_key'].toString()), headers: widget.state.backend.fileHeaders)
-                                : null,
-                            child: user!['avatar_key']?.toString().isNotEmpty == true
-                                ? null
-                                : Text(displayName.isEmpty ? 'U' : displayName.substring(0, 1).toUpperCase()),
+                        Container(
+                          padding: EdgeInsets.all(
+                            user!['active_ring_id']?.toString().isNotEmpty == true
+                                ? 4
+                                : 0,
+                          ),
+                          decoration: user!['active_ring_id']
+                                      ?.toString()
+                                      .isNotEmpty ==
+                                  true
+                              ? const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: SweepGradient(
+                                    colors: <Color>[
+                                      Color(0xFFFFE47A),
+                                      Color(0xFFFF6FB7),
+                                      Color(0xFF8C6CFF),
+                                      Color(0xFFFFE47A),
+                                    ],
+                                  ),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: Color(0x66FFB5F1),
+                                      blurRadius: 12,
+                                    ),
+                                  ],
+                                )
+                              : null,
+                          child: VipAnimatedFrame(
+                            size: 88,
+                            enabled: user!['active_frame_id']
+                                        ?.toString()
+                                        .isNotEmpty ==
+                                    true ||
+                                (int.tryParse(
+                                          user!['active_vip_level']
+                                                  ?.toString() ??
+                                              '',
+                                        ) ??
+                                        0) >=
+                                    7,
+                            styleId: user!['active_frame_id']?.toString(),
+                            child: CircleAvatar(
+                              radius: 40,
+                              backgroundImage: user!['avatar_key']
+                                          ?.toString()
+                                          .isNotEmpty ==
+                                      true
+                                  ? NetworkImage(
+                                      widget.state.backend.fileUrl(
+                                        user!['avatar_key'].toString(),
+                                      ),
+                                      headers:
+                                          widget.state.backend.fileHeaders,
+                                    )
+                                  : null,
+                              child: user!['avatar_key']
+                                          ?.toString()
+                                          .isNotEmpty ==
+                                      true
+                                  ? null
+                                  : Text(
+                                      displayName.isEmpty
+                                          ? 'U'
+                                          : displayName
+                                              .substring(0, 1)
+                                              .toUpperCase(),
+                                    ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
                         Text(user!['display_name']?.toString() ?? 'User', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                        Text('ID ${user!['id']} • VIP ${user!['vip_level'] ?? 0}/18'),
+                        Text('ID ${user!['public_id'] ?? user!['id']} • VIP ${user!['vip_level'] ?? 0}/18'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 18,
+                          runSpacing: 8,
+                          children: [
+                            _PublicStat(
+                              label: 'Follow',
+                              value: '${socialStats['following_count'] ?? 0}',
+                            ),
+                            _PublicStat(
+                              label: 'Fans',
+                              value: '${socialStats['followers_count'] ?? 0}',
+                            ),
+                            _PublicStat(
+                              label: 'Charm',
+                              value:
+                                  '${socialStats['lifetime_received_coins'] ?? 0}',
+                            ),
+                            _PublicStat(
+                              label: 'Wealth',
+                              value:
+                                  '${(socialStats['wealth'] is Map ? (socialStats['wealth'] as Map)['level'] : 0) ?? 0}',
+                            ),
+                          ],
+                        ),
                         if ((int.tryParse(user!['active_vip_level']?.toString() ?? user!['vip_level']?.toString() ?? '') ?? 0) >= 18)
                           const Padding(
                             padding: EdgeInsets.only(top: 5),
@@ -1125,7 +1236,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
                             ]),
                           ),
-                        if (widget.userId != widget.state.userId) ...[
+                        if (!_isSelf) ...[
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
                             child: Wrap(
@@ -1173,7 +1284,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             ),
                           ),
                         ],
-                        if (widget.state.hasVipPrivilege('free_say_hi'))
+                        if (!_isSelf && widget.state.hasVipPrivilege('free_say_hi'))
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
                             child: FilledButton.icon(
@@ -1196,9 +1307,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(
           state: widget.state,
-          otherUserId: widget.userId,
+          otherUserId: _resolvedUserId,
           otherName:
-              name == null || name.isEmpty ? 'User ${widget.userId}' : name,
+              name == null || name.isEmpty ? 'User $_resolvedUserId' : name,
         ),
       ),
     );
@@ -1209,7 +1320,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     setState(() => startingCall = true);
     final value = await widget.state.backend.startDirectCall(
       userId: widget.state.userId,
-      receiverUserId: widget.userId,
+      receiverUserId: _resolvedUserId,
     );
     if (!mounted) return;
     setState(() => startingCall = false);
@@ -1251,7 +1362,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final next = !isBlocked;
     final ok = await widget.state.backend.setUserBlocked(
       userId: widget.state.userId,
-      targetUserId: widget.userId,
+      targetUserId: _resolvedUserId,
       blocked: next,
     );
     if (!mounted) return;
@@ -1282,7 +1393,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final next = !isFollowing;
     final ok = await widget.state.backend.setUserFollow(
       userId: widget.state.userId,
-      targetUserId: widget.userId,
+      targetUserId: _resolvedUserId,
       follow: next,
     );
     if (!mounted) return;
@@ -1297,7 +1408,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       if (mounted) {
         setState(() {
           isFriend =
-              friends.any((row) => row['id']?.toString() == widget.userId);
+              friends.any((row) => row['id']?.toString() == _resolvedUserId);
         });
       }
     }
@@ -1323,7 +1434,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
     input.dispose();
     if (text == null || text.isEmpty || !mounted) return;
-    final ok = await widget.state.sendVipSayHi(receiverUserId: widget.userId, message: text);
+    final ok = await widget.state.sendVipSayHi(receiverUserId: _resolvedUserId, message: text);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Free Say Hi sent' : widget.state.vipError ?? 'Could not send Say Hi')));
     setState(() {});
