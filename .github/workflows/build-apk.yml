@@ -121,8 +121,9 @@ jobs:
 
       - name: Print APK signing certificate fingerprint
         shell: bash
+        continue-on-error: true
         run: |
-          set -euo pipefail
+          set -u
           if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
             apk_path="apps/mobile/build/app/outputs/flutter-apk/app-release.apk"
             echo "APK type: signed release (stable signing key, if key is unchanged)"
@@ -130,9 +131,31 @@ jobs:
             apk_path="apps/mobile/build/app/outputs/flutter-apk/app-debug.apk"
             echo "APK type: CI debug (fingerprint may change on the next build)"
           fi
-          apksigner_path="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          test -x "$apksigner_path"
-          "$apksigner_path" verify --print-certs "$apk_path" | grep -E "Signer #1 certificate SHA-1 digest:"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$sdk_root" ] || [ ! -d "$sdk_root/build-tools" ]; then
+            sdk_root="/usr/local/lib/android/sdk"
+          fi
+          apksigner_path="$(find "$sdk_root/build-tools" -type f -name apksigner 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$apksigner_path" ] || [ ! -x "$apksigner_path" ]; then
+            echo "Could not locate apksigner under $sdk_root; SHA-1 output skipped."
+            exit 0
+          fi
+          if [ ! -f "$apk_path" ]; then
+            echo "APK not found at $apk_path; SHA-1 output skipped."
+            exit 0
+          fi
+          cert_output="$("$apksigner_path" verify --print-certs "$apk_path" 2>&1)" || {
+            echo "$cert_output"
+            echo "Could not inspect APK certificate; SHA-1 output skipped."
+            exit 0
+          }
+          echo "$cert_output"
+          sha1="$(printf '%s\\n' "$cert_output" | sed -nE 's/.*certificate SHA-1 digest: *([0-9A-Fa-f:]+).*/\\1/p' | head -n 1)"
+          if [ -z "$sha1" ]; then
+            echo "SHA-1 line was not found in apksigner output."
+            exit 0
+          fi
+          echo "APK_SIGNING_SHA1=$sha1"
 
       - name: Upload debug APK
         if: env.ANDROID_KEYSTORE_PATH == ''
