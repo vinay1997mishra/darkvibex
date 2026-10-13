@@ -165,6 +165,75 @@ class _RoomsHomeState extends State<_RoomsHome> {
     );
   }
 
+  Future<void> _showRoomRanking(BuildContext context) async {
+    final rooms = [...state.rooms]
+      ..sort((a, b) => b.online.compareTo(a.online));
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .68,
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.emoji_events_rounded, color: TinniPalette.gold),
+                    SizedBox(width: 8),
+                    Text(
+                      'Room Ranking',
+                      style: TextStyle(
+                        color: TinniPalette.gold,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: rooms.isEmpty
+                    ? const Center(child: Text('No rooms available'))
+                    : ListView.builder(
+                        itemCount: rooms.length,
+                        itemBuilder: (context, index) {
+                          final room = rooms[index];
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: TinniPalette.panel2,
+                              backgroundImage: room.avatarKey == null
+                                  ? null
+                                  : NetworkImage(
+                                      state.backend.fileUrl(room.avatarKey!),
+                                      headers: state.backend.fileHeaders,
+                                    ),
+                              child: room.avatarKey == null
+                                  ? Text('${index + 1}')
+                                  : null,
+                            ),
+                            title: Text(room.name),
+                            subtitle: Text(
+                              'No.${index + 1} • ${room.online} online • ${room.partyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'}',
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              _openRoom(room);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _createRoom(BuildContext context) async {
     final draft = await showModalBottomSheet<_CreateRoomDraft>(
       context: context,
@@ -284,31 +353,21 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     children: [
                       _PromoCard(
                         title: 'ROYAL PARTY',
-                        subtitle: 'Live rooms, rankings and your vibe',
+                        subtitle: 'Live rooms, rankings and royal rewards',
                         icon: Icons.workspace_premium_rounded,
-                        onTap: () {},
+                        onTap: () => _showRoomRanking(context),
                       ),
                       _PromoCard(
-                        title: 'GAME NIGHT',
-                        subtitle: 'Play games with your friends',
-                        icon: Icons.sports_esports_rounded,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => GamesScreen(state: state),
-                          ),
-                        ),
+                        title: 'WEEKLY STAR',
+                        subtitle: 'Weekly rankings and royal rewards',
+                        icon: Icons.emoji_events_rounded,
+                        onTap: () => _showRoomRanking(context),
                       ),
                       _PromoCard(
-                        title: 'VIP WORLD',
-                        subtitle: 'Premium effects, frames and privileges',
-                        icon: Icons.diamond_rounded,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => VipScreen(state: state),
-                          ),
-                        ),
+                        title: 'THE GREAT NAVIGATOR',
+                        subtitle: 'Featured rooms and discovery',
+                        icon: Icons.explore_rounded,
+                        onTap: () => widget.onSelect(1),
                       ),
                     ],
                   ),
@@ -390,10 +449,58 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 ),
               ),
             ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Top 3 Rooms',
+                      style: TextStyle(
+                        color: TinniPalette.gold,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var rank = 0; rank < 3; rank++) ...[
+                          Expanded(
+                            child: Builder(
+                              builder: (context) {
+                                final rooms = [...state.rooms];
+                                if (popular) {
+                                  rooms.sort((a, b) => b.online.compareTo(a.online));
+                                } else {
+                                  rooms.sort((a, b) => b.id.compareTo(a.id));
+                                }
+                                if (rank >= rooms.length) {
+                                  return const SizedBox.shrink();
+                                }
+                                return _TopRoomCard(
+                                  state: state,
+                                  room: rooms[rank],
+                                  rank: rank + 1,
+                                  onTap: () => _openRoom(rooms[rank]),
+                                );
+                              },
+                            ),
+                          ),
+                          if (rank != 2) const SizedBox(width: 8),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
               sliver: SliverList.separated(
-                itemCount: state.rooms.length,
+                itemCount: state.rooms.length > 3 ? state.rooms.length - 3 : 0,
                 separatorBuilder: (_, _) => const SizedBox(height: 9),
                 itemBuilder: (context, roomIndex) {
                   final rooms = [...state.rooms];
@@ -402,7 +509,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   } else {
                     rooms.sort((a, b) => b.id.compareTo(a.id));
                   }
-                  final room = rooms[roomIndex];
+                  final room = rooms[roomIndex + 3];
                   return _RoomCard(
                     state: state,
                     room: room,
@@ -497,6 +604,83 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
       ),
     );
   }
+}
+
+class _TopRoomCard extends StatelessWidget {
+  const _TopRoomCard({
+    required this.state,
+    required this.room,
+    required this.rank,
+    required this.onTap,
+  });
+
+  final AppState state;
+  final RoomSummary room;
+  final int rank;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => TinniPanel(
+        onTap: onTap,
+        padding: const EdgeInsets.fromLTRB(7, 8, 7, 9),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: TinniPalette.panel2,
+                  backgroundImage: room.avatarKey == null
+                      ? null
+                      : NetworkImage(
+                          state.backend.fileUrl(room.avatarKey!),
+                          headers: state.backend.fileHeaders,
+                        ),
+                  child: room.avatarKey == null
+                      ? const Icon(Icons.mic_rounded, color: TinniPalette.gold)
+                      : null,
+                ),
+                Positioned(
+                  right: -5,
+                  top: -6,
+                  child: CircleAvatar(
+                    radius: 11,
+                    backgroundColor: TinniPalette.gold,
+                    child: Text(
+                      rank.toString(),
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(
+              room.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: TinniPalette.cream,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              '${room.online} online',
+              style: const TextStyle(
+                color: TinniPalette.muted,
+                fontSize: 9,
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _PromoCard extends StatelessWidget {
@@ -650,7 +834,7 @@ class _RoomCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'ID ${room.id} • ${room.online} online • ${room.seatCount} seats',
+                    'ID ${room.id} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
                     style: const TextStyle(
                       color: TinniPalette.muted,
                       fontSize: 10,
