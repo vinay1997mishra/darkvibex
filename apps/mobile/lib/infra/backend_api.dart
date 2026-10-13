@@ -323,6 +323,28 @@ class BackendApi {
         .toList();
   }
 
+  Future<Map<String, dynamic>?> createRoomResult({
+    required String ownerUserId,
+    required String ownerName,
+    required String name,
+    required int seatCount,
+    String partyMode = 'Friends-making Party',
+    String roomMode = 'voice',
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'owner_user_id': ownerUserId,
+          'owner_name': ownerName,
+          'name': name,
+          'seat_count': seatCount,
+          'party_mode': partyMode,
+          'room_mode': roomMode,
+        },
+      );
+
   Future<String?> createRoom({
     required String ownerUserId,
     required String ownerName,
@@ -331,17 +353,13 @@ class BackendApi {
     String partyMode = 'Friends-making Party',
     String roomMode = 'voice',
   }) async {
-    final value = await _json(
-      'POST',
-      '/api/rooms',
-      body: <String, dynamic>{
-        'owner_user_id': ownerUserId,
-        'owner_name': ownerName,
-        'name': name,
-        'seat_count': seatCount,
-        'party_mode': partyMode,
-        'room_mode': roomMode,
-      },
+    final value = await createRoomResult(
+      ownerUserId: ownerUserId,
+      ownerName: ownerName,
+      name: name,
+      seatCount: seatCount,
+      partyMode: partyMode,
+      roomMode: roomMode,
     );
     return value?['room_id']?.toString();
   }
