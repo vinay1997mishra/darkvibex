@@ -370,6 +370,12 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> roomGiftRanking({required String roomId}) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/gift-ranking',
+      );
+
   Future<List<Map<String, dynamic>>> roomMessages({required String roomId}) async {
     final value = await _json(
       'GET',
