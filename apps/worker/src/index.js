@@ -1,6 +1,6 @@
 import { normalizeRole } from "./role_policy.js";
 import { awardIdLevelDaily, awardIdLevelGift, claimIdLevelReward, getIdLevelStatus } from "./id_level.js";
-import { COSMETIC_CATALOG, ensureCosmeticsSchema } from "./cosmetics.js";
+import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, ownedCosmetics } from "./cosmetics.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
@@ -1238,10 +1238,8 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureUser(db, userId);
     await ensureCosmeticsSchema(db);
-    const owned = await db.prepare(
-      "SELECT item_id, kind, acquired_at, expires_at, active FROM user_cosmetics WHERE user_id = ? AND expires_at > ? ORDER BY acquired_at DESC"
-    ).bind(userId, now()).all();
-    return json({ ok: true, items: COSMETIC_CATALOG, owned: owned.results ?? [] });
+    const owned = await ownedCosmetics(db, userId, now());
+    return json({ ok: true, items: COSMETIC_CATALOG, owned });
   }
 
   if (url.pathname === "/api/cosmetics/purchase" && request.method === "POST") {
@@ -1252,67 +1250,111 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     const product = COSMETIC_CATALOG.find((item) => item.id === itemId);
-    if (!product) return json({ ok: false, error: "cosmetic_not_found" }, { status: 404 });
-    await ensureUser(db, userId);
-    if (!recipientId) return json({ ok: false, error: "recipient_required" }, { status: 400 });
+    if (!product) return json({ ok:false,error:"cosmetic_not_found" }, { status:404 });
+    await ensureUser(db,userId);
+    if (!recipientId) return json({ ok:false,error:"recipient_required" }, { status:400 });
     if (recipientId !== userId) {
-      const recipient = await db.prepare("SELECT id FROM users WHERE id = ?").bind(recipientId).first();
-      if (!recipient) return json({ ok: false, error: "recipient_not_found" }, { status: 404 });
+      const recipient = await db.prepare("SELECT id FROM users WHERE id=?").bind(recipientId).first();
+      if (!recipient) return json({ ok:false,error:"recipient_not_found" }, { status:404 });
     }
-    await ensureUserAllowed(db, userId);
-    if (recipientId !== userId) await ensureUserAllowed(db, recipientId);
+    await ensureUserAllowed(db,userId);
+    if (recipientId !== userId) await ensureUserAllowed(db,recipientId);
     await ensureCosmeticsSchema(db);
     await ensureVipSchema(db);
-    const ts = now();
-    const vip = await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id = ?").bind(recipientId).first();
-    const vipLevel = Number(vip?.active_until ?? 0) > ts ? Number(vip?.level ?? 0) : 0;
-    if (vipLevel < product.min_vip_level) {
-      return json({ ok: false, error: "vip_level_required", required_level: product.min_vip_level }, { status: 403 });
+    const ts=now();
+    const vip=await getVipStatus(db,recipientId,ts);
+    if (Number(product.min_vip_level ?? 0) > 0 &&
+        (!vip.active || vip.level < Number(product.min_vip_level))) {
+      return json({
+        ok:false,
+        error:"vip_level_required",
+        required_level:Number(product.min_vip_level),
+      }, { status:403 });
     }
-    const expiresAt = ts + product.duration_days * 24 * 60 * 60 * 1000;
-    const result = await db.batch([
-      db.prepare(
-        "UPDATE users SET coins = coins - ?, updated_at = ? WHERE id = ? AND coins >= ? AND NOT EXISTS (SELECT 1 FROM user_cosmetics WHERE user_id = ? AND item_id = ? AND expires_at > ?)"
-      ).bind(product.price_coins, ts, userId, product.price_coins, recipientId, product.id, ts),
-      db.prepare(
-        "INSERT INTO user_cosmetics (user_id,item_id,kind,acquired_at,expires_at,active) SELECT ?,?,?,?,?,0 WHERE changes() = 1 ON CONFLICT(user_id,item_id) DO UPDATE SET kind=excluded.kind, acquired_at=excluded.acquired_at, expires_at=excluded.expires_at, active=0 WHERE user_cosmetics.expires_at <= ?"
-      ).bind(recipientId, product.id, product.kind, ts, expiresAt, ts),
-      db.prepare(
-        "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,id,?, ?,coins,?,? FROM users WHERE id=? AND EXISTS (SELECT 1 FROM user_cosmetics WHERE user_id=? AND item_id=? AND acquired_at=?)"
-      ).bind(id(), recipientId === userId ? "cosmetic_purchase" : "cosmetic_gift", -product.price_coins, product.id, ts, userId, recipientId, product.id, ts),
-    ]);
-    if (Number(result[0]?.meta?.changes ?? 0) !== 1) {
-      const alreadyOwned = await db.prepare("SELECT 1 AS owned FROM user_cosmetics WHERE user_id = ? AND item_id = ? AND expires_at > ?")
-        .bind(recipientId, product.id, ts).first();
-      return json({ ok: false, error: alreadyOwned ? "already_owned" : "insufficient_coins" }, { status: alreadyOwned ? 409 : 400 });
+
+    const expiresAt = Number(product.duration_days ?? 0) > 0
+      ? ts + Number(product.duration_days) * 86400000
+      : 4102444800000;
+    const legacy = cosmeticUsesLegacyTable(product.kind);
+    const table = legacy ? "user_cosmetics" : "user_props";
+    const owned = await db.prepare(
+      `SELECT 1 AS owned FROM ${table} WHERE user_id=? AND item_id=? AND expires_at>?`
+    ).bind(recipientId,itemId,ts).first();
+    if (owned) return json({ ok:false,error:"already_owned" }, { status:409 });
+
+    const debit = await db.prepare(
+      "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+    ).bind(product.price_coins,ts,userId,product.price_coins).run();
+    if (Number(debit.meta?.changes ?? 0) !== 1) {
+      return json({ ok:false,error:"insufficient_coins" }, { status:400 });
     }
-    const wallet = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
-    return json({ ok: true, item_id: product.id, coin_balance: Number(wallet?.coins ?? 0), expires_at: expiresAt, recipient_user_id: recipientId });
+
+    try {
+      await db.prepare(
+        `INSERT INTO ${table}(user_id,item_id,kind,acquired_at,expires_at,active)
+         VALUES(?,?,?,?,?,0)
+         ON CONFLICT(user_id,item_id)
+         DO UPDATE SET kind=excluded.kind,acquired_at=excluded.acquired_at,
+                       expires_at=excluded.expires_at,active=0`
+      ).bind(recipientId,itemId,product.kind,ts,expiresAt).run();
+      const wallet=await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+      await db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+      ).bind(
+        id(),
+        userId,
+        recipientId===userId ? "cosmetic_purchase" : "cosmetic_gift",
+        -Number(product.price_coins),
+        Number(wallet?.coins ?? 0),
+        itemId,
+        ts,
+      ).run();
+      return json({
+        ok:true,
+        item_id:itemId,
+        kind:product.kind,
+        coin_balance:Number(wallet?.coins ?? 0),
+        expires_at:expiresAt,
+        recipient_user_id:recipientId,
+      });
+    } catch (error) {
+      await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+        .bind(product.price_coins,now(),userId).run();
+      throw error;
+    }
   }
 
   if (url.pathname === "/api/cosmetics/equip" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const itemId = String(body.item_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim();
+    const itemId=String(body.item_id ?? "").trim();
+    const authError=await requireSession(request,env,userId);
     if (authError) return authError;
-    await ensureUserAllowed(db, userId);
+    await ensureUserAllowed(db,userId);
     await ensureCosmeticsSchema(db);
     await ensureVipSchema(db);
-    const item = COSMETIC_CATALOG.find((product) => product.id === itemId);
-    if (!item) return json({ ok: false, error: "cosmetic_not_found" }, { status: 404 });
-    const vip = await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id = ?").bind(userId).first();
-    if (Number(vip?.active_until ?? 0) <= now() || Number(vip?.level ?? 0) < item.min_vip_level) {
-      return json({ ok: false, error: "vip_level_required", required_level: item.min_vip_level }, { status: 403 });
+    const item=COSMETIC_CATALOG.find((product)=>product.id===itemId);
+    if (!item) return json({ok:false,error:"cosmetic_not_found"}, {status:404});
+    const vip=await getVipStatus(db,userId,now());
+    if (Number(item.min_vip_level ?? 0)>0 &&
+        (!vip.active || vip.level<Number(item.min_vip_level))) {
+      return json({
+        ok:false,error:"vip_level_required",
+        required_level:Number(item.min_vip_level),
+      }, {status:403});
     }
-    const owned = await db.prepare("SELECT 1 AS owned FROM user_cosmetics WHERE user_id = ? AND item_id = ? AND expires_at > ?")
-      .bind(userId, itemId, now()).first();
-    if (!owned) return json({ ok: false, error: "cosmetic_not_owned" }, { status: 403 });
+    const table=cosmeticUsesLegacyTable(item.kind) ? "user_cosmetics" : "user_props";
+    const owned=await db.prepare(
+      `SELECT 1 AS owned FROM ${table} WHERE user_id=? AND item_id=? AND expires_at>?`
+    ).bind(userId,itemId,now()).first();
+    if (!owned) return json({ok:false,error:"cosmetic_not_owned"}, {status:403});
     await db.batch([
-      db.prepare("UPDATE user_cosmetics SET active = 0 WHERE user_id = ? AND kind = ?").bind(userId, item.kind),
-      db.prepare("UPDATE user_cosmetics SET active = 1 WHERE user_id = ? AND item_id = ? AND expires_at > ?").bind(userId, itemId, now()),
+      db.prepare(`UPDATE ${table} SET active=0 WHERE user_id=? AND kind=?`)
+        .bind(userId,item.kind),
+      db.prepare(`UPDATE ${table} SET active=1 WHERE user_id=? AND item_id=? AND expires_at>?`)
+        .bind(userId,itemId,now()),
     ]);
-    return json({ ok: true, item_id: itemId });
+    return json({ok:true,item_id:itemId,kind:item.kind});
   }
 
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
