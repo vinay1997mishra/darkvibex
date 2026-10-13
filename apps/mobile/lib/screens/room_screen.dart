@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
@@ -99,6 +100,15 @@ class _RoomScreenState extends State<RoomScreen> {
   Map<String, dynamic>? pendingSeatInvite;
   bool seatInviteDialogVisible = false;
   bool effectsEnabled = true;
+  bool roomNoticesEnabled = true;
+  bool giftEffectsEnabled = true;
+  bool giftSoundEnabled = true;
+  bool giftFlyInEnabled = true;
+  bool carEffectsEnabled = true;
+  bool giftBubbleEnabled = true;
+  bool rocketDrawNoticeEnabled = true;
+  Map<String, dynamic>? activeGiftEffect;
+  Timer? giftEffectTimer;
   final KtvService roomMusic = KtvService();
 
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
@@ -113,6 +123,7 @@ class _RoomScreenState extends State<RoomScreen> {
     roomPartyMode = widget.room.partyMode;
     roomMode = widget.room.roomMode;
     unawaited(roomMusic.loadLocalSongs());
+    unawaited(_loadRoomEffectPreferences());
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
@@ -166,6 +177,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   void _showArrivalEffect(Map<String, dynamic> member) {
     arrivalEffectTimer?.cancel();
+    giftEffectTimer?.cancel();
     if (!mounted) return;
     setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
     arrivalEffectTimer = Timer(const Duration(milliseconds: 5000), () {
@@ -2740,9 +2752,189 @@ class _RoomScreenState extends State<RoomScreen> {
     await _loadRoomControls();
   }
 
-  Future<void> _toggleRoomEffects() async {
-    setState(() => effectsEnabled = !effectsEnabled);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(effectsEnabled ? 'Room glow effects enabled on this device' : 'Room glow effects disabled on this device')));
+  Future<void> _loadRoomEffectPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      effectsEnabled = prefs.getBool('dvx.room.effects.all') ?? true;
+      roomNoticesEnabled = prefs.getBool('dvx.room.effects.notices') ?? true;
+      giftEffectsEnabled = prefs.getBool('dvx.room.effects.gift') ?? true;
+      giftSoundEnabled = prefs.getBool('dvx.room.effects.gift_sound') ?? true;
+      giftFlyInEnabled = prefs.getBool('dvx.room.effects.gift_fly_in') ?? true;
+      carEffectsEnabled = prefs.getBool('dvx.room.effects.car') ?? true;
+      giftBubbleEnabled = prefs.getBool('dvx.room.effects.gift_bubble') ?? true;
+      rocketDrawNoticeEnabled =
+          prefs.getBool('dvx.room.effects.rocket_notice') ?? true;
+    });
+  }
+
+  Future<void> _setRoomEffectPreference(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  Future<void> _showRoomEffects() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .72,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
+              children: [
+                const ListTile(
+                  leading: TinniGlowIcon(
+                    icon: Icons.auto_awesome_rounded,
+                    size: 22,
+                    boxSize: 42,
+                  ),
+                  title: Text(
+                    'Effects',
+                    style: TextStyle(
+                      color: TinniPalette.gold,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Choose exactly which room effects you want to see or hear.',
+                  ),
+                ),
+                SwitchListTile(
+                  title: const Text('All Visual Effects'),
+                  subtitle: const Text('Master switch for room visual effects.'),
+                  value: effectsEnabled,
+                  onChanged: (value) {
+                    setState(() => effectsEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference('dvx.room.effects.all', value),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Room Notices'),
+                  subtitle: const Text('Show or hide general room notices.'),
+                  value: roomNoticesEnabled,
+                  onChanged: (value) {
+                    setState(() => roomNoticesEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.notices',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Effects'),
+                  subtitle: const Text('Gift animation and visual effects.'),
+                  value: giftEffectsEnabled,
+                  onChanged: (value) {
+                    setState(() => giftEffectsEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference('dvx.room.effects.gift', value),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Sound'),
+                  subtitle: const Text('Sound played with supported gift effects.'),
+                  value: giftSoundEnabled,
+                  onChanged: (value) {
+                    setState(() => giftSoundEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_sound',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Fly-in'),
+                  subtitle: const Text('Gift entry/fly-in animation in the room.'),
+                  value: giftFlyInEnabled,
+                  onChanged: (value) {
+                    setState(() => giftFlyInEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_fly_in',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Car Effects'),
+                  subtitle: const Text('Vehicle/car room-entry animations.'),
+                  value: carEffectsEnabled,
+                  onChanged: (value) {
+                    setState(() => carEffectsEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference('dvx.room.effects.car', value),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Gift Bubble'),
+                  subtitle: const Text('Gift bubble/pop-up notices in the room.'),
+                  value: giftBubbleEnabled,
+                  onChanged: (value) {
+                    setState(() => giftBubbleEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_bubble',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Rocket Draw Notice'),
+                  subtitle: const Text('Show the room Rocket shortcut and notice.'),
+                  value: rocketDrawNoticeEnabled,
+                  onChanged: (value) {
+                    setState(() => rocketDrawNoticeEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.rocket_notice',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _playGiftEffect(Map<String, dynamic> gift) {
+    if (!effectsEnabled || !giftEffectsEnabled) return;
+    giftEffectTimer?.cancel();
+    if (giftSoundEnabled) {
+      unawaited(SystemSound.play(SystemSoundType.click));
+    }
+    if (giftFlyInEnabled || giftBubbleEnabled) {
+      setState(() => activeGiftEffect = Map<String, dynamic>.from(gift));
+      giftEffectTimer = Timer(const Duration(milliseconds: 2200), () {
+        if (mounted) setState(() => activeGiftEffect = null);
+      });
+    }
   }
 
   Color get _seatThemeAccent => switch (roomSeatThemeId) {
@@ -3283,7 +3475,7 @@ class _RoomScreenState extends State<RoomScreen> {
       (
         'Effects',
         Icons.auto_awesome_rounded,
-        _toggleRoomEffects,
+        _showRoomEffects,
         true,
       ),
       (
