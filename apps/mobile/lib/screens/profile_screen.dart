@@ -213,7 +213,21 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-                  IconButton(onPressed: () => _pickAvatar(context), icon: const Icon(Icons.edit_rounded)),
+                  IconButton(
+                    tooltip: 'View my profile',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => PublicProfileScreen(state: state, userId: state.userId),
+                      ),
+                    ),
+                    icon: const Icon(Icons.account_circle_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Change profile photo',
+                    onPressed: () => _pickAvatar(context),
+                    icon: const Icon(Icons.edit_rounded),
+                  ),
                 ],
               ),
             ),
@@ -489,7 +503,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               label: Text(isFollowing ? 'Following' : 'Follow'),
                             ),
                           ),
-                        if (widget.state.hasVipPrivilege('free_say_hi'))
+                        if (widget.userId != widget.state.userId && widget.state.hasVipPrivilege('free_say_hi'))
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
                             child: FilledButton.icon(
