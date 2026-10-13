@@ -269,6 +269,7 @@ class BackendApi {
     bool groupPkEnabled = false,
     String welcomeImageKey = '',
     String partyMode = 'Friends-making Party',
+    String seatThemeId = 'royal-gold',
   }) async {
     final value = await _json(
       'POST',
@@ -283,6 +284,7 @@ class BackendApi {
         'group_pk_enabled': groupPkEnabled,
         'welcome_image_key': welcomeImageKey,
         'party_mode': partyMode,
+        'seat_theme_id': seatThemeId,
       },
     );
     return value?['ok'] == true;
