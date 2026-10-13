@@ -1072,6 +1072,47 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> callVerificationStatus({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/call-verifications/status?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> submitCallVerification({
+    required String userId,
+    required String gender,
+    required List<String> photoKeys,
+    required bool systemPassed,
+  }) =>
+      _json(
+        'POST',
+        '/api/call-verifications',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'gender': gender,
+          'photo_keys': photoKeys,
+          'system_passed': systemPassed,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> startRandomCall({
+    required String userId,
+    required String gender,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/random',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'gender': gender,
+        },
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> startDirectCall({
     required String userId,
     required String receiverUserId,
