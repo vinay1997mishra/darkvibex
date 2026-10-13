@@ -777,6 +777,24 @@ async function listRooms(db) {
   return result.results ?? [];
 }
 
+async function ensureCustomGiftSchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS custom_gifts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      asset_key TEXT NOT NULL,
+      coin_cost INTEGER NOT NULL DEFAULT 5000 CHECK (coin_cost > 0),
+      status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('pending','approved','rejected')),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_custom_gifts_status_time ON custom_gifts(status, updated_at DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_custom_gifts_user_time ON custom_gifts(user_id, updated_at DESC)"),
+  ]);
+}
+
 async function walletChange(db, userId, amount, kind, referenceId = null) {
   const user = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
   if (!user) throw new Error("user_not_found");
@@ -2906,12 +2924,9 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env);
     if (authError) return authError;
     const rows = await db.prepare(
-      `SELECT u.id,u.display_name,u.avatar_key,u.role,
-              COALESCE(c.status,'active') AS status
+      `SELECT u.id,u.display_name,u.avatar_key,u.role
          FROM users u
-         LEFT JOIN owner_user_controls c ON c.user_id=u.id
         WHERE u.role IN ('coin_seller','merchant')
-          AND COALESCE(c.status,'active')='active'
         ORDER BY CASE u.role WHEN 'coin_seller' THEN 0 ELSE 1 END,
                  u.updated_at DESC
         LIMIT 200`
