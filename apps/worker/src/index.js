@@ -2825,6 +2825,16 @@ async function handleApi(request, env, url) {
     if (await usersBlockedEitherWay(db, sender, receiver)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
     }
+    await ensureTinniSocialSchema(db);
+    const mutualFriend = await db.prepare(
+      `SELECT
+         EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS a,
+         EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS b`
+    ).bind(sender,receiver,receiver,sender).first();
+    if (Number(mutualFriend?.a ?? 0) !== 1 ||
+        Number(mutualFriend?.b ?? 0) !== 1) {
+      return json({ ok:false,error:"friends_required" }, { status:403 });
+    }
     const messageId = id();
     await ensureImageTables(db);
     const createdAt = now();
@@ -3162,10 +3172,11 @@ async function handleApi(request, env, url) {
     if (await usersBlockedEitherWay(db, callerId, receiverId)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
     }
+    await ensureTinniSocialSchema(db);
     const mutual = await db.prepare(
       `SELECT
-         EXISTS(SELECT 1 FROM user_friends WHERE user_id=? AND friend_user_id=?) AS a,
-         EXISTS(SELECT 1 FROM user_friends WHERE user_id=? AND friend_user_id=?) AS b`
+         EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS a,
+         EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS b`
     ).bind(callerId,receiverId,receiverId,callerId).first();
     if (Number(mutual?.a ?? 0) !== 1 || Number(mutual?.b ?? 0) !== 1) {
       return json({ ok: false, error: "friends_required" }, { status: 403 });
@@ -3264,10 +3275,25 @@ async function handleApi(request, env, url) {
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
+    await ensureTinniSocialSchema(db);
     const vip = await getVipStatus(db, userId, now());
-    const friends = await db.prepare("SELECT f.friend_user_id AS id, u.display_name, u.avatar_key, u.vip_level FROM user_friends f JOIN users u ON u.id=f.friend_user_id WHERE f.user_id=? ORDER BY f.created_at DESC").bind(userId).all();
-    return json({ ok: true, friends: friends.results ?? [], friend_limit: vip.active ? null : 300 });
+    const friends = await db.prepare(
+      `SELECT u.id,u.display_name,u.avatar_key,u.vip_level,
+              MAX(a.created_at,b.created_at) AS created_at
+         FROM user_follows a
+         JOIN user_follows b
+           ON b.follower_id=a.target_id
+          AND b.target_id=a.follower_id
+         JOIN users u ON u.id=a.target_id
+        WHERE a.follower_id=?
+        ORDER BY created_at DESC
+        LIMIT 1000`
+    ).bind(userId).all();
+    return json({
+      ok:true,
+      friends:friends.results ?? [],
+      friend_limit:vip.active ? null : 300,
+    });
   }
 
   if (url.pathname === "/api/friends/add" && request.method === "POST") {
@@ -3276,24 +3302,26 @@ async function handleApi(request, env, url) {
     const friendId = String(body.friend_user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!friendId || friendId === userId) return json({ ok: false, error: "invalid_friend" }, { status: 400 });
-    await ensureUser(db, userId);
-    await ensureUser(db, friendId);
-    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
-    const vip = await getVipStatus(db, userId, now());
-    const friendVip = await getVipStatus(db, friendId, now());
-    const count = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(userId).first();
-    const friendCount = await db.prepare("SELECT COUNT(*) AS total FROM user_friends WHERE user_id=?").bind(friendId).first();
-    const exists = await db.prepare("SELECT 1 AS yes FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId).first();
-    if (!exists && ((!vip.active && Number(count?.total ?? 0) >= 300) || (!friendVip.active && Number(friendCount?.total ?? 0) >= 300))) {
-      return json({ ok: false, error: "friend_limit_reached", friend_limit: 300 }, { status: 409 });
+    if (!friendId || friendId === userId) {
+      return json({ ok:false,error:"invalid_friend" }, { status:400 });
     }
-    const ts = now();
-    await db.batch([
-      db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(userId, friendId, ts),
-      db.prepare("INSERT OR IGNORE INTO user_friends (user_id,friend_user_id,created_at) VALUES (?,?,?)").bind(friendId, userId, ts),
-    ]);
-    return json({ ok: true, friend_limit: vip.active ? null : 300 });
+    if (await usersBlockedEitherWay(db,userId,friendId)) {
+      return json({ ok:false,error:"blocked_user" }, { status:403 });
+    }
+    await ensureUser(db,userId);
+    await ensureUser(db,friendId);
+    await ensureTinniSocialSchema(db);
+    const result = await followUser(db,userId,friendId,true);
+    const mutual = await db.prepare(
+      "SELECT 1 AS yes FROM user_follows WHERE follower_id=? AND target_id=?"
+    ).bind(friendId,userId).first();
+    return json({
+      ok:true,
+      following:true,
+      friend:Boolean(mutual),
+      compatibility_follow:true,
+      ...result,
+    });
   }
 
   if (url.pathname === "/api/friends/remove" && request.method === "POST") {
@@ -3302,12 +3330,9 @@ async function handleApi(request, env, url) {
     const friendId = String(body.friend_user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    await db.prepare("CREATE TABLE IF NOT EXISTS user_friends (user_id TEXT NOT NULL, friend_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_id,friend_user_id), CHECK(user_id<>friend_user_id))").run();
-    await db.batch([
-      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(userId, friendId),
-      db.prepare("DELETE FROM user_friends WHERE user_id=? AND friend_user_id=?").bind(friendId, userId),
-    ]);
-    return json({ ok: true });
+    await ensureTinniSocialSchema(db);
+    await followUser(db,userId,friendId,false);
+    return json({ ok:true, following:false, friend:false });
   }
 
   if (url.pathname === "/api/id-level" && request.method === "GET") {
