@@ -78,6 +78,19 @@ export async function ensureTinniSocialSchema(db) {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (family_id, user_id, day_key)
     )`,
+    `CREATE TABLE IF NOT EXISTS family_wallet_transfers (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      sender_user_id TEXT NOT NULL,
+      receiver_user_id TEXT NOT NULL,
+      coins INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(family_id) REFERENCES families(id) ON DELETE CASCADE,
+      FOREIGN KEY(sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(receiver_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_wallet_transfers_family_time
+       ON family_wallet_transfers(family_id,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS cp_relationships (
       user_a TEXT NOT NULL,
       user_b TEXT NOT NULL,
@@ -455,7 +468,13 @@ export async function familyState(db, userId) {
     return { family: null, members: [], join_requests: [], available_families: await familyList(db, 100) };
   }
   const members = await db.prepare(
-    `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key
+    `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key,
+            COALESCE((
+              SELECT SUM(t.coins)
+                FROM family_wallet_transfers t
+               WHERE t.family_id=fm.family_id
+                 AND t.receiver_user_id=fm.user_id
+            ),0) AS received_coins
        FROM family_members fm JOIN users u ON u.id=fm.user_id
       WHERE fm.family_id=?
       ORDER BY CASE fm.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
@@ -596,6 +615,97 @@ export async function familyCheckIn(db, userId) {
     ).bind(exp,createdAt,member.family_id),
   ]);
   return { ok: true, already_checked_in: false, exp_awarded: exp };
+}
+
+export async function familyTransferCoins(db, senderId, receiverId, coinsValue) {
+  await ensureTinniSocialSchema(db);
+  const amount = Math.floor(Number(coinsValue ?? 0));
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("invalid_coin_amount");
+  if (!senderId || !receiverId || senderId === receiverId) throw new Error("invalid_family_member");
+  const sender = await familyMembership(db, senderId);
+  const receiver = await familyMembership(db, receiverId);
+  if (!sender || !receiver || String(sender.family_id) !== String(receiver.family_id)) {
+    throw new Error("family_member_required");
+  }
+  const transferId = uid("family-transfer-");
+  const createdAt = ts();
+
+  await db.batch([
+    db.prepare(
+      `INSERT INTO family_wallet_transfers(
+        id,family_id,sender_user_id,receiver_user_id,coins,created_at
+      )
+      SELECT ?,?,?,?,?,?
+       WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
+    ).bind(
+      transferId,sender.family_id,senderId,receiverId,amount,createdAt,
+      senderId,amount,
+    ),
+    db.prepare(
+      "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
+    ).bind(amount,createdAt,senderId,transferId),
+    db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
+    ).bind(amount,createdAt,receiverId,transferId),
+    db.prepare(
+      "UPDATE families SET experience=experience+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
+    ).bind(amount,createdAt,sender.family_id,transferId),
+    db.prepare(
+      `INSERT INTO wallet_ledger(
+        id,user_id,kind,amount,balance_after,reference_id,created_at
+      )
+      SELECT ?,u.id,'family_send',?,u.coins,?,?
+        FROM users u
+       WHERE u.id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)`
+    ).bind(uid(),-amount,transferId,createdAt,senderId,transferId),
+    db.prepare(
+      `INSERT INTO wallet_ledger(
+        id,user_id,kind,amount,balance_after,reference_id,created_at
+      )
+      SELECT ?,u.id,'family_receive',?,u.coins,?,?
+        FROM users u
+       WHERE u.id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)`
+    ).bind(uid(),amount,transferId,createdAt,receiverId,transferId),
+  ]);
+
+  const created = await db.prepare(
+    "SELECT id FROM family_wallet_transfers WHERE id=? LIMIT 1"
+  ).bind(transferId).first();
+  if (!created) throw new Error("insufficient_coins");
+  const balance = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(senderId).first();
+  const family = await db.prepare(
+    "SELECT experience FROM families WHERE id=? LIMIT 1"
+  ).bind(sender.family_id).first();
+  return {
+    ok: true,
+    transfer_id: transferId,
+    receiver_user_id: receiverId,
+    coins: amount,
+    coin_balance: Number(balance?.coins ?? 0),
+    family_experience: Number(family?.experience ?? 0),
+    family_level: familyLevel(family?.experience ?? 0),
+  };
+}
+
+export async function familyWalletTransfers(db, userId, limitValue = 100) {
+  await ensureTinniSocialSchema(db);
+  const membership = await familyMembership(db, userId);
+  if (!membership) return [];
+  const limit = Math.max(1, Math.min(200, Math.floor(Number(limitValue) || 100)));
+  const rows = await db.prepare(
+    `SELECT t.id,t.sender_user_id,t.receiver_user_id,t.coins,t.created_at,
+            su.display_name AS sender_name,su.avatar_key AS sender_avatar_key,
+            ru.display_name AS receiver_name,ru.avatar_key AS receiver_avatar_key
+       FROM family_wallet_transfers t
+       JOIN users su ON su.id=t.sender_user_id
+       JOIN users ru ON ru.id=t.receiver_user_id
+      WHERE t.family_id=?
+      ORDER BY t.created_at DESC
+      LIMIT ?`
+  ).bind(membership.family_id,limit).all();
+  return rows.results ?? [];
 }
 
 async function cpThresholds(db) {
