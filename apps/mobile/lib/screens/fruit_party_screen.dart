@@ -125,7 +125,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     final phase = _round['phase']?.toString();
     final targetKey = phase == 'result_spin' ? 'cycle_end' : 'round_end';
     final target = int.tryParse(_round[targetKey]?.toString() ?? '') ?? 0;
-    return (target - _estimatedServerNow).clamp(0, 1 << 31);
+    return (target - _estimatedServerNow).clamp(0, 1 << 31).toInt();
   }
 
   Future<void> _load({bool silent = false}) async {
