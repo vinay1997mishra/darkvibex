@@ -229,7 +229,21 @@ async function publicCatalog(db, kind) {
   }
 }
 
+async function ensureUsersSchema(db) {
+  // D1 schema files are not applied automatically by a Worker deploy. Keep
+  // login compatible with databases created before avatar support was added.
+  try {
+    await db.prepare("ALTER TABLE users ADD COLUMN avatar_key TEXT").run();
+  } catch (error) {
+    const message = String(error?.message ?? error).toLowerCase();
+    if (!message.includes("duplicate column") && !message.includes("already exists")) {
+      throw error;
+    }
+  }
+}
+
 async function ensureUser(db, userId, displayName = "DarkVibeX User") {
+  await ensureUsersSchema(db);
   const ts = now();
   await db.prepare(
     `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, created_at, updated_at)
