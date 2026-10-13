@@ -245,7 +245,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Row(
                 children: [
-                  for (final item in const ['Party', 'Mine', 'Events', 'Country'])
+                  for (final item in const ['Mine', 'Party', 'Events', 'Country'])
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: ChoiceChip(
