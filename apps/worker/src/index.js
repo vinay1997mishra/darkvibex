@@ -12,7 +12,6 @@ import {
   setRoleWalletCredential,
   verifyRoleWalletCredential,
   transferRoleCoins,
-  requestRoleDollarWithdrawal,
 } from "./role_wallets.js";
 import {
   ensureTinniSocialSchema,
@@ -3506,33 +3505,6 @@ async function handleApi(request, env, url) {
       const code=String(error?.message ?? error);
       const status=["invalid_wallet_credential","wallet_credential_not_set"].includes(code)?403:400;
       return json({ok:false,error:code},{status});
-    }
-  }
-
-  if (url.pathname === "/api/wallet/role-dollars/withdraw" && request.method === "POST") {
-    const body=await bodyJson(request);
-    const userId=String(body.user_id ?? "").trim();
-    const walletType=String(body.wallet_type ?? "").trim();
-    const credential=String(body.credential ?? "");
-    const authError=await requireSession(request,env,userId);
-    if(authError) return authError;
-    const hash=await sha256Hex(
-      String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+credential
-    );
-    try{
-      const result=await requestRoleDollarWithdrawal(db,{
-        userId,
-        walletType,
-        destinationType:String(body.destination_type ?? ""),
-        destinationValue:String(body.destination_value ?? ""),
-        amountUsdCents:Number(body.amount_usd_cents ?? 0),
-        credentialHash:hash,
-        ts:now(),
-      });
-      return json({ok:true,...result});
-    }catch(error){
-      const code=String(error?.message ?? error);
-      return json({ok:false,error:code},{status:400});
     }
   }
 
