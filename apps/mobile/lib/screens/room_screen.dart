@@ -15,6 +15,7 @@ import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
 import '../vip/vip_policy.dart';
 import '../widgets/vip_animated_frame.dart';
+import '../ui/tinni_style.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
@@ -979,8 +980,8 @@ class _RoomScreenState extends State<RoomScreen> {
     'midnight' => const Color(0xFF111B32),
     'rose' => const Color(0xFF32192B),
     'forest' => const Color(0xFF14281F),
-    'gold' => const Color(0xFF2C2514),
-    _ => const Color(0xFF111116),
+    'gold' => const Color(0xFF171006),
+    _ => TinniPalette.black,
   };
 
   Future<void> _showRoomMusic() async {
@@ -1716,7 +1717,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     width: mine ? 3 : 1,
-                                    color: mine ? const Color(0xFFFFD36A) : (effectsEnabled ? const Color(0xFF9C7BFF) : Colors.white24),
+                                    color: mine ? TinniPalette.brightGold : (effectsEnabled ? TinniPalette.deepGold : TinniPalette.bronze),
                                   ),
                                 ),
                                 child: Builder(
