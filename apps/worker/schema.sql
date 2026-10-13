@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS room_settings (
   group_pk_enabled INTEGER NOT NULL DEFAULT 0 CHECK (group_pk_enabled IN (0,1)),
   welcome_image_key TEXT NOT NULL DEFAULT '',
   party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
+  seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold',
+  lock_password_hash TEXT NOT NULL DEFAULT '',
   mic_mode TEXT NOT NULL DEFAULT 'free' CHECK (mic_mode IN ('free','apply')),
   public_screen_enabled INTEGER NOT NULL DEFAULT 1 CHECK (public_screen_enabled IN (0,1)),
   updated_at INTEGER NOT NULL,
