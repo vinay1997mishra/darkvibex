@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import 'reset_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.state});
@@ -155,6 +156,467 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_validateProfile() || state.signingIn || _savingProfile) return;
     final ok = await state.signInWithGoogle();
     if (ok) await _finishProfile();
+  }
+
+  void _notice(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text.replaceAll('_', ' '))),
+    );
+  }
+
+  Future<void> _emailLogin() async {
+    if (state.signingIn || _savingProfile) return;
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Email / Gmail Login'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('email-login-address'),
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(
+                labelText: 'Email / Gmail ID',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('email-login-password'),
+              controller: passwordController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              decoration: const InputDecoration(
+                labelText: 'DarkVibeX Password',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            key: const Key('reset-password-link'),
+            onPressed: () => Navigator.pop(dialogContext, 'reset'),
+            child: const Text('Reset password'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'create'),
+            child: const Text('Create Email ID'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'login'),
+            child: const Text('Login'),
+          ),
+        ],
+      ),
+    );
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    emailController.dispose();
+    passwordController.dispose();
+    if (!mounted || action == null) return;
+
+    if (action == 'reset') {
+      final result = await Navigator.of(context).push<String>(
+        MaterialPageRoute<String>(
+          builder: (_) => ResetPasswordScreen(
+            state: state,
+            initialEmail: email,
+          ),
+        ),
+      );
+      if (result != null && mounted) {
+        _notice('Password reset successfully. Login with your new password.');
+      }
+      return;
+    }
+
+    if (action == 'create') {
+      await _createEmailAccount(initialEmail: email);
+      return;
+    }
+
+    if (!email.contains('@') || password.isEmpty) {
+      _notice('Enter your email and DarkVibeX password.');
+      return;
+    }
+    await state.signInWithEmail(email: email, password: password);
+  }
+
+  Future<void> _createEmailAccount({String initialEmail = ''}) async {
+    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    final emailController = TextEditingController(text: initialEmail);
+    final email = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create Email ID'),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          decoration: const InputDecoration(
+            labelText: 'Email / Gmail ID',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = emailController.text.trim();
+              if (value.contains('@')) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Send OTP'),
+          ),
+        ],
+      ),
+    );
+    emailController.dispose();
+    if (email == null || !mounted) return;
+
+    final started = await state.backend.startEmailOtp(
+      email: email,
+      purpose: 'signup',
+    );
+    if (!mounted) return;
+    if (started?['ok'] != true) {
+      _notice(started?['error']?.toString() ?? 'OTP could not be sent');
+      return;
+    }
+    final requestId = started?['request_id']?.toString() ?? '';
+    if (requestId.isEmpty) return;
+
+    final otpController = TextEditingController();
+    final otp = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Verify Email OTP'),
+        content: TextField(
+          key: const Key('email-otp-field'),
+          controller: otpController,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(
+            labelText: '6-digit OTP',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = otpController.text.trim();
+              if (RegExp(r'^\d{6}
+    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    final ok = await state.continueAsGuest();
+    if (ok) await _finishProfile();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = state.signingIn || _savingProfile;
+
+    return Scaffold(
+      backgroundColor: TinniPalette.black,
+      body: TinniBackground(
+        child: SafeArea(
+          child: AnimatedBuilder(
+            animation: state,
+            builder: (context, _) => Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'DarkVibeX',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -.6,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Create your profile and enter the vibe',
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      GestureDetector(
+                        onTap: busy ? null : _pickAvatar,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 98,
+                              height: 98,
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: TinniPalette.brightGold,
+                                  width: 2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x55D09A0A),
+                                    blurRadius: 16,
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                backgroundColor: TinniPalette.panel2,
+                                backgroundImage: _avatarBytes == null
+                                    ? null
+                                    : MemoryImage(_avatarBytes!),
+                                child: _avatarBytes == null
+                                    ? const Icon(
+                                        Icons.person_rounded,
+                                        size: 46,
+                                        color: TinniPalette.gold,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                            const Positioned(
+                              right: -2,
+                              bottom: 2,
+                              child: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: TinniPalette.gold,
+                                child: Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 17,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Tap to add DP',
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      TinniPanel(
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _nameController,
+                              textInputAction: TextInputAction.next,
+                              maxLength: 60,
+                              decoration: const InputDecoration(
+                                labelText: 'Name',
+                                prefixIcon: Icon(Icons.badge_rounded),
+                                counterText: '',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            InkWell(
+                              onTap: busy ? null : _pickDateOfBirth,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Date of birth',
+                                  prefixIcon: Icon(Icons.cake_rounded),
+                                  suffixIcon: Icon(Icons.calendar_month_rounded),
+                                ),
+                                child: Text(
+                                  _dobLabel,
+                                  style: TextStyle(
+                                    color: _dateOfBirth == null
+                                        ? TinniPalette.muted
+                                        : TinniPalette.cream,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: FilledButton.icon(
+                          onPressed: busy ? null : _googleLogin,
+                          icon: busy
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.black,
+                                  ),
+                                )
+                              : const Icon(Icons.login_rounded),
+                          label: const Text('Continue with Google'),
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          key: const Key('email-login-button'),
+                          onPressed: busy ? null : _emailLogin,
+                          icon: const Icon(Icons.email_rounded),
+                          label: const Text('Email / Gmail Login'),
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: busy ? null : _guestLogin,
+                          icon: const Icon(Icons.person_outline_rounded),
+                          label: const Text('Continue as guest'),
+                        ),
+                      ),
+                      if (state.authError != null) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(13),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: TinniPalette.danger.withValues(alpha: .14),
+                            border: Border.all(
+                              color: TinniPalette.danger.withValues(alpha: .55),
+                            ),
+                          ),
+                          child: Text(
+                            state.authError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFFFF8D8D),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      const Text(
+                        'By continuing, you agree to use DarkVibeX responsibly.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+).hasMatch(value)) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Verify'),
+          ),
+        ],
+      ),
+    );
+    otpController.dispose();
+    if (otp == null || !mounted) return;
+
+    final verified = await state.backend.verifyEmailOtp(
+      requestId: requestId,
+      otp: otp,
+    );
+    if (!mounted) return;
+    if (verified?['ok'] != true) {
+      _notice(verified?['error']?.toString() ?? 'OTP verification failed');
+      return;
+    }
+    final setupToken = verified?['setup_token']?.toString() ?? '';
+    if (setupToken.isEmpty) return;
+
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create DarkVibeX Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('email-new-password'),
+              controller: passwordController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'New Password',
+                helperText: 'Minimum 8 characters',
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('email-confirm-password'),
+              controller: confirmController,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'Confirm Password',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = passwordController.text;
+              if (value.length >= 8 && value == confirmController.text) {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    passwordController.dispose();
+    confirmController.dispose();
+    if (password == null || !mounted) return;
+
+    final ok = await state.completeEmailSignup(
+      setupToken: setupToken,
+      password: password,
+      name: _nameController.text.trim(),
+      dateOfBirthValue: _dobApiValue,
+    );
+    if (ok && mounted) await _finishProfile();
   }
 
   Future<void> _guestLogin() async {
