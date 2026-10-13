@@ -9,6 +9,7 @@ import '../vip/vip_policy.dart';
 import 'messages_screen.dart';
 import 'mine_social_screens.dart';
 import 'profile_screen.dart';
+import 'ranking_screen.dart';
 import 'room_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -158,73 +159,20 @@ class _RoomsHomeState extends State<_RoomsHome> {
   final List<String> recentRoomIds = <String>[];
   List<RoomSummary> followedRooms = const <RoomSummary>[];
 
-  Future<void> _showRoomRanking(BuildContext context) async {
-    final rooms = [...state.rooms]
-      ..sort((a, b) => b.online.compareTo(a.online));
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: TinniPalette.nearBlack,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .68,
-          child: Column(
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(
-                  children: [
-                    Icon(Icons.emoji_events_rounded, color: TinniPalette.gold),
-                    SizedBox(width: 8),
-                    Text(
-                      'Room Ranking',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: rooms.isEmpty
-                    ? const Center(child: Text('No rooms available'))
-                    : ListView.builder(
-                        itemCount: rooms.length,
-                        itemBuilder: (context, index) {
-                          final room = rooms[index];
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: TinniPalette.panel2,
-                              backgroundImage: room.avatarKey == null
-                                  ? null
-                                  : NetworkImage(
-                                      state.backend.fileUrl(room.avatarKey!),
-                                      headers: state.backend.fileHeaders,
-                                    ),
-                              child: room.avatarKey == null
-                                  ? Text('${index + 1}')
-                                  : null,
-                            ),
-                            title: Text(room.name),
-                            subtitle: Text(
-                              'No.${index + 1} • ${room.online} online • ${room.partyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'}',
-                            ),
-                            trailing: const Icon(Icons.chevron_right_rounded),
-                            onTap: () {
-                              Navigator.pop(sheetContext);
-                              _openRoom(room);
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+  Future<void> _openRankings(
+    BuildContext context, {
+    int initialTab = 1,
+  }) async {
+    final room = await Navigator.of(context).push<RoomSummary>(
+      MaterialPageRoute<RoomSummary>(
+        builder: (_) => RankingScreen(
+          state: state,
+          initialTab: initialTab,
         ),
       ),
     );
+    if (!mounted || room == null) return;
+    _openRoom(room);
   }
 
   Future<void> _createRoom(BuildContext context) async {
@@ -326,13 +274,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
                         title: 'ROYAL PARTY',
                         subtitle: 'Live rooms, rankings and royal rewards',
                         icon: Icons.workspace_premium_rounded,
-                        onTap: () => _showRoomRanking(context),
+                        onTap: () => _openRankings(context, initialTab: 0),
                       ),
                       _PromoCard(
                         title: 'WEEKLY STAR',
                         subtitle: 'Weekly rankings and royal rewards',
                         icon: Icons.emoji_events_rounded,
-                        onTap: () => _showRoomRanking(context),
+                        onTap: () => _openRankings(context, initialTab: 1),
                       ),
                       _PromoCard(
                         title: 'THE GREAT NAVIGATOR',
@@ -354,7 +302,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                       child: _QuickCard(
                         label: 'Room',
                         icon: Icons.mic_external_on_rounded,
-                        onTap: () => _showRoomRanking(context),
+                        onTap: () => _openRankings(context, initialTab: 0),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -596,7 +544,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
         ),
         IconButton(
           tooltip: 'Rankings',
-          onPressed: () => _showRoomRanking(context),
+          onPressed: () => _openRankings(context),
           icon: const TinniGlowIcon(
             icon: Icons.leaderboard_rounded,
             size: 18,
