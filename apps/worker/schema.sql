@@ -505,3 +505,21 @@ CREATE TABLE IF NOT EXISTS vs_relationships (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_a, user_b)
 );
+
+
+CREATE TABLE IF NOT EXISTS direct_calls (
+  id TEXT PRIMARY KEY,
+  caller_user_id TEXT NOT NULL,
+  receiver_user_id TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'ringing',
+  created_at INTEGER NOT NULL,
+  answered_at INTEGER,
+  ended_at INTEGER,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_direct_calls_receiver_state
+  ON direct_calls(receiver_user_id,state,created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_direct_calls_caller_state
+  ON direct_calls(caller_user_id,state,created_at DESC);
