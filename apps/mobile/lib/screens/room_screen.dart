@@ -4257,9 +4257,36 @@ class _RoomScreenState extends State<RoomScreen> {
                         final name = message['display_name']?.toString().trim();
                         final text = message['text']?.toString() ?? '';
                         final imageKey = message['image_key']?.toString();
+                        final senderId = message['user_id']?.toString() ?? '';
+                        final bubbleId = senderId == widget.state.userId
+                            ? widget.state.activeCosmetic('bubble')
+                            : message['active_bubble_id']?.toString();
+                        final hasBubble =
+                            bubbleId != null && bubbleId.isNotEmpty;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 5),
-                          child: Column(
+                          child: Container(
+                            padding: hasBubble
+                                ? const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 6,
+                                  )
+                                : EdgeInsets.zero,
+                            decoration: hasBubble
+                                ? BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: <Color>[
+                                        Color(0x992A1538),
+                                        Color(0x995A2D65),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xAAEE91FF),
+                                    ),
+                                  )
+                                : null,
+                            child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (text.isNotEmpty)
@@ -4283,6 +4310,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                   ),
                                 ),
                             ],
+                          ),
                           ),
                         );
                       },
@@ -4363,16 +4391,24 @@ class _RoomScreenState extends State<RoomScreen> {
                     : 'VIP member',
                 level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
                 showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
-                    arrivalEffectMember?['active_vehicle_id'] != null,
+                    arrivalEffectMember?['active_vehicle_id'] != null ||
+                    arrivalEffectMember?['active_entry_id'] != null,
                 customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
+                    arrivalEffectMember?['active_entry_id'] != null ||
                     (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
-                vehicleLabel: switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
-                  'vehicle_king' => 'KING OF VIP',
-                  'vehicle_phoenix' => 'PHOENIX GT',
-                  'vehicle_royal' => 'ROYAL CHARIOT',
-                  'vehicle_spark' => 'STARLIGHT COUPE',
-                  _ => null,
-                },
+                vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
+                    ? arrivalEffectMember!['active_entry_id']
+                        .toString()
+                        .replaceAll('entry-', '')
+                        .replaceAll('-', ' ')
+                        .toUpperCase()
+                    : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
+                        'vehicle_king' => 'KING OF VIP',
+                        'vehicle_phoenix' => 'PHOENIX GT',
+                        'vehicle_royal' => 'ROYAL CHARIOT',
+                        'vehicle_spark' => 'STARLIGHT COUPE',
+                        _ => null,
+                      },
               ),
             ),
         ],
