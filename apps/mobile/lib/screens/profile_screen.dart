@@ -25,6 +25,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   AppState get state => widget.state;
   Map<String, dynamic> socialStats = const <String, dynamic>{};
+  Map<String, dynamic>? vsRelation;
 
   @override
   void initState() {
@@ -33,16 +34,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadSocialStats() async {
-    final value = await state.backend.socialStats(userId: state.userId);
-    final raw = value?['stats'];
+    final results = await Future.wait<Map<String, dynamic>?>([
+      state.backend.socialStats(userId: state.userId),
+      state.backend.vsState(userId: state.userId),
+    ]);
+    final rawStats = results[0]?['stats'];
+    final rawVs = results[1]?['vs'];
     if (!mounted) return;
     setState(() {
-      socialStats = raw is Map
-          ? Map<String, dynamic>.from(raw)
+      socialStats = rawStats is Map
+          ? Map<String, dynamic>.from(rawStats)
           : const <String, dynamic>{};
+      vsRelation =
+          rawVs is Map ? Map<String, dynamic>.from(rawVs) : null;
     });
   }
 
+  // DarkVibeX extra: final placement is pending user confirmation.
+  // ignore: unused_element
   Future<void> _showFriends(BuildContext context) async {
     final friends = await state.backend.friends(userId: state.userId);
     if (!context.mounted) return;
@@ -439,6 +448,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
+                  builder: (_) => VsScreen(state: state),
+                ),
+              ).then((_) => _loadSocialStats()),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bolt_rounded,
+                    color: Color(0xFFFF202D),
+                    size: 34,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'VS',
+                          style: TextStyle(
+                            color: Color(0xFFFF202D),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          vsRelation == null
+                              ? 'Not connected'
+                              : 'Lv.${vsRelation?['level'] ?? 1} • ${vsRelation?['state'] ?? 'pending'}',
+                          style: const TextStyle(
+                            color: TinniPalette.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFFFF202D),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            TinniPanel(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
                   builder: (_) => CpScreen(state: state),
                 ),
               ),
@@ -770,6 +826,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Map<String, dynamic>? user;
   bool loading = true;
   bool isFriend = false;
+  bool isFollowing = false;
+  bool followBusy = false;
 
   @override
   void initState() {
@@ -778,14 +836,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Future<void> _load() async {
-    final response = await widget.state.backend.userProfile(userId: widget.userId);
-    final friends = await widget.state.backend.friends(userId: widget.state.userId);
-    final friendStatus = friends.any((row) => row['id']?.toString() == widget.userId);
+    final response = await widget.state.backend.userProfile(
+      userId: widget.userId,
+    );
+    final friends = await widget.state.backend.friends(
+      userId: widget.state.userId,
+    );
+    final friendStatus =
+        friends.any((row) => row['id']?.toString() == widget.userId);
+    final following = widget.userId == widget.state.userId
+        ? false
+        : await widget.state.backend.followStatus(
+            userId: widget.state.userId,
+            targetUserId: widget.userId,
+          );
     if (!mounted) return;
     setState(() {
-      user = response?['user'] is Map ? Map<String, dynamic>.from(response!['user'] as Map) : null;
+      user = response?['user'] is Map
+          ? Map<String, dynamic>.from(response!['user'] as Map)
+          : null;
       loading = false;
       isFriend = friendStatus;
+      isFollowing = following;
     });
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
@@ -837,15 +909,36 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
                             ]),
                           ),
-                        if (widget.userId != widget.state.userId)
+                        if (widget.userId != widget.state.userId) ...[
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
                             child: FilledButton.icon(
-                              onPressed: isFriend ? null : _addFriend,
-                              icon: Icon(isFriend ? Icons.check_rounded : Icons.person_add_alt_1_rounded),
-                              label: Text(isFriend ? 'Friend' : 'Add friend'),
+                              onPressed: followBusy ? null : _toggleFollow,
+                              icon: Icon(
+                                isFollowing
+                                    ? Icons.person_remove_alt_1_rounded
+                                    : Icons.person_add_rounded,
+                              ),
+                              label: Text(
+                                isFollowing ? 'Following' : 'Follow',
+                              ),
                             ),
                           ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: OutlinedButton.icon(
+                              onPressed: isFriend ? null : _addFriend,
+                              icon: Icon(
+                                isFriend
+                                    ? Icons.check_rounded
+                                    : Icons.people_alt_rounded,
+                              ),
+                              label: Text(
+                                isFriend ? 'Friend' : 'Add friend',
+                              ),
+                            ),
+                          ),
+                        ],
                         if (widget.state.hasVipPrivilege('free_say_hi'))
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
@@ -861,6 +954,27 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     ),
                   ),
       );
+  }
+
+  Future<void> _toggleFollow() async {
+    if (followBusy) return;
+    setState(() => followBusy = true);
+    final next = !isFollowing;
+    final ok = await widget.state.backend.setUserFollow(
+      userId: widget.state.userId,
+      targetUserId: widget.userId,
+      follow: next,
+    );
+    if (!mounted) return;
+    setState(() {
+      followBusy = false;
+      if (ok) isFollowing = next;
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Follow could not be updated')),
+      );
+    }
   }
 
   Future<void> _addFriend() async {
