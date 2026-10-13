@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../vip/vip_policy.dart';
 import 'games_screen.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
@@ -170,7 +171,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
       isScrollControlled: true,
       backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
-      builder: (_) => _CreateRoomSheet(maxSeats: state.vipRoomSeatLimit),
+      builder: (_) => _CreateRoomSheet(maxSeats: VipPolicy.maxRoomSeats(state.vipLevel)),
     );
     if (draft == null || !context.mounted) return;
 
