@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import 'discover_rooms_screen.dart';
 import 'games_screen.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'room_screen.dart';
-import 'wallet_screen.dart';
-import 'vip_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.state});
@@ -23,11 +22,12 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      _RoomsHome(state: widget.state, onSelect: (value) => setState(() => index = value)),
+      _RoomsHome(
+        state: widget.state,
+        onSelect: (value) => setState(() => index = value),
+      ),
+      DiscoverRoomsScreen(state: widget.state),
       MessagesScreen(state: widget.state),
-      GamesScreen(state: widget.state),
-      WalletScreen(state: widget.state),
-      VipScreen(state: widget.state),
       ProfileScreen(state: widget.state),
     ];
 
@@ -37,11 +37,9 @@ class _HomeShellState extends State<HomeShell> {
         selectedIndex: index,
         onDestinationSelected: (value) => setState(() => index = value),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.mic_rounded), label: 'Rooms'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_rounded), label: 'Messages'),
-          NavigationDestination(icon: Icon(Icons.sports_esports_rounded), label: 'Games'),
-          NavigationDestination(icon: Icon(Icons.account_balance_wallet_rounded), label: 'Wallet'),
-          NavigationDestination(icon: Icon(Icons.workspace_premium_rounded), label: 'VIP'),
+          NavigationDestination(icon: Icon(Icons.mic_rounded), label: 'Party'),
+          NavigationDestination(icon: Icon(Icons.explore_rounded), label: 'Discover'),
+          NavigationDestination(icon: Icon(Icons.chat_bubble_rounded), label: 'Message'),
           NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Mine'),
         ],
       ),
@@ -57,10 +55,10 @@ class _RoomsHome extends StatelessWidget {
 
   Future<void> _openFourBoxMenu(BuildContext context) async {
     const entries = <(String, IconData, int)>[
-      ('Rooms', Icons.mic_rounded, 0),
-      ('Messages', Icons.chat_bubble_rounded, 1),
-      ('Games', Icons.sports_esports_rounded, 2),
-      ('Mine', Icons.person_rounded, 5),
+      ('Party', Icons.mic_rounded, 0),
+      ('Discover', Icons.explore_rounded, 1),
+      ('Message', Icons.chat_bubble_rounded, 2),
+      ('Mine', Icons.person_rounded, 3),
     ];
     await showModalBottomSheet<void>(
       context: context,
@@ -153,10 +151,18 @@ class _RoomsHome extends StatelessWidget {
           SliverAppBar(
             floating: true,
             title: const Text(
-              'DarkVibeX',
+              'Party',
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
             actions: [
+              IconButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(builder: (_) => GamesScreen(state: state)),
+                ),
+                icon: const Icon(Icons.sports_esports_rounded),
+                tooltip: 'Games',
+              ),
               IconButton(
                 onPressed: () => _openFourBoxMenu(context),
                 icon: const Icon(Icons.grid_view_rounded),
