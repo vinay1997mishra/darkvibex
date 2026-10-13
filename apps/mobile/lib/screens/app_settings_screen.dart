@@ -69,7 +69,7 @@ class AppSettingsScreen extends StatelessWidget {
                       title: 'Language settings',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const LanguageSettingsScreen(),
+                          builder: (_) => LanguageSettingsScreen(state: state),
                         ),
                       ),
                     ),
