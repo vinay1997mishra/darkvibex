@@ -71,6 +71,7 @@ class _RoomScreenState extends State<RoomScreen> {
   bool roomLocked = false;
   bool amRoomAdmin = false;
   String roomThemeId = 'dark';
+  String roomSeatThemeId = 'royal-gold';
   late String roomPartyMode;
   bool groupPkEnabled = false;
   String roomMicMode = 'free';
@@ -429,6 +430,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomSeatCount = int.tryParse(settings['seat_count']?.toString() ?? '') ?? roomSeatCount;
       roomLocked = settings['locked'] == true || settings['locked']?.toString() == '1';
       roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
+      roomSeatThemeId = settings['seat_theme_id']?.toString() ?? roomSeatThemeId;
       roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
       groupPkEnabled = settings['group_pk_enabled'] == true || settings['group_pk_enabled']?.toString() == '1';
       final text = settings['announcement']?.toString().trim() ?? '';
@@ -444,10 +446,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
     final seatOptions = <int>[
       for (var count = 8; count <= 42; count++) count,
-    ].where((count) => count <= VipPolicy.maxRoomSeats(
-              widget.state.vipIsActive ? widget.state.vipLevel : 0,
-            ))
-        .toList();
+    ];
     if (!seatOptions.contains(roomSeatCount)) seatOptions.add(roomSeatCount);
     seatOptions.sort();
     var seatCount = seatOptions.contains(roomSeatCount) ? roomSeatCount : seatOptions.last;
@@ -626,6 +625,7 @@ class _RoomScreenState extends State<RoomScreen> {
       partyMode: result['party_mode'] as String,
       groupPkEnabled: result['group_pk_enabled'] as bool,
       welcomeImageKey: result['welcome_image_key'] as String,
+      seatThemeId: roomSeatThemeId,
     );
     if (!mounted) return;
     if (!ok) {
@@ -1880,104 +1880,572 @@ class _RoomScreenState extends State<RoomScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(effectsEnabled ? 'Room glow effects enabled on this device' : 'Room glow effects disabled on this device')));
   }
 
-  Future<void> _showRoomTools() async {
+  Color get _seatThemeAccent => switch (roomSeatThemeId) {
+        'neon-blue' => const Color(0xFF58B8FF),
+        'rose-glow' => const Color(0xFFFF6EA9),
+        _ => TinniPalette.brightGold,
+      };
+
+  Future<bool> _saveRoomConfiguration({
+    int? seatCount,
+    String? themeId,
+    String? seatThemeId,
+    bool? groupPk,
+    bool? locked,
+    String? partyMode,
+  }) async {
+    final ok = await widget.state.backend.saveRoomSettings(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      name: roomName,
+      seatCount: seatCount ?? roomSeatCount,
+      locked: locked ?? roomLocked,
+      announcement: roomAnnouncement ?? '',
+      themeId: themeId ?? roomThemeId,
+      partyMode: partyMode ?? roomPartyMode,
+      groupPkEnabled: groupPk ?? groupPkEnabled,
+      welcomeImageKey: roomWelcomeImageKey ?? '',
+      seatThemeId: seatThemeId ?? roomSeatThemeId,
+    );
+    if (!mounted) return ok;
+    if (ok) {
+      setState(() {
+        if (seatCount != null) roomSeatCount = seatCount;
+        if (themeId != null) roomThemeId = themeId;
+        if (seatThemeId != null) roomSeatThemeId = seatThemeId;
+        if (groupPk != null) groupPkEnabled = groupPk;
+        if (locked != null) roomLocked = locked;
+        if (partyMode != null) roomPartyMode = partyMode;
+      });
+      await widget.state.refreshRooms();
+    }
+    return ok;
+  }
+
+  Future<void> _showSeatCountSelector() async {
+    if (!isRoomAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only room owner/admin can change seats')),
+      );
+      return;
+    }
+    final options = isRoomHost
+        ? <int>[for (var count = 8; count <= 42; count++) count]
+        : <int>[
+            for (var count = roomSeatCount + 1; count <= 42; count++) count,
+          ];
+    if (options.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('42 seats is already the maximum')),
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+          children: [
+            ListTile(
+              title: Text(
+                isRoomHost ? 'Room Seats' : 'Increase Room Seats',
+                style: const TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text(
+                isRoomHost
+                    ? 'Owner can increase or decrease seats from 8 to 42.'
+                    : 'Admin can only increase the current seat count.',
+              ),
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final count in options)
+                  ChoiceChip(
+                    label: Text(count.toString()),
+                    selected: count == roomSeatCount,
+                    onSelected: count == roomSeatCount
+                        ? null
+                        : (_) => Navigator.pop(sheetContext, count),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || selected == roomSeatCount) return;
+    final ok = await _saveRoomConfiguration(seatCount: selected);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Room seats changed to $selected.'
+              : 'Room seats could not be changed.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRoomThemeSelector() async {
+    if (!isRoomHost) return;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.image_rounded),
+              title: Text(
+                'Room Cover / Theme',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            for (final entry in const <(String, String)>[
+              ('dark', 'Dark'),
+              ('midnight', 'Midnight'),
+              ('rose', 'Rose'),
+              ('forest', 'Forest'),
+              ('gold', 'Gold'),
+            ])
+              RadioListTile<String>(
+                value: entry.$1,
+                groupValue: roomThemeId,
+                title: Text(entry.$2),
+                onChanged: (value) => Navigator.pop(sheetContext, value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || selected == roomThemeId) return;
+    final ok = await _saveRoomConfiguration(themeId: selected);
+    if (!mounted || ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Room theme could not be changed')),
+    );
+  }
+
+  Future<void> _showMicThemeSelector() async {
+    if (!isRoomHost) return;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.auto_awesome_rounded),
+              title: Text(
+                'Mic Theme',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            for (final entry in const <(String, String)>[
+              ('royal-gold', 'Royal Gold'),
+              ('neon-blue', 'Neon Blue'),
+              ('rose-glow', 'Rose Glow'),
+            ])
+              RadioListTile<String>(
+                value: entry.$1,
+                groupValue: roomSeatThemeId,
+                title: Text(entry.$2),
+                onChanged: (value) => Navigator.pop(sheetContext, value),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || selected == roomSeatThemeId) return;
+    final ok = await _saveRoomConfiguration(seatThemeId: selected);
+    if (!mounted || ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Mic theme could not be changed')),
+    );
+  }
+
+  Future<void> _toggleGroupPk() async {
+    if (!isRoomHost) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only room owner can control Group PK')),
+      );
+      return;
+    }
+    final next = !groupPkEnabled;
+    final ok = await _saveRoomConfiguration(groupPk: next);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? (next ? 'Group PK enabled.' : 'Group PK disabled.')
+              : 'Group PK could not be changed.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRoomTypePanel() async {
+    if (!isRoomAdmin) return;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => DefaultTabController(
+        length: 4,
+        child: SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .66,
+            child: Column(
+              children: [
+                const ListTile(
+                  leading: Icon(Icons.dashboard_customize_rounded),
+                  title: Text(
+                    'Room Type',
+                    style: TextStyle(
+                      color: TinniPalette.gold,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const TabBar(
+                  isScrollable: true,
+                  tabs: [
+                    Tab(text: 'Mic Types'),
+                    Tab(text: 'Cover'),
+                    Tab(text: 'Mic Theme'),
+                    Tab(text: 'Setting'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.event_seat_rounded),
+                            title: const Text('Mic Types'),
+                            subtitle: Text(
+                              '$roomSeatCount seats • Tinni 8–42 layout',
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              _showSeatCountSelector();
+                            },
+                          ),
+                        ],
+                      ),
+                      ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.image_rounded),
+                            title: const Text('Room Cover / Theme'),
+                            subtitle: const Text(
+                              'Change the room background or theme.',
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            enabled: isRoomHost,
+                            onTap: !isRoomHost
+                                ? null
+                                : () {
+                                    Navigator.pop(sheetContext);
+                                    _showRoomThemeSelector();
+                                  },
+                          ),
+                        ],
+                      ),
+                      ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          for (final entry in const <(String, String)>[
+                            ('royal-gold', 'Royal Gold'),
+                            ('neon-blue', 'Neon Blue'),
+                            ('rose-glow', 'Rose Glow'),
+                          ])
+                            ListTile(
+                              leading: Icon(
+                                roomSeatThemeId == entry.$1
+                                    ? Icons.radio_button_checked_rounded
+                                    : Icons.radio_button_off_rounded,
+                                color: roomSeatThemeId == entry.$1
+                                    ? _seatThemeAccent
+                                    : TinniPalette.muted,
+                              ),
+                              title: Text(entry.$2),
+                              enabled: isRoomHost,
+                              onTap: !isRoomHost
+                                  ? null
+                                  : () async {
+                                      final ok =
+                                          await _saveRoomConfiguration(
+                                        seatThemeId: entry.$1,
+                                      );
+                                      if (ok && mounted) {
+                                        Navigator.pop(sheetContext);
+                                      }
+                                    },
+                            ),
+                        ],
+                      ),
+                      ListView(
+                        padding: const EdgeInsets.all(12),
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.event_seat_rounded),
+                            title: const Text('Room Seats'),
+                            subtitle: Text('$roomSeatCount seats'),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              _showSeatCountSelector();
+                            },
+                          ),
+                          if (isRoomHost)
+                            ListTile(
+                              leading:
+                                  const Icon(Icons.mic_external_on_rounded),
+                              title: const Text('Mic Type'),
+                              subtitle: Text(
+                                roomMicMode == 'free'
+                                    ? 'Free mic'
+                                    : 'Request mic',
+                              ),
+                              trailing:
+                                  const Icon(Icons.chevron_right_rounded),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _showMicModeControl();
+                              },
+                            ),
+                          if (isRoomAdmin && seatRequests.isNotEmpty)
+                            ListTile(
+                              leading: const Icon(Icons.how_to_reg_rounded),
+                              title: const Text('Mic Requests'),
+                              subtitle:
+                                  Text('${seatRequests.length} pending'),
+                              trailing:
+                                  const Icon(Icons.chevron_right_rounded),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _showMicRequests();
+                              },
+                            ),
+                          if (isRoomHost)
+                            SwitchListTile(
+                              secondary: Icon(
+                                roomLocked
+                                    ? Icons.lock_rounded
+                                    : Icons.lock_open_rounded,
+                                color: TinniPalette.gold,
+                              ),
+                              title: const Text('Room Lock'),
+                              value: roomLocked,
+                              onChanged: (value) async {
+                                final ok = await _saveRoomConfiguration(
+                                  locked: value,
+                                );
+                                if (ok && mounted) setState(() {});
+                              },
+                            ),
+                          if (isRoomHost)
+                            ListTile(
+                              leading: const Icon(Icons.settings_rounded),
+                              title: const Text('More room settings'),
+                              subtitle: const Text(
+                                'Name, notice, welcome picture and party mode',
+                              ),
+                              trailing:
+                                  const Icon(Icons.chevron_right_rounded),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _openRoomSettings();
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _roomToolTile({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: label == 'Lucky Bag'
+                ? const [Color(0xFF5B0710), Color(0xFF220204)]
+                : const [Color(0xFF120D04), Color(0xFF030303)],
+          ),
+          border: Border.all(
+            color: TinniPalette.gold.withValues(alpha: enabled ? .88 : .28),
+          ),
+          boxShadow: enabled
+              ? const [
+                  BoxShadow(
+                    color: Color(0x44FFD45A),
+                    blurRadius: 9,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TinniGlowIcon(icon: icon, size: 20, boxSize: 38),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: enabled ? TinniPalette.cream : TinniPalette.muted,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRoomTools() async {
+    final tools = <(String, IconData, VoidCallback, bool)>[
+      (
+        'Room Type',
+        Icons.dashboard_customize_rounded,
+        _showRoomTypePanel,
+        isRoomAdmin,
+      ),
+      (
+        'Music',
+        Icons.music_note_rounded,
+        _showRoomMusic,
+        isRoomAdmin,
+      ),
+      (
+        'Effects',
+        Icons.auto_awesome_rounded,
+        _toggleRoomEffects,
+        true,
+      ),
+      (
+        'Lucky Bag',
+        Icons.shopping_bag_rounded,
+        _showLuckyPouch,
+        true,
+      ),
+      (
+        roomMusic.outputMuted ? 'Sound Off' : 'Sound On',
+        roomMusic.outputMuted
+            ? Icons.volume_off_rounded
+            : Icons.volume_up_rounded,
+        _toggleRoomSound,
+        true,
+      ),
+      (
+        'Lucky Number',
+        Icons.confirmation_number_rounded,
+        _showLuckyNumber,
+        true,
+      ),
+      (
+        groupPkEnabled ? 'Stop Group PK' : 'Group PK',
+        Icons.sports_mma_rounded,
+        _toggleGroupPk,
+        true,
+      ),
+      (
+        'Public Screen',
+        Icons.tv_rounded,
+        _showPublicScreen,
+        isRoomAdmin,
+      ),
+      (
+        'Report',
+        Icons.report_rounded,
+        _reportRoom,
+        !isRoomHost,
+      ),
+    ];
+
+    final visible = tools.where((tool) {
+      if (tool.$1 == 'Room Type' || tool.$1 == 'Music') return isRoomAdmin;
+      if (tool.$1 == 'Public Screen') return isRoomAdmin;
+      return true;
+    }).toList(growable: false);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(6, 0, 6, 12),
-                child: Text('Room tools', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-              ),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 2.5,
-                children: [
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _openRoomMembers(); },
-                    icon: const Icon(Icons.groups_rounded), label: const Text('Members'),
-                  ),
-                  if (isRoomHost)
-                    FilledButton.tonalIcon(
-                      onPressed: () { Navigator.pop(sheetContext); _showMicModeControl(); },
-                      icon: const Icon(Icons.mic_external_on_rounded), label: const Text('Mic Type'),
-                    ),
-                  if (isRoomAdmin)
-                    FilledButton.tonalIcon(
-                      onPressed: () { Navigator.pop(sheetContext); _showMicRequests(); },
-                      icon: const Icon(Icons.how_to_reg_rounded), label: Text('Mic Requests (${seatRequests.length})'),
-                    ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _openGames(); },
-                    icon: const Icon(Icons.sports_esports_rounded), label: const Text('Games'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _showRoomMusic(); },
-                    icon: const Icon(Icons.music_note_rounded), label: const Text('Music / KTV'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: uploadingRoomImage ? null : () { Navigator.pop(sheetContext); _sendRoomImage(); },
-                    icon: const Icon(Icons.image_rounded), label: const Text('Photo message'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: mySeat == null ? null : () { Navigator.pop(sheetContext); _toggleCamera(); },
-                    icon: Icon(cameraPublished ? Icons.videocam_rounded : Icons.videocam_off_rounded),
-                    label: const Text('Camera'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _showLuckyPouch(); },
-                    icon: const Icon(Icons.redeem_rounded), label: const Text('Lucky Pouch'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _showLuckyNumber(); },
-                    icon: const Icon(Icons.casino_rounded), label: const Text('Lucky Number'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _toggleRoomEffects(); },
-                    icon: Icon(effectsEnabled ? Icons.auto_awesome_rounded : Icons.auto_awesome_outlined), label: const Text('Effects'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _toggleRoomSound(); },
-                    icon: Icon(roomMusic.outputMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded), label: const Text('Sound On / Off'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _showPublicScreen(); },
-                    icon: const Icon(Icons.tv_rounded), label: const Text('Public Screen'),
-                  ),
-                  if (isRoomHost)
-                    FilledButton.tonalIcon(
-                      onPressed: () { Navigator.pop(sheetContext); _openRoomSettings(); },
-                      icon: const Icon(Icons.settings_rounded), label: const Text('Settings'),
-                    ),
-                  if (isRoomHost)
-                    FilledButton.tonalIcon(
-                      onPressed: () { Navigator.pop(sheetContext); _pickRoomAvatar(); },
-                      icon: const Icon(Icons.image_rounded), label: const Text('Room photo'),
-                    ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _shareRoomId(); },
-                    icon: const Icon(Icons.share_rounded), label: const Text('Share room ID'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _showRoomRules(); },
-                    icon: const Icon(Icons.policy_rounded), label: const Text('Terms & rules'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () { Navigator.pop(sheetContext); _reportRoom(); },
-                    icon: const Icon(Icons.flag_outlined), label: const Text('Report room'),
-                  ),
-                ],
-              ),
-            ],
+          padding: const EdgeInsets.all(14),
+          child: GridView.builder(
+            shrinkWrap: true,
+            itemCount: visible.length,
+            gridDelegate:
+                const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              childAspectRatio: .88,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+            ),
+            itemBuilder: (_, index) {
+              final tool = visible[index];
+              return _roomToolTile(
+                label: tool.$1,
+                icon: tool.$2,
+                enabled: tool.$4,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future<void>.delayed(
+                    const Duration(milliseconds: 220),
+                    tool.$3,
+                  );
+                },
+              );
+            },
           ),
         ),
       ),
