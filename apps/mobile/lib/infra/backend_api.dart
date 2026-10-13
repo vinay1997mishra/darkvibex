@@ -844,6 +844,72 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> startDirectCall({
+    required String userId,
+    required String receiverUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/start',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'receiver_user_id': receiverUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> incomingDirectCall({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/calls/incoming?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> respondDirectCall({
+    required String userId,
+    required String callId,
+    required bool accept,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/respond',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'call_id': callId,
+          'accept': accept,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> directCallStatus({
+    required String userId,
+    required String callId,
+  }) =>
+      _json(
+        'GET',
+        '/api/calls/status?user_id=${Uri.encodeQueryComponent(userId)}'
+        '&call_id=${Uri.encodeQueryComponent(callId)}',
+        returnErrorBody: true,
+      );
+
+  Future<bool> endDirectCall({
+    required String userId,
+    required String callId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/calls/end',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'call_id': callId,
+      },
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> officialMessages() async {
     final value = await _json('GET', '/api/messages/official');
     final rows = value?['notices'];
