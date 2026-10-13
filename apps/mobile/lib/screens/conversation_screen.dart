@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
+import 'direct_call_screen.dart';
 
 class ConversationScreen extends StatefulWidget {
   const ConversationScreen({
@@ -30,6 +31,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool loading = true;
   bool uploadingImage = false;
   bool sendingEnvelope = false;
+  bool isFriend = false;
+  bool startingCall = false;
 
   List<Map<String, dynamic>> get _timeline {
     final items = <Map<String, dynamic>>[
@@ -107,6 +110,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
       envelopes
         ..clear()
         ..addAll(envelopeRows);
+      final friends = await widget.state.backend.friends(
+        userId: widget.state.userId,
+      );
+      isFriend = friends.any(
+        (row) => row['id']?.toString() == widget.otherUserId,
+      );
     }
     await _persistMessages();
     if (!mounted) return;
@@ -288,12 +297,61 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
+  Future<void> _startCall() async {
+    if (!isFriend || startingCall || !widget.state.backendConnected) return;
+    setState(() => startingCall = true);
+    final value = await widget.state.backend.startDirectCall(
+      userId: widget.state.userId,
+      receiverUserId: widget.otherUserId,
+    );
+    if (!mounted) return;
+    setState(() => startingCall = false);
+    final raw = value?['call'];
+    if (value?['ok'] != true || raw is! Map) {
+      final error = value?['error']?.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            switch (error) {
+              'friends_required' => 'Both users must be friends before calling.',
+              'user_busy' => 'This user is busy on another call.',
+              _ => 'Call could not be started.',
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    final call = Map<String, dynamic>.from(raw);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DirectCallScreen(
+          state: widget.state,
+          callId: call['id']?.toString() ?? '',
+          peerName: widget.otherName,
+          initialState: call['state']?.toString() ?? 'ringing',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.otherName),
         actions: [
+          if (isFriend)
+            IconButton(
+              tooltip: 'Call',
+              onPressed: startingCall ? null : _startCall,
+              icon: startingCall
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.call_rounded),
+            ),
           if (widget.state.hasVipPrivilege('red_envelope'))
             IconButton(
               tooltip: 'Send red envelope',
