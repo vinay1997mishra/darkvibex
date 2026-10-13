@@ -1325,6 +1325,55 @@ class BackendApi {
         .toList();
   }
 
+  Future<Map<String, String?>> profileMedia({
+    String? userId,
+  }) async {
+    final suffix = userId == null || userId.trim().isEmpty
+        ? ''
+        : '?user_id=${Uri.encodeQueryComponent(userId.trim())}';
+    final value = await _json(
+      'GET',
+      '/api/profile-media$suffix',
+      returnErrorBody: true,
+    );
+    final raw = value?['media'];
+    if (raw is! Map) return const <String, String?>{};
+    return raw.map(
+      (key, item) => MapEntry(key.toString(), item?.toString()),
+    );
+  }
+
+  Future<bool> saveProfileMedia({
+    required String slot,
+    required String assetKey,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/profile-media',
+      returnErrorBody: true,
+      body: <String, dynamic>{
+        'slot': slot,
+        'asset_key': assetKey,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> deleteProfileMedia({
+    required String slot,
+  }) async {
+    final value = await _json(
+      'DELETE',
+      '/api/profile-media',
+      returnErrorBody: true,
+      body: <String, dynamic>{
+        'slot': slot,
+        'confirm_remove': true,
+      },
+    );
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> profileTrends({
     required String userId,
     int limit = 40,
