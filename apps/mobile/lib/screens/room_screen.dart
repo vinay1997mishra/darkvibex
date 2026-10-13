@@ -21,6 +21,7 @@ import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
 import 'profile_screen.dart';
+import 'messages_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -51,6 +52,7 @@ class _RoomScreenState extends State<RoomScreen> {
   final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
     <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
   ];
+  final TextEditingController roomChatController = TextEditingController();
   bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   final Set<String> knownRoomMembers = <String>{};
@@ -66,6 +68,7 @@ class _RoomScreenState extends State<RoomScreen> {
   bool roomLocked = false;
   bool amRoomAdmin = false;
   String roomThemeId = 'dark';
+  late String roomPartyMode;
   bool groupPkEnabled = false;
   bool effectsEnabled = true;
   final KtvService roomMusic = KtvService();
@@ -79,6 +82,7 @@ class _RoomScreenState extends State<RoomScreen> {
     roomAvatarKey = widget.room.avatarKey;
     roomName = widget.room.name;
     roomSeatCount = widget.room.seatCount;
+    roomPartyMode = widget.room.partyMode;
     unawaited(roomMusic.loadLocalSongs());
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
@@ -219,6 +223,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomSeatCount = int.tryParse(settings['seat_count']?.toString() ?? '') ?? roomSeatCount;
       roomLocked = settings['locked'] == true || settings['locked']?.toString() == '1';
       roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
+      roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
       groupPkEnabled = settings['group_pk_enabled'] == true || settings['group_pk_enabled']?.toString() == '1';
       final text = settings['announcement']?.toString().trim() ?? '';
       roomAnnouncement = text.isEmpty ? null : text;
@@ -231,8 +236,9 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!isRoomHost) return;
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
-    final seatOptions = <int>[8, 9, 10, ...List<int>.generate(31, (index) => index + 12)]
-        .where((count) => count <= VipPolicy.maxRoomSeats(
+    final seatOptions = <int>[
+      for (var count = 8; count <= 42; count++) count,
+    ].where((count) => count <= VipPolicy.maxRoomSeats(
               widget.state.vipIsActive ? widget.state.vipLevel : 0,
             ))
         .toList();
@@ -241,6 +247,7 @@ class _RoomScreenState extends State<RoomScreen> {
     var seatCount = seatOptions.contains(roomSeatCount) ? roomSeatCount : seatOptions.last;
     var locked = roomLocked;
     var themeId = roomThemeId;
+    var partyMode = roomPartyMode;
     var pkEnabled = groupPkEnabled;
     var welcomeImageKey = roomWelcomeImageKey ?? '';
     var welcomeUploading = false;
@@ -262,6 +269,24 @@ class _RoomScreenState extends State<RoomScreen> {
                       .toList(),
                   onChanged: (value) { if (value != null) setDialogState(() => seatCount = value); },
                 ),
+                DropdownButtonFormField<String>(
+                  value: partyMode,
+                  decoration: const InputDecoration(labelText: 'Party mode'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Friends-making Party',
+                      child: Text('Friends Party'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Event hosting mode',
+                      child: Text('Event Mode'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => partyMode = value);
+                  },
+                ),
+                const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Lock room'),
@@ -373,6 +398,7 @@ class _RoomScreenState extends State<RoomScreen> {
               'locked': locked,
               'announcement': announcement.text.trim(),
               'theme_id': themeId,
+              'party_mode': partyMode,
               'group_pk_enabled': pkEnabled,
               'welcome_image_key': welcomeImageKey,
             }), child: const Text('Save')),
@@ -391,6 +417,7 @@ class _RoomScreenState extends State<RoomScreen> {
       locked: result['locked'] as bool,
       announcement: result['announcement'] as String,
       themeId: result['theme_id'] as String,
+      partyMode: result['party_mode'] as String,
       groupPkEnabled: result['group_pk_enabled'] as bool,
       welcomeImageKey: result['welcome_image_key'] as String,
     );
@@ -404,6 +431,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomSeatCount = result['seat_count'] as int;
       roomLocked = result['locked'] as bool;
       roomThemeId = result['theme_id'] as String;
+      roomPartyMode = result['party_mode'] as String;
       groupPkEnabled = result['group_pk_enabled'] as bool;
       final welcomeKey = result['welcome_image_key'] as String;
       roomWelcomeImageKey = welcomeKey.isEmpty ? null : welcomeKey;
@@ -596,6 +624,7 @@ class _RoomScreenState extends State<RoomScreen> {
   void dispose() {
     memberRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
+    roomChatController.dispose();
     unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
     rtcEvents = null;
