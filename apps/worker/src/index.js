@@ -730,8 +730,6 @@ async function handleApi(request, env, url) {
     const userId = String(parts[2] ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    const status = await getVipStatus(db, userId);
-    if (!status.active || status.level < 1) return json({ ok: false, error: "vip_privilege_locked" }, { status: 403 });
     const rows = await db.prepare(
       `SELECT v.visitor_user_id AS user_id,
               CASE WHEN av.level >= 18 AND av.active_until > ?
