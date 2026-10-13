@@ -4,9 +4,14 @@ import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 
 class GiftsScreen extends StatefulWidget {
-  const GiftsScreen({super.key, required this.state});
+  const GiftsScreen({
+    super.key,
+    required this.state,
+    this.initialCategory,
+  });
 
   final AppState state;
+  final String? initialCategory;
 
   @override
   State<GiftsScreen> createState() => _GiftsScreenState();
@@ -32,6 +37,13 @@ class _GiftsScreenState extends State<GiftsScreen> {
   @override
   void initState() {
     super.initState();
+    final requested = widget.initialCategory?.trim().toLowerCase();
+    if (requested != null && requested.isNotEmpty) {
+      final index = categories.indexWhere(
+        (value) => value.toLowerCase() == requested,
+      );
+      if (index >= 0) categoryIndex = index;
+    }
     _load();
   }
 
