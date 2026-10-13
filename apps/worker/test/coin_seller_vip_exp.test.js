@@ -57,6 +57,19 @@ async function fixture() {
     assert.equal(response.status, 200);
   }
   sqlite.prepare("UPDATE users SET role='coin_seller',coins=1000000000 WHERE id='seller'").run();
+  const credential = await request("/api/wallet/role-credential", {
+    method: "POST",
+    userId: "seller",
+    body: {
+      user_id: "seller",
+      wallet_type: "coin_seller",
+      credential: "1234",
+    },
+  });
+  assert.equal(credential.status, 200);
+  sqlite.prepare(
+    "UPDATE role_wallets SET balance_coins=1000000000 WHERE user_id='seller' AND wallet_type='coin_seller'"
+  ).run();
   return { sqlite, request };
 }
 
@@ -64,7 +77,7 @@ test("Coin Seller transfers have no monthly or per-transfer VIP EXP cap", async 
   const { sqlite, request } = await fixture();
   const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
-    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
   });
 
   const amounts = [10000, 20000, 30000, 100000000];
@@ -82,7 +95,12 @@ test("Coin Seller transfers have no monthly or per-transfer VIP EXP cap", async 
     assert.equal("monthly_grants_remaining" in result.body.vip_award, false);
   }
 
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins, 1000000000 - amounts.reduce((sum, n) => sum + n, 0));
+  assert.equal(
+    sqlite.prepare(
+      "SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='coin_seller'"
+    ).get().balance_coins,
+    1000000000 - amounts.reduce((sum, n) => sum + n, 0),
+  );
   assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, receiverCoinsBefore + amounts.reduce((sum, n) => sum + n, 0));
   assert.equal(sqlite.prepare("SELECT total_received_coins FROM user_vip WHERE user_id='receiver'").get().total_received_coins, amounts.reduce((sum, n) => sum + n, 0));
   assert.equal(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, awardedTotal);
@@ -93,7 +111,7 @@ test("VIP coin EXP carries partial coin amounts and resets to zero on every leve
   const { sqlite, request } = await fixture();
   const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
-    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
   });
 
   const first = await transfer(399);
@@ -124,7 +142,7 @@ test("Coin Seller receipts earn one VIP EXP per 400 coins at VIP17", async () =>
   const coins = 40000;
   const result = await request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
-    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins },
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
   });
   assert.equal(result.status, 200);
   assert.equal(result.body.vip_award.multiplier, 1 / 400);
