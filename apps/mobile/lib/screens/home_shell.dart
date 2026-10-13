@@ -130,43 +130,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
 
-  Future<void> _openFourBoxMenu(BuildContext context) async {
-    const entries = <(String, IconData, int)>[
-      ('Party', Icons.groups_rounded, 0),
-      ('Discover', Icons.explore_rounded, 1),
-      ('Message', Icons.mail_rounded, 2),
-      ('Mine', Icons.person_rounded, 3),
-    ];
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: TinniPalette.nearBlack,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
-          child: GridView.count(
-            shrinkWrap: true,
-            crossAxisCount: 2,
-            mainAxisSpacing: 9,
-            crossAxisSpacing: 9,
-            childAspectRatio: 2.5,
-            children: [
-              for (final entry in entries)
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    widget.onSelect(entry.$3);
-                  },
-                  icon: Icon(entry.$2),
-                  label: Text(entry.$1),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _showRoomRanking(BuildContext context) async {
     final rooms = [...state.rooms]
       ..sort((a, b) => b.online.compareTo(a.online));
