@@ -877,7 +877,7 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
     const userId = String(session.sub);
-    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+    const member = await db.prepare("SELECT seat_index FROM room_members WHERE room_id = ? AND user_id = ?")
       .bind(roomId, userId).first();
     if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
     await expireRoomLuckyPouches(db, roomId, now());
@@ -1358,18 +1358,20 @@ async function handleApi(request, env, url) {
     if (seatIndex != null && (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(room.seat_count))) {
       return json({ ok: false, error: "invalid_seat_index" }, { status: 400 });
     }
+    const stayingOnSameSeat =
+      seatIndex != null && Number(member.seat_index) === seatIndex;
     if (seatIndex != null) {
       const seatControl = await db.prepare(
         "SELECT locked,room_muted FROM room_seat_controls WHERE room_id=? AND seat_index=?"
       ).bind(roomId,seatIndex).first();
-      if (Number(seatControl?.locked ?? 0) === 1) {
+      if (Number(seatControl?.locked ?? 0) === 1 && !stayingOnSameSeat) {
         return json({ ok:false,error:"seat_locked" }, { status:409 });
       }
       const moderator = await roomModeratorState(db, roomId, userId);
       const roomSettings = await db.prepare(
         "SELECT COALESCE(mic_mode,'free') AS mic_mode FROM room_settings WHERE room_id=?"
       ).bind(roomId).first();
-      if ((roomSettings?.mic_mode ?? "free") === "apply" && !moderator.isOwner && !moderator.isAdmin) {
+      if ((roomSettings?.mic_mode ?? "free") === "apply" && !stayingOnSameSeat && !moderator.isOwner && !moderator.isAdmin) {
         return json({ ok:false,error:"seat_request_required" }, { status:403 });
       }
       if (Number(seatControl?.room_muted ?? 0) === 1) {
