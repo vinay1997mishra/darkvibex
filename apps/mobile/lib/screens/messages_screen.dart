@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import 'conversation_screen.dart';
+import 'direct_call_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key, required this.state});
@@ -17,6 +20,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
   bool loadingFeeds = true;
   List<Map<String, dynamic>> official = const [];
   List<Map<String, dynamic>> activity = const [];
+  Timer? callPollTimer;
+  bool incomingCallOpen = false;
 
   AppState get state => widget.state;
 
@@ -24,6 +29,95 @@ class _MessagesScreenState extends State<MessagesScreen> {
   void initState() {
     super.initState();
     _loadFeeds();
+    callPollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _checkIncomingCall(),
+    );
+    unawaited(_checkIncomingCall());
+  }
+
+  @override
+  void dispose() {
+    callPollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkIncomingCall() async {
+    if (incomingCallOpen ||
+        !state.backendConnected ||
+        !state.isAuthenticated ||
+        !mounted) {
+      return;
+    }
+    final value = await state.backend.incomingDirectCall(
+      userId: state.userId,
+    );
+    final raw = value?['call'];
+    if (raw is! Map || !mounted) return;
+    final call = Map<String, dynamic>.from(raw);
+    final callId = call['id']?.toString() ?? '';
+    if (callId.isEmpty || call['state']?.toString() != 'ringing') return;
+
+    incomingCallOpen = true;
+    final callerName =
+        call['caller_name']?.toString() ?? call['caller_user_id']?.toString() ?? 'User';
+    final accept = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.call_rounded, color: TinniPalette.gold),
+            SizedBox(width: 8),
+            Text('Incoming call'),
+          ],
+        ),
+        content: Text('$callerName is calling you.'),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            icon: const Icon(Icons.call_end_rounded),
+            label: const Text('Refuse'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.call_rounded),
+            label: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) {
+      incomingCallOpen = false;
+      return;
+    }
+
+    final response = await state.backend.respondDirectCall(
+      userId: state.userId,
+      callId: callId,
+      accept: accept == true,
+    );
+    incomingCallOpen = false;
+    if (accept != true || !mounted) return;
+
+    final nextRaw = response?['call'];
+    if (response?['ok'] != true || nextRaw is! Map) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call could not be answered')),
+      );
+      return;
+    }
+    final next = Map<String, dynamic>.from(nextRaw);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DirectCallScreen(
+          state: state,
+          callId: callId,
+          peerName: callerName,
+          initialState: next['state']?.toString() ?? 'active',
+        ),
+      ),
+    );
   }
 
   Future<void> _loadFeeds() async {
