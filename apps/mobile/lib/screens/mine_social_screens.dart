@@ -4,6 +4,205 @@ import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import 'gifts_screen.dart';
 
+class TrendsScreen extends StatefulWidget {
+  const TrendsScreen({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  State<TrendsScreen> createState() => _TrendsScreenState();
+}
+
+class _TrendsScreenState extends State<TrendsScreen> {
+  bool loading = true;
+  bool posting = false;
+  List<Map<String, dynamic>> trends = const <Map<String, dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final rows = await widget.state.backend.profileTrends(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    setState(() {
+      trends = rows;
+      loading = false;
+    });
+  }
+
+  String _time(dynamic raw) {
+    final value = int.tryParse(raw?.toString() ?? '') ?? 0;
+    if (value <= 0) return '';
+    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year} '
+        '${two(date.hour)}:${two(date.minute)}';
+  }
+
+  Future<void> _post() async {
+    if (posting) return;
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('New Trend'),
+        content: TextField(
+          key: const Key('profile-trend-text'),
+          controller: controller,
+          maxLength: 500,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Share something on your profile…',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Post'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (text == null || text.isEmpty || !mounted) return;
+    setState(() => posting = true);
+    try {
+      final result = await widget.state.backend.addProfileTrend(
+        userId: widget.state.userId,
+        text: text,
+      );
+      final row = result?['trend'];
+      if (!mounted) return;
+      if (result?['ok'] == true && row is Map) {
+        setState(() {
+          trends = <Map<String, dynamic>>[
+            Map<String, dynamic>.from(row),
+            ...trends,
+          ];
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'Trend could not be posted.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => posting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: TinniPalette.black,
+        appBar: AppBar(
+          title: const Text(
+            'Trends',
+            style: TextStyle(
+              color: TinniPalette.gold,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'New Trend',
+              onPressed: posting ? null : _post,
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ],
+        ),
+        body: TinniBackground(
+          child: loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                    children: [
+                      TinniPanel(
+                        onTap: posting ? null : _post,
+                        child: const Row(
+                          children: [
+                            TinniGlowIcon(
+                              icon: Icons.auto_awesome_rounded,
+                              size: 22,
+                              boxSize: 42,
+                            ),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Share something on your profile…',
+                                style: TextStyle(
+                                  color: TinniPalette.muted,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.edit_rounded,
+                              color: TinniPalette.gold,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (trends.isEmpty)
+                        const TinniPanel(
+                          child: Text(
+                            'No Trends yet.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: TinniPalette.muted),
+                          ),
+                        )
+                      else
+                        for (final row in trends)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: TinniPanel(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    row['text']?.toString() ?? '',
+                                    style: const TextStyle(
+                                      color: TinniPalette.cream,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _time(row['created_at']),
+                                    style: const TextStyle(
+                                      color: TinniPalette.muted,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+        ),
+      );
+}
+
 class WealthLevelScreen extends StatefulWidget {
   const WealthLevelScreen({super.key, required this.state});
   final AppState state;
