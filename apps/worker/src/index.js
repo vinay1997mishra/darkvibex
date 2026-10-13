@@ -48,6 +48,7 @@ import {
   claimLampTask,
   createLampMicInvite,
   getLampStatus,
+  ensureLampSchema,
   recordLampGiftActivity,
   recordLampRoomEntry,
   recordLampRoomFollow,
@@ -1001,6 +1002,24 @@ async function handleApi(request, env, url) {
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
+  }
+
+  if (url.pathname === "/api/rooms/following" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureLampSchema(db);
+    const rows = await db.prepare(
+      `SELECT r.id,r.name,r.owner_name,r.owner_user_id,r.online,r.seat_count,
+              r.avatar_key,COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
+              rf.followed_at
+         FROM room_followers rf
+         JOIN rooms r ON r.id=rf.room_id
+         LEFT JOIN room_settings s ON s.room_id=r.id
+        WHERE rf.user_id=?
+        ORDER BY rf.updated_at DESC LIMIT 100`
+    ).bind(userId).all();
+    return json({ ok: true, rooms: rows.results ?? [] });
   }
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
