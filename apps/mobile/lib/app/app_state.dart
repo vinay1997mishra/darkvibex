@@ -60,6 +60,7 @@ class AppState extends ChangeNotifier {
 
   String userId = '91000001';
   String displayName = 'DarkVibeX User';
+  String userRole = 'user';
   String? avatarKey;
   String? dateOfBirth;
   String? sessionToken;
@@ -446,6 +447,7 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     displayName = user['display_name']?.toString() ?? displayName;
+    userRole = user['role']?.toString() ?? userRole;
     avatarKey = user['avatar_key']?.toString();
     dateOfBirth = user['date_of_birth']?.toString();
     if (dateOfBirth == null || dateOfBirth!.trim().isEmpty) {
@@ -540,6 +542,7 @@ class AppState extends ChangeNotifier {
     authError = null;
     userId = '91000001';
     displayName = 'DarkVibeX User';
+    userRole = 'user';
     avatarKey = null;
     messages.clear();
     coins = 2500000;
@@ -569,6 +572,7 @@ class AppState extends ChangeNotifier {
     if (wallet is Map) {
       coins = int.tryParse(wallet['coins']?.toString() ?? '') ?? coins;
       diamonds = int.tryParse(wallet['diamonds']?.toString() ?? '') ?? diamonds;
+      userRole = wallet['role']?.toString() ?? userRole;
       vipLevel = int.tryParse(wallet['vip_level']?.toString() ?? '') ?? vipLevel;
     }
     final rows = value?['ledger'];
