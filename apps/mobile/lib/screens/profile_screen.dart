@@ -53,8 +53,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  // DarkVibeX extra: final placement is pending user confirmation.
-  // ignore: unused_element
   Future<void> _showFriends(BuildContext context) async {
     final friends = await state.backend.friends(userId: state.userId);
     if (!context.mounted) return;
@@ -97,17 +95,76 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ),
                               ),
-                      trailing: IconButton(
-                        tooltip: 'Remove friend',
-                        icon: const Icon(Icons.person_remove_alt_1_rounded),
-                        onPressed: () async {
-                          final ok = await state.backend.removeFriend(
-                            userId: state.userId,
-                            friendUserId: id,
-                          );
-                          if (!sheetContext.mounted) return;
-                          if (ok) Navigator.pop(sheetContext);
-                        },
+                      trailing: Wrap(
+                        spacing: 2,
+                        children: [
+                          IconButton(
+                            key: Key('friend-call-$id'),
+                            tooltip: 'Voice call',
+                            icon: const Icon(
+                              Icons.call_rounded,
+                              color: TinniPalette.gold,
+                            ),
+                            onPressed: id.isEmpty
+                                ? null
+                                : () async {
+                                    final value =
+                                        await state.backend.startDirectCall(
+                                      userId: state.userId,
+                                      receiverUserId: id,
+                                    );
+                                    if (!sheetContext.mounted) return;
+                                    final raw = value?['call'];
+                                    if (raw is! Map) {
+                                      ScaffoldMessenger.of(sheetContext)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            value?['error']
+                                                    ?.toString()
+                                                    .replaceAll('_', ' ') ??
+                                                'Call could not be started.',
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    final call =
+                                        Map<String, dynamic>.from(raw);
+                                    await Navigator.of(sheetContext).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => DirectCallScreen(
+                                          state: state,
+                                          callId:
+                                              call['id']?.toString() ?? '',
+                                          peerName: name,
+                                          initialState:
+                                              call['state']?.toString() ??
+                                                  'ringing',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Friend options',
+                            onSelected: (value) async {
+                              if (value != 'remove') return;
+                              final ok = await state.backend.removeFriend(
+                                userId: state.userId,
+                                friendUserId: id,
+                              );
+                              if (!sheetContext.mounted) return;
+                              if (ok) Navigator.pop(sheetContext);
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem<String>(
+                                value: 'remove',
+                                child: Text('Remove friend'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -631,6 +688,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            TinniPanel(
+              key: const Key('mine-friends-calls'),
+              onTap: () => _showFriends(context),
+              child: const Row(
+                children: [
+                  TinniGlowIcon(
+                    icon: Icons.call_rounded,
+                    size: 27,
+                    boxSize: 52,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Friends & Calls',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Only mutual friends can call each other',
+                          style: TextStyle(
+                            color: TinniPalette.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: TinniPalette.gold,
                   ),
                 ],
               ),
