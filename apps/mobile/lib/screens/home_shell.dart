@@ -6,12 +6,10 @@ import 'package:image_picker/image_picker.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import '../vip/vip_policy.dart';
-import 'games_screen.dart';
 import 'messages_screen.dart';
+import 'mine_social_screens.dart';
 import 'profile_screen.dart';
 import 'room_screen.dart';
-import 'vip_screen.dart';
-import 'wallet_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, required this.state});
@@ -322,12 +320,20 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   children: [
                     Expanded(
                       child: _QuickCard(
-                        label: 'Games',
-                        icon: Icons.sports_esports_rounded,
+                        label: 'Room',
+                        icon: Icons.mic_external_on_rounded,
+                        onTap: () => _showRoomRanking(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _QuickCard(
+                        label: 'CP Ranking',
+                        icon: Icons.favorite_rounded,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute<void>(
-                            builder: (_) => GamesScreen(state: state),
+                            builder: (_) => CpRankingScreen(state: state),
                           ),
                         ),
                       ),
@@ -335,25 +341,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _QuickCard(
-                        label: 'Wallet',
-                        icon: Icons.account_balance_wallet_rounded,
+                        label: 'Family',
+                        icon: Icons.groups_rounded,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute<void>(
-                            builder: (_) => WalletScreen(state: state),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _QuickCard(
-                        label: 'VIP',
-                        icon: Icons.workspace_premium_rounded,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => VipScreen(state: state),
+                            builder: (_) => FamilyScreen(state: state),
                           ),
                         ),
                       ),
