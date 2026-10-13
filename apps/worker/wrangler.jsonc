@@ -25,7 +25,7 @@
     }
   ],
   "vars": {
-    "GOOGLE_WEB_CLIENT_ID": "856668709223-9aqo8i4k1nmhftnn0jhf9agbrb0t9qt1.apps.googleusercontent.com"
+    "GOOGLE_WEB_CLIENT_ID": "856668709223-rvauq6rt2he7jhgp5ns0iqohe6ovd5ph.apps.googleusercontent.com"
   },
   "triggers": {
     "crons": ["*/5 * * * *"]
