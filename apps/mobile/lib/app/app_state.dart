@@ -769,6 +769,10 @@ class AppState extends ChangeNotifier {
           'Choose Voice Room or Live Room.',
         'owner_and_name_required' =>
           'Room name is required.',
+        'room_create_storage_failed' =>
+          'Room storage could not save the room. The server is being repaired.',
+        'room_id_taken' || 'room_id_unavailable' =>
+          'A room ID could not be allocated. Please try again.',
         'user_banned' || 'user_suspended' =>
           'This account cannot create a room right now.',
         _ => code.isEmpty
