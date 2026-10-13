@@ -14,6 +14,7 @@ class RoomSummary {
     required this.online,
     this.seatCount = 12,
     this.avatarKey,
+    this.partyMode = 'Friends-making Party',
   });
 
   final String id;
@@ -23,6 +24,7 @@ class RoomSummary {
   final int online;
   final int seatCount;
   final String? avatarKey;
+  final String partyMode;
 }
 
 class DirectMessage {
@@ -337,6 +339,7 @@ class AppState extends ChangeNotifier {
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
+              partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
             )));
     }
 
@@ -357,6 +360,7 @@ class AppState extends ChangeNotifier {
               online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
+              partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
             )));
     }
     if (notify) notifyListeners();
@@ -631,12 +635,16 @@ class AppState extends ChangeNotifier {
     rooms[index] = RoomSummary(
       id: room.id, name: room.name, ownerName: room.ownerName,
       ownerUserId: room.ownerUserId, online: room.online,
-      seatCount: room.seatCount, avatarKey: key,
+      seatCount: room.seatCount, avatarKey: key, partyMode: room.partyMode,
     );
     notifyListeners();
   }
 
-  Future<RoomSummary> createRoom(String name, {int seatCount = 12}) async {
+  Future<RoomSummary> createRoom(
+    String name, {
+    int seatCount = 12,
+    String partyMode = 'Friends-making Party',
+  }) async {
     final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
     final allowedSeats =
         seatCount.clamp(8, VipPolicy.maxRoomSeats(vipLevel)).toInt();
@@ -648,6 +656,7 @@ class AppState extends ChangeNotifier {
       ownerName: displayName,
       name: cleanName,
       seatCount: allowedSeats,
+      partyMode: partyMode,
     );
     if (roomId == null || roomId.isEmpty) {
       throw StateError('The server could not create this room.');
@@ -660,6 +669,7 @@ class AppState extends ChangeNotifier {
       ownerUserId: userId,
       online: 1,
       seatCount: allowedSeats,
+      partyMode: partyMode,
     );
     rooms.insert(0, room);
     notifyListeners();
