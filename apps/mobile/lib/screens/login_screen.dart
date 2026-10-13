@@ -137,8 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _finishProfile() async {
-    if (!mounted) return;
-    setState(() => _savingProfile = true);
+    if (mounted) setState(() => _savingProfile = true);
     try {
       await state.completeLoginProfile(
         name: _nameController.text.trim(),
