@@ -119,6 +119,21 @@ jobs:
           flutter pub get
           flutter build apk --release --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
 
+      - name: Print APK signing certificate fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
+            apk_path="apps/mobile/build/app/outputs/flutter-apk/app-release.apk"
+            echo "APK type: signed release (stable signing key, if key is unchanged)"
+          else
+            apk_path="apps/mobile/build/app/outputs/flutter-apk/app-debug.apk"
+            echo "APK type: CI debug (fingerprint may change on the next build)"
+          fi
+          apksigner_path="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner_path"
+          "$apksigner_path" verify --print-certs "$apk_path" | grep -E "Signer #1 certificate SHA-1 digest:"
+
       - name: Upload debug APK
         if: env.ANDROID_KEYSTORE_PATH == ''
         uses: actions/upload-artifact@v4
