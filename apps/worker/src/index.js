@@ -34,6 +34,11 @@ import {
   cpAddMemory,
   cpMemories,
   cpRanking,
+  vsState,
+  vsRequest,
+  vsRespond,
+  vsDisconnect,
+  vsRanking,
 } from "./tinni_social.js";
 
 import {
@@ -863,6 +868,57 @@ async function handleApi(request, env, url) {
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
+  }
+
+  if (url.pathname === "/api/vs/ranking" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    return json({
+      ok: true,
+      ranking: await vsRanking(db, url.searchParams.get("limit") ?? 100),
+    });
+  }
+
+  if (url.pathname === "/api/vs" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json({ ok: true, vs: await vsState(db, userId) });
+  }
+
+  if (url.pathname === "/api/vs/request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(
+        { ok: true, vs: await vsRequest(db, userId, String(body.target_user_id ?? "")) },
+        { status: 201 },
+      );
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/vs/respond" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok: true, vs: await vsRespond(db, userId, body.accept === true) });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/vs/disconnect" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    return json(await vsDisconnect(db, userId));
   }
 
   if (url.pathname === "/api/cp/ranking" && request.method === "GET") {
