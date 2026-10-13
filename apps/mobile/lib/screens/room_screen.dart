@@ -2377,29 +2377,88 @@ class _RoomScreenState extends State<RoomScreen> {
                       final values = await showDialog<(int, int)>(
                         context: context,
                         builder: (dialogContext) {
-                          var coins = 5000;
-                          var slots = 10;
-                          return StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
-                            title: const Text('Create Red Pocket (LP)'),
-                            content: Column(mainAxisSize: MainAxisSize.min, children: [
-                              DropdownButtonFormField<int>(
-                                value: coins,
-                                decoration: const InputDecoration(labelText: 'Coin amount'),
-                                items: const [5000, 10000, 25000, 50000].map((n) => DropdownMenuItem(value: n, child: Text('$n coins'))).toList(),
-                                onChanged: (v) { if (v != null) setDialogState(() => coins = v); },
-                              ),
-                              DropdownButtonFormField<int>(
-                                value: slots,
-                                decoration: const InputDecoration(labelText: 'Winners'),
-                                items: const [5, 10, 20].map((n) => DropdownMenuItem(value: n, child: Text('$n people'))).toList(),
-                                onChanged: (v) { if (v != null) setDialogState(() => slots = v); },
-                              ),
-                            ]),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-                              FilledButton(onPressed: () => Navigator.pop(dialogContext, (coins, slots)), child: const Text('Create')),
-                            ],
-                          ));
+                          const allowed = <int, List<int>>{
+                            5: <int>[100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+                            20: <int>[100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+                            50: <int>[500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+                            100: <int>[1000000, 2000000, 5000000, 8000000, 10000000],
+                            200: <int>[1000000, 2000000, 5000000, 8000000, 10000000],
+                            500: <int>[2000000, 5000000, 8000000, 10000000],
+                          };
+                          var slots = 5;
+                          var coins = 100000;
+                          return StatefulBuilder(
+                            builder: (dialogContext, setDialogState) {
+                              final coinOptions = allowed[slots]!;
+                              return AlertDialog(
+                                title: const Text('Create Red Pocket (LP)'),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    DropdownButtonFormField<int>(
+                                      value: slots,
+                                      decoration: const InputDecoration(
+                                        labelText: 'People',
+                                      ),
+                                      items: allowed.keys
+                                          .map(
+                                            (n) => DropdownMenuItem(
+                                              value: n,
+                                              child: Text('$n people'),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setDialogState(() {
+                                          slots = value;
+                                          final next = allowed[slots]!;
+                                          if (!next.contains(coins)) {
+                                            coins = next.first;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(height: 12),
+                                    DropdownButtonFormField<int>(
+                                      value: coins,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Coin amount',
+                                      ),
+                                      items: coinOptions
+                                          .map(
+                                            (n) => DropdownMenuItem(
+                                              value: n,
+                                              child: Text(
+                                                '${_compactRoomCoins(n)} coins',
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setDialogState(() => coins = value);
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(
+                                      dialogContext,
+                                      (coins, slots),
+                                    ),
+                                    child: const Text('Create'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
                         },
                       );
                       if (values == null) return;
