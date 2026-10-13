@@ -3971,7 +3971,7 @@ async function handleApi(request, env, url) {
     const actor = String(session?.sub ?? "");
     const key = String(request.headers.get("x-file-key") ?? "").trim();
     const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4" };
     const extension = key.split(".").pop()?.toLowerCase();
     if (!actor || !extensions[type] || extension !== extensions[type] ||
         key.includes("..") || key.startsWith("/") || !/^[a-zA-Z0-9._/-]+$/.test(key)) {
@@ -3979,15 +3979,17 @@ async function handleApi(request, env, url) {
     }
     const userPrefix = `users/${actor}/`;
     const messagePrefix = `messages/${actor}/`;
-    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix);
+    const customGiftPrefix = `custom-gifts/${actor}/`;
+    let authorizedKey = key.startsWith(userPrefix) || key.startsWith(messagePrefix) || key.startsWith(customGiftPrefix);
     const roomMatch = key.match(/^rooms\/([a-zA-Z0-9_-]+)\/avatar-[0-9]+\.(jpg|png|webp)$/i);
     if (roomMatch) {
       const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomMatch[1]).first();
       authorizedKey = room?.owner_user_id === actor;
     }
     if (!authorizedKey) return json({ ok: false, error: "file_owner_required" }, { status: 403 });
+    const maxFileBytes = type === "video/mp4" ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
     const declaredLength = Number(request.headers.get("content-length") ?? 0);
-    if (declaredLength > 5 * 1024 * 1024) {
+    if (declaredLength > maxFileBytes) {
       return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
     }
     const reader = request.body?.getReader();
@@ -3998,7 +4000,7 @@ async function handleApi(request, env, url) {
       const part = await reader.read();
       if (part.done) break;
       size += part.value.byteLength;
-      if (size > 5 * 1024 * 1024) {
+      if (size > maxFileBytes) {
         await reader.cancel();
         return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
       }
@@ -4017,8 +4019,9 @@ async function handleApi(request, env, url) {
     const isJpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
     const isWebp = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
       String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+    const isMp4 = bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
     if ((type === "image/jpeg" && !isJpeg) || (type === "image/png" && !isPng) ||
-        (type === "image/webp" && !isWebp)) {
+        (type === "image/webp" && !isWebp) || (type === "video/mp4" && !isMp4)) {
       return json({ ok: false, error: "image_content_type_mismatch" }, { status: 400 });
     }
     await env.FILES.put(key, bytes, {
@@ -4120,7 +4123,7 @@ export default {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {
