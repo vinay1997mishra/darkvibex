@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   display_name TEXT NOT NULL DEFAULT '',
   avatar_key TEXT,
+  date_of_birth TEXT,
   role TEXT NOT NULL DEFAULT 'user'
     CHECK (role IN (
       'user',
