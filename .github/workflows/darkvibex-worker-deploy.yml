@@ -63,3 +63,11 @@ jobs:
           APP_CONFIG="$app_config" node -e 'const c=JSON.parse(process.env.APP_CONFIG||"{}");const r=c?.settings?.["feature.room_creation"];if(!c.ok||r?.enabled===false){console.error("Room creation is disabled after deploy.");process.exit(1)}console.log("Room creation is enabled.")'
           auth_probe="$(curl --silent --show-error --request POST "$base/api/session/google" -H 'content-type: application/json' --data '{"id_token":""}')"
           AUTH_PROBE="$auth_probe" node -e 'const c=JSON.parse(process.env.AUTH_PROBE||"{}");if(c.error!=="google_id_token_required"){console.error("Google session endpoint is not ready:",c.error||"unknown_error");process.exit(1)}console.log("Google session endpoint and SESSION_SECRET are ready.")'
+
+          probe_user="deploy_room_probe"
+          probe_session="$(curl --fail-with-body --silent --show-error --request POST "$base/api/session/guest" -H 'content-type: application/json' --data "{"user_id":"$probe_user","display_name":"Deploy Probe"}")"
+          probe_token="$(PROBE_SESSION="$probe_session" node -e 'const c=JSON.parse(process.env.PROBE_SESSION||"{}");if(!c.ok||!c.token){console.error("Guest probe session failed:",c.error||"missing_token");process.exit(1)}process.stdout.write(c.token)')"
+          probe_room="$(curl --fail-with-body --silent --show-error --request POST "$base/api/rooms" -H 'content-type: application/json' -H "authorization: Bearer $probe_token" --data "{"owner_user_id":"$probe_user","owner_name":"Deploy Probe","name":"Deploy Probe Room","seat_count":12,"party_mode":"Friends-making Party","room_mode":"voice"}")"
+          probe_room_id="$(PROBE_ROOM="$probe_room" node -e 'const c=JSON.parse(process.env.PROBE_ROOM||"{}");if(!c.ok||!c.room_id){console.error("Room create probe failed:",c.error||"missing_room_id");process.exit(1)}process.stdout.write(String(c.room_id))')"
+          probe_delete="$(curl --fail-with-body --silent --show-error --request POST "$base/api/rooms/$probe_room_id/delete" -H 'content-type: application/json' -H "authorization: Bearer $probe_token" --data "{"user_id":"$probe_user"}")"
+          PROBE_DELETE="$probe_delete" node -e 'const c=JSON.parse(process.env.PROBE_DELETE||"{}");if(!c.ok){console.error("Room cleanup probe failed:",c.error||"unknown_error");process.exit(1)}console.log("End-to-end room create/delete probe passed.")'
