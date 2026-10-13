@@ -689,6 +689,32 @@ class BackendApi {
         },
       );
 
+  Future<List<Map<String, dynamic>>> uniqueIdCatalog({
+    required String userId,
+  }) async {
+    final value = await _json('GET', '/api/unique-ids/catalog');
+    final rows = value?['unique_ids'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> purchaseUniqueId({
+    required String userId,
+    required String publicId,
+  }) =>
+      _json(
+        'POST',
+        '/api/unique-ids/purchase',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'public_id': publicId,
+        },
+      );
+
   Future<Map<String, dynamic>?> cosmetics({required String userId}) =>
       _json('GET', '/api/cosmetics/${Uri.encodeComponent(userId)}');
 
