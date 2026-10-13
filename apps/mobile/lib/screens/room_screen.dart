@@ -55,6 +55,9 @@ class _RoomScreenState extends State<RoomScreen> {
   final TextEditingController roomChatController = TextEditingController();
   bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
+  List<Map<String, dynamic>> roomMembers = <Map<String, dynamic>>[];
+  int roomGiftLifetimeTotal = 0;
+  List<Map<String, dynamic>> roomGiftRanking = <Map<String, dynamic>>[];
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
   Timer? memberRefreshTimer;
@@ -94,6 +97,7 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
     unawaited(_loadRoomControls());
+    unawaited(_loadRoomGiftRanking());
     memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       unawaited(_loadRoomMembers());
       unawaited(_loadRoomMessages());
@@ -120,6 +124,9 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     if (!mounted) return;
     setState(() {
+      roomMembers = rows
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
       membersBySeat
         ..clear()
         ..addAll(next);
@@ -220,6 +227,157 @@ class _RoomScreenState extends State<RoomScreen> {
       );
     }
     return true;
+  }
+
+  Future<void> _loadRoomGiftRanking() async {
+    if (!widget.state.backendConnected) return;
+    final value =
+        await widget.state.backend.roomGiftRanking(roomId: widget.room.id);
+    if (!mounted || value?['ok'] != true) return;
+    final rawRanking = value?['ranking'];
+    setState(() {
+      roomGiftLifetimeTotal =
+          int.tryParse(value?['lifetime_total']?.toString() ?? '') ?? 0;
+      roomGiftRanking = rawRanking is List
+          ? rawRanking
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+          : <Map<String, dynamic>>[];
+    });
+  }
+
+  String _compactRoomCoins(int value) {
+    if (value >= 1000000000) {
+      return '${(value / 1000000000).toStringAsFixed(1)}B';
+    }
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}M';
+    }
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}K';
+    }
+    return value.toString();
+  }
+
+  Future<void> _showRoomGiftRanking() async {
+    await _loadRoomGiftRanking();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .64,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.emoji_events_rounded,
+                      color: TinniPalette.gold,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Room Ranking',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      _compactRoomCoins(roomGiftLifetimeTotal),
+                      style: const TextStyle(
+                        color: TinniPalette.gold,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: roomGiftRanking.isEmpty
+                    ? const Center(child: Text('No gifting ranking yet'))
+                    : ListView.builder(
+                        itemCount: roomGiftRanking.length,
+                        itemBuilder: (context, index) {
+                          final row = roomGiftRanking[index];
+                          final userId = row['user_id']?.toString() ?? '';
+                          final name =
+                              row['display_name']?.toString() ?? 'User';
+                          final avatar = row['avatar_key']?.toString() ?? '';
+                          final sent = int.tryParse(
+                                row['sent_coins']?.toString() ?? '',
+                              ) ??
+                              0;
+                          return ListTile(
+                            leading: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                CircleAvatar(
+                                  backgroundImage: avatar.isEmpty
+                                      ? null
+                                      : NetworkImage(
+                                          widget.state.backend.fileUrl(avatar),
+                                          headers:
+                                              widget.state.backend.fileHeaders,
+                                        ),
+                                  child: avatar.isEmpty
+                                      ? const Icon(Icons.person_rounded)
+                                      : null,
+                                ),
+                                Positioned(
+                                  right: -5,
+                                  top: -5,
+                                  child: CircleAvatar(
+                                    radius: 10,
+                                    backgroundColor: TinniPalette.gold,
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            title: Text(name),
+                            subtitle: Text(
+                              'Sent ${_compactRoomCoins(sent)} coins',
+                            ),
+                            trailing:
+                                const Icon(Icons.chevron_right_rounded),
+                            onTap: userId.isEmpty
+                                ? null
+                                : () {
+                                    Navigator.pop(sheetContext);
+                                    Navigator.of(context).push<void>(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => PublicProfileScreen(
+                                          state: widget.state,
+                                          userId: userId,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadRoomControls() async {
@@ -1996,6 +2154,7 @@ class _RoomScreenState extends State<RoomScreen> {
         widget.state.setCoinBalance(remoteBalance);
         await widget.state.refreshIdLevel(notify: false);
         if (!mounted) return;
+        unawaited(_loadRoomGiftRanking());
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins')));
         return;
       }
