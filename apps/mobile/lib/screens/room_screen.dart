@@ -662,6 +662,21 @@ class _RoomScreenState extends State<RoomScreen> {
                       ? (value) { if (value != null) setDialogState(() => themeId = value); }
                       : null,
                 ),
+                const SizedBox(height: 6),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.block_rounded),
+                  title: const Text('Block List'),
+                  subtitle: const Text('Users blocked from this room'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    Future<void>.delayed(
+                      const Duration(milliseconds: 220),
+                      _showRoomBlacklist,
+                    );
+                  },
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Enable Group PK mode'),
@@ -2657,30 +2672,6 @@ class _RoomScreenState extends State<RoomScreen> {
         isRoomAdmin,
       ),
       (
-        'Games',
-        Icons.sports_esports_rounded,
-        _openGames,
-        true,
-      ),
-      (
-        'Photo',
-        Icons.image_rounded,
-        _sendRoomImage,
-        !uploadingRoomImage,
-      ),
-      (
-        cameraPublished ? 'Camera On' : 'Camera',
-        cameraPublished ? Icons.videocam_rounded : Icons.videocam_outlined,
-        _toggleCamera,
-        mySeat != null,
-      ),
-      (
-        'Blacklist',
-        Icons.block_rounded,
-        _showRoomBlacklist,
-        isRoomAdmin,
-      ),
-      (
         'Music',
         Icons.music_note_rounded,
         _showRoomMusic,
@@ -3625,6 +3616,41 @@ class _RoomScreenState extends State<RoomScreen> {
                 backgroundColor: const Color(0xFF5D1E65),
               ),
             ),
+          Positioned(
+            right: 9,
+            bottom: 138,
+            child: Tooltip(
+              message: 'Game Center floating',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: _openGames,
+                child: Container(
+                  width: 58,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF050505),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: .82),
+                      width: 1.1,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x44FFFFFF),
+                        blurRadius: 7,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.sports_esports_rounded,
+                    color: Colors.white,
+                    size: 25,
+                  ),
+                ),
+              ),
+            ),
+          ),
           Positioned(
             right: 10,
             top: 112,
