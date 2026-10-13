@@ -48,6 +48,8 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     if (value is String) await prefs.setString('$_prefix$key', value);
   }
 
+  bool get _emailLinked => identities.any((row) => row['provider']?.toString() == 'email');
+
   bool get _googleLinked => identities.any((row) => row['provider']?.toString() == 'google');
 
   Future<void> _linkGoogle() async {
@@ -63,6 +65,106 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(ok ? 'Google account linked' : 'Google account could not be linked'),
     ));
+  }
+
+  Future<void> _linkEmail() async {
+    if (_emailLinked) return;
+    final emailController = TextEditingController();
+    final codeController = TextEditingController();
+    var codeSent = false;
+    var working = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(codeSent ? 'Verify email' : 'Bind email account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: emailController,
+                enabled: !codeSent && !working,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(labelText: 'Email address'),
+              ),
+              if (codeSent)
+                TextField(
+                  controller: codeController,
+                  enabled: !working,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(labelText: '6-digit email code'),
+                ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: working ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            if (!codeSent)
+              FilledButton(
+                onPressed: working
+                    ? null
+                    : () async {
+                        setDialogState(() { working = true; error = null; });
+                        final result = await widget.state.backend.requestMineEmailOtp(
+                          userId: widget.state.userId,
+                          email: emailController.text.trim(),
+                        );
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          working = false;
+                          if (result?['ok'] == true) {
+                            codeSent = true;
+                          } else {
+                            error = (result?['error']?.toString() ?? 'Could not send verification code')
+                                .replaceAll('_', ' ');
+                          }
+                        });
+                      },
+                child: Text(working ? 'Sending…' : 'Send OTP'),
+              )
+            else
+              FilledButton(
+                onPressed: working
+                    ? null
+                    : () async {
+                        setDialogState(() { working = true; error = null; });
+                        final result = await widget.state.backend.verifyMineEmailOtp(
+                          userId: widget.state.userId,
+                          email: emailController.text.trim(),
+                          code: codeController.text.trim(),
+                        );
+                        if (!dialogContext.mounted) return;
+                        if (result?['ok'] == true) {
+                          Navigator.pop(dialogContext);
+                        } else {
+                          setDialogState(() {
+                            working = false;
+                            error = (result?['error']?.toString() ?? 'Could not verify code')
+                                .replaceAll('_', ' ');
+                          });
+                        }
+                      },
+                child: Text(working ? 'Verifying…' : 'Verify'),
+              ),
+          ],
+        ),
+      ),
+    );
+    emailController.dispose();
+    codeController.dispose();
+    final linked = await widget.state.backend.mineIdentities(userId: widget.state.userId);
+    if (!mounted) return;
+    setState(() => identities = linked);
   }
 
   Future<void> _openMine(String kind) async {
@@ -134,6 +236,17 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                             : linking ? 'Connecting…' : 'Link Google sign-in for account recovery'),
                     trailing: _googleLinked ? const Icon(Icons.check_circle_outline_rounded) : const Icon(Icons.chevron_right_rounded),
                     onTap: _googleLinked || linking ? null : _linkGoogle,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.alternate_email_rounded),
+                    title: const Text('Bind email account'),
+                    subtitle: Text(_emailLinked
+                        ? identities.firstWhere((row) => row['provider']?.toString() == 'email')['email']?.toString() ?? 'Email verified'
+                        : 'Verify email with a one-time code'),
+                    trailing: _emailLinked
+                        ? const Icon(Icons.check_circle_outline_rounded)
+                        : const Icon(Icons.chevron_right_rounded),
+                    onTap: _emailLinked ? null : _linkEmail,
                   ),
                   ListTile(
                     leading: const Icon(Icons.block_rounded),
