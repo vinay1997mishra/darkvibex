@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_identity.dart';
 import '../screens/home_shell.dart';
 import '../screens/login_screen.dart';
+import '../ui/tinni_style.dart';
 import 'app_state.dart';
 
 class DarkVibeXApp extends StatefulWidget {
@@ -29,38 +30,18 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFFFD36A);
-    const background = Color(0xFF09090B);
-
     return MaterialApp(
       title: AppIdentity.appName,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-        scaffoldBackgroundColor: background,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: gold,
-          brightness: Brightness.dark,
-          surface: const Color(0xFF111217),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF14151A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
-        navigationBarTheme: const NavigationBarThemeData(
-          backgroundColor: Color(0xFF101116),
-          indicatorColor: Color(0x33FFD36A),
-        ),
-      ),
+      theme: buildTinniStyleTheme(),
       home: AnimatedBuilder(
         animation: state,
         builder: (context, _) {
           if (state.isInitializing) {
             return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
+              body: TinniBackground(
+                child: Center(child: CircularProgressIndicator()),
+              ),
             );
           }
           if (!state.isAuthenticated) {
@@ -70,5 +51,4 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
         },
       ),
     );
-  }
-}
+  }}
