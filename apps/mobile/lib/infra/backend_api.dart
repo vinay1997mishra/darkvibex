@@ -1115,6 +1115,65 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  Future<Map<String, dynamic>?> vsState({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/vs?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> vsRequest({
+    required String userId,
+    required String targetUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/vs/request',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'target_user_id': targetUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> vsRespond({
+    required String userId,
+    required bool accept,
+  }) =>
+      _json(
+        'POST',
+        '/api/vs/respond',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'accept': accept,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<bool> vsDisconnect({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/vs/disconnect',
+      body: <String, dynamic>{'user_id': userId},
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> vsRanking() async {
+    final value = await _json('GET', '/api/vs/ranking?limit=100');
+    final rows = value?['ranking'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
   Future<Map<String, dynamic>?> cpState({
     required String userId,
   }) =>
