@@ -566,6 +566,47 @@ async function ensureLegalConsentTable(db) {
   ).run();
 }
 
+async function ensureDirectCallTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS direct_calls (
+    id TEXT PRIMARY KEY,
+    caller_user_id TEXT NOT NULL,
+    receiver_user_id TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'ringing',
+    created_at INTEGER NOT NULL,
+    answered_at INTEGER,
+    ended_at INTEGER,
+    updated_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_direct_calls_receiver_state ON direct_calls(receiver_user_id,state,created_at DESC)"
+  ).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_direct_calls_caller_state ON direct_calls(caller_user_id,state,created_at DESC)"
+  ).run();
+}
+
+async function expireDirectCalls(db, ts = now()) {
+  await ensureDirectCallTable(db);
+  await db.prepare(
+    "UPDATE direct_calls SET state='missed',ended_at=?,updated_at=? WHERE state='ringing' AND created_at<?"
+  ).bind(ts, ts, ts - 45000).run();
+}
+
+async function directCallRow(db, callId) {
+  await ensureDirectCallTable(db);
+  return db.prepare(
+    `SELECT c.*,
+            caller.display_name AS caller_name,
+            caller.avatar_key AS caller_avatar_key,
+            receiver.display_name AS receiver_name,
+            receiver.avatar_key AS receiver_avatar_key
+       FROM direct_calls c
+       LEFT JOIN users caller ON caller.id=c.caller_user_id
+       LEFT JOIN users receiver ON receiver.id=c.receiver_user_id
+      WHERE c.id=? LIMIT 1`
+  ).bind(callId).first();
+}
+
 async function ensureImageTables(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_images (
@@ -2783,6 +2824,114 @@ async function handleApi(request, env, url) {
     return json({ ok: true, shared_score: Number(room?.shared_score ?? 0) });
   }
 
+  if (url.pathname === "/api/calls/start" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const callerId = String(body.user_id ?? "").trim();
+    const receiverId = String(body.receiver_user_id ?? "").trim();
+    const authError = await requireSession(request, env, callerId);
+    if (authError) return authError;
+    if (!receiverId || receiverId === callerId) {
+      return json({ ok: false, error: "invalid_call_target" }, { status: 400 });
+    }
+    await ensureDirectCallTable(db);
+    await expireDirectCalls(db);
+    const mutual = await db.prepare(
+      `SELECT
+         EXISTS(SELECT 1 FROM user_friends WHERE user_id=? AND friend_user_id=?) AS a,
+         EXISTS(SELECT 1 FROM user_friends WHERE user_id=? AND friend_user_id=?) AS b`
+    ).bind(callerId,receiverId,receiverId,callerId).first();
+    if (Number(mutual?.a ?? 0) !== 1 || Number(mutual?.b ?? 0) !== 1) {
+      return json({ ok: false, error: "friends_required" }, { status: 403 });
+    }
+    const busy = await db.prepare(
+      `SELECT id FROM direct_calls
+        WHERE state IN ('ringing','active')
+          AND (caller_user_id IN (?,?) OR receiver_user_id IN (?,?))
+        LIMIT 1`
+    ).bind(callerId,receiverId,callerId,receiverId).first();
+    if (busy) return json({ ok: false, error: "user_busy" }, { status: 409 });
+    const callId = id();
+    const createdAt = now();
+    await db.prepare(
+      "INSERT INTO direct_calls(id,caller_user_id,receiver_user_id,state,created_at,answered_at,ended_at,updated_at) VALUES(?,?,?,'ringing',?,NULL,NULL,?)"
+    ).bind(callId,callerId,receiverId,createdAt,createdAt).run();
+    return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/calls/incoming" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await expireDirectCalls(db);
+    const row = await db.prepare(
+      `SELECT c.*,
+              u.display_name AS caller_name,
+              u.avatar_key AS caller_avatar_key
+         FROM direct_calls c
+         LEFT JOIN users u ON u.id=c.caller_user_id
+        WHERE c.receiver_user_id=? AND c.state='ringing'
+        ORDER BY c.created_at DESC LIMIT 1`
+    ).bind(userId).first();
+    return json({ ok: true, call: row ?? null });
+  }
+
+  if (url.pathname === "/api/calls/respond" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const callId = String(body.call_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureDirectCallTable(db);
+    const call = await db.prepare(
+      "SELECT * FROM direct_calls WHERE id=? AND receiver_user_id=? LIMIT 1"
+    ).bind(callId,userId).first();
+    if (!call) return json({ ok:false,error:"call_not_found" }, { status:404 });
+    if (call.state !== "ringing") {
+      return json({ ok:false,error:"call_not_ringing" }, { status:409 });
+    }
+    const accepted = body.accept === true;
+    const ts = now();
+    await db.prepare(
+      accepted
+        ? "UPDATE direct_calls SET state='active',answered_at=?,updated_at=? WHERE id=? AND state='ringing'"
+        : "UPDATE direct_calls SET state='declined',ended_at=?,updated_at=? WHERE id=? AND state='ringing'"
+    ).bind(ts,ts,callId).run();
+    return json({ ok:true,call:await directCallRow(db,callId) });
+  }
+
+  if (url.pathname === "/api/calls/status" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const callId = String(url.searchParams.get("call_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await expireDirectCalls(db);
+    const call = await directCallRow(db,callId);
+    if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
+      return json({ ok:false,error:"call_not_found" }, { status:404 });
+    }
+    return json({ ok:true,call });
+  }
+
+  if (url.pathname === "/api/calls/end" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const callId = String(body.call_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureDirectCallTable(db);
+    const call = await db.prepare(
+      "SELECT * FROM direct_calls WHERE id=? LIMIT 1"
+    ).bind(callId).first();
+    if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
+      return json({ ok:false,error:"call_not_found" }, { status:404 });
+    }
+    const ts = now();
+    await db.prepare(
+      "UPDATE direct_calls SET state='ended',ended_at=?,updated_at=? WHERE id=? AND state IN ('ringing','active')"
+    ).bind(ts,ts,callId).run();
+    return json({ ok:true });
+  }
+
   if (url.pathname === "/api/friends" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
@@ -3041,10 +3190,23 @@ async function handleLiveKitToken(request, env) {
   if (!roomId) {
     return json({ ok: false, error: "room_id_required" }, { status: 400 });
   }
-  const membership = await db.prepare(
+  let membership = await db.prepare(
     "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? LIMIT 1"
   ).bind(roomId, String(session.sub)).first();
-  if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+  if (!membership && roomId.startsWith("call-")) {
+    const callId = roomId.slice(5);
+    await expireDirectCalls(db);
+    const call = await db.prepare(
+      `SELECT 1 AS active FROM direct_calls
+        WHERE id=? AND state IN ('ringing','active')
+          AND (caller_user_id=? OR receiver_user_id=?)
+        LIMIT 1`
+    ).bind(callId,String(session.sub),String(session.sub)).first();
+    membership = call;
+  }
+  if (!membership) {
+    return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+  }
 
   const seconds = Math.floor(Date.now() / 1000);
   const token = await signJwt(
