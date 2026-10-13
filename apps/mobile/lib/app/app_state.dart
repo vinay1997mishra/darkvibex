@@ -263,6 +263,52 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> bindGoogleAccount() async {
+    if (!isAuthenticated || signingIn) return false;
+    signingIn = true;
+    authError = null;
+    notifyListeners();
+    try {
+      if (!await _ensureGoogleSignInInitialized()) return false;
+      if (!GoogleSignIn.instance.supportsAuthenticate()) {
+        authError = 'Google Login is not supported on this device.';
+        return false;
+      }
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        authError = 'Google did not return a valid sign-in token.';
+        return false;
+      }
+      final result = await backend.bindGoogleIdentity(idToken: idToken);
+      if (result?['ok'] != true) {
+        final code = result?['error']?.toString();
+        authError = switch (code) {
+          'google_account_already_bound' =>
+            'This Google account is already linked to another DarkVibeX ID.',
+          'user_already_bound_to_google' =>
+            'This DarkVibeX ID is already linked to another Google account.',
+          'google_auth_not_configured' =>
+            'Google Login is not configured on the server yet.',
+          _ => 'Google account could not be linked.',
+        };
+        return false;
+      }
+      authProvider = 'google';
+      await _persistSession();
+      return true;
+    } on GoogleSignInException catch (error) {
+      authError = _googleSignInErrorMessage(error);
+      return false;
+    } catch (_) {
+      authError = 'Google account could not be linked.';
+      return false;
+    } finally {
+      signingIn = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> _ensureGoogleSignInInitialized() async {
     if (_googleInitialized) {
       googleSignInReady = true;
@@ -714,6 +760,7 @@ class AppState extends ChangeNotifier {
     }
 
     authError = null;
+    await _persistSession();
     notifyListeners();
     return true;
   }
