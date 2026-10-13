@@ -23,6 +23,15 @@ export async function ensureTinniSocialSchema(db) {
       body TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS profile_trends (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_profile_trends_user_time
+       ON profile_trends(user_id,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS user_feedback (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -1068,6 +1077,31 @@ export async function vsRanking(db, limitValue=100) {
   }));
 }
 
+
+export async function profileTrends(db, userId, limitValue=40) {
+  await ensureTinniSocialSchema(db);
+  const limit=Math.max(1,Math.min(100,Number(limitValue)||40));
+  const rows=await db.prepare(
+    "SELECT id,user_id,text,created_at FROM profile_trends WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
+  ).bind(userId,limit).all();
+  return rows.results ?? [];
+}
+
+export async function addProfileTrend(db, userId, textValue) {
+  await ensureTinniSocialSchema(db);
+  const text=clean(textValue,500);
+  if(!text) throw new Error("trend_text_required");
+  const row={
+    id:uid("trend-"),
+    user_id:userId,
+    text,
+    created_at:ts(),
+  };
+  await db.prepare(
+    "INSERT INTO profile_trends(id,user_id,text,created_at) VALUES(?,?,?,?)"
+  ).bind(row.id,row.user_id,row.text,row.created_at).run();
+  return row;
+}
 
 export async function officialNotices(db) {
   await ensureTinniSocialSchema(db);
