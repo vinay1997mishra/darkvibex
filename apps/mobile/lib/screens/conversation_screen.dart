@@ -419,6 +419,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           }
                           final mine =
                               item['sender_user_id']?.toString() == widget.state.userId;
+                          final bubbleId = mine
+                              ? widget.state.activeCosmetic('bubble')
+                              : item['active_bubble_id']?.toString();
+                          final hasStoreBubble =
+                              bubbleId != null && bubbleId.isNotEmpty;
+                          final hasVipBubble =
+                              mine && widget.state.hasVipPrivilege('chat_bubble');
                           return Align(
                             alignment:
                                 mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -430,23 +437,36 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               ),
                               constraints: const BoxConstraints(maxWidth: 300),
                               decoration: BoxDecoration(
-                                color: mine
-                                    ? (widget.state.hasVipPrivilege('chat_bubble')
-                                        ? const Color(0x664B3511)
-                                        : const Color(0x33FFD36A))
-                                    : Colors.white10,
-                                borderRadius: BorderRadius.circular(16),
-                                border: mine &&
-                                        widget.state.hasVipPrivilege('chat_bubble')
-                                    ? Border.all(
-                                        color: const Color(0xAAFFD36A),
+                                gradient: hasStoreBubble
+                                    ? const LinearGradient(
+                                        colors: <Color>[
+                                          Color(0xCC2A1538),
+                                          Color(0xCC5A2D65),
+                                          Color(0xCC251431),
+                                        ],
                                       )
                                     : null,
-                                boxShadow: mine &&
-                                        widget.state.hasVipPrivilege('chat_bubble')
-                                    ? const [
+                                color: hasStoreBubble
+                                    ? null
+                                    : mine
+                                        ? (hasVipBubble
+                                            ? const Color(0x664B3511)
+                                            : const Color(0x33FFD36A))
+                                        : Colors.white10,
+                                borderRadius: BorderRadius.circular(16),
+                                border: hasStoreBubble || hasVipBubble
+                                    ? Border.all(
+                                        color: hasStoreBubble
+                                            ? const Color(0xFFEE91FF)
+                                            : const Color(0xAAFFD36A),
+                                      )
+                                    : null,
+                                boxShadow: hasStoreBubble || hasVipBubble
+                                    ? <BoxShadow>[
                                         BoxShadow(
-                                          color: Color(0x33FFD36A),
+                                          color: hasStoreBubble
+                                              ? const Color(0x558D4BFF)
+                                              : const Color(0x33FFD36A),
                                           blurRadius: 10,
                                         ),
                                       ]
