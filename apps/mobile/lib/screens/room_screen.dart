@@ -980,7 +980,14 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                             ),
                             title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
-                            subtitle: Text(seat == null ? 'Audience' : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}'),
+                            subtitle: Text(
+                              (seat == null
+                                  ? 'Audience'
+                                  : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}') +
+                              ((member['chat_banned'] == true || member['chat_banned']?.toString() == '1')
+                                  ? ' • Chat banned'
+                                  : ''),
+                            ),
                             trailing: !isSelf && (widget.state.hasVipPrivilege('free_say_hi') || canModerate)
                                 ? Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1000,6 +1007,10 @@ class _RoomScreenState extends State<RoomScreen> {
                                         await _setRoomAdmin(userId, admin: true);
                                       } else if (action == 'remove_admin') {
                                         await _setRoomAdmin(userId, admin: false);
+                                      } else if (action == 'chat_ban') {
+                                        await _setChatBan(userId, true);
+                                      } else if (action == 'chat_unban') {
+                                        await _setChatBan(userId, false);
                                       } else {
                                         await _removeRoomMember(userId, ban: action == 'block');
                                       }
@@ -1010,6 +1021,16 @@ class _RoomScreenState extends State<RoomScreen> {
                                           value: (member['is_admin'] == true || member['is_admin']?.toString() == '1') ? 'remove_admin' : 'set_admin',
                                           child: Text((member['is_admin'] == true || member['is_admin']?.toString() == '1') ? 'Remove admin role' : 'Make room admin'),
                                         ),
+                                      PopupMenuItem(
+                                        value: (member['chat_banned'] == true || member['chat_banned']?.toString() == '1')
+                                            ? 'chat_unban'
+                                            : 'chat_ban',
+                                        child: Text(
+                                          (member['chat_banned'] == true || member['chat_banned']?.toString() == '1')
+                                              ? 'Chat Unban'
+                                              : 'Chat Ban',
+                                        ),
+                                      ),
                                       const PopupMenuItem(value: 'remove', child: Text('Remove from room')),
                                       const PopupMenuItem(value: 'block', child: Text('Block from room')),
                                     ],
@@ -1321,20 +1342,379 @@ class _RoomScreenState extends State<RoomScreen> {
     ));
   }
 
-  Future<void> _showPublicScreen() async {
-    await showDialog<void>(
+  Future<void> _setMicMode(String mode) async {
+    if (!isRoomHost) return;
+    final result = await widget.state.backend.setRoomControl(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      action: 'mic_mode',
+      micMode: mode,
+    );
+    if (!mounted) return;
+    if (result?['ok'] == true) {
+      setState(() => roomMicMode = mode == 'apply' ? 'apply' : 'free');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            roomMicMode == 'free'
+                ? 'Free mic enabled'
+                : 'Request mic enabled',
+          ),
+        ),
+      );
+      await _loadRoomControls();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mic mode could not be changed')),
+      );
+    }
+  }
+
+  Future<void> _showMicModeControl() async {
+    if (!isRoomHost) return;
+    final selected = await showModalBottomSheet<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(roomName),
-        content: Text(roomAnnouncement?.isNotEmpty == true
-            ? roomAnnouncement!
-            : 'No owner announcement is set. Room safety rules are shown to everyone here.'),
-        actions: [
-          TextButton(onPressed: () { Navigator.pop(dialogContext); _showRoomRules(); }, child: const Text('Terms & rules')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-        ],
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Mic Type',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text('Choose how users can take an empty mic.'),
+            ),
+            RadioListTile<String>(
+              value: 'free',
+              groupValue: roomMicMode,
+              title: const Text('Free mic'),
+              subtitle: const Text('Users can take any unlocked empty mic directly.'),
+              onChanged: (value) => Navigator.pop(sheetContext, value),
+            ),
+            RadioListTile<String>(
+              value: 'apply',
+              groupValue: roomMicMode,
+              title: const Text('Request mic'),
+              subtitle: const Text('Users send a request; owner/admin approves it.'),
+              onChanged: (value) => Navigator.pop(sheetContext, value),
+            ),
+          ],
+        ),
       ),
     );
+    if (selected != null) await _setMicMode(selected);
+  }
+
+  Future<void> _showMicRequests() async {
+    if (!isRoomAdmin) return;
+    await _loadRoomControls();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .58,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Mic Requests',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Text('${seatRequests.length} pending'),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: seatRequests.isEmpty
+                      ? const Center(child: Text('No pending mic requests'))
+                      : ListView.builder(
+                          itemCount: seatRequests.length,
+                          itemBuilder: (context, index) {
+                            final request = seatRequests[index];
+                            final userId =
+                                request['user_id']?.toString() ?? '';
+                            final displayName =
+                                request['display_name']?.toString().trim();
+                            final seat = int.tryParse(
+                                  request['seat_index']?.toString() ?? '',
+                                ) ??
+                                0;
+                            final avatar =
+                                request['avatar_key']?.toString() ?? '';
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: avatar.isEmpty
+                                    ? null
+                                    : NetworkImage(
+                                        widget.state.backend.fileUrl(avatar),
+                                        headers:
+                                            widget.state.backend.fileHeaders,
+                                      ),
+                                child: avatar.isEmpty
+                                    ? const Icon(Icons.person_rounded)
+                                    : null,
+                              ),
+                              title: Text(
+                                displayName == null || displayName.isEmpty
+                                    ? 'User ${userId}'
+                                    : displayName,
+                              ),
+                              subtitle: Text('Requests Seat ${seat + 1}'),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Reject',
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () async {
+                                      await widget.state.backend
+                                          .resolveRoomSeatRequest(
+                                        roomId: widget.room.id,
+                                        userId: widget.state.userId,
+                                        targetUserId: userId,
+                                        approved: false,
+                                      );
+                                      await _loadRoomControls();
+                                      if (sheetContext.mounted) refresh(() {});
+                                    },
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Approve',
+                                    icon: const Icon(
+                                      Icons.check_rounded,
+                                      color: Colors.greenAccent,
+                                    ),
+                                    onPressed: () async {
+                                      final result = await widget.state.backend
+                                          .resolveRoomSeatRequest(
+                                        roomId: widget.room.id,
+                                        userId: widget.state.userId,
+                                        targetUserId: userId,
+                                        approved: true,
+                                      );
+                                      if (result?['ok'] == true) {
+                                        await _loadRoomMembers();
+                                      }
+                                      await _loadRoomControls();
+                                      if (sheetContext.mounted) refresh(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSeatControls(int seat) async {
+    if (!isRoomAdmin) return;
+    final member = membersBySeat[seat];
+    final locked = lockedSeats.contains(seat);
+    final roomMuted = roomMutedSeats.contains(seat);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const TinniGlowIcon(icon: Icons.event_seat_rounded),
+              title: Text('Seat ${seat + 1}'),
+              subtitle: Text(
+                member == null
+                    ? (locked ? 'Empty • Locked' : 'Empty')
+                    : (member['display_name']?.toString() ?? 'Occupied'),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                locked ? Icons.lock_open_rounded : Icons.lock_rounded,
+              ),
+              title: Text(locked ? 'Seat Unlock' : 'Seat Lock'),
+              onTap: () async {
+                final result = await widget.state.backend.setRoomControl(
+                  roomId: widget.room.id,
+                  userId: widget.state.userId,
+                  action: 'seat_lock',
+                  seatIndex: seat,
+                  locked: !locked,
+                );
+                if (result?['ok'] == true) await _loadRoomControls();
+                if (sheetContext.mounted) Navigator.pop(sheetContext);
+              },
+            ),
+            if (member != null)
+              ListTile(
+                leading: Icon(
+                  roomMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                ),
+                title: Text(roomMuted ? 'Seat Unmute' : 'Seat Mute'),
+                onTap: () async {
+                  final result = await widget.state.backend.setRoomControl(
+                    roomId: widget.room.id,
+                    userId: widget.state.userId,
+                    action: 'seat_mute',
+                    seatIndex: seat,
+                    muted: !roomMuted,
+                  );
+                  if (result?['ok'] == true) {
+                    await _loadRoomMembers();
+                    await _loadRoomControls();
+                  }
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+              ),
+            if (member != null &&
+                member['user_id']?.toString() != widget.room.ownerUserId)
+              ListTile(
+                leading: const Icon(
+                  Icons.airline_seat_recline_normal_rounded,
+                  color: Colors.orangeAccent,
+                ),
+                title: const Text('Seat Down'),
+                subtitle: const Text('Move this user to audience and mute mic.'),
+                onTap: () async {
+                  final result = await widget.state.backend.setRoomControl(
+                    roomId: widget.room.id,
+                    userId: widget.state.userId,
+                    action: 'seat_down',
+                    seatIndex: seat,
+                  );
+                  if (result?['ok'] == true) {
+                    await _loadRoomMembers();
+                    await _loadRoomControls();
+                  }
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setChatBan(String targetUserId, bool banned) async {
+    final result = await widget.state.backend.setRoomControl(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      action: 'chat_ban',
+      targetUserId: targetUserId,
+      banned: banned,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result?['ok'] == true
+              ? (banned ? 'User chat banned' : 'User chat unbanned')
+              : 'Chat permission could not be changed',
+        ),
+      ),
+    );
+    if (result?['ok'] == true) await _loadRoomMembers();
+  }
+
+  Future<void> _showPublicScreen() async {
+    if (!isRoomAdmin) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Public Screen'),
+          content: Text(
+            publicScreenEnabled
+                ? 'Everyone can type in room chat.'
+                : 'Only room owner/admin can type in room chat.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    var enabled = publicScreenEnabled;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) => AlertDialog(
+          title: const Text('Public Screen'),
+          content: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Everyone can type'),
+            subtitle: Text(
+              enabled
+                  ? 'Room members can use public chat.'
+                  : 'Only room owner/admin can type.',
+            ),
+            value: enabled,
+            onChanged: (value) async {
+              final result = await widget.state.backend.setRoomControl(
+                roomId: widget.room.id,
+                userId: widget.state.userId,
+                action: 'public_screen',
+                enabled: value,
+              );
+              if (result?['ok'] == true) {
+                enabled = value;
+                if (mounted) {
+                  setState(() => publicScreenEnabled = value);
+                }
+                refresh(() {});
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showRoomRules();
+              },
+              child: const Text('Terms & rules'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await _loadRoomControls();
   }
 
   Future<void> _toggleRoomEffects() async {
@@ -1368,6 +1748,16 @@ class _RoomScreenState extends State<RoomScreen> {
                     onPressed: () { Navigator.pop(sheetContext); _openRoomMembers(); },
                     icon: const Icon(Icons.groups_rounded), label: const Text('Members'),
                   ),
+                  if (isRoomHost)
+                    FilledButton.tonalIcon(
+                      onPressed: () { Navigator.pop(sheetContext); _showMicModeControl(); },
+                      icon: const Icon(Icons.mic_external_on_rounded), label: const Text('Mic Type'),
+                    ),
+                  if (isRoomAdmin)
+                    FilledButton.tonalIcon(
+                      onPressed: () { Navigator.pop(sheetContext); _showMicRequests(); },
+                      icon: const Icon(Icons.how_to_reg_rounded), label: Text('Mic Requests (${seatRequests.length})'),
+                    ),
                   FilledButton.tonalIcon(
                     onPressed: () { Navigator.pop(sheetContext); _openGames(); },
                     icon: const Icon(Icons.sports_esports_rounded), label: const Text('Games'),
@@ -1619,6 +2009,18 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendInlineMessage([String? override]) async {
+    if (chatBanned) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room owner/admin has chat banned this ID')),
+      );
+      return;
+    }
+    if (!publicScreenEnabled && !isRoomAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Public Screen is owner/admin only')),
+      );
+      return;
+    }
     final value = (override ?? roomChatController.text).trim();
     if (value.isEmpty) return;
     if (widget.state.backendConnected) {
@@ -1964,6 +2366,9 @@ class _RoomScreenState extends State<RoomScreen> {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(20),
                           onTap: () => unawaited(_tapSeat(seat)),
+                          onLongPress: isRoomAdmin
+                              ? () => unawaited(_showSeatControls(seat))
+                              : null,
                           child: Column(
                             children: [
                               Container(
@@ -2008,9 +2413,14 @@ class _RoomScreenState extends State<RoomScreen> {
                                     return Icon(
                                       member != null
                                           ? Icons.person_rounded
-                                          : mine
-                                              ? (muted ? Icons.mic_off_rounded : Icons.mic_rounded)
-                                              : Icons.add_rounded,
+                                          : lockedSeats.contains(seat)
+                                              ? Icons.lock_rounded
+                                              : mine
+                                                  ? (muted ? Icons.mic_off_rounded : Icons.mic_rounded)
+                                                  : Icons.add_rounded,
+                                      color: lockedSeats.contains(seat)
+                                          ? Colors.orangeAccent
+                                          : null,
                                     );
                                   },
                                 ),
@@ -2188,6 +2598,7 @@ class _RoomScreenState extends State<RoomScreen> {
               Expanded(
                 child: TextField(
                   controller: roomChatController,
+                  enabled: !chatBanned && (publicScreenEnabled || isRoomAdmin),
                   textInputAction: TextInputAction.send,
                   maxLength: 200,
                   buildCounter: (
@@ -2197,7 +2608,11 @@ class _RoomScreenState extends State<RoomScreen> {
                     required int? maxLength,
                   }) => null,
                   decoration: const InputDecoration(
-                    hintText: 'Chat',
+                    hintText: chatBanned
+                        ? 'Chat banned'
+                        : (!publicScreenEnabled && !isRoomAdmin
+                            ? 'Owner/Admin only'
+                            : 'Chat'),
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: 10,
