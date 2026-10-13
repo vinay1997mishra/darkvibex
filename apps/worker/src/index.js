@@ -3045,6 +3045,14 @@ async function handleApi(request, env, url) {
                WHERE country_code<>? AND owner_user_id<>?
             )`
       ).bind(userId,nextCountry,userId).run();
+      await db.prepare(
+        `DELETE FROM room_members
+          WHERE room_id IN (SELECT id FROM rooms WHERE owner_user_id=?)
+            AND user_id<>?
+            AND user_id IN (
+              SELECT id FROM users WHERE COALESCE(country_code,'')<>?
+            )`
+      ).bind(userId,userId,nextCountry).run();
     } else if (nextCountry && !oldCountry) {
       await db.prepare(
         "UPDATE rooms SET country_code=?,updated_at=? WHERE owner_user_id=? AND COALESCE(country_code,'')=''"
@@ -5571,6 +5579,7 @@ async function handleApi(request, env, url) {
         ? 7 * 24 * 60 * 60 * 1000
         : 24 * 60 * 60 * 1000;
     const cutoff = now() - windowMs;
+    await ensureRoomCoreSchema(db);
     const session = await verifySessionToken(
       bearerToken(request),
       String(env.SESSION_SECRET),
