@@ -5183,28 +5183,36 @@ async function handleApi(request, env, url) {
     ).bind(userId, requestId).first();
     if (prior) return json(await fruitPartyState(db, userId, ts));
 
-    await db.batch([
-      db.prepare(
-        `INSERT INTO fruit_party_bets(
-          id,request_id,round_id,user_id,fruit_key,amount,created_at
-        )
-        SELECT ?,?,?,?,?,?,?
-         WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
-      ).bind(
-        betId,requestId,roundId,userId,fruitKey,amount,ts,userId,amount,
-      ),
-      db.prepare(
-        "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)"
-      ).bind(amount,ts,userId,betId),
-      db.prepare(
-        `INSERT INTO wallet_ledger(
-          id,user_id,kind,amount,balance_after,reference_id,created_at
-        )
-        SELECT ?,u.id,'fruit_party_bet',?,u.coins,?,?
-          FROM users u
-         WHERE u.id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)`
-      ).bind(id(),-amount,betId,ts,userId,betId),
-    ]);
+    try {
+      await db.batch([
+        db.prepare(
+          `INSERT INTO fruit_party_bets(
+            id,request_id,round_id,user_id,fruit_key,amount,created_at
+          )
+          SELECT ?,?,?,?,?,?,?
+           WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
+        ).bind(
+          betId,requestId,roundId,userId,fruitKey,amount,ts,userId,amount,
+        ),
+        db.prepare(
+          "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)"
+        ).bind(amount,ts,userId,betId),
+        db.prepare(
+          `INSERT INTO wallet_ledger(
+            id,user_id,kind,amount,balance_after,reference_id,created_at
+          )
+          SELECT ?,u.id,'fruit_party_bet',?,u.coins,?,?
+            FROM users u
+           WHERE u.id=? AND EXISTS(SELECT 1 FROM fruit_party_bets WHERE id=?)`
+        ).bind(id(),-amount,betId,ts,userId,betId),
+      ]);
+    } catch (error) {
+      const duplicate = await db.prepare(
+        "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
+      ).bind(userId, requestId).first();
+      if (!duplicate) throw error;
+      return json(await fruitPartyState(db, userId, now()));
+    }
     const accepted = await db.prepare(
       "SELECT id FROM fruit_party_bets WHERE id=? LIMIT 1"
     ).bind(betId).first();
