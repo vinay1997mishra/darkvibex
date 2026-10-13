@@ -4367,7 +4367,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
