@@ -895,6 +895,222 @@ async function settleDirectCallBilling(db, callId, ts = now()) {
   return directCallRow(db, callId);
 }
 
+
+function normalizeEmail(value) {
+  const email=String(value ?? "").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("invalid_email");
+  return email.slice(0,254);
+}
+
+function randomOpaqueToken(byteCount=24) {
+  const bytes=new Uint8Array(byteCount);
+  crypto.getRandomValues(bytes);
+  return base64UrlBytes(bytes);
+}
+
+async function derivePasswordHash(passwordValue,saltValue,iterations=100000) {
+  const password=String(passwordValue ?? "");
+  if(password.length<8||password.length>128) throw new Error("password_length");
+  const salt=encoder.encode(String(saltValue));
+  const material=await crypto.subtle.importKey(
+    "raw",encoder.encode(password),"PBKDF2",false,["deriveBits"],
+  );
+  const bits=await crypto.subtle.deriveBits(
+    {
+      name:"PBKDF2",
+      hash:"SHA-256",
+      salt,
+      iterations:Math.max(50000,Math.min(150000,Number(iterations)||100000)),
+    },
+    material,
+    256,
+  );
+  return base64UrlBytes(new Uint8Array(bits));
+}
+
+async function ensureEmailAuthSchema(db) {
+  await ensureUsersSchema(db);
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_credentials (
+      email TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      iterations INTEGER NOT NULL DEFAULT 100000,
+      credential_version INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_otp_requests (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      otp_hash TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      verified INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_email_otp_email_time ON email_otp_requests(email,created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS email_setup_tokens (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`),
+  ]);
+}
+
+function randomSixDigitOtp() {
+  const values=new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return String(values[0] % 1000000).padStart(6,"0");
+}
+
+async function sendDarkVibeXOtp(env,email,otp,purpose) {
+  if(!env.RESEND_API_KEY||!env.EMAIL_FROM) throw new Error("email_otp_not_configured");
+  const label=purpose==="reset" ? "password reset" : "account verification";
+  const response=await fetch("https://api.resend.com/emails",{
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      authorization:"Bearer "+String(env.RESEND_API_KEY),
+    },
+    body:JSON.stringify({
+      from:String(env.EMAIL_FROM),
+      to:[email],
+      subject:"DarkVibeX verification code",
+      html:
+        '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px">'+
+        '<h2>DarkVibeX</h2><p>Your '+label+' code is:</p>'+
+        '<div style="font-size:32px;font-weight:800;letter-spacing:8px">'+otp+'</div>'+
+        '<p>This code expires in 10 minutes. Do not share it.</p></div>',
+    }),
+  });
+  if(!response.ok) throw new Error("email_send_failed");
+}
+
+async function startEmailOtp(db,env,emailValue,purposeValue) {
+  await ensureEmailAuthSchema(db);
+  const email=normalizeEmail(emailValue);
+  const purpose=String(purposeValue ?? "signup")==="reset" ? "reset" : "signup";
+  const existing=await db.prepare(
+    "SELECT user_id FROM email_credentials WHERE email=? LIMIT 1"
+  ).bind(email).first();
+  if(purpose==="signup"&&existing) throw new Error("email_already_registered");
+  if(purpose==="reset"&&!existing) throw new Error("email_account_not_found");
+
+  const recent=await db.prepare(
+    "SELECT created_at FROM email_otp_requests WHERE email=? ORDER BY created_at DESC LIMIT 1"
+  ).bind(email).first();
+  if(recent&&now()-Number(recent.created_at ?? 0)<60000) {
+    throw new Error("otp_wait_before_resend");
+  }
+
+  const requestId="otp-"+id();
+  const otp=randomSixDigitOtp();
+  const secret=String(env.SESSION_SECRET ?? "");
+  if(!secret) throw new Error("session_secret_not_configured");
+  const otpHash=await hmacSignature(secret,requestId+"|"+email+"|"+otp);
+  const createdAt=now();
+  await db.prepare(
+    "INSERT INTO email_otp_requests(id,email,purpose,otp_hash,expires_at,attempts,verified,created_at) VALUES(?,?,?,?,?,0,0,?)"
+  ).bind(requestId,email,purpose,otpHash,createdAt+10*60*1000,createdAt).run();
+  try {
+    await sendDarkVibeXOtp(env,email,otp,purpose);
+  } catch(error) {
+    await db.prepare("DELETE FROM email_otp_requests WHERE id=?").bind(requestId).run();
+    throw error;
+  }
+  return { request_id:requestId,email,purpose,expires_at:createdAt+10*60*1000 };
+}
+
+async function verifyEmailOtpRequest(db,env,requestIdValue,otpValue) {
+  await ensureEmailAuthSchema(db);
+  const requestId=String(requestIdValue ?? "").trim();
+  const otp=String(otpValue ?? "").trim();
+  if(!/^\d{6}$/.test(otp)) throw new Error("invalid_otp");
+  const row=await db.prepare(
+    "SELECT * FROM email_otp_requests WHERE id=? LIMIT 1"
+  ).bind(requestId).first();
+  if(!row) throw new Error("otp_request_not_found");
+  if(Number(row.expires_at ?? 0)<now()) throw new Error("otp_expired");
+  if(Number(row.attempts ?? 0)>=5) throw new Error("otp_attempts_exceeded");
+  const secret=String(env.SESSION_SECRET ?? "");
+  const expected=await hmacSignature(
+    secret,requestId+"|"+String(row.email)+"|"+otp,
+  );
+  if(expected!==String(row.otp_hash)) {
+    await db.prepare(
+      "UPDATE email_otp_requests SET attempts=attempts+1 WHERE id=?"
+    ).bind(requestId).run();
+    throw new Error("invalid_otp");
+  }
+  const setupToken=randomOpaqueToken(32);
+  const tokenHash=await sha256Hex(setupToken);
+  const createdAt=now();
+  await db.batch([
+    db.prepare("UPDATE email_otp_requests SET verified=1 WHERE id=?").bind(requestId),
+    db.prepare(
+      "INSERT INTO email_setup_tokens(token_hash,email,purpose,expires_at,created_at) VALUES(?,?,?,?,?)"
+    ).bind(tokenHash,row.email,row.purpose,createdAt+15*60*1000,createdAt),
+  ]);
+  return {
+    email:String(row.email),
+    purpose:String(row.purpose),
+    setup_token:setupToken,
+    expires_at:createdAt+15*60*1000,
+  };
+}
+
+async function consumeEmailSetupToken(db,tokenValue) {
+  await ensureEmailAuthSchema(db);
+  const token=String(tokenValue ?? "").trim();
+  if(!token) throw new Error("setup_token_required");
+  const hash=await sha256Hex(token);
+  const row=await db.prepare(
+    "SELECT * FROM email_setup_tokens WHERE token_hash=? LIMIT 1"
+  ).bind(hash).first();
+  if(!row||Number(row.expires_at ?? 0)<now()) throw new Error("setup_token_expired");
+  await db.prepare("DELETE FROM email_setup_tokens WHERE token_hash=?").bind(hash).run();
+  return row;
+}
+
+async function setEmailPassword(db,email,userId,password) {
+  const salt=randomOpaqueToken(18);
+  const iterations=100000;
+  const passwordHash=await derivePasswordHash(password,salt,iterations);
+  const stamp=now();
+  await db.prepare(
+    `INSERT INTO email_credentials(
+      email,user_id,password_salt,password_hash,iterations,credential_version,created_at,updated_at
+    ) VALUES(?,?,?,?,?,1,?,?)
+    ON CONFLICT(email) DO UPDATE SET
+      user_id=excluded.user_id,
+      password_salt=excluded.password_salt,
+      password_hash=excluded.password_hash,
+      iterations=excluded.iterations,
+      credential_version=email_credentials.credential_version+1,
+      updated_at=excluded.updated_at`
+  ).bind(email,userId,salt,passwordHash,iterations,stamp,stamp).run();
+}
+
+async function emailPasswordLogin(db,emailValue,passwordValue) {
+  await ensureEmailAuthSchema(db);
+  const email=normalizeEmail(emailValue);
+  const row=await db.prepare(
+    "SELECT * FROM email_credentials WHERE email=? LIMIT 1"
+  ).bind(email).first();
+  if(!row) throw new Error("invalid_email_or_password");
+  const actual=await derivePasswordHash(
+    passwordValue,row.password_salt,Number(row.iterations ?? 100000),
+  );
+  if(actual!==String(row.password_hash)) throw new Error("invalid_email_or_password");
+  return String(row.user_id);
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -903,6 +1119,7 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       google_web_client_id: String(env.GOOGLE_WEB_CLIENT_ID ?? ""),
+      email_otp_configured: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM),
     });
   }
 
@@ -1564,6 +1781,94 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/roles/validate" && request.method === "POST") {
     const body = await bodyJson(request);
     return json({ ok: true, role: normalizeRole(body.role) });
+  }
+
+  if (url.pathname === "/api/session/email/start" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      return json({
+        ok:true,
+        ...(await startEmailOtp(db,env,body.email,body.purpose)),
+      }, { status:201 });
+    } catch(error) {
+      const code=String(error?.message ?? error);
+      const status=code==="email_otp_not_configured" ? 503 : 400;
+      return json({ok:false,error:code},{status});
+    }
+  }
+
+  if (url.pathname === "/api/session/email/verify" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      return json({
+        ok:true,
+        ...(await verifyEmailOtpRequest(db,env,body.request_id,body.otp)),
+      });
+    } catch(error) {
+      return json({ok:false,error:String(error?.message ?? error)},{status:400});
+    }
+  }
+
+  if (url.pathname === "/api/session/email/complete" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      const setup=await consumeEmailSetupToken(db,body.setup_token);
+      const email=String(setup.email);
+      const purpose=String(setup.purpose);
+      let credential=await db.prepare(
+        "SELECT user_id FROM email_credentials WHERE email=? LIMIT 1"
+      ).bind(email).first();
+      let userId=String(credential?.user_id ?? "");
+      if(purpose==="signup") {
+        if(userId) throw new Error("email_already_registered");
+        const digest=await sha256Hex(email);
+        userId="e_"+digest.slice(0,20);
+        const displayName=String(body.display_name ?? "DarkVibeX User").trim().slice(0,60);
+        await ensureUser(db,userId,displayName || "DarkVibeX User");
+      } else if(!userId) {
+        throw new Error("email_account_not_found");
+      }
+      await setEmailPassword(db,email,userId,body.password);
+      await ensureAuthIdentityTable(db);
+      await db.prepare(
+        `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
+         VALUES('email',?,?,?,?,?)
+         ON CONFLICT(provider,subject) DO UPDATE SET
+           user_id=excluded.user_id,email=excluded.email,updated_at=excluded.updated_at`
+      ).bind(email,userId,email,now(),now()).run();
+      const user=await ensureUser(db,userId,String(body.display_name ?? "").trim());
+      if(body.date_of_birth) {
+        await db.prepare(
+          "UPDATE users SET date_of_birth=?,updated_at=? WHERE id=?"
+        ).bind(String(body.date_of_birth),now(),userId).run();
+      }
+      const latest=await db.prepare(
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth FROM users WHERE id=?"
+      ).bind(userId).first();
+      const token=await createSessionToken(env,userId,latest?.display_name ?? userId);
+      return json({ok:true,token,user:latest,provider:"email"});
+    } catch(error) {
+      const code=String(error?.message ?? error);
+      return json({ok:false,error:code},{status:400});
+    }
+  }
+
+  if (url.pathname === "/api/session/email/login" && request.method === "POST") {
+    const body=await bodyJson(request);
+    try {
+      const userId=await emailPasswordLogin(db,body.email,body.password);
+      await ensureUserAllowed(db,userId);
+      const user=await db.prepare(
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      if(!user) throw new Error("user_not_found");
+      const token=await createSessionToken(env,userId,user.display_name);
+      return json({ok:true,token,user,provider:"email"});
+    } catch(error) {
+      const code=String(error?.message ?? error);
+      const status=code==="user_banned"||code==="user_suspended" ? 403 : 401;
+      return json({ok:false,error:code},{status});
+    }
   }
 
   if (url.pathname === "/api/session/google" && request.method === "POST") {
