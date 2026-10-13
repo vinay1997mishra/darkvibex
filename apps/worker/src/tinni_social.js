@@ -74,6 +74,17 @@ export async function ensureTinniSocialSchema(db) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
     )`,
+    `CREATE TABLE IF NOT EXISTS vs_relationships (
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'pending',
+      rivalry INTEGER NOT NULL DEFAULT 0,
+      level INTEGER NOT NULL DEFAULT 1,
+      requested_by TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_a, user_b)
+    )`,
     `CREATE TABLE IF NOT EXISTS cp_memories (
       id TEXT PRIMARY KEY,
       user_a TEXT NOT NULL,
@@ -624,6 +635,83 @@ export async function cpRanking(db, limitValue=100) {
        LEFT JOIN users ub ON ub.id=c.user_b
       WHERE c.state='active'
       ORDER BY c.intimacy DESC,c.updated_at ASC LIMIT ?`
+  ).bind(limit).all();
+  return rows.results ?? [];
+}
+
+
+export async function vsState(db, userId) {
+  await ensureTinniSocialSchema(db);
+  const row = await db.prepare(
+    `SELECT v.*,ua.display_name AS user_a_name,ua.avatar_key AS user_a_avatar_key,
+            ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key
+       FROM vs_relationships v
+       LEFT JOIN users ua ON ua.id=v.user_a
+       LEFT JOIN users ub ON ub.id=v.user_b
+      WHERE v.user_a=? OR v.user_b=?
+      ORDER BY v.updated_at DESC LIMIT 1`
+  ).bind(userId,userId).first();
+  return row ?? null;
+}
+
+export async function vsRequest(db, userId, targetId) {
+  await ensureTinniSocialSchema(db);
+  if (!targetId || userId === targetId) throw new Error("invalid_vs_target");
+  const existing = await vsState(db,userId);
+  if (existing && existing.state === "active") throw new Error("vs_already_active");
+  const targetExisting = await vsState(db,targetId);
+  if (targetExisting && targetExisting.state === "active") throw new Error("target_vs_already_active");
+  const [a,b] = pair(userId,targetId);
+  const createdAt=ts();
+  await db.prepare(
+    `INSERT INTO vs_relationships(user_a,user_b,state,rivalry,level,requested_by,created_at,updated_at)
+     VALUES(?,?,'pending',0,1,?,?,?)
+     ON CONFLICT(user_a,user_b) DO UPDATE SET
+       state='pending',rivalry=0,level=1,requested_by=excluded.requested_by,
+       updated_at=excluded.updated_at`
+  ).bind(a,b,userId,createdAt,createdAt).run();
+  return vsState(db,userId);
+}
+
+export async function vsRespond(db, userId, accept) {
+  await ensureTinniSocialSchema(db);
+  const row = await db.prepare(
+    "SELECT * FROM vs_relationships WHERE (user_a=? OR user_b=?) AND state='pending' ORDER BY updated_at DESC LIMIT 1"
+  ).bind(userId,userId).first();
+  if (!row) throw new Error("vs_request_not_found");
+  if (row.requested_by === userId) throw new Error("vs_request_waiting_for_rival");
+  if (accept) {
+    await db.prepare(
+      "UPDATE vs_relationships SET state='active',updated_at=? WHERE user_a=? AND user_b=?"
+    ).bind(ts(),row.user_a,row.user_b).run();
+    return vsState(db,userId);
+  }
+  await db.prepare(
+    "DELETE FROM vs_relationships WHERE user_a=? AND user_b=?"
+  ).bind(row.user_a,row.user_b).run();
+  return null;
+}
+
+export async function vsDisconnect(db, userId) {
+  const row = await vsState(db,userId);
+  if (!row) return { ok:true };
+  await db.prepare(
+    "DELETE FROM vs_relationships WHERE user_a=? AND user_b=?"
+  ).bind(row.user_a,row.user_b).run();
+  return { ok:true };
+}
+
+export async function vsRanking(db, limitValue=100) {
+  await ensureTinniSocialSchema(db);
+  const limit=Math.max(1,Math.min(100,Number(limitValue)||100));
+  const rows=await db.prepare(
+    `SELECT v.*,ua.display_name AS user_a_name,ua.avatar_key AS user_a_avatar_key,
+            ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key
+       FROM vs_relationships v
+       LEFT JOIN users ua ON ua.id=v.user_a
+       LEFT JOIN users ub ON ub.id=v.user_b
+      WHERE v.state='active'
+      ORDER BY v.rivalry DESC,v.updated_at ASC LIMIT ?`
   ).bind(limit).all();
   return rows.results ?? [];
 }
