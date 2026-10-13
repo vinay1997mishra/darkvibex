@@ -55,6 +55,7 @@ class AppState extends ChangeNotifier {
   bool isAuthenticated = false;
   bool signingIn = false;
   bool googleSignInReady = false;
+  bool _googleInitialized = false;
   String? authError;
   String? _googleWebClientId;
 
@@ -110,16 +111,9 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      final config = await backend.googleAuthConfig();
-      _googleWebClientId = config?['google_web_client_id']?.toString().trim();
-
-      if (_googleWebClientId != null && _googleWebClientId!.isNotEmpty) {
-        await GoogleSignIn.instance.initialize(
-          serverClientId: _googleWebClientId,
-        );
-        googleSignInReady = true;
-
-        final lightweight = GoogleSignIn.instance.attemptLightweightAuthentication();
+      if (await _ensureGoogleSignInInitialized()) {
+        final lightweight =
+            GoogleSignIn.instance.attemptLightweightAuthentication();
         if (lightweight != null) {
           final account = await lightweight;
           if (account != null) {
@@ -128,7 +122,6 @@ class AppState extends ChangeNotifier {
         }
       }
     } on GoogleSignInException catch (error) {
-      googleSignInReady = false;
       authError = _googleSignInErrorMessage(error);
       debugPrint(
         'DarkVibeX Google Sign-In initialization failed: '
@@ -151,17 +144,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (!googleSignInReady) {
-        final config = await backend.googleAuthConfig();
-        _googleWebClientId = config?['google_web_client_id']?.toString().trim();
-        if (_googleWebClientId == null || _googleWebClientId!.isEmpty) {
-          authError = 'Google Login is not configured on the server yet.';
-          return false;
-        }
-        await GoogleSignIn.instance.initialize(
-          serverClientId: _googleWebClientId,
-        );
-        googleSignInReady = true;
+      if (!await _ensureGoogleSignInInitialized()) {
+        return false;
       }
 
       if (!GoogleSignIn.instance.supportsAuthenticate()) {
@@ -186,6 +170,28 @@ class AppState extends ChangeNotifier {
       signingIn = false;
       notifyListeners();
     }
+  }
+
+  Future<bool> _ensureGoogleSignInInitialized() async {
+    if (_googleInitialized) {
+      googleSignInReady = true;
+      return true;
+    }
+
+    final config = await backend.googleAuthConfig();
+    _googleWebClientId = config?['google_web_client_id']?.toString().trim();
+    if (_googleWebClientId == null || _googleWebClientId!.isEmpty) {
+      googleSignInReady = false;
+      authError = 'Google Login is not configured on the server yet.';
+      return false;
+    }
+
+    await GoogleSignIn.instance.initialize(
+      serverClientId: _googleWebClientId,
+    );
+    _googleInitialized = true;
+    googleSignInReady = true;
+    return true;
   }
 
   String _googleSignInErrorMessage(GoogleSignInException error) {
