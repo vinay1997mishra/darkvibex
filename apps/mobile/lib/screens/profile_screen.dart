@@ -459,11 +459,7 @@ class ProfileScreen extends StatelessWidget {
                   color: TinniPalette.gold,
                 ),
                 title: const Text('Visitors'),
-                subtitle: Text(
-                  state.hasVipPrivilege('view_visitors')
-                      ? 'See who viewed your profile'
-                      : 'Unlocks at VIP1',
-                ),
+                subtitle: const Text('See who viewed your profile'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showVisitors(context),
               ),
