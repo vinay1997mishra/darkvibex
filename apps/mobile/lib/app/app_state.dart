@@ -267,7 +267,7 @@ class AppState extends ChangeNotifier {
         };
         return false;
       }
-      return _applySession(session, provider: 'email');
+      return await _applySession(session, provider: 'email');
     } catch (_) {
       authError = 'Email login could not connect to DarkVibeX.';
       return false;
@@ -304,7 +304,7 @@ class AppState extends ChangeNotifier {
         };
         return false;
       }
-      return _applySession(session, provider: 'email');
+      return await _applySession(session, provider: 'email');
     } catch (_) {
       authError = 'Email account could not be created.';
       return false;
