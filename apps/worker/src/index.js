@@ -432,7 +432,7 @@ async function ensureRoomSafetyTables(db) {
   ).run();
 }
 
-async function ensureRoomControlTables(db) {
+async function ensureRoomControlTables(db, roomId = null) {
   await ensureRoomSettingsTable(db);
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN mic_mode TEXT NOT NULL DEFAULT 'free'").run();
@@ -471,6 +471,11 @@ async function ensureRoomControlTables(db) {
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
   ).run();
+  if (roomId) {
+    await db.prepare(
+      "INSERT OR IGNORE INTO room_settings(room_id,announcement,theme_id,group_pk_enabled,welcome_image_key,party_mode,mic_mode,public_screen_enabled,updated_at) VALUES(?,'','dark',0,'','Friends-making Party','free',1,?)"
+    ).bind(roomId, now()).run();
+  }
 }
 
 async function roomModeratorState(db, roomId, userId) {
@@ -981,7 +986,7 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "controls") {
     const roomId = parts[2];
-    await ensureRoomControlTables(db);
+    await ensureRoomControlTables(db, roomId);
     const authError = await requireSession(request, env);
     if (authError) return authError;
     const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -1105,7 +1110,7 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "seat-request" && request.method === "POST") {
     const roomId = parts[2];
-    await ensureRoomControlTables(db);
+    await ensureRoomControlTables(db, roomId);
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const seatIndex = Number(body.seat_index);
@@ -1131,7 +1136,7 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 5 && parts[3] === "seat-request" && parts[4] === "resolve" && request.method === "POST") {
     const roomId = parts[2];
-    await ensureRoomControlTables(db);
+    await ensureRoomControlTables(db, roomId);
     const body = await bodyJson(request);
     const actorId = String(body.user_id ?? "").trim();
     const targetId = String(body.target_user_id ?? "").trim();
@@ -1349,7 +1354,7 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureUserAllowed(db, userId);
-    await ensureRoomControlTables(db);
+    await ensureRoomControlTables(db, roomId);
     const room = await db.prepare("SELECT seat_count,owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
@@ -1440,7 +1445,7 @@ async function handleApi(request, env, url) {
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
       ).bind(roomId, userId).first();
       if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
-      await ensureRoomControlTables(db);
+      await ensureRoomControlTables(db, roomId);
       const chatBan = await db.prepare(
         "SELECT 1 AS banned FROM room_chat_bans WHERE room_id=? AND user_id=?"
       ).bind(roomId,userId).first();
@@ -1485,7 +1490,7 @@ async function handleApi(request, env, url) {
     if (request.method === "GET") {
       await ensureVipSchema(db);
       await ensureCosmeticsSchema(db);
-      await ensureRoomControlTables(db);
+      await ensureRoomControlTables(db, roomId);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
