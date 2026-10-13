@@ -150,7 +150,7 @@ jobs:
             exit 0
           }
           echo "$cert_output"
-          sha1="$(printf '%s\\n' "$cert_output" | sed -nE 's/.*certificate SHA-1 digest: *([0-9A-Fa-f:]+).*/\\1/p' | head -n 1)"
+          sha1="$(printf '%s\n' "$cert_output" | sed -nE 's/.*certificate SHA-1 digest: *([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
           if [ -z "$sha1" ]; then
             echo "SHA-1 line was not found in apksigner output."
             exit 0
