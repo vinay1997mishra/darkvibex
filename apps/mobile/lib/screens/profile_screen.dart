@@ -1408,20 +1408,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                   icon: const Icon(Icons.chat_bubble_rounded),
                                   label: const Text('Message'),
                                 ),
-                                OutlinedButton.icon(
-                                  key: const Key('public-profile-call'),
-                                  onPressed:
-                                      isFriend && !isBlocked && !startingCall ? _startCall : null,
-                                  icon: startingCall
-                                      ? const SizedBox.square(
-                                          dimension: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.call_rounded),
-                                  label: const Text('Call'),
-                                ),
+                                if (isFriend)
+                                  OutlinedButton.icon(
+                                    key: const Key('public-profile-call'),
+                                    onPressed:
+                                        !isBlocked && !startingCall ? _startCall : null,
+                                    icon: startingCall
+                                        ? const SizedBox.square(
+                                            dimension: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.call_rounded),
+                                    label: const Text('Call'),
+                                  ),
                               ],
                             ),
                           ),
