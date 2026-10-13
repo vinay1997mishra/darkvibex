@@ -583,6 +583,22 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: saving ? null : pickDob,
                   ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.public_rounded),
+                    title: const Text('Country'),
+                    subtitle: Text(
+                      widget.state.countryName.isEmpty
+                          ? 'Not selected'
+                          : '${widget.state.flagEmoji} ${widget.state.countryName}'.trim(),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.language_rounded),
+                    title: const Text('Language'),
+                    subtitle: Text(widget.state.languagePreference.value),
+                  ),
                 ],
               ),
             ),
