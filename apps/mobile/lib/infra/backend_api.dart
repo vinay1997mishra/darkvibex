@@ -1087,6 +1087,7 @@ class BackendApi {
           'seller_user_id': sellerUserId,
           'receiver_user_id': receiverUserId,
           'coins': coins,
+          'pin': pin,
         },
       );
 
