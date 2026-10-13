@@ -9,6 +9,10 @@ on:
       - "apps/owner_panel/**"
       - ".github/workflows/darkvibex-worker-deploy.yml"
 
+concurrency:
+  group: darkvibex-worker-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
