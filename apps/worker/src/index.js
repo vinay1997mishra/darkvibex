@@ -1836,6 +1836,22 @@ async function handleApi(request, env, url) {
     return json({ ok: true, shared_score: Number(room?.shared_score ?? 0) });
   }
 
+  if (url.pathname === "/api/search" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const query = String(url.searchParams.get("q") ?? "").trim().slice(0, 80);
+    if (!userId || !query) return json({ ok: false, error: "user_id_and_query_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const like = `%${query}%`;
+    const users = await db.prepare(
+      "SELECT id, display_name, avatar_key, vip_level FROM users WHERE id=? OR display_name LIKE ? ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END, display_name COLLATE NOCASE LIMIT 20"
+    ).bind(query, like, query).all();
+    const rooms = await db.prepare(
+      "SELECT r.id, r.name, r.owner_user_id, u.display_name AS owner_name, r.seat_count, (SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id) AS online FROM rooms r LEFT JOIN users u ON u.id=r.owner_user_id WHERE r.id=? OR r.name LIKE ? ORDER BY CASE WHEN r.id=? THEN 0 ELSE 1 END, online DESC, r.name COLLATE NOCASE LIMIT 20"
+    ).bind(query, like, query).all();
+    return json({ ok: true, users: users.results ?? [], rooms: rooms.results ?? [] });
+  }
+
   if (url.pathname === "/api/friends" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
