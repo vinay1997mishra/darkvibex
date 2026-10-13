@@ -695,7 +695,9 @@ async function handleApi(request, env, url) {
     const status = await getVipStatus(db, userId);
     if (!status.active || status.level < 1) return json({ ok: false, error: "vip_privilege_locked" }, { status: 403 });
     const rows = await db.prepare(
-      `SELECT v.visitor_user_id AS user_id,
+      `SELECT CASE WHEN av.level >= 18 AND av.active_until > ?
+                         AND json_extract(av.preferences_json, '$.anonymous_everywhere') = 1
+                   THEN '' ELSE v.visitor_user_id END AS user_id,
               CASE WHEN av.level >= 18 AND av.active_until > ?
                          AND json_extract(av.preferences_json, '$.anonymous_everywhere') = 1
                    THEN 'Anonymous' ELSE u.display_name END AS display_name,
@@ -708,7 +710,7 @@ async function handleApi(request, env, url) {
          LEFT JOIN user_vip av ON av.user_id = v.visitor_user_id
         WHERE v.viewed_user_id = ?
         ORDER BY v.last_visited_at DESC LIMIT 100`
-    ).bind(now(), now(), userId).all();
+    ).bind(now(), now(), now(), userId).all();
     return json({ ok: true, visitors: rows.results ?? [] });
   }
 
