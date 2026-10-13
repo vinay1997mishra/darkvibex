@@ -1283,7 +1283,15 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json({ ok: true, cp: await cpRequest(db, userId, String(body.target_user_id ?? "")) }, { status: 201 });
+      const cp = await cpRequest(db, userId, String(body.target_user_id ?? ""));
+      const wallet = await db.prepare(
+        "SELECT coins FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      return json({
+        ok: true,
+        cp,
+        coin_balance: Number(wallet?.coins ?? 0),
+      }, { status: 201 });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -1307,6 +1315,41 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     return json(await cpDisconnect(db, userId));
+  }
+
+  if (url.pathname === "/api/cp/ring" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const ringId = String(body.ring_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const cp = await cpState(db, userId);
+    if (!cp || cp.state !== "active") {
+      return json({ ok:false,error:"cp_not_active" }, { status:409 });
+    }
+    if (!ringId) {
+      await db.prepare(
+        "UPDATE cp_relationships SET ring_id=NULL,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+      ).bind(now(),cp.user_a,cp.user_b).run();
+      return json({ ok:true,cp:await cpState(db,userId) });
+    }
+    await ensureCosmeticsSchema(db);
+    const product = COSMETIC_CATALOG.find(
+      (item) => item.id === ringId && item.kind === "ring"
+    );
+    if (!product) {
+      return json({ ok:false,error:"ring_not_found" }, { status:404 });
+    }
+    const owned = await db.prepare(
+      "SELECT 1 AS owned FROM user_props WHERE user_id=? AND item_id=? AND kind='ring' AND expires_at>? LIMIT 1"
+    ).bind(userId,ringId,now()).first();
+    if (!owned) {
+      return json({ ok:false,error:"ring_not_owned" }, { status:403 });
+    }
+    await db.prepare(
+      "UPDATE cp_relationships SET ring_id=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+    ).bind(ringId,now(),cp.user_a,cp.user_b).run();
+    return json({ ok:true,cp:await cpState(db,userId) });
   }
 
   if (url.pathname === "/api/cp/memories" && request.method === "GET") {
