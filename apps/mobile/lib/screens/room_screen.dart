@@ -90,6 +90,7 @@ class _RoomScreenState extends State<RoomScreen> {
   String? roomLockCode;
   bool amRoomAdmin = false;
   String roomThemeId = 'dark';
+  String? roomThemeAssetKey;
   String roomSeatThemeId = 'royal-gold';
   late String roomPartyMode;
   late String roomMode;
@@ -751,6 +752,8 @@ class _RoomScreenState extends State<RoomScreen> {
       final lockCode = settings['lock_code']?.toString().trim() ?? '';
       roomLockCode = lockCode.isEmpty ? null : lockCode;
       roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
+      final themeAsset = settings['theme_asset_key']?.toString().trim() ?? '';
+      roomThemeAssetKey = themeAsset.isEmpty ? null : themeAsset;
       roomSeatThemeId = settings['seat_theme_id']?.toString() ?? roomSeatThemeId;
       roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
       roomMode = settings['room_mode']?.toString() ?? roomMode;
@@ -3254,6 +3257,9 @@ class _RoomScreenState extends State<RoomScreen> {
         if (nextRoomMode != null) roomMode = nextRoomMode;
       });
       await widget.state.refreshRooms();
+      if (themeId != null && mounted) {
+        await _loadRoomSettings();
+      }
     }
     return ok;
   }
@@ -3331,44 +3337,220 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<void> _createCustomRoomTheme() async {
+    if (!isRoomHost || !widget.state.backendConnected) return;
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+      maxWidth: 1440,
+      maxHeight: 1920,
+    );
+    if (image == null) return;
+    final ext = image.name.split('.').last.toLowerCase();
+    final normalizedExt = ext == 'jpeg' ? 'jpg' : ext;
+    final contentType = switch (normalizedExt) {
+      'jpg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => null,
+    };
+    if (contentType == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP image')),
+        );
+      }
+      return;
+    }
+
+    final details = await showDialog<(String, bool)>(
+      context: context,
+      builder: (dialogContext) {
+        final name = TextEditingController(text: 'My Room Theme');
+        var confirmed = false;
+        return StatefulBuilder(
+          builder: (dialogContext, refresh) => AlertDialog(
+            title: const Text('Add New Room Theme'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: name,
+                  maxLength: 60,
+                  decoration: const InputDecoration(labelText: 'Theme name'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: confirmed,
+                  onChanged: (value) =>
+                      refresh(() => confirmed = value == true),
+                  title: const Text(
+                    'I confirm this room cover is safe and allowed.',
+                  ),
+                ),
+                const Text(
+                  'User theme price: 10M coins • valid for 7 days.',
+                  style: TextStyle(
+                    color: TinniPalette.muted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: confirmed && name.text.trim().isNotEmpty
+                    ? () => Navigator.pop(
+                          dialogContext,
+                          (name.text.trim(), confirmed),
+                        )
+                    : null,
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (details == null) return;
+
+    final key = await widget.state.backend.uploadImage(
+      key:
+          'room-themes/${widget.state.userId}/theme-${DateTime.now().microsecondsSinceEpoch}.$normalizedExt',
+      bytes: await image.readAsBytes(),
+      contentType: contentType,
+    );
+    if (key == null || !mounted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Room theme image upload failed')),
+        );
+      }
+      return;
+    }
+
+    final result = await widget.state.backend.createRoomTheme(
+      roomId: widget.room.id,
+      name: details.$1,
+      assetKey: key,
+      policyConfirmed: details.$2,
+      durationDays: 7,
+    );
+    if (!mounted) return;
+    if (result?['ok'] != true) {
+      final error = result?['error']?.toString().replaceAll('_', ' ') ??
+          'Room theme could not be created';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+    final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
+    if (balance != null) widget.state.setCoinBalance(balance);
+    final rawTheme = result?['theme'];
+    final themeId =
+        rawTheme is Map ? rawTheme['id']?.toString().trim() ?? '' : '';
+    if (themeId.isEmpty) return;
+    final ok = await _saveRoomConfiguration(themeId: themeId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Room theme activated for 7 days.'
+              : 'Theme created, but could not be activated.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _showRoomThemeSelector() async {
     if (!isRoomHost) return;
+    final response =
+        await widget.state.backend.roomThemes(roomId: widget.room.id);
+    final rawThemes = response?['themes'];
+    final customThemes = rawThemes is List
+        ? rawThemes
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+
+    if (!mounted) return;
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              leading: Icon(Icons.image_rounded),
-              title: Text(
-                'Room Cover / Theme',
-                style: TextStyle(
-                  color: TinniPalette.gold,
-                  fontWeight: FontWeight.w900,
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .72,
+          child: ListView(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.image_rounded),
+                title: Text(
+                  'Room Cover / Theme',
+                  style: TextStyle(
+                    color: TinniPalette.gold,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
+                subtitle: Text('Built-in and purchased room-wide covers'),
               ),
-            ),
-            for (final entry in const <(String, String)>[
-              ('dark', 'Dark'),
-              ('midnight', 'Midnight'),
-              ('rose', 'Rose'),
-              ('forest', 'Forest'),
-              ('gold', 'Gold'),
-            ])
-              RadioListTile<String>(
-                value: entry.$1,
-                groupValue: roomThemeId,
-                title: Text(entry.$2),
-                onChanged: (value) => Navigator.pop(sheetContext, value),
+              ListTile(
+                key: const Key('room-theme-add-custom'),
+                leading: const Icon(
+                  Icons.add_photo_alternate_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Add New Room Theme'),
+                subtitle: const Text('10M coins • 7 days'),
+                onTap: () => Navigator.pop(sheetContext, '__add__'),
               ),
-          ],
+              const Divider(),
+              for (final entry in const <(String, String)>[
+                ('dark', 'Dark'),
+                ('midnight', 'Midnight'),
+                ('rose', 'Rose'),
+                ('forest', 'Forest'),
+                ('gold', 'Gold'),
+              ])
+                RadioListTile<String>(
+                  value: entry.$1,
+                  groupValue: roomThemeId,
+                  title: Text(entry.$2),
+                  onChanged: (value) => Navigator.pop(sheetContext, value),
+                ),
+              if (customThemes.isNotEmpty) const Divider(),
+              for (final theme in customThemes)
+                RadioListTile<String>(
+                  value: theme['id']?.toString() ?? '',
+                  groupValue: roomThemeId,
+                  secondary: const Icon(Icons.wallpaper_rounded),
+                  title: Text(theme['name']?.toString() ?? 'Room Theme'),
+                  subtitle: Text(
+                    theme['expires_at'] == null
+                        ? 'Permanent'
+                        : 'Purchased room cover',
+                  ),
+                  onChanged: (value) => Navigator.pop(sheetContext, value),
+                ),
+            ],
+          ),
         ),
       ),
     );
-    if (selected == null || selected == roomThemeId) return;
+    if (selected == null) return;
+    if (selected == '__add__') {
+      await _createCustomRoomTheme();
+      return;
+    }
+    if (selected == roomThemeId) return;
     final ok = await _saveRoomConfiguration(themeId: selected);
     if (!mounted || ok) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -4510,6 +4692,24 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       body: Stack(
         children: [
+          if (roomThemeAssetKey != null)
+            Positioned.fill(
+              child: Image(
+                image: NetworkImage(
+                  widget.state.backend.fileUrl(roomThemeAssetKey!),
+                  headers: widget.state.backend.fileHeaders,
+                ),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    ColoredBox(color: _roomThemeColor),
+              ),
+            ),
+          if (roomThemeAssetKey != null)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: .28),
+              ),
+            ),
           Positioned.fill(
             child: Column(
               children: [
