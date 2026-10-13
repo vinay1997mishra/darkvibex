@@ -630,6 +630,20 @@ async function ensureLegalConsentTable(db) {
   ).run();
 }
 
+async function ensureAuthIdentityTable(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS user_auth_identities (
+    provider TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    email TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, subject),
+    UNIQUE (provider, user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+}
+
 async function ensureUserBlockTable(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_blocks (
     user_id TEXT NOT NULL,
@@ -1318,7 +1332,12 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: code }, { status });
     }
 
-    const userId = "g_" + String(claims.sub);
+    await ensureAuthIdentityTable(db);
+    const subject = String(claims.sub);
+    const linkedIdentity = await db.prepare(
+      "SELECT user_id FROM user_auth_identities WHERE provider='google' AND subject=? LIMIT 1"
+    ).bind(subject).first();
+    const userId = String(linkedIdentity?.user_id ?? ("g_" + subject));
     const displayName = String(
       claims.name ?? claims.given_name ?? claims.email ?? "DarkVibeX User"
     ).trim().slice(0, 60);
@@ -1326,6 +1345,18 @@ async function handleApi(request, env, url) {
     let user;
     try {
       user = await ensureUser(db, userId, displayName);
+      await db.prepare(
+        `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
+         VALUES('google',?,?,?,?,?)
+         ON CONFLICT(provider,subject)
+         DO UPDATE SET email=excluded.email,updated_at=excluded.updated_at`
+      ).bind(
+        subject,
+        userId,
+        String(claims.email ?? "").trim() || null,
+        now(),
+        now(),
+      ).run();
     } catch (error) {
       console.error("Google session user storage failed", error);
       return json({ ok: false, error: "google_session_storage_failed" }, { status: 503 });
@@ -1350,6 +1381,67 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "google_session_token_failed" }, { status: 503 });
     }
     return json({ ok: true, token, user, provider: "google" });
+  }
+
+  if (url.pathname === "/api/account/bind-google" && request.method === "POST") {
+    if (!env.SESSION_SECRET) {
+      return json({ ok:false,error:"session_secret_not_configured" }, { status:503 });
+    }
+    const sessionError = await requireSession(request, env);
+    if (sessionError) return sessionError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    const body = await bodyJson(request);
+    const idToken = String(body.id_token ?? "").trim();
+    if (!idToken) {
+      return json({ ok:false,error:"google_id_token_required" }, { status:400 });
+    }
+    let claims;
+    try {
+      claims = await verifyGoogleIdToken(idToken, env.GOOGLE_WEB_CLIENT_ID);
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      return json(
+        { ok:false,error:code },
+        { status: code === "google_auth_not_configured" ? 503 : 401 },
+      );
+    }
+    await ensureUser(db, userId);
+    await ensureAuthIdentityTable(db);
+    const subject = String(claims.sub);
+    const existingSubject = await db.prepare(
+      "SELECT user_id FROM user_auth_identities WHERE provider='google' AND subject=? LIMIT 1"
+    ).bind(subject).first();
+    if (existingSubject && String(existingSubject.user_id) !== userId) {
+      return json({ ok:false,error:"google_account_already_bound" }, { status:409 });
+    }
+    const existingUser = await db.prepare(
+      "SELECT subject FROM user_auth_identities WHERE provider='google' AND user_id=? LIMIT 1"
+    ).bind(userId).first();
+    if (existingUser && String(existingUser.subject) !== subject) {
+      return json({ ok:false,error:"user_already_bound_to_google" }, { status:409 });
+    }
+    await db.prepare(
+      `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
+       VALUES('google',?,?,?,?,?)
+       ON CONFLICT(provider,subject)
+       DO UPDATE SET user_id=excluded.user_id,email=excluded.email,updated_at=excluded.updated_at`
+    ).bind(
+      subject,
+      userId,
+      String(claims.email ?? "").trim() || null,
+      now(),
+      now(),
+    ).run();
+    return json({
+      ok:true,
+      provider:"google",
+      email:String(claims.email ?? ""),
+      user_id:userId,
+    });
   }
 
   if (url.pathname === "/api/session/guest" && request.method === "POST") {
