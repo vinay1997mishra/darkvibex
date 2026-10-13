@@ -100,10 +100,44 @@ CREATE INDEX IF NOT EXISTS idx_inbox_envelopes_pair_time
 CREATE TABLE IF NOT EXISTS room_settings (
   room_id TEXT PRIMARY KEY,
   announcement TEXT NOT NULL DEFAULT '',
+  theme_id TEXT NOT NULL DEFAULT 'dark',
+  group_pk_enabled INTEGER NOT NULL DEFAULT 0 CHECK (group_pk_enabled IN (0,1)),
   welcome_image_key TEXT NOT NULL DEFAULT '',
   party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
+  mic_mode TEXT NOT NULL DEFAULT 'free' CHECK (mic_mode IN ('free','apply')),
+  public_screen_enabled INTEGER NOT NULL DEFAULT 1 CHECK (public_screen_enabled IN (0,1)),
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS room_seat_controls (
+  room_id TEXT NOT NULL,
+  seat_index INTEGER NOT NULL,
+  locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0,1)),
+  room_muted INTEGER NOT NULL DEFAULT 0 CHECK (room_muted IN (0,1)),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, seat_index),
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS room_seat_requests (
+  room_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  seat_index INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, user_id),
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS room_chat_bans (
+  room_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  banned_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, user_id),
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS legal_consents (
