@@ -272,6 +272,7 @@ class BackendApi {
     String welcomeImageKey = '',
     String partyMode = 'Friends-making Party',
     String seatThemeId = 'royal-gold',
+    String? lockPassword,
   }) async {
     final value = await _json(
       'POST',
@@ -287,6 +288,7 @@ class BackendApi {
         'welcome_image_key': welcomeImageKey,
         'party_mode': partyMode,
         'seat_theme_id': seatThemeId,
+        if (lockPassword != null) 'lock_password': lockPassword,
       },
     );
     return value?['ok'] == true;
@@ -340,18 +342,34 @@ class BackendApi {
     return value?['room_id']?.toString();
   }
 
+  Future<Map<String, dynamic>?> joinRoomResult({
+    required String roomId,
+    required String userId,
+    required String displayName,
+    String? password,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/$roomId/join',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'display_name': displayName,
+          if (password != null) 'password': password,
+        },
+      );
+
   Future<bool> joinRoom({
     required String roomId,
     required String userId,
     required String displayName,
+    String? password,
   }) async {
-    final value = await _json(
-      'POST',
-      '/api/rooms/$roomId/join',
-      body: <String, dynamic>{
-        'user_id': userId,
-        'display_name': displayName,
-      },
+    final value = await joinRoomResult(
+      roomId: roomId,
+      userId: userId,
+      displayName: displayName,
+      password: password,
     );
     return value?['ok'] == true;
   }
