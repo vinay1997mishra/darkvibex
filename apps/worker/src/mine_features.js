@@ -69,6 +69,14 @@ const ensureMineTables = async (db) => {
     created_at INTEGER NOT NULL,
     PRIMARY KEY (follower_user_id, followed_user_id)
   )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS profile_visitors (
+    viewed_user_id TEXT NOT NULL,
+    visitor_user_id TEXT NOT NULL,
+    first_visited_at INTEGER NOT NULL,
+    last_visited_at INTEGER NOT NULL,
+    visit_count INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (viewed_user_id, visitor_user_id)
+  )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS family_members (
     family_id TEXT NOT NULL, user_id TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL CHECK(role IN ('leader','admin','member')),
@@ -95,6 +103,21 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
   const path = url.pathname;
   if (!path.startsWith("/api/mine/")) return null;
   await ensureMineTables(db);
+
+  if (path === "/api/mine/overview" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const [charm, visitors] = await Promise.all([
+      db.prepare("SELECT COALESCE(SUM(coin_cost),0) AS total FROM gift_events WHERE receiver_user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) AS total FROM profile_visitors WHERE viewed_user_id = ?").bind(userId).first(),
+    ]);
+    return json({
+      ok: true,
+      charm_points: Math.max(0, Number(charm?.total ?? 0)),
+      visitors_count: Math.max(0, Number(visitors?.total ?? 0)),
+    });
+  }
 
   if (path === "/api/mine/wealth" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
