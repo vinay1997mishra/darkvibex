@@ -47,6 +47,7 @@ import {
   vsRespond,
   vsDisconnect,
   vsRanking,
+  recordVsGiftProgress,
   officialNotices,
   activityFeed,
 } from "./tinni_social.js";
@@ -4049,7 +4050,23 @@ async function handleApi(request, env, url) {
     ]);
     await awardIdLevelGift(db, sender, cost, eventId, now());
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
-    return json({ ok: true, event_id: eventId, sender_coin_balance: balance });
+    let vsProgress = null;
+    if (String(gift.category ?? "").toLowerCase() === "vs") {
+      vsProgress = await recordVsGiftProgress(
+        db,
+        sender,
+        receiver,
+        cost,
+        eventId,
+      );
+    }
+    return json({
+      ok: true,
+      event_id: eventId,
+      sender_coin_balance: balance,
+      vs_progress: Number(vsProgress?.progress ?? 0),
+      vs_state: vsProgress?.vs ?? null,
+    });
   }
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
