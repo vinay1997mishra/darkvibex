@@ -137,6 +137,120 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
+class _MiniActiveRoomBar extends StatefulWidget {
+  const _MiniActiveRoomBar({
+    required this.state,
+    required this.room,
+    this.onResume,
+    this.onClose,
+  });
+
+  final AppState state;
+  final RoomSummary room;
+  final VoidCallback? onResume;
+  final Future<void> Function()? onClose;
+
+  @override
+  State<_MiniActiveRoomBar> createState() => _MiniActiveRoomBarState();
+}
+
+class _MiniActiveRoomBarState extends State<_MiniActiveRoomBar> {
+  bool closing = false;
+
+  Future<void> _closeRoom() async {
+    if (closing) return;
+    setState(() => closing = true);
+    final navigator = Navigator.of(context);
+    try {
+      await widget.onClose?.call();
+      if (!mounted) return;
+      navigator.pop();
+      navigator.pop();
+    } finally {
+      if (mounted) setState(() => closing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final room = widget.room;
+    return Material(
+      color: TinniPalette.nearBlack,
+      child: InkWell(
+        key: const Key('mini-room-bar'),
+        onTap: widget.onResume,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: TinniPalette.deepGold)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                key: const Key('mini-room-dp'),
+                radius: 21,
+                backgroundColor: TinniPalette.panel2,
+                backgroundImage: room.avatarKey == null
+                    ? null
+                    : NetworkImage(
+                        widget.state.backend.fileUrl(room.avatarKey!),
+                        headers: widget.state.backend.fileHeaders,
+                      ),
+                child: room.avatarKey == null
+                    ? const Icon(
+                        Icons.mic_external_on_rounded,
+                        color: TinniPalette.gold,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      room.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: TinniPalette.cream,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text(
+                      'Voice room active • Tap to return',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: TinniPalette.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close voice room',
+                onPressed: closing ? null : _closeRoom,
+                icon: closing
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.close_rounded,
+                        color: Colors.redAccent,
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RoomsHome extends StatefulWidget {
   const _RoomsHome({required this.state, required this.onSelect});
 
