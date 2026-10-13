@@ -305,6 +305,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
   final List<String> recentRoomIds = <String>[];
   List<RoomSummary> followedRooms = const <RoomSummary>[];
 
+  List<RoomSummary> get visibleFollowedRooms {
+    final allowed = state.rooms.map((room) => room.id).toSet();
+    return followedRooms
+        .where((room) => allowed.contains(room.id))
+        .toList(growable: false);
+  }
+
   Future<void> _openRankings(
     BuildContext context, {
     int initialTab = 1,
@@ -855,7 +862,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           ),
         ),
         const SizedBox(height: 10),
-        if (followedRooms.isEmpty)
+        if (visibleFollowedRooms.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 42),
             child: Column(
@@ -874,7 +881,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
             ),
           )
         else
-          for (final room in followedRooms)
+          for (final room in visibleFollowedRooms)
             Padding(
               padding: const EdgeInsets.only(bottom: 9),
               child: _RoomCard(
