@@ -8,15 +8,40 @@ import 'vip_screen.dart';
 import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
 import 'cosmetics_shop_screen.dart';
-import 'id_level_screen.dart';
+import 'mine_social_screens.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 import '../ui/tinni_style.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.state});
 
   final AppState state;
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  AppState get state => widget.state;
+  Map<String, dynamic> socialStats = const <String, dynamic>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSocialStats();
+  }
+
+  Future<void> _loadSocialStats() async {
+    final value = await state.backend.socialStats(userId: state.userId);
+    final raw = value?['stats'];
+    if (!mounted) return;
+    setState(() {
+      socialStats = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : const <String, dynamic>{};
+    });
+  }
 
   Future<void> _showFriends(BuildContext context) async {
     final friends = await state.backend.friends(userId: state.userId);
@@ -306,11 +331,20 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 13),
             Row(
               children: [
-                _mineCount('0', 'Follow'),
+                _mineCount(
+                  (socialStats['following_count'] ?? 0).toString(),
+                  'Follow',
+                ),
                 const _MineDivider(),
-                _mineCount('0', 'Fans'),
+                _mineCount(
+                  (socialStats['followers_count'] ?? 0).toString(),
+                  'Fans',
+                ),
                 const _MineDivider(),
-                _mineCount(state.diamonds.toString(), 'Charm'),
+                _mineCount(
+                  (socialStats['lifetime_received_coins'] ?? 0).toString(),
+                  'Charm',
+                ),
                 const _MineDivider(),
                 Expanded(
                   child: InkWell(
@@ -401,6 +435,52 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
+            TinniPanel(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => CpScreen(state: state),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  TinniGlowIcon(
+                    icon: Icons.favorite_rounded,
+                    size: 28,
+                    boxSize: 52,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'My CP',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'CP Nest • intimacy • memories • details',
+                          style: TextStyle(
+                            color: TinniPalette.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: TinniPalette.gold,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -421,13 +501,14 @@ class ProfileScreen extends StatelessWidget {
                 const SizedBox(width: 7),
                 Expanded(
                   child: _mineStatusCard(
-                    title: 'ID Level',
-                    subtitle: 'LV.${state.idLevel}',
-                    icon: Icons.military_tech_rounded,
+                    title: 'Wealth level',
+                    subtitle:
+                        'LV.${((socialStats['wealth'] is Map ? (socialStats['wealth'] as Map)['level'] : 0) ?? 0)}',
+                    icon: Icons.diamond_rounded,
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute<void>(
-                        builder: (_) => IdLevelScreen(state: state),
+                        builder: (_) => WealthLevelScreen(state: state),
                       ),
                     ),
                   ),
@@ -438,46 +519,90 @@ class ProfileScreen extends StatelessWidget {
             _mineMenuGroup([
               ListTile(
                 leading: const Icon(
-                  Icons.people_alt_rounded,
+                  Icons.hexagon_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: const Text('Friends'),
-                subtitle: const Text(
-                  '300 without VIP • unlimited with active VIP',
-                ),
+                title: const Text('Medal of Honor'),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _showFriends(context),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => MedalOfHonorScreen(state: state),
+                  ),
+                ),
               ),
-            ]),
-            const SizedBox(height: 9),
-            _mineMenuGroup([
               _item(
                 context,
                 state,
-                Icons.store_rounded,
+                Icons.shopping_bag_rounded,
                 'Shop',
                 'Frames, vehicles and entry effects',
               ),
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
-              _item(
-                context,
-                state,
-                Icons.family_restroom_rounded,
-                'Family',
-                'Community and rankings',
-              ),
-              _item(
-                context,
-                state,
-                Icons.favorite_rounded,
-                'CP Nest',
-                'Relationship level and gifts',
+              ListTile(
+                leading: const Icon(
+                  Icons.task_alt_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Task'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TaskScreen(state: state),
+                  ),
+                ),
               ),
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
+              ListTile(
+                leading: const Icon(
+                  Icons.home_work_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Family'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => FamilyScreen(state: state),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.favorite_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('CP Nest'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => CpScreen(state: state),
+                  ),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 9),
+            _mineMenuGroup([
+              ListTile(
+                leading: const Icon(
+                  Icons.chat_bubble_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Feedback'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => FeedbackScreen(state: state),
+                  ),
+                ),
+              ),
               _item(
                 context,
                 state,
