@@ -1137,3 +1137,336 @@ class _CpRankingScreenState extends State<CpRankingScreen> {
         ),
       );
 }
+
+
+class VsScreen extends StatefulWidget {
+  const VsScreen({super.key, required this.state});
+  final AppState state;
+
+  @override
+  State<VsScreen> createState() => _VsScreenState();
+}
+
+class _VsScreenState extends State<VsScreen> {
+  bool loading = true;
+  Map<String, dynamic>? vs;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final value = await widget.state.backend.vsState(
+      userId: widget.state.userId,
+    );
+    final raw = value?['vs'];
+    if (!mounted) return;
+    setState(() {
+      vs = raw is Map ? Map<String, dynamic>.from(raw) : null;
+      loading = false;
+    });
+  }
+
+  String _rivalId() {
+    if (vs == null) return '';
+    return vs!['user_a']?.toString() == widget.state.userId
+        ? vs!['user_b']?.toString() ?? ''
+        : vs!['user_a']?.toString() ?? '';
+  }
+
+  String _rivalName() {
+    if (vs == null) return '';
+    return vs!['user_a']?.toString() == widget.state.userId
+        ? vs!['user_b_name']?.toString() ?? _rivalId()
+        : vs!['user_a_name']?.toString() ?? _rivalId();
+  }
+
+  Future<void> _request() async {
+    final controller = TextEditingController();
+    final id = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('VS Challenge'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'User ID'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Challenge'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (id == null || id.isEmpty) return;
+    await widget.state.backend.vsRequest(
+      userId: widget.state.userId,
+      targetUserId: id,
+    );
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final relationState = vs?['state']?.toString();
+    final incoming = relationState == 'pending' &&
+        vs?['requested_by']?.toString() != widget.state.userId;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF05070B),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF05070B),
+        title: const Text(
+          'VS',
+          style: TextStyle(
+            color: Color(0xFFFF202D),
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'VS Ranking',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => VsRankingScreen(state: widget.state),
+              ),
+            ),
+            icon: const Icon(
+              Icons.leaderboard_rounded,
+              color: Color(0xFFFF202D),
+            ),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(14),
+              children: [
+                if (vs == null)
+                  InkWell(
+                    onTap: _request,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF220508),
+                            Color(0xFF05070B),
+                            Color(0xFF140306),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: const Color(0xFFFF202D),
+                        ),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.dangerous_rounded,
+                            color: Color(0xFFFF202D),
+                            size: 64,
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Add VS',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Text(
+                            'Choose a user ID and send a VS challenge.',
+                            style: TextStyle(color: Color(0xFF9A8285)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else ...[
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF220508),
+                          Color(0xFF05070B),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: const Color(0xFFFF202D),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.dangerous_rounded,
+                          color: Color(0xFFFF202D),
+                          size: 58,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _rivalName(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          'ID ${_rivalId()} • ${relationState ?? ''}',
+                          style: const TextStyle(
+                            color: Color(0xFF9A8285),
+                          ),
+                        ),
+                        if (relationState == 'active')
+                          Text(
+                            'VS Lv.${vs?['level'] ?? 1} • Rivalry ${vs?['rivalry'] ?? 0}',
+                            style: const TextStyle(
+                              color: Color(0xFFFF202D),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (incoming) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              await widget.state.backend.vsRespond(
+                                userId: widget.state.userId,
+                                accept: false,
+                              );
+                              await _load();
+                            },
+                            child: const Text('Refuse'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () async {
+                              await widget.state.backend.vsRespond(
+                                userId: widget.state.userId,
+                                accept: true,
+                              );
+                              await _load();
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF202D),
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Accept'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (relationState == 'active') ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        if (await widget.state.backend.vsDisconnect(
+                          userId: widget.state.userId,
+                        )) {
+                          await _load();
+                        }
+                      },
+                      icon: const Icon(Icons.link_off_rounded),
+                      label: const Text('Remove VS'),
+                    ),
+                  ],
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class VsRankingScreen extends StatefulWidget {
+  const VsRankingScreen({super.key, required this.state});
+  final AppState state;
+
+  @override
+  State<VsRankingScreen> createState() => _VsRankingScreenState();
+}
+
+class _VsRankingScreenState extends State<VsRankingScreen> {
+  bool loading = true;
+  List<Map<String, dynamic>> rows = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final values = await widget.state.backend.vsRanking();
+    if (!mounted) return;
+    setState(() {
+      rows = values;
+      loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFF05070B),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF05070B),
+          title: const Text(
+            'VS Ranking',
+            style: TextStyle(color: Color(0xFFFF202D)),
+          ),
+        ),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(12),
+                  itemCount: rows.length,
+                  itemBuilder: (context, index) {
+                    final row = rows[index];
+                    return Card(
+                      color: const Color(0xFF120609),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFFFF202D),
+                          child: Text(
+                            '${index + 1}',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        title: Text(
+                          '${row['user_a_name'] ?? row['user_a']} VS ${row['user_b_name'] ?? row['user_b']}',
+                        ),
+                        subtitle: Text(
+                          'Rivalry ${row['rivalry'] ?? 0} • Lv.${row['level'] ?? 1}',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+      );
+}
