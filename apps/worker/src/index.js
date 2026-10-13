@@ -58,6 +58,11 @@ function decodeBase64UrlText(value) {
   return decoder.decode(bytes);
 }
 
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(String(value ?? "")));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function hmacSignature(secret, input) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -313,6 +318,9 @@ async function ensureRoomSettingsTable(db) {
   } catch (_) {}
   try {
     await db.prepare("ALTER TABLE room_settings ADD COLUMN seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold'").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN lock_password_hash TEXT NOT NULL DEFAULT ''").run();
   } catch (_) {}
 }
 
@@ -1254,6 +1262,7 @@ async function handleApi(request, env, url) {
               COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled,
               COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
               COALESCE(s.seat_theme_id, 'royal-gold') AS seat_theme_id,
+              CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
               CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
          LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
@@ -1296,6 +1305,25 @@ async function handleApi(request, env, url) {
       }
       const seatCount = requestedSeatCount;
       const locked = actorIsOwner ? (body.locked === true ? 1 : 0) : Number(room.locked ?? 0);
+      const priorLock = await db.prepare(
+        "SELECT COALESCE(lock_password_hash,'') AS lock_password_hash FROM room_settings WHERE room_id=?"
+      ).bind(roomId).first();
+      let lockPasswordHash = String(priorLock?.lock_password_hash ?? "");
+      if (actorIsOwner) {
+        if (locked === 1) {
+          const suppliedPassword = String(body.lock_password ?? "").trim().slice(0, 64);
+          if (suppliedPassword) {
+            if (suppliedPassword.length < 4) {
+              return json({ ok:false,error:"room_password_too_short" }, { status:400 });
+            }
+            lockPasswordHash = await sha256Hex(suppliedPassword);
+          } else if (!lockPasswordHash) {
+            return json({ ok:false,error:"room_password_required" }, { status:400 });
+          }
+        } else {
+          lockPasswordHash = "";
+        }
+      }
       const announcement = actorIsOwner
         ? String(body.announcement ?? "").trim().slice(0, 500)
         : String(room.announcement ?? "").trim().slice(0, 500);
@@ -1344,10 +1372,10 @@ async function handleApi(request, env, url) {
         db.prepare("UPDATE rooms SET name = ?, seat_count = ?, locked = ?, updated_at = ? WHERE id = ?")
           .bind(name, seatCount, locked, ts, roomId),
         db.prepare(
-          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, seat_theme_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, seat_theme_id = excluded.seat_theme_id, updated_at = excluded.updated_at"
-        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, seatThemeId, ts),
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET announcement = excluded.announcement, theme_id = excluded.theme_id, group_pk_enabled = excluded.group_pk_enabled, welcome_image_key = excluded.welcome_image_key, party_mode = excluded.party_mode, seat_theme_id = excluded.seat_theme_id, lock_password_hash = excluded.lock_password_hash, updated_at = excluded.updated_at"
+        ).bind(roomId, announcement, themeId, groupPkEnabled, welcomeImageKey, partyMode, seatThemeId, lockPasswordHash, ts),
       ]);
-      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey, party_mode: partyMode, seat_theme_id: seatThemeId } });
+      return json({ ok: true, settings: { ...room, name, seat_count: seatCount, locked, announcement, theme_id: themeId, group_pk_enabled: groupPkEnabled, welcome_image_key: welcomeImageKey, party_mode: partyMode, seat_theme_id: seatThemeId, lock_password_set: lockPasswordHash ? 1 : 0 } });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
@@ -1401,7 +1429,7 @@ async function handleApi(request, env, url) {
     ).bind(roomId, ownerId, name, seatCount, ts, ts).run();
     await ensureRoomSettingsTable(db);
     await db.prepare(
-      "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, seat_theme_id, updated_at) VALUES (?, '', 'dark', 0, '', ?, 'royal-gold', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, updated_at = excluded.updated_at"
+      "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, updated_at = excluded.updated_at"
     ).bind(roomId, partyMode, ts).run();
     await db.prepare(
       "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
@@ -1418,8 +1446,12 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, userId);
+    await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
-      "SELECT owner_user_id, locked FROM rooms WHERE id = ?"
+      `SELECT r.owner_user_id,r.locked,COALESCE(s.lock_password_hash,'') AS lock_password_hash
+         FROM rooms r
+         LEFT JOIN room_settings s ON s.room_id=r.id
+        WHERE r.id=?`
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     await ensureRoomSafetyTables(db);
@@ -1430,7 +1462,18 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "room_blocked" }, { status: 403 });
     }
     if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId) {
-      return json({ ok: false, error: "room_locked" }, { status: 403 });
+      const expectedHash = String(roomAccess.lock_password_hash ?? "");
+      const suppliedPassword = String(body.password ?? "").trim().slice(0, 64);
+      if (!expectedHash) {
+        return json({ ok: false, error: "room_locked" }, { status: 403 });
+      }
+      if (!suppliedPassword) {
+        return json({ ok: false, error: "room_password_required" }, { status: 403 });
+      }
+      const suppliedHash = await sha256Hex(suppliedPassword);
+      if (suppliedHash !== expectedHash) {
+        return json({ ok: false, error: "room_password_invalid" }, { status: 403 });
+      }
     }
     const ts = now();
     await db.prepare(
