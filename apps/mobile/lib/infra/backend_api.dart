@@ -262,6 +262,14 @@ class BackendApi {
         'user_id': userId,
       });
 
+  Future<Map<String, dynamic>?> drawRoomLuckyNumber({
+    required String roomId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-number',
+      );
+
   Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
       _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
 
