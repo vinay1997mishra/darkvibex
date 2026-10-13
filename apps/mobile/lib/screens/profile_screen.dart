@@ -1079,6 +1079,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final Object _privacyScope = Object();
   Map<String, dynamic>? user;
   Map<String, dynamic> socialStats = const <String, dynamic>{};
+  List<Map<String, dynamic>> trends = const <Map<String, dynamic>>[];
   bool loading = true;
   bool isFriend = false;
   bool isFollowing = false;
@@ -1123,6 +1124,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           )
         else
           Future<bool>.value(false),
+        widget.state.backend.profileTrends(userId: targetId),
       ]);
       final friends = values[0] is List
           ? (values[0] as List).whereType<Map>().toList()
@@ -1138,6 +1140,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         stats = Map<String, dynamic>.from(values[2] as Map);
       }
       following = values[3] == true;
+      final trendRows = values[4] is List
+          ? (values[4] as List)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[];
+      trends = trendRows;
     }
 
     if (!mounted) return;
@@ -1152,6 +1161,68 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     await PrivacyScreenProtection.setProtected(
       _privacyScope,
       user?['privacy_protection_enabled'] == true,
+    );
+  }
+
+  String _trendTime(dynamic raw) {
+    final value = int.tryParse(raw?.toString() ?? '') ?? 0;
+    if (value <= 0) return '';
+    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year}';
+  }
+
+  Future<void> _showTrends() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .68,
+          child: trends.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No Trends yet.',
+                    style: TextStyle(color: TinniPalette.muted),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                  children: [
+                    const ListTile(
+                      title: Text(
+                        'Trends',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    for (final row in trends)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TinniPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(row['text']?.toString() ?? ''),
+                              const SizedBox(height: 6),
+                              Text(
+                                _trendTime(row['created_at']),
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
@@ -1299,6 +1370,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
                             ]),
                           ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: OutlinedButton.icon(
+                            onPressed: _showTrends,
+                            icon: const Icon(Icons.auto_awesome_rounded),
+                            label: Text('Trends (${trends.length})'),
+                          ),
+                        ),
                         if (!_isSelf) ...[
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
