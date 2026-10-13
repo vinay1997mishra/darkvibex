@@ -988,6 +988,8 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
+  // DarkVibeX extra: keep until the user confirms its final Tinnistar-style placement.
+  // ignore: unused_element
   Future<void> _toggleCamera() async {
     if (mySeat == null) return;
     final adapter = rtc;
@@ -3041,6 +3043,8 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  // DarkVibeX extra: keep until the user confirms its final Tinnistar-style placement.
+  // ignore: unused_element
   Future<void> _sendRoomImage() async {
     if (!widget.state.hasVipPrivilege('send_pictures')) {
       ScaffoldMessenger.of(context).showSnackBar(
