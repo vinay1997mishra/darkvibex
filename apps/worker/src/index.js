@@ -327,7 +327,66 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId).first();
 }
 
+async function ensureRoomCoreSchema(db) {
+  await ensureUsersSchema(db);
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS rooms (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      seat_count INTEGER NOT NULL DEFAULT 12,
+      locked INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (owner_user_id) REFERENCES users(id)
+    )`
+  ).run();
+
+  const roomInfo = await db.prepare("PRAGMA table_info(rooms)").all();
+  const roomColumns = new Set((roomInfo.results ?? []).map((row) => String(row.name ?? "")));
+  const roomAdditions = [
+    ["owner_user_id", "TEXT NOT NULL DEFAULT ''"],
+    ["name", "TEXT NOT NULL DEFAULT ''"],
+    ["seat_count", "INTEGER NOT NULL DEFAULT 12"],
+    ["locked", "INTEGER NOT NULL DEFAULT 0"],
+    ["created_at", "INTEGER NOT NULL DEFAULT 0"],
+    ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
+  ];
+  for (const [name, definition] of roomAdditions) {
+    if (roomColumns.has(name)) continue;
+    await db.prepare(`ALTER TABLE rooms ADD COLUMN ${name} ${definition}`).run();
+  }
+
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_members (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      seat_index INTEGER,
+      mic_muted INTEGER NOT NULL DEFAULT 1,
+      joined_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`
+  ).run();
+
+  const memberInfo = await db.prepare("PRAGMA table_info(room_members)").all();
+  const memberColumns = new Set((memberInfo.results ?? []).map((row) => String(row.name ?? "")));
+  const memberAdditions = [
+    ["seat_index", "INTEGER"],
+    ["mic_muted", "INTEGER NOT NULL DEFAULT 1"],
+    ["joined_at", "INTEGER NOT NULL DEFAULT 0"],
+    ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
+  ];
+  for (const [name, definition] of memberAdditions) {
+    if (memberColumns.has(name)) continue;
+    await db.prepare(`ALTER TABLE room_members ADD COLUMN ${name} ${definition}`).run();
+  }
+}
+
 async function ensureRoomSettingsTable(db) {
+  await ensureRoomCoreSchema(db);
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_settings (
       room_id TEXT PRIMARY KEY,
@@ -1300,7 +1359,7 @@ async function handleApi(request, env, url) {
     const viewedUserId = String(parts[2] ?? "").trim();
     await ensureVipSchema(db);
     const user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key FROM users WHERE id = ?"
+      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (user) {
       const targetVip = await getVipStatus(db, viewedUserId);
@@ -1933,18 +1992,48 @@ async function handleApi(request, env, url) {
     }
 
     const ts = now();
-    await db.batch([
-      db.prepare(
-        "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
-      ).bind(roomId, ownerId, name, seatCount, ts, ts),
-      db.prepare(
-        "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
-      ).bind(roomId, partyMode, roomMode, ts),
-      db.prepare(
-        "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
-      ).bind(roomId, ownerId, ts, ts),
-    ]);
+    try {
+      await db.batch([
+        db.prepare(
+          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
+        ).bind(roomId, ownerId, name, seatCount, ts, ts),
+        db.prepare(
+          "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
+        ).bind(roomId, partyMode, roomMode, ts),
+        db.prepare(
+          "INSERT OR REPLACE INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?)"
+        ).bind(roomId, ownerId, ts, ts),
+      ]);
+    } catch (error) {
+      console.error("Room creation storage failed", {
+        ownerId,
+        roomId,
+        seatCount,
+        roomMode,
+        error: String(error?.message ?? error),
+      });
+      return json({ ok: false, error: "room_create_storage_failed" }, { status: 503 });
+    }
     return json({ ok: true, room_id: roomId, party_mode: partyMode, room_mode: roomMode }, { status: 201 });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "delete" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (String(room.owner_user_id) !== userId) {
+      return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+    }
+    await db.batch([
+      db.prepare("DELETE FROM room_members WHERE room_id = ?").bind(roomId),
+      db.prepare("DELETE FROM room_settings WHERE room_id = ?").bind(roomId),
+      db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId),
+    ]);
+    return json({ ok: true });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "join" && request.method === "POST") {
