@@ -250,9 +250,15 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
     }
 
     const currentTime = now();
+    await db.prepare("DELETE FROM mine_email_otp_challenges WHERE expires_at <= ?").bind(currentTime).run();
+    await db.prepare("DELETE FROM mine_email_otp_limits WHERE last_sent_at <= ?")
+      .bind(currentTime - 24 * 60 * 60 * 1000).run();
     const ip = String(request.headers.get("CF-Connecting-IP") ?? "").trim();
     const limitKeys = [`user:${userId}`, `email:${email}`];
-    if (ip) limitKeys.push(`ip:${ip}`);
+    if (ip) {
+      const ipKey = await otpMac(env.SESSION_SECRET, "ip", "rate-limit", ip);
+      limitKeys.push(`ip:${ipKey}`);
+    }
     for (const limitKey of limitKeys) {
       const limit = await db.prepare(
         "SELECT window_started_at,sent_count,last_sent_at FROM mine_email_otp_limits WHERE limit_key = ?"
