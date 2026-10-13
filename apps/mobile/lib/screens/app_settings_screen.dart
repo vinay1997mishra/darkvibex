@@ -80,7 +80,7 @@ class AppSettingsScreen extends StatelessWidget {
                       context,
                       key: const Key('setting-about'),
                       icon: Icons.info_outline_rounded,
-                      title: 'About DarkVibeX',
+                      title: darkVibeXText(language, 'about_tinni'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const AboutDarkVibeXScreen(),
