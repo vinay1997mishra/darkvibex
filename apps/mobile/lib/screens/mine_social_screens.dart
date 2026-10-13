@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import 'gifts_screen.dart';
 
 class WealthLevelScreen extends StatefulWidget {
   const WealthLevelScreen({super.key, required this.state});
@@ -1149,7 +1150,9 @@ class VsScreen extends StatefulWidget {
 
 class _VsScreenState extends State<VsScreen> {
   bool loading = true;
+  bool busy = false;
   Map<String, dynamic>? vs;
+  List<Map<String, dynamic>> friends = const <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -1158,13 +1161,17 @@ class _VsScreenState extends State<VsScreen> {
   }
 
   Future<void> _load() async {
-    final value = await widget.state.backend.vsState(
+    final relation = await widget.state.backend.vsState(
       userId: widget.state.userId,
     );
-    final raw = value?['vs'];
+    final friendRows = await widget.state.backend.friends(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
+    final raw = relation?['vs'];
     setState(() {
       vs = raw is Map ? Map<String, dynamic>.from(raw) : null;
+      friends = friendRows;
       loading = false;
     });
   }
@@ -1183,36 +1190,195 @@ class _VsScreenState extends State<VsScreen> {
         : vs!['user_a_name']?.toString() ?? _rivalId();
   }
 
+  String? _rivalAvatarKey() {
+    if (vs == null) return null;
+    return vs!['user_a']?.toString() == widget.state.userId
+        ? vs!['user_b_avatar_key']?.toString()
+        : vs!['user_a_avatar_key']?.toString();
+  }
+
+  void _notice(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text.replaceAll('_', ' '))),
+    );
+  }
+
+  Future<String?> _chooseFriend() async {
+    if (friends.isEmpty) {
+      _notice('No mutual friends available for a VS challenge.');
+      return null;
+    }
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF10080A),
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+          children: [
+            const ListTile(
+              title: Text(
+                'Choose a friend to challenge',
+                style: TextStyle(
+                  color: Color(0xFFFF202D),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text(
+                'VS can only be created with a mutual friend.',
+              ),
+            ),
+            for (final friend in friends)
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: const Color(0xFF241014),
+                  backgroundImage:
+                      friend['avatar_key']?.toString().isNotEmpty == true
+                          ? NetworkImage(
+                              widget.state.backend.fileUrl(
+                                friend['avatar_key'].toString(),
+                              ),
+                              headers: widget.state.backend.fileHeaders,
+                            )
+                          : null,
+                  child: friend['avatar_key']?.toString().isNotEmpty == true
+                      ? null
+                      : const Icon(
+                          Icons.person_rounded,
+                          color: Color(0xFFFF202D),
+                        ),
+                ),
+                title: Text(
+                  friend['display_name']?.toString().trim().isNotEmpty == true
+                      ? friend['display_name'].toString()
+                      : 'User',
+                ),
+                subtitle: Text('ID ${friend['id'] ?? ''}'),
+                trailing: const Icon(
+                  Icons.bolt_rounded,
+                  color: Color(0xFFFF202D),
+                ),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  friend['id']?.toString(),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _request() async {
-    final controller = TextEditingController();
-    final id = await showDialog<String>(
+    if (busy) return;
+    final id = await _chooseFriend();
+    if (id == null || id.isEmpty || !mounted) return;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('VS Challenge'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'User ID'),
+        content: const Text(
+          'Send this friend a VS challenge? Once accepted, only VS-category gifts exchanged between this pair raise the VS level.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF202D),
+            ),
             child: const Text('Challenge'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (id == null || id.isEmpty) return;
-    await widget.state.backend.vsRequest(
-      userId: widget.state.userId,
-      targetUserId: id,
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.vsRequest(
+        userId: widget.state.userId,
+        targetUserId: id,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true) {
+        _notice(result?['error']?.toString() ?? 'VS challenge failed');
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _respond(bool accept) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.vsRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true) {
+        _notice(result?['error']?.toString() ?? 'VS response failed');
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    if (busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove VS'),
+        content: const Text(
+          'Remove this VS relation? The current rivalry level will be cleared.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF202D),
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
     );
-    await _load();
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final ok = await widget.state.backend.vsDisconnect(
+        userId: widget.state.userId,
+      );
+      if (!ok) _notice('VS could not be removed.');
+      await _load();
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _openVsGifts() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => GiftsScreen(
+          state: widget.state,
+          initialCategory: 'VS',
+        ),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   @override
@@ -1220,6 +1386,14 @@ class _VsScreenState extends State<VsScreen> {
     final relationState = vs?['state']?.toString();
     final incoming = relationState == 'pending' &&
         vs?['requested_by']?.toString() != widget.state.userId;
+    final rivalry = int.tryParse(vs?['rivalry']?.toString() ?? '') ?? 0;
+    final previous =
+        int.tryParse(vs?['previous_level_threshold']?.toString() ?? '') ?? 0;
+    final next = int.tryParse(vs?['next_level_threshold']?.toString() ?? '');
+    final progress = next == null || next <= previous
+        ? 1.0
+        : ((rivalry - previous) / (next - previous)).clamp(0.0, 1.0);
+    final avatarKey = _rivalAvatarKey();
 
     return Scaffold(
       backgroundColor: const Color(0xFF05070B),
@@ -1245,18 +1419,131 @@ class _VsScreenState extends State<VsScreen> {
               color: Color(0xFFFF202D),
             ),
           ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: busy ? null : _load,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(14),
-              children: [
-                if (vs == null)
-                  InkWell(
-                    onTap: _request,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(14),
+                children: [
+                  if (vs == null) ...[
+                    InkWell(
+                      onTap: busy ? null : _request,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFF220508),
+                              Color(0xFF05070B),
+                              Color(0xFF140306),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: const Color(0xFFFF202D),
+                          ),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.dangerous_rounded,
+                              color: Color(0xFFFF202D),
+                              size: 64,
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Add VS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              'Choose a mutual friend and send a VS challenge.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Color(0xFF9A8285)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Mutual friends',
+                      style: TextStyle(
+                        color: Color(0xFFFF202D),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (friends.isEmpty)
+                      const TinniPanel(
+                        child: Text(
+                          'No mutual friends available yet.',
+                          style: TextStyle(color: TinniPalette.muted),
+                        ),
+                      )
+                    else
+                      for (final friend in friends.take(20))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: TinniPanel(
+                            onTap: busy
+                                ? null
+                                : () async {
+                                    final id = friend['id']?.toString() ?? '';
+                                    if (id.isEmpty) return;
+                                    final result =
+                                        await widget.state.backend.vsRequest(
+                                      userId: widget.state.userId,
+                                      targetUserId: id,
+                                    );
+                                    if (result?['ok'] != true) {
+                                      _notice(
+                                        result?['error']?.toString() ??
+                                            'VS challenge failed',
+                                      );
+                                    }
+                                    await _load();
+                                  },
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.person_rounded,
+                                  color: Color(0xFFFF202D),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    friend['display_name']?.toString() ??
+                                        friend['id']?.toString() ??
+                                        'Friend',
+                                  ),
+                                ),
+                                const Text(
+                                  'Challenge',
+                                  style: TextStyle(
+                                    color: Color(0xFFFF202D),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                  ] else ...[
+                    Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
@@ -1264,141 +1551,166 @@ class _VsScreenState extends State<VsScreen> {
                           colors: [
                             Color(0xFF220508),
                             Color(0xFF05070B),
-                            Color(0xFF140306),
                           ],
                         ),
                         border: Border.all(
                           color: const Color(0xFFFF202D),
                         ),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
-                          Icon(
-                            Icons.dangerous_rounded,
-                            color: Color(0xFFFF202D),
-                            size: 64,
+                          CircleAvatar(
+                            radius: 38,
+                            backgroundColor: const Color(0xFF241014),
+                            backgroundImage:
+                                avatarKey?.isNotEmpty == true
+                                    ? NetworkImage(
+                                        widget.state.backend.fileUrl(avatarKey!),
+                                        headers:
+                                            widget.state.backend.fileHeaders,
+                                      )
+                                    : null,
+                            child: avatarKey?.isNotEmpty == true
+                                ? null
+                                : const Icon(
+                                    Icons.dangerous_rounded,
+                                    color: Color(0xFFFF202D),
+                                    size: 42,
+                                  ),
                           ),
-                          SizedBox(height: 10),
+                          const SizedBox(height: 8),
                           Text(
-                            'Add VS',
-                            style: TextStyle(
+                            _rivalName(),
+                            style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                              fontSize: 21,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
                           Text(
-                            'Choose a user ID and send a VS challenge.',
-                            style: TextStyle(color: Color(0xFF9A8285)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else ...[
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF220508),
-                          Color(0xFF05070B),
-                        ],
-                      ),
-                      border: Border.all(
-                        color: const Color(0xFFFF202D),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.dangerous_rounded,
-                          color: Color(0xFFFF202D),
-                          size: 58,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _rivalName(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          'ID ${_rivalId()} • ${relationState ?? ''}',
-                          style: const TextStyle(
-                            color: Color(0xFF9A8285),
-                          ),
-                        ),
-                        if (relationState == 'active')
-                          Text(
-                            'VS Lv.${vs?['level'] ?? 1} • Rivalry ${vs?['rivalry'] ?? 0}',
+                            'ID ${_rivalId()} • ${relationState ?? ''}',
                             style: const TextStyle(
-                              color: Color(0xFFFF202D),
-                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF9A8285),
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                  if (incoming) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              await widget.state.backend.vsRespond(
-                                userId: widget.state.userId,
-                                accept: false,
-                              );
-                              await _load();
-                            },
-                            child: const Text('Refuse'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: () async {
-                              await widget.state.backend.vsRespond(
-                                userId: widget.state.userId,
-                                accept: true,
-                              );
-                              await _load();
-                            },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFFF202D),
-                              foregroundColor: Colors.white,
+                          if (relationState == 'active') ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'VS Lv.${vs?['level'] ?? 1} • Rivalry $rivalry',
+                              style: const TextStyle(
+                                color: Color(0xFFFF202D),
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                            child: const Text('Accept'),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 7,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              next == null
+                                  ? 'Maximum configured VS level reached'
+                                  : '$rivalry / $next rivalry',
+                              style: const TextStyle(
+                                color: Color(0xFF9A8285),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (incoming) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed:
+                                  busy ? null : () => _respond(false),
+                              child: const Text('Refuse'),
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed:
+                                  busy ? null : () => _respond(true),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF202D),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Accept'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (relationState == 'pending' && !incoming) ...[
+                      const SizedBox(height: 10),
+                      const TinniPanel(
+                        child: Text(
+                          'VS challenge sent. Waiting for your friend to accept.',
+                          style: TextStyle(color: TinniPalette.muted),
                         ),
-                      ],
-                    ),
-                  ],
-                  if (relationState == 'active') ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        if (await widget.state.backend.vsDisconnect(
-                          userId: widget.state.userId,
-                        )) {
-                          await _load();
-                        }
-                      },
-                      icon: const Icon(Icons.link_off_rounded),
-                      label: const Text('Remove VS'),
-                    ),
+                      ),
+                    ],
+                    if (relationState == 'active') ...[
+                      const SizedBox(height: 12),
+                      TinniPanel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'VS Gifts',
+                              style: TextStyle(
+                                color: Color(0xFFFF202D),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Only VS-category gifts exchanged with your connected VS raise the rivalry level.',
+                              style: TextStyle(
+                                color: TinniPalette.muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: _openVsGifts,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      const Color(0xFFFF202D),
+                                ),
+                                icon:
+                                    const Icon(Icons.card_giftcard_rounded),
+                                label: const Text('Open VS Gifts'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : _disconnect,
+                        icon: const Icon(Icons.link_off_rounded),
+                        label: const Text('Remove VS'),
+                      ),
+                    ],
                   ],
                 ],
-              ],
+              ),
             ),
     );
   }
 }
+
 
 class VsRankingScreen extends StatefulWidget {
   const VsRankingScreen({super.key, required this.state});
