@@ -14,6 +14,9 @@ on:
         default: "https://darkvibex-api.mishrajii7991.workers.dev"
         type: string
 
+permissions:
+  contents: write
+
 concurrency:
   group: darkvibex-build-${{ github.ref }}
   cancel-in-progress: true
@@ -159,20 +162,23 @@ jobs:
           fi
           echo "APK_SIGNING_SHA1=$sha1"
 
-      - name: Upload debug APK
-        if: env.ANDROID_KEYSTORE_PATH == ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: DarkVibeX-live-debug-apk
-          path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload signed release APK
-        if: env.ANDROID_KEYSTORE_PATH != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: DarkVibeX-live-release-apk
-          path: apps/mobile/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          retention-days: 1
+      - name: Publish APK to rolling GitHub Release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
+            apk="apps/mobile/build/app/outputs/flutter-apk/app-release.apk"
+            asset_name="DarkVibeX-latest-release.apk"
+          else
+            apk="apps/mobile/build/app/outputs/flutter-apk/app-debug.apk"
+            asset_name="DarkVibeX-latest-debug.apk"
+          fi
+          test -f "$apk"
+          if ! gh release view darkvibex-latest >/dev/null 2>&1; then
+            gh release create darkvibex-latest               --title "DarkVibeX Latest APK"               --notes "Rolling latest APK build from main. Asset is replaced on each successful build."
+          fi
+          cp "$apk" "$RUNNER_TEMP/$asset_name"
+          gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name" --clobber
