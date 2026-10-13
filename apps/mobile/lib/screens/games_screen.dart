@@ -4,12 +4,25 @@ import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import 'fruit_party_screen.dart';
 import 'game_room_screen.dart';
-import 'local_ludo_screen.dart';
+import 'ludo_screen.dart';
 
 class GamesScreen extends StatefulWidget {
-  const GamesScreen({super.key, required this.state});
+  const GamesScreen({
+    super.key,
+    required this.state,
+    this.roomId,
+    this.roomOwnerUserId,
+    this.onToggleMic,
+    this.micOn,
+    this.hasMicSeat,
+  });
 
   final AppState state;
+  final String? roomId;
+  final String? roomOwnerUserId;
+  final Future<void> Function()? onToggleMic;
+  final bool Function()? micOn;
+  final bool Function()? hasMicSeat;
 
   @override
   State<GamesScreen> createState() => _GamesScreenState();
@@ -17,45 +30,26 @@ class GamesScreen extends StatefulWidget {
 
 class _GamesScreenState extends State<GamesScreen> {
   Future<void> _openLudo() async {
-    final count = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Free Ludo',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 6),
-              const Text('Choose players. No coins or wallet balance are used.'),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.people_alt_outlined),
-                title: const Text('2 players'),
-                subtitle: const Text('Local pass-and-play'),
-                onTap: () => Navigator.pop(sheetContext, 2),
-              ),
-              ListTile(
-                leading: const Icon(Icons.groups_2_outlined),
-                title: const Text('4 players'),
-                subtitle: const Text('Local pass-and-play'),
-                onTap: () => Navigator.pop(sheetContext, 4),
-              ),
-            ],
-          ),
+    final roomId = widget.roomId?.trim() ?? '';
+    if (roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a voice room first to play online Ludo.'),
         ),
-      ),
-    );
-    if (!mounted || count == null) return;
+      );
+      return;
+    }
     await Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => LocalLudoScreen(playerCount: count),
+        builder: (_) => LudoScreen(
+          state: widget.state,
+          roomId: roomId,
+          roomOwnerUserId: widget.roomOwnerUserId,
+          onToggleMic: widget.onToggleMic,
+          micOn: widget.micOn,
+          hasMicSeat: widget.hasMicSeat,
+        ),
       ),
     );
   }
@@ -122,7 +116,7 @@ class _GamesScreenState extends State<GamesScreen> {
                 child: ListTile(
                   leading: const Text('🎲', style: TextStyle(fontSize: 32)),
                   title: const Text('Ludo'),
-                  subtitle: const Text('Free 2-player or 4-player local game'),
+                  subtitle: const Text('Free 4-player online room game • room mic stays active'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: _openLudo,
                 ),
