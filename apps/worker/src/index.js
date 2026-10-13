@@ -292,6 +292,8 @@ async function ensureRoomSettingsTable(db) {
       group_pk_enabled INTEGER NOT NULL DEFAULT 0,
       welcome_image_key TEXT NOT NULL DEFAULT '',
       party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
+      mic_mode TEXT NOT NULL DEFAULT 'free',
+      public_screen_enabled INTEGER NOT NULL DEFAULT 1,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
@@ -428,6 +430,61 @@ async function ensureRoomSafetyTables(db) {
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
     )`
   ).run();
+}
+
+async function ensureRoomControlTables(db) {
+  await ensureRoomSettingsTable(db);
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN mic_mode TEXT NOT NULL DEFAULT 'free'").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE room_settings ADD COLUMN public_screen_enabled INTEGER NOT NULL DEFAULT 1").run();
+  } catch (_) {}
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_seat_controls (
+      room_id TEXT NOT NULL,
+      seat_index INTEGER NOT NULL,
+      locked INTEGER NOT NULL DEFAULT 0,
+      room_muted INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, seat_index),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_seat_requests (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      seat_index INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_chat_bans (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      banned_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
+async function roomModeratorState(db, roomId, userId) {
+  await ensureRoomAdminTable(db);
+  const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
+  if (!room) return { room: null, isOwner: false, isAdmin: false };
+  const admin = await db.prepare(
+    "SELECT 1 AS active FROM room_admins WHERE room_id = ? AND user_id = ?"
+  ).bind(roomId, userId).first();
+  return {
+    room,
+    isOwner: room.owner_user_id === userId,
+    isAdmin: Boolean(admin),
+  };
 }
 
 async function ensureLegalConsentTable(db) {
@@ -922,6 +979,181 @@ async function handleApi(request, env, url) {
     return json({ ok: true, amount: Number(claim.amount), coin_balance: Number(balance?.coins ?? 0) });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "controls") {
+    const roomId = parts[2];
+    await ensureRoomControlTables(db);
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const actorId = String(session.sub);
+    const membership = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, actorId).first();
+    if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    const mod = await roomModeratorState(db, roomId, actorId);
+    if (!mod.room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+
+    if (request.method === "GET") {
+      const settings = await db.prepare(
+        "SELECT COALESCE(mic_mode,'free') AS mic_mode, COALESCE(public_screen_enabled,1) AS public_screen_enabled FROM room_settings WHERE room_id = ?"
+      ).bind(roomId).first();
+      const seatControls = await db.prepare(
+        "SELECT seat_index,locked,room_muted FROM room_seat_controls WHERE room_id = ? ORDER BY seat_index"
+      ).bind(roomId).all();
+      const requests = (mod.isOwner || mod.isAdmin)
+        ? await db.prepare(
+            `SELECT q.user_id,q.seat_index,q.created_at,u.display_name,u.avatar_key
+               FROM room_seat_requests q
+               LEFT JOIN users u ON u.id=q.user_id
+              WHERE q.room_id=?
+              ORDER BY q.created_at ASC`
+          ).bind(roomId).all()
+        : { results: [] };
+      const chatBan = await db.prepare(
+        "SELECT 1 AS banned FROM room_chat_bans WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, actorId).first();
+      return json({
+        ok: true,
+        mic_mode: settings?.mic_mode ?? "free",
+        public_screen_enabled: Number(settings?.public_screen_enabled ?? 1) === 1,
+        seat_controls: seatControls.results ?? [],
+        seat_requests: requests.results ?? [],
+        chat_banned: Boolean(chatBan),
+        is_owner: mod.isOwner,
+        is_admin: mod.isAdmin,
+      });
+    }
+
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const action = String(body.action ?? "").trim();
+      if (action === "mic_mode") {
+        if (!mod.isOwner) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+        const mode = String(body.mic_mode ?? "").trim() === "apply" ? "apply" : "free";
+        await db.prepare(
+          "UPDATE room_settings SET mic_mode=?,updated_at=? WHERE room_id=?"
+        ).bind(mode, now(), roomId).run();
+        return json({ ok: true, mic_mode: mode });
+      }
+      if (action === "public_screen") {
+        if (!mod.isOwner && !mod.isAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
+        const enabled = body.enabled === true ? 1 : 0;
+        await db.prepare(
+          "UPDATE room_settings SET public_screen_enabled=?,updated_at=? WHERE room_id=?"
+        ).bind(enabled, now(), roomId).run();
+        return json({ ok: true, public_screen_enabled: Boolean(enabled) });
+      }
+      if (action === "seat_lock" || action === "seat_mute" || action === "seat_down") {
+        if (!mod.isOwner && !mod.isAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
+        const seatIndex = Number(body.seat_index);
+        const roomRow = await db.prepare("SELECT seat_count,owner_user_id FROM rooms WHERE id=?").bind(roomId).first();
+        if (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(roomRow?.seat_count ?? 0)) {
+          return json({ ok: false, error: "invalid_seat_index" }, { status: 400 });
+        }
+        if (action === "seat_lock") {
+          const locked = body.locked === true ? 1 : 0;
+          await db.prepare(
+            "INSERT INTO room_seat_controls(room_id,seat_index,locked,room_muted,updated_at) VALUES(?,?,?,0,?) ON CONFLICT(room_id,seat_index) DO UPDATE SET locked=excluded.locked,updated_at=excluded.updated_at"
+          ).bind(roomId, seatIndex, locked, now()).run();
+          return json({ ok: true, seat_index: seatIndex, locked: Boolean(locked) });
+        }
+        const occupant = await db.prepare(
+          "SELECT m.user_id, CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin FROM room_members m LEFT JOIN room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id WHERE m.room_id=? AND m.seat_index=?"
+        ).bind(roomId, seatIndex).first();
+        if (!occupant) return json({ ok: false, error: "seat_empty" }, { status: 404 });
+        if (occupant.user_id === mod.room.owner_user_id) return json({ ok: false, error: "owner_seat_protected" }, { status: 403 });
+        if (!mod.isOwner && Number(occupant.is_admin) === 1) return json({ ok: false, error: "admin_seat_protected" }, { status: 403 });
+        if (action === "seat_down") {
+          await db.prepare(
+            "UPDATE room_members SET seat_index=NULL,mic_muted=1,updated_at=? WHERE room_id=? AND user_id=?"
+          ).bind(now(), roomId, occupant.user_id).run();
+          return json({ ok: true, seat_index: seatIndex, user_id: occupant.user_id });
+        }
+        const muted = body.muted === true ? 1 : 0;
+        await db.batch([
+          db.prepare(
+            "INSERT INTO room_seat_controls(room_id,seat_index,locked,room_muted,updated_at) VALUES(?,?,0,?,?) ON CONFLICT(room_id,seat_index) DO UPDATE SET room_muted=excluded.room_muted,updated_at=excluded.updated_at"
+          ).bind(roomId, seatIndex, muted, now()),
+          db.prepare(
+            "UPDATE room_members SET mic_muted=?,updated_at=? WHERE room_id=? AND seat_index=?"
+          ).bind(muted, now(), roomId, seatIndex),
+        ]);
+        return json({ ok: true, seat_index: seatIndex, room_muted: Boolean(muted) });
+      }
+      if (action === "chat_ban") {
+        if (!mod.isOwner && !mod.isAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
+        const targetId = String(body.target_user_id ?? "").trim();
+        if (!targetId) return json({ ok: false, error: "target_required" }, { status: 400 });
+        const target = await roomModeratorState(db, roomId, targetId);
+        if (!target.room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+        if (target.isOwner || (!mod.isOwner && target.isAdmin)) {
+          return json({ ok: false, error: "moderation_target_protected" }, { status: 403 });
+        }
+        if (body.banned === true) {
+          await db.prepare(
+            "INSERT INTO room_chat_bans(room_id,user_id,banned_by,created_at) VALUES(?,?,?,?) ON CONFLICT(room_id,user_id) DO UPDATE SET banned_by=excluded.banned_by,created_at=excluded.created_at"
+          ).bind(roomId, targetId, actorId, now()).run();
+        } else {
+          await db.prepare("DELETE FROM room_chat_bans WHERE room_id=? AND user_id=?").bind(roomId,targetId).run();
+        }
+        return json({ ok: true, target_user_id: targetId, chat_banned: body.banned === true });
+      }
+      return json({ ok: false, error: "invalid_room_control_action" }, { status: 400 });
+    }
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "seat-request" && request.method === "POST") {
+    const roomId = parts[2];
+    await ensureRoomControlTables(db);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const seatIndex = Number(body.seat_index);
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?").bind(roomId,userId).first();
+    if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
+    const settings = await db.prepare("SELECT COALESCE(mic_mode,'free') AS mic_mode FROM room_settings WHERE room_id=?").bind(roomId).first();
+    if ((settings?.mic_mode ?? "free") !== "apply") return json({ ok:false,error:"mic_mode_free" }, { status:409 });
+    const roomRow = await db.prepare("SELECT seat_count FROM rooms WHERE id=?").bind(roomId).first();
+    if (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(roomRow?.seat_count ?? 0)) {
+      return json({ ok:false,error:"invalid_seat_index" }, { status:400 });
+    }
+    const locked = await db.prepare("SELECT locked FROM room_seat_controls WHERE room_id=? AND seat_index=?").bind(roomId,seatIndex).first();
+    if (Number(locked?.locked ?? 0) === 1) return json({ ok:false,error:"seat_locked" }, { status:409 });
+    const occupied = await db.prepare("SELECT 1 AS occupied FROM room_members WHERE room_id=? AND seat_index=?").bind(roomId,seatIndex).first();
+    if (occupied) return json({ ok:false,error:"seat_occupied" }, { status:409 });
+    await db.prepare(
+      "INSERT INTO room_seat_requests(room_id,user_id,seat_index,created_at) VALUES(?,?,?,?) ON CONFLICT(room_id,user_id) DO UPDATE SET seat_index=excluded.seat_index,created_at=excluded.created_at"
+    ).bind(roomId,userId,seatIndex,now()).run();
+    return json({ ok:true, seat_index:seatIndex });
+  }
+
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 5 && parts[3] === "seat-request" && parts[4] === "resolve" && request.method === "POST") {
+    const roomId = parts[2];
+    await ensureRoomControlTables(db);
+    const body = await bodyJson(request);
+    const actorId = String(body.user_id ?? "").trim();
+    const targetId = String(body.target_user_id ?? "").trim();
+    const authError = await requireSession(request, env, actorId);
+    if (authError) return authError;
+    const mod = await roomModeratorState(db, roomId, actorId);
+    if (!mod.isOwner && !mod.isAdmin) return json({ ok:false,error:"room_moderator_required" }, { status:403 });
+    const requestRow = await db.prepare("SELECT seat_index FROM room_seat_requests WHERE room_id=? AND user_id=?").bind(roomId,targetId).first();
+    if (!requestRow) return json({ ok:false,error:"request_not_found" }, { status:404 });
+    if (body.approved === true) {
+      const seatIndex = Number(requestRow.seat_index);
+      const locked = await db.prepare("SELECT locked FROM room_seat_controls WHERE room_id=? AND seat_index=?").bind(roomId,seatIndex).first();
+      const occupied = await db.prepare("SELECT 1 AS occupied FROM room_members WHERE room_id=? AND seat_index=?").bind(roomId,seatIndex).first();
+      if (Number(locked?.locked ?? 0) === 1 || occupied) return json({ ok:false,error:"seat_unavailable" }, { status:409 });
+      await db.prepare(
+        "UPDATE room_members SET seat_index=?,mic_muted=1,updated_at=? WHERE room_id=? AND user_id=?"
+      ).bind(seatIndex,now(),roomId,targetId).run();
+    }
+    await db.prepare("DELETE FROM room_seat_requests WHERE room_id=? AND user_id=?").bind(roomId,targetId).run();
+    return json({ ok:true, approved:body.approved===true });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
     await ensureRoomSettingsTable(db);
@@ -1117,7 +1349,8 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureUserAllowed(db, userId);
-    const room = await db.prepare("SELECT seat_count FROM rooms WHERE id = ?").bind(roomId).first();
+    await ensureRoomControlTables(db);
+    const room = await db.prepare("SELECT seat_count,owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
       .bind(roomId, userId).first();
@@ -1125,6 +1358,26 @@ async function handleApi(request, env, url) {
     if (seatIndex != null && (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(room.seat_count))) {
       return json({ ok: false, error: "invalid_seat_index" }, { status: 400 });
     }
+    if (seatIndex != null) {
+      const seatControl = await db.prepare(
+        "SELECT locked,room_muted FROM room_seat_controls WHERE room_id=? AND seat_index=?"
+      ).bind(roomId,seatIndex).first();
+      if (Number(seatControl?.locked ?? 0) === 1) {
+        return json({ ok:false,error:"seat_locked" }, { status:409 });
+      }
+      const moderator = await roomModeratorState(db, roomId, userId);
+      const roomSettings = await db.prepare(
+        "SELECT COALESCE(mic_mode,'free') AS mic_mode FROM room_settings WHERE room_id=?"
+      ).bind(roomId).first();
+      if ((roomSettings?.mic_mode ?? "free") === "apply" && !moderator.isOwner && !moderator.isAdmin) {
+        return json({ ok:false,error:"seat_request_required" }, { status:403 });
+      }
+      if (Number(seatControl?.room_muted ?? 0) === 1) {
+        // Room moderation mute overrides a user's local unmute request.
+        body.mic_muted = true;
+      }
+    }
+    const effectiveMuted = body.mic_muted === false ? 0 : 1;
     await sampleLampMicProgress(db, roomId, now());
     const result = await db.prepare(
       `UPDATE room_members
@@ -1134,7 +1387,7 @@ async function handleApi(request, env, url) {
             SELECT 1 FROM room_members other
              WHERE other.room_id = ? AND other.seat_index = ? AND other.user_id <> ?
           ))`
-    ).bind(seatIndex, muted, now(), roomId, userId, seatIndex, roomId, seatIndex, userId).run();
+    ).bind(seatIndex, effectiveMuted, now(), roomId, userId, seatIndex, roomId, seatIndex, userId).run();
     if (Number(result.meta?.changes ?? 0) === 0) {
       const occupied = seatIndex == null ? null : await db.prepare(
         "SELECT 1 AS occupied FROM room_members WHERE room_id = ? AND seat_index = ? AND user_id <> ?"
@@ -1143,7 +1396,7 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "room_membership_required" }, { status: 403 });
     }
     if (seatIndex != null) await acceptPendingLampMicInvite(db, roomId, userId, now());
-    return json({ ok: true, seat_index: seatIndex, mic_muted: Boolean(muted) });
+    return json({ ok: true, seat_index: seatIndex, mic_muted: Boolean(effectiveMuted) });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "messages") {
@@ -1185,6 +1438,20 @@ async function handleApi(request, env, url) {
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
       ).bind(roomId, userId).first();
       if (!membership) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      await ensureRoomControlTables(db);
+      const chatBan = await db.prepare(
+        "SELECT 1 AS banned FROM room_chat_bans WHERE room_id=? AND user_id=?"
+      ).bind(roomId,userId).first();
+      if (chatBan) return json({ ok:false,error:"room_chat_banned" }, { status:403 });
+      const roomControl = await db.prepare(
+        "SELECT COALESCE(public_screen_enabled,1) AS public_screen_enabled FROM room_settings WHERE room_id=?"
+      ).bind(roomId).first();
+      if (Number(roomControl?.public_screen_enabled ?? 1) !== 1) {
+        const mod = await roomModeratorState(db, roomId, userId);
+        if (!mod.isOwner && !mod.isAdmin) {
+          return json({ ok:false,error:"public_screen_owner_admin_only" }, { status:403 });
+        }
+      }
       const textValue = String(body.text ?? "").trim().slice(0, 500);
       const imageKey = String(body.image_key ?? "").trim();
       if (!userId || (!textValue && !imageKey)) return json({ ok: false, error: "message_required" }, { status: 400 });
@@ -1216,6 +1483,7 @@ async function handleApi(request, env, url) {
     if (request.method === "GET") {
       await ensureVipSchema(db);
       await ensureCosmeticsSchema(db);
+      await ensureRoomControlTables(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
@@ -1238,12 +1506,14 @@ async function handleApi(request, env, url) {
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
                 CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
-                CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin
+                CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin,
+                CASE WHEN cb.user_id IS NULL THEN 0 ELSE 1 END AS chat_banned
            FROM room_members m
            LEFT JOIN users u ON u.id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN rooms r ON r.id = m.room_id
            LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
+           LEFT JOIN room_chat_bans cb ON cb.room_id = m.room_id AND cb.user_id = m.user_id
           WHERE m.room_id = ?
           ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
                    active_vip_level DESC,
