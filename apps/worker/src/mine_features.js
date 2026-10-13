@@ -1,6 +1,31 @@
 import { getIdLevelStatus } from "./id_level.js";
 import { getVipStatus } from "./vip_store.js";
 
+const otpMac = async (secret, userId, email, code) => {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`darkvibex-email-otp:${userId}:${email}:${code}`),
+  );
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const constantTimeEqual = (left, right) => {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+};
+
 const ensureProfileFields = async (db) => {
   const rows = await db.prepare("PRAGMA table_info(users)").all();
   const columns = new Set((rows.results ?? []).map((row) => String(row.name)));
@@ -23,6 +48,20 @@ const ensureMineTables = async (db) => {
     created_at INTEGER NOT NULL,
     PRIMARY KEY (provider, subject),
     UNIQUE (user_id, provider)
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS mine_email_otp_challenges (
+    user_id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    code_mac TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sent_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS mine_email_otp_limits (
+    limit_key TEXT PRIMARY KEY,
+    window_started_at INTEGER NOT NULL,
+    sent_count INTEGER NOT NULL DEFAULT 0,
+    last_sent_at INTEGER NOT NULL
   )`).run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS user_follows (
     follower_user_id TEXT NOT NULL,
@@ -184,6 +223,123 @@ export async function handleMineFeatureApi({ request, env, url, db, requireSessi
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    const result = await db.prepare(
+      "SELECT provider,subject,email,created_at FROM account_identities WHERE user_id = ? ORDER BY created_at"
+    ).bind(userId).all();
+    return json({ ok: true, identities: result.results ?? [] });
+  }
+
+  if (path === "/api/mine/account-identities/email-otp/request" && request.method === "POST") {
+    const body = await request.json();
+    const userId = String(body.user_id ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return json({ ok: false, error: "invalid_email" }, { status: 400 });
+    }
+    const from = String(env.MINE_OTP_FROM_EMAIL ?? "").trim();
+    if (!env.EMAIL?.send || !from || !env.SESSION_SECRET) {
+      return json({ ok: false, error: "email_otp_not_configured" }, { status: 503 });
+    }
+    const linked = await db.prepare(
+      "SELECT user_id FROM account_identities WHERE provider = 'email' AND subject = ?"
+    ).bind(email).first();
+    if (linked && String(linked.user_id) !== userId) {
+      return json({ ok: false, error: "email_already_linked" }, { status: 409 });
+    }
+
+    const currentTime = now();
+    const ip = String(request.headers.get("CF-Connecting-IP") ?? "").trim();
+    const limitKeys = [`user:${userId}`, `email:${email}`];
+    if (ip) limitKeys.push(`ip:${ip}`);
+    for (const limitKey of limitKeys) {
+      const limit = await db.prepare(
+        "SELECT window_started_at,sent_count,last_sent_at FROM mine_email_otp_limits WHERE limit_key = ?"
+      ).bind(limitKey).first();
+      if (limit && currentTime - Number(limit.last_sent_at) < 60_000) {
+        return json({ ok: false, error: "otp_cooldown", retry_after_seconds: 60 }, { status: 429 });
+      }
+      if (limit && currentTime - Number(limit.window_started_at) < 60 * 60 * 1000 &&
+          Number(limit.sent_count) >= 5) {
+        return json({ ok: false, error: "otp_rate_limited" }, { status: 429 });
+      }
+    }
+    for (const limitKey of limitKeys) {
+      await db.prepare(`INSERT INTO mine_email_otp_limits
+        (limit_key,window_started_at,sent_count,last_sent_at) VALUES (?,?,1,?)
+        ON CONFLICT(limit_key) DO UPDATE SET
+          sent_count=CASE WHEN mine_email_otp_limits.window_started_at <= ? THEN 1
+                          ELSE mine_email_otp_limits.sent_count + 1 END,
+          window_started_at=CASE WHEN mine_email_otp_limits.window_started_at <= ?
+                                 THEN excluded.window_started_at
+                                 ELSE mine_email_otp_limits.window_started_at END,
+          last_sent_at=excluded.last_sent_at`)
+        .bind(limitKey, currentTime, currentTime, currentTime - 60 * 60 * 1000,
+          currentTime - 60 * 60 * 1000).run();
+    }
+
+    const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, "0");
+    const codeMac = await otpMac(env.SESSION_SECRET, userId, email, code);
+    await db.prepare(`INSERT INTO mine_email_otp_challenges
+      (user_id,email,code_mac,expires_at,attempts,sent_at) VALUES (?,?,?,?,0,?)
+      ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,code_mac=excluded.code_mac,
+        expires_at=excluded.expires_at,attempts=0,sent_at=excluded.sent_at`)
+      .bind(userId, email, codeMac, currentTime + 10 * 60 * 1000, currentTime).run();
+    try {
+      await env.EMAIL.send({
+        from,
+        to: email,
+        subject: "Your DarkVibeX verification code",
+        text: `Your DarkVibeX email verification code is ${code}. It expires in 10 minutes. If you did not request this code, ignore this email.`,
+      });
+    } catch (_) {
+      await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
+      return json({ ok: false, error: "otp_email_send_failed" }, { status: 503 });
+    }
+    return json({ ok: true, expires_in_seconds: 600 });
+  }
+
+  if (path === "/api/mine/account-identities/email-otp/verify" && request.method === "POST") {
+    const body = await request.json();
+    const userId = String(body.user_id ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const code = String(body.code ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || !/^\d{6}$/.test(code)) {
+      return json({ ok: false, error: "invalid_otp_request" }, { status: 400 });
+    }
+    const challenge = await db.prepare(
+      "SELECT email,code_mac,expires_at,attempts FROM mine_email_otp_challenges WHERE user_id = ?"
+    ).bind(userId).first();
+    if (!challenge || String(challenge.email) !== email || Number(challenge.expires_at) <= now()) {
+      if (challenge && Number(challenge.expires_at) <= now()) {
+        await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
+      }
+      return json({ ok: false, error: "invalid_or_expired_otp" }, { status: 400 });
+    }
+    if (Number(challenge.attempts) >= 5) {
+      await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
+      return json({ ok: false, error: "otp_attempts_exceeded" }, { status: 429 });
+    }
+    const suppliedMac = await otpMac(env.SESSION_SECRET ?? "", userId, email, code);
+    if (!constantTimeEqual(String(challenge.code_mac), suppliedMac)) {
+      await db.prepare("UPDATE mine_email_otp_challenges SET attempts = attempts + 1 WHERE user_id = ?")
+        .bind(userId).run();
+      return json({ ok: false, error: "invalid_or_expired_otp" }, { status: 400 });
+    }
+    const existing = await db.prepare(
+      "SELECT user_id FROM account_identities WHERE provider = 'email' AND subject = ?"
+    ).bind(email).first();
+    if (existing && String(existing.user_id) !== userId) {
+      await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
+      return json({ ok: false, error: "email_already_linked" }, { status: 409 });
+    }
+    await db.prepare(`INSERT OR IGNORE INTO account_identities
+      (user_id,provider,subject,email,created_at) VALUES (?,'email',?,?,?)`)
+      .bind(userId, email, email, now()).run();
+    await db.prepare("DELETE FROM mine_email_otp_challenges WHERE user_id = ?").bind(userId).run();
     const result = await db.prepare(
       "SELECT provider,subject,email,created_at FROM account_identities WHERE user_id = ? ORDER BY created_at"
     ).bind(userId).all();
