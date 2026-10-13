@@ -204,6 +204,7 @@ class BackendApi {
     String themeId = 'dark',
     bool groupPkEnabled = false,
     String welcomeImageKey = '',
+    String partyMode = 'Friends-making Party',
   }) async {
     final value = await _json(
       'POST',
@@ -217,6 +218,7 @@ class BackendApi {
         'theme_id': themeId,
         'group_pk_enabled': groupPkEnabled,
         'welcome_image_key': welcomeImageKey,
+        'party_mode': partyMode,
       },
     );
     return value?['ok'] == true;
@@ -254,6 +256,7 @@ class BackendApi {
     required String ownerName,
     required String name,
     required int seatCount,
+    String partyMode = 'Friends-making Party',
   }) async {
     final value = await _json(
       'POST',
@@ -263,6 +266,7 @@ class BackendApi {
         'owner_name': ownerName,
         'name': name,
         'seat_count': seatCount,
+        'party_mode': partyMode,
       },
     );
     return value?['room_id']?.toString();
