@@ -61,26 +61,17 @@ export async function ensureRoleWallet(db,userId,walletType,ts=Date.now()){
 export async function roleWalletDetail(db,userId,walletType,limit=200,ts=Date.now()){
   const wallet=await ensureRoleWallet(db,userId,walletType,ts);
   const rows=await db.prepare(
-    `SELECT id,kind,coin_amount,usd_cents_amount,coin_balance_after,usd_cents_after,
+    `SELECT id,kind,coin_amount,coin_balance_after,
             counterparty_user_id,reference_id,created_at
        FROM role_wallet_ledger
       WHERE user_id=? AND wallet_type=?
       ORDER BY created_at DESC LIMIT ?`
   ).bind(userId,walletType,Math.max(1,Math.min(500,Number(limit)||200))).all();
-  const withdrawals=await db.prepare(
-    `SELECT id,destination_type,destination_value,amount_usd_cents,status,created_at
-       FROM role_wallet_withdrawals
-      WHERE user_id=? AND wallet_type=?
-      ORDER BY created_at DESC LIMIT 100`
-  ).bind(userId,walletType).all();
   return {
     wallet_type:walletType,
     balance_coins:Number(wallet?.balance_coins ?? 0),
-    total_usd_cents:Number(wallet?.usd_cents ?? 0),
     credential_set:Boolean(wallet?.credential_hash),
-    minimum_transfer_usd_cents:walletType==="coin_seller"?30000:100000,
     transactions:rows.results ?? [],
-    withdrawals:withdrawals.results ?? [],
   };
 }
 
@@ -150,47 +141,6 @@ export async function transferRoleCoins(db,{
     sender_role_coin_balance:after,
     receiver_coin_balance:receiverAfter,
   };
-}
-
-export async function requestRoleDollarWithdrawal(db,{
-  userId,
-  walletType,
-  destinationType,
-  destinationValue="",
-  amountUsdCents,
-  credentialHash,
-  ts=Date.now(),
-}){
-  const amount=Number(amountUsdCents);
-  const minimum=walletType==="coin_seller"?30000:100000;
-  if(!Number.isSafeInteger(amount)||amount<minimum) throw new Error("minimum_usd_not_met");
-  if(!["company","crypto_usdt"].includes(destinationType)) throw new Error("invalid_destination");
-  if(destinationType==="crypto_usdt"&&!String(destinationValue).trim()) throw new Error("usdt_address_required");
-  const wallet=await verifyRoleWalletCredential(db,userId,walletType,credentialHash,ts);
-  if(Number(wallet.usd_cents ?? 0)<amount) throw new Error("insufficient_usd_balance");
-  const id=crypto.randomUUID();
-  const usdAfter=Number(wallet.usd_cents)-amount;
-  await db.batch([
-    db.prepare(
-      "UPDATE role_wallets SET usd_cents=?,updated_at=? WHERE user_id=? AND wallet_type=? AND usd_cents>=?"
-    ).bind(usdAfter,ts,userId,walletType,amount),
-    db.prepare(
-      "INSERT INTO role_wallet_withdrawals(id,user_id,wallet_type,destination_type,destination_value,amount_usd_cents,status,created_at) VALUES(?,?,?,?,?,?,'pending',?)"
-    ).bind(id,userId,walletType,destinationType,String(destinationValue).trim(),amount,ts),
-    db.prepare(
-      `INSERT INTO role_wallet_ledger(
-        id,user_id,wallet_type,kind,coin_amount,usd_cents_amount,
-        coin_balance_after,usd_cents_after,counterparty_user_id,reference_id,created_at
-      ) VALUES(?,?,?,?,0,?,
-        (SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?),
-        ?,NULL,?,?)`
-    ).bind(
-      crypto.randomUUID(),userId,walletType,
-      destinationType==="company"?"usd_to_company":"usd_to_usdt",
-      -amount,userId,walletType,usdAfter,id,ts,
-    ),
-  ]);
-  return {withdrawal_id:id,usd_cents_after:usdAfter,status:"pending"};
 }
 
 export async function adjustRoleWallet(db,{
