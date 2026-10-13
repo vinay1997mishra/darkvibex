@@ -15,6 +15,7 @@ class RoomSummary {
     this.seatCount = 12,
     this.avatarKey,
     this.partyMode = 'Friends-making Party',
+    this.roomMode = 'voice',
   });
 
   final String id;
@@ -25,6 +26,7 @@ class RoomSummary {
   final int seatCount;
   final String? avatarKey;
   final String partyMode;
+  final String roomMode;
 }
 
 class DirectMessage {
@@ -340,6 +342,7 @@ class AppState extends ChangeNotifier {
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
               partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
+              roomMode: row['room_mode']?.toString() ?? 'voice',
             )));
     }
 
@@ -361,6 +364,7 @@ class AppState extends ChangeNotifier {
               seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
               avatarKey: row['avatar_key']?.toString(),
               partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
+              roomMode: row['room_mode']?.toString() ?? 'voice',
             )));
     }
     if (notify) notifyListeners();
@@ -636,6 +640,7 @@ class AppState extends ChangeNotifier {
       id: room.id, name: room.name, ownerName: room.ownerName,
       ownerUserId: room.ownerUserId, online: room.online,
       seatCount: room.seatCount, avatarKey: key, partyMode: room.partyMode,
+      roomMode: room.roomMode,
     );
     notifyListeners();
   }
@@ -644,6 +649,7 @@ class AppState extends ChangeNotifier {
     String name, {
     int seatCount = 12,
     String partyMode = 'Friends-making Party',
+    String roomMode = 'voice',
   }) async {
     final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
     final allowedSeats =
@@ -657,6 +663,7 @@ class AppState extends ChangeNotifier {
       name: cleanName,
       seatCount: allowedSeats,
       partyMode: partyMode,
+      roomMode: roomMode,
     );
     if (roomId == null || roomId.isEmpty) {
       throw StateError('The server could not create this room.');
@@ -670,6 +677,7 @@ class AppState extends ChangeNotifier {
       online: 1,
       seatCount: allowedSeats,
       partyMode: partyMode,
+      roomMode: roomMode,
     );
     rooms.insert(0, room);
     notifyListeners();
