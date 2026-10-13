@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
 import '../vip/vip_policy.dart';
 import 'messages_screen.dart';
@@ -100,37 +101,44 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ],
         ),
-        child: NavigationBar(
-          selectedIndex: index,
-          backgroundColor: Colors.transparent,
-          indicatorColor: TinniPalette.gold.withValues(alpha: .12),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          onDestinationSelected: (value) => setState(() {
-            index = value;
-            visited.add(value);
-          }),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.groups_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.groups_rounded),
-              label: 'Party',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.explore_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.explore_rounded),
-              label: 'Discover',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.mail_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.mail_rounded),
-              label: 'Message',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_rounded),
-              selectedIcon: TinniGlowIcon(icon: Icons.person_rounded),
-              label: 'Mine',
-            ),
-          ],
+        child: ValueListenableBuilder<String>(
+          valueListenable: widget.state.languagePreference,
+          builder: (context, language, _) => NavigationBar(
+            selectedIndex: index,
+            backgroundColor: Colors.transparent,
+            indicatorColor: TinniPalette.gold.withValues(alpha: .12),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            onDestinationSelected: (value) => setState(() {
+              index = value;
+              visited.add(value);
+            }),
+            destinations: [
+              NavigationDestination(
+                icon: const Icon(Icons.groups_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.groups_rounded),
+                label: darkVibeXText(language, 'party'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.explore_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.explore_rounded),
+                label: darkVibeXText(language, 'discover'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.mail_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.mail_rounded),
+                label: darkVibeXText(language, 'message'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.person_rounded),
+                selectedIcon:
+                    const TinniGlowIcon(icon: Icons.person_rounded),
+                label: darkVibeXText(language, 'mine'),
+              ),
+            ],
+          ),
         ),
       ),
     );
