@@ -131,6 +131,24 @@ class BackendApi {
     return (value!['identities'] as List).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
+  Future<Map<String, dynamic>?> requestMineEmailOtp({
+    required String userId,
+    required String email,
+  }) => _json('POST', '/api/mine/account-identities/email-otp/request', body: {
+        'user_id': userId,
+        'email': email,
+      }, returnErrorBody: true);
+
+  Future<Map<String, dynamic>?> verifyMineEmailOtp({
+    required String userId,
+    required String email,
+    required String code,
+  }) => _json('POST', '/api/mine/account-identities/email-otp/verify', body: {
+        'user_id': userId,
+        'email': email,
+        'code': code,
+      }, returnErrorBody: true);
+
   Future<Map<String, dynamic>?> mineWealth({required String userId}) =>
       _json('GET', '/api/mine/wealth?user_id=${Uri.encodeQueryComponent(userId)}');
 
