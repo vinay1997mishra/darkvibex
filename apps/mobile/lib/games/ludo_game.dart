@@ -9,6 +9,7 @@ class LudoToken {
 
   final LudoPlayer player;
   final int index;
+  final int progress;
 
   bool get isHome => progress < 0;
   bool get isFinished => progress >= 57;
