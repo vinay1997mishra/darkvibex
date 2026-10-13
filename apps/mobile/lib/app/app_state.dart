@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../infra/backend_api.dart';
 import '../vip/vip_policy.dart';
@@ -47,6 +48,12 @@ class DirectMessage {
 
 class AppState extends ChangeNotifier {
   AppState();
+
+  static const String _sessionTokenKey = 'darkvibex.session_token';
+  static const String _sessionProviderKey = 'darkvibex.session_provider';
+  static const String _sessionUserIdKey = 'darkvibex.session_user_id';
+  static const String _sessionDisplayNameKey = 'darkvibex.session_display_name';
+  static const String _sessionDateOfBirthKey = 'darkvibex.session_date_of_birth';
 
   final BackendApi backend = const BackendApi();
 
@@ -117,6 +124,9 @@ class AppState extends ChangeNotifier {
         return;
       }
 
+      final restored = await _restorePersistedSession();
+      if (restored) return;
+
       if (await _ensureGoogleSignInInitialized()) {
         final lightweight =
             GoogleSignIn.instance.attemptLightweightAuthentication();
@@ -134,13 +144,87 @@ class AppState extends ChangeNotifier {
         '${error.code} ${error.description ?? ''}',
       );
     } catch (error) {
-      googleSignInReady = false;
-      authError = 'Google Login could not be initialized. Please try again.';
-      debugPrint('DarkVibeX Google Sign-In initialization failed: $error');
+      authError = 'DarkVibeX could not restore your session. Please try again.';
+      debugPrint('DarkVibeX session restore failed: $error');
     } finally {
       isInitializing = false;
       notifyListeners();
     }
+  }
+
+  Future<bool> _restorePersistedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_sessionTokenKey)?.trim() ?? '';
+    final provider = prefs.getString(_sessionProviderKey)?.trim() ?? '';
+    final savedUserId = prefs.getString(_sessionUserIdKey)?.trim() ?? '';
+    final savedDisplayName =
+        prefs.getString(_sessionDisplayNameKey)?.trim() ?? 'DarkVibeX User';
+
+    if (savedUserId.isEmpty || provider.isEmpty) return false;
+
+    if (token.isNotEmpty) {
+      BackendApi.sessionToken = token;
+      final profile = await backend.userProfile(userId: savedUserId);
+      final user = profile?['user'];
+      if (profile?['ok'] == true && user is Map) {
+        final restoredSession = <String, dynamic>{
+          'token': token,
+          'user': Map<String, dynamic>.from(user),
+        };
+        return _applySession(
+          restoredSession,
+          provider: provider,
+          notify: false,
+        );
+      }
+      BackendApi.sessionToken = null;
+    }
+
+    // Guest users should keep the same account across normal app restarts.
+    // If the saved JWT expired, silently mint a new one for the same guest ID.
+    if (provider == 'guest') {
+      final refreshed = await backend.startGuestSession(
+        userId: savedUserId,
+        displayName: savedDisplayName,
+      );
+      if (refreshed?['token'] != null && refreshed?['user'] is Map) {
+        return _applySession(
+          refreshed,
+          provider: 'guest',
+          notify: false,
+        );
+      }
+    }
+
+    await _clearPersistedSession();
+    return false;
+  }
+
+  Future<void> _persistSession() async {
+    final token = sessionToken?.trim() ?? '';
+    final provider = authProvider?.trim() ?? '';
+    if (token.isEmpty || provider.isEmpty || userId.trim().isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sessionTokenKey, token);
+    await prefs.setString(_sessionProviderKey, provider);
+    await prefs.setString(_sessionUserIdKey, userId);
+    await prefs.setString(_sessionDisplayNameKey, displayName);
+    final dob = dateOfBirth?.trim() ?? '';
+    if (dob.isEmpty) {
+      await prefs.remove(_sessionDateOfBirthKey);
+    } else {
+      await prefs.setString(_sessionDateOfBirthKey, dob);
+    }
+  }
+
+  Future<void> _clearPersistedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sessionTokenKey);
+    await prefs.remove(_sessionProviderKey);
+    await prefs.remove(_sessionUserIdKey);
+    await prefs.remove(_sessionDisplayNameKey);
+    await prefs.remove(_sessionDateOfBirthKey);
   }
 
   Future<bool> signInWithGoogle() async {
@@ -314,10 +398,15 @@ class AppState extends ChangeNotifier {
     displayName = user['display_name']?.toString() ?? displayName;
     avatarKey = user['avatar_key']?.toString();
     dateOfBirth = user['date_of_birth']?.toString();
+    if (dateOfBirth == null || dateOfBirth!.trim().isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      dateOfBirth = prefs.getString(_sessionDateOfBirthKey);
+    }
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
 
+    await _persistSession();
     await _loadRemoteData();
     if (notify) notifyListeners();
     return true;
@@ -392,6 +481,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     }
 
+    await _clearPersistedSession();
     sessionToken = null;
     BackendApi.sessionToken = null;
     authProvider = null;
