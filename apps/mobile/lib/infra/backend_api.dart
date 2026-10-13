@@ -156,6 +156,16 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  Future<Map<String, dynamic>?> bindGoogleIdentity({
+    required String idToken,
+  }) =>
+      _json(
+        'POST',
+        '/api/account/bind-google',
+        body: <String, dynamic>{'id_token': idToken},
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> startGuestSession({
     required String userId,
     required String displayName,
