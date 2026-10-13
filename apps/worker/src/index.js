@@ -49,6 +49,8 @@ import {
   vsDisconnect,
   vsRanking,
   recordVsGiftProgress,
+  profileTrends,
+  addProfileTrend,
   officialNotices,
   activityFeed,
 } from "./tinni_social.js";
