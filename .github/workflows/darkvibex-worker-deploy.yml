@@ -44,7 +44,9 @@ jobs:
 
       - name: Verify Worker tests
         working-directory: apps/worker
-        run: npm test
+        run: |
+          npm run check
+          npm test
 
       - name: Deploy Worker
         working-directory: apps/worker
