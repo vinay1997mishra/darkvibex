@@ -561,6 +561,20 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<List<Map<String, dynamic>>> rechargeProviders() async {
+    final value = await _json(
+      'GET',
+      '/api/recharge-providers',
+      returnErrorBody: true,
+    );
+    final rows = value?['providers'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
   Future<List<Map<String, dynamic>>> inbox({
     required String userId,
   }) async {
