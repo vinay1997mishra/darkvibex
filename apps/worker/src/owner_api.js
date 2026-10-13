@@ -1,5 +1,6 @@
 import { normalizeRole } from "./role_policy.js";
 import { ensureSupportSchema } from "./support_store.js";
+import { adjustRoleWallet, roleWalletDetail } from "./role_wallets.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -294,7 +295,18 @@ async function getUserDetails(db, userId) {
        FROM room_members m LEFT JOIN rooms r ON r.id = m.room_id
       WHERE m.user_id = ? ORDER BY m.updated_at DESC LIMIT 1`
   ).bind(userId).first();
-  return { ...user, wallet_ledger: ledger.results ?? [], current_room: room ?? null };
+  const role_wallets = {};
+  if (user.role === "coin_seller" || user.role === "merchant") {
+    try {
+      role_wallets[user.role] = await roleWalletDetail(db,userId,user.role,25,now());
+    } catch (_) {}
+  }
+  return {
+    ...user,
+    wallet_ledger: ledger.results ?? [],
+    role_wallets,
+    current_room: room ?? null,
+  };
 }
 
 async function listRooms(db, query = "") {
@@ -393,25 +405,71 @@ async function handleUsers(request, db, actor, url, parts) {
   if (parts[4] === "wallet" && request.method === "POST") {
     requirePermission(actor, "wallet.write");
     const body = await bodyJson(request);
-    const current = await db.prepare("SELECT coins, diamonds FROM users WHERE id = ?").bind(userId).first();
-    if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
-    const coinDelta = clampInt(body.coin_delta ?? 0, -900000000000000, 900000000000000, 0);
-    const diamondDelta = clampInt(body.diamond_delta ?? 0, -900000000000000, 900000000000000, 0);
-    const nextCoins = Number(current.coins ?? 0) + coinDelta;
-    const nextDiamonds = Number(current.diamonds ?? 0) + diamondDelta;
-    if (!Number.isSafeInteger(nextCoins) || !Number.isSafeInteger(nextDiamonds) || nextCoins < 0 || nextDiamonds < 0) {
-      return json({ ok: false, error: "invalid_balance_change" }, { status: 400 });
+    const current = await db.prepare("SELECT role,coins,diamonds FROM users WHERE id=?")
+      .bind(userId).first();
+    if (!current) return json({ ok:false,error:"not_found" }, { status:404 });
+
+    const coinDelta=clampInt(body.coin_delta ?? 0,-900000000000000,900000000000000,0);
+    const diamondDelta=clampInt(body.diamond_delta ?? 0,-900000000000000,900000000000000,0);
+    const nextCoins=Number(current.coins ?? 0)+coinDelta;
+    const nextDiamonds=Number(current.diamonds ?? 0)+diamondDelta;
+    if(!Number.isSafeInteger(nextCoins)||!Number.isSafeInteger(nextDiamonds)||
+       nextCoins<0||nextDiamonds<0){
+      return json({ok:false,error:"invalid_balance_change"},{status:400});
     }
-    const ts = now();
-    const statements = [db.prepare("UPDATE users SET coins = ?, diamonds = ?, updated_at = ? WHERE id = ?").bind(nextCoins, nextDiamonds, ts, userId)];
-    if (coinDelta !== 0) {
-      statements.push(db.prepare(
-        "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, 'owner_adjustment', ?, ?, ?, ?)"
-      ).bind(id(), userId, coinDelta, nextCoins, actor.id, ts));
+
+    const ts=now();
+    const statements=[
+      db.prepare("UPDATE users SET coins=?,diamonds=?,updated_at=? WHERE id=?")
+        .bind(nextCoins,nextDiamonds,ts,userId),
+    ];
+    if(coinDelta!==0){
+      statements.push(
+        db.prepare(
+          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?,?)"
+        ).bind(id(),userId,coinDelta,nextCoins,actor.id,ts)
+      );
     }
     await db.batch(statements);
-    await audit(db, actor, "wallet_adjustment", "user", userId, `coins=${coinDelta}; diamonds=${diamondDelta}`);
-    return json({ ok: true, coins: nextCoins, diamonds: nextDiamonds });
+
+    let roleWallet=null;
+    const walletType=String(body.role_wallet_type ?? "").trim();
+    if(walletType){
+      if(walletType!=="coin_seller"&&walletType!=="merchant"){
+        return json({ok:false,error:"invalid_role_wallet"},{status:400});
+      }
+      const roleCoinDelta=clampInt(
+        body.role_coin_delta ?? 0,
+        -900000000000000,900000000000000,0,
+      );
+      const roleUsdDelta=clampInt(
+        body.role_usd_cents_delta ?? 0,
+        -900000000000000,900000000000000,0,
+      );
+      try{
+        roleWallet=await adjustRoleWallet(db,{
+          userId,
+          walletType,
+          coinDelta:roleCoinDelta,
+          usdCentsDelta:roleUsdDelta,
+          referenceId:"owner:"+actor.id,
+          ts,
+        });
+      }catch(error){
+        return json({ok:false,error:String(error?.message ?? error)},{status:400});
+      }
+    }
+
+    await audit(
+      db,actor,"wallet_adjustment","user",userId,
+      `coins=${coinDelta}; diamonds=${diamondDelta}; role=${walletType || "-"}`
+    );
+    return json({
+      ok:true,
+      coins:nextCoins,
+      diamonds:nextDiamonds,
+      role_wallet:roleWallet,
+    });
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
