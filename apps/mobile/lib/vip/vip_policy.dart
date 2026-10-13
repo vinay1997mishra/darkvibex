@@ -79,7 +79,7 @@ class VipPolicy {
     VipPrivilege(id: 'exclusive_gifts', title: 'Exclusive Gifts', description: 'Send special VIP gifts with exclusive effects.', minLevel: 3),
     VipPrivilege(id: 'red_envelope', title: 'Message Red Envelope', description: 'Send red-envelope rewards in private messages.', minLevel: 6),
     VipPrivilege(id: 'dynamic_avatar', title: 'Dynamic Avatar', description: 'Use an animated/dynamic avatar.', minLevel: 7),
-    VipPrivilege(id: 'many_seats', title: 'Room With Many Seats', description: 'VIP7: up to 20 seats. VIP10+: up to 30 seats.', minLevel: 7),
+    VipPrivilege(id: 'many_seats', title: 'Room With Many Seats', description: 'DarkVibeX rooms use the Tinnistar 8–42 seat layouts.', minLevel: 7),
     VipPrivilege(id: 'hide_country', title: 'Hide Country', description: 'Hide country information from the profile.', minLevel: 8),
     VipPrivilege(id: 'nickname_light', title: 'Nickname Light Effect', description: 'Exclusive nickname light effect from VIP8 through VIP17.', minLevel: 8, maxLevel: 17),
     VipPrivilege(id: 'disable_say_hi', title: 'Disable Say Hi', description: 'Prevent other users from initiating Say Hi with you.', minLevel: 8),
@@ -119,11 +119,7 @@ class VipPolicy {
   static int friendBonus(int level) => 0;
 
 
-  static int maxRoomSeats(int level) {
-    if (level >= 10) return 30;
-    if (level >= 7) return 20;
-    return 12;
-  }
+  static int maxRoomSeats(int level) => 42;
 
   static int messageRetentionDays(int level) {
     if (level >= 12) return 120;
