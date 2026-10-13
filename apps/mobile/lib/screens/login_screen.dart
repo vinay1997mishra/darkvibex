@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
 import 'reset_password_screen.dart';
 
@@ -21,6 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _picker = ImagePicker();
 
   DateTime? _dateOfBirth;
+  Country? _selectedCountry;
+  String _selectedLanguage = 'English';
   Uint8List? _avatarBytes;
   String _avatarExtension = 'jpg';
   String _avatarContentType = 'image/jpeg';
@@ -121,6 +125,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _pickCountry() {
+    showCountryPicker(
+      context: context,
+      showPhoneCode: true,
+      useSafeArea: true,
+      onSelect: (country) {
+        if (!mounted) return;
+        setState(() => _selectedCountry = country);
+      },
+    );
+  }
+
   bool _validateProfile() {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -134,15 +150,32 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return false;
     }
+    if (_selectedCountry == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select your country and flag')),
+      );
+      return false;
+    }
+    if (!darkVibeXIsSupportedLanguage(_selectedLanguage)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a supported language')),
+      );
+      return false;
+    }
     return true;
   }
 
   Future<void> _finishProfile() async {
     if (mounted) setState(() => _savingProfile = true);
     try {
+      final country = _selectedCountry!;
       await state.completeLoginProfile(
         name: _nameController.text.trim(),
         dateOfBirthValue: _dobApiValue,
+        countryCodeValue: country.countryCode,
+        countryNameValue: country.name,
+        flagEmojiValue: country.flagEmoji,
+        languageValue: _selectedLanguage,
         avatarBytes: _avatarBytes,
         avatarExtension: _avatarExtension,
         avatarContentType: _avatarContentType,
@@ -533,6 +566,57 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            InkWell(
+                              key: const Key('create-id-country'),
+                              onTap: busy ? null : _pickCountry,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Country',
+                                  prefixIcon: Icon(Icons.public_rounded),
+                                  suffixIcon: Icon(Icons.arrow_drop_down_rounded),
+                                ),
+                                child: Text(
+                                  _selectedCountry == null
+                                      ? 'Choose country'
+                                      : '${_selectedCountry!.flagEmoji} ${_selectedCountry!.name}',
+                                  style: TextStyle(
+                                    color: _selectedCountry == null
+                                        ? TinniPalette.muted
+                                        : TinniPalette.cream,
+                                    fontWeight: _selectedCountry == null
+                                        ? FontWeight.w500
+                                        : FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              key: const Key('create-id-language'),
+                              initialValue: _selectedLanguage,
+                              decoration: const InputDecoration(
+                                labelText: 'Language',
+                                prefixIcon: Icon(Icons.language_rounded),
+                              ),
+                              items: darkVibeXSupportedLanguages
+                                  .map(
+                                    (language) => DropdownMenuItem<String>(
+                                      value: language,
+                                      child: Text(language),
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                              onChanged: busy
+                                  ? null
+                                  : (value) {
+                                      if (value == null) return;
+                                      setState(
+                                        () => _selectedLanguage = value,
+                                      );
+                                    },
                             ),
                           ],
                         ),
