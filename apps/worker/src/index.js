@@ -6,6 +6,7 @@ import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
+import { BASE_GIFT_CATALOG, giftById } from "./gift_catalog.js";
 import {
   roleWalletDetail,
   setRoleWalletCredential,
@@ -3885,35 +3886,76 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     const vip = await getVipStatus(db, userId, now());
-    const gifts = [
-      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0 },
-      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3 },
-      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3 },
-      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3 },
+    const darkVibeExtras = [
+      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0, category: "normal" },
+      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3, category: "exclusive" },
+      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3, category: "exclusive" },
+      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3, category: "exclusive" },
     ];
-    return json({ ok: true, gifts: gifts.filter(g => g.vip_level === 0 || (vip.active && vip.level >= g.vip_level)) });
+    await ensureCustomGiftSchema(db);
+    const custom = await db.prepare(
+      "SELECT id,name,asset_key,coin_cost FROM custom_gifts WHERE status='approved' ORDER BY updated_at DESC LIMIT 100"
+    ).all();
+    const customRows = (custom.results ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      emoji: "🎁",
+      coin_cost: Number(row.coin_cost),
+      vip_level: 0,
+      category: "custom",
+      asset_key: row.asset_key,
+    }));
+    return json({
+      ok: true,
+      gifts: [
+        ...BASE_GIFT_CATALOG,
+        ...darkVibeExtras.filter((gift) =>
+          gift.vip_level === 0 || (vip.active && vip.level >= gift.vip_level)),
+        ...customRows,
+      ],
+    });
   }
 
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
     const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
-    if (giftsFeature.enabled === false) return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
+    if (giftsFeature.enabled === false) {
+      return json({ ok: false, error: "gifts_disabled" }, { status: 403 });
+    }
     const body = await bodyJson(request);
     const sender = String(body.sender_user_id ?? "").trim();
     const receiver = String(body.receiver_user_id ?? "").trim();
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
-    const giftId = String(body.gift_id ?? "gift").trim().slice(0, 80);
-    const catalog = {
-      "basic-star": { cost: 5000, vip_level: 0 },
-      "vip-rose": { cost: 10000, vip_level: 3 },
-      "vip-crown": { cost: 50000, vip_level: 3 },
-      "vip-phoenix": { cost: 100000, vip_level: 3 },
-    };
-    const gift = catalog[giftId];
-    if (!sender || !receiver || !gift) return json({ ok: false, error: "invalid_gift" }, { status: 400 });
+    const giftId = String(body.gift_id ?? "").trim().slice(0, 100);
+    let gift = giftById(giftId);
+    if (!gift) {
+      const extras = {
+        "basic-star": { coin_cost: 5000, vip_level: 0 },
+        "vip-rose": { coin_cost: 10000, vip_level: 3 },
+        "vip-crown": { coin_cost: 50000, vip_level: 3 },
+        "vip-phoenix": { coin_cost: 100000, vip_level: 3 },
+      };
+      gift = extras[giftId] ?? null;
+    }
+    if (!gift && giftId.startsWith("custom-")) {
+      await ensureCustomGiftSchema(db);
+      const custom = await db.prepare(
+        "SELECT coin_cost FROM custom_gifts WHERE id=? AND status='approved' LIMIT 1"
+      ).bind(giftId).first();
+      if (custom) gift = { coin_cost: Number(custom.coin_cost), vip_level: 0 };
+    }
+    if (!sender || !receiver || !gift) {
+      return json({ ok: false, error: "invalid_gift" }, { status: 400 });
+    }
     const vip = await getVipStatus(db, sender, now());
-    if (gift.vip_level > 0 && (!vip.active || vip.level < gift.vip_level)) return json({ ok: false, error: "vip_required" }, { status: 403 });
-    const cost = gift.cost;
+    const requiredVip = Number(gift.vip_level ?? 0);
+    if (requiredVip > 0 && (!vip.active || vip.level < requiredVip)) {
+      return json({ ok: false, error: "vip_required" }, { status: 403 });
+    }
+    const cost = Number(gift.coin_cost ?? 0);
+    if (!Number.isSafeInteger(cost) || cost <= 0) {
+      return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
+    }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
@@ -3921,7 +3963,8 @@ async function handleApi(request, env, url) {
     const eventId = id();
     const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
     await db.batch([
-      db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?").bind(cost, now(), receiver),
+      db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?")
+        .bind(cost, now(), receiver),
       db.prepare(
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
