@@ -145,6 +145,66 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> startEmailOtp({
+    required String email,
+    String purpose = 'signup',
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/start',
+        body: <String, dynamic>{
+          'email': email,
+          'purpose': purpose,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> verifyEmailOtp({
+    required String requestId,
+    required String otp,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/verify',
+        body: <String, dynamic>{
+          'request_id': requestId,
+          'otp': otp,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> completeEmailPassword({
+    required String setupToken,
+    required String password,
+    String? displayName,
+    String? dateOfBirth,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/complete',
+        body: <String, dynamic>{
+          'setup_token': setupToken,
+          'password': password,
+          if (displayName != null) 'display_name': displayName,
+          if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> startEmailSession({
+    required String email,
+    required String password,
+  }) =>
+      _json(
+        'POST',
+        '/api/session/email/login',
+        body: <String, dynamic>{
+          'email': email,
+          'password': password,
+        },
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> startGoogleSession({
     required String idToken,
   }) =>
