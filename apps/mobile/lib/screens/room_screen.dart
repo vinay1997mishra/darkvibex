@@ -69,6 +69,7 @@ class _RoomScreenState extends State<RoomScreen> {
   late String roomName;
   late int roomSeatCount;
   bool roomLocked = false;
+  bool roomPasswordSet = false;
   bool amRoomAdmin = false;
   String roomThemeId = 'dark';
   String roomSeatThemeId = 'royal-gold';
@@ -488,6 +489,8 @@ class _RoomScreenState extends State<RoomScreen> {
       roomName = settings['name']?.toString() ?? roomName;
       roomSeatCount = int.tryParse(settings['seat_count']?.toString() ?? '') ?? roomSeatCount;
       roomLocked = settings['locked'] == true || settings['locked']?.toString() == '1';
+      roomPasswordSet = settings['lock_password_set'] == true ||
+          settings['lock_password_set']?.toString() == '1';
       roomThemeId = settings['theme_id']?.toString() ?? roomThemeId;
       roomSeatThemeId = settings['seat_theme_id']?.toString() ?? roomSeatThemeId;
       roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
@@ -503,6 +506,7 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!isRoomHost) return;
     final name = TextEditingController(text: roomName);
     final announcement = TextEditingController(text: roomAnnouncement ?? '');
+    final lockPassword = TextEditingController();
     final seatOptions = <int>[
       for (var count = 8; count <= 42; count++) count,
     ];
@@ -557,6 +561,21 @@ class _RoomScreenState extends State<RoomScreen> {
                   value: locked,
                   onChanged: (value) => setDialogState(() => locked = value),
                 ),
+                if (locked)
+                  TextField(
+                    controller: lockPassword,
+                    obscureText: true,
+                    maxLength: 64,
+                    decoration: InputDecoration(
+                      labelText: 'Room password',
+                      hintText: roomPasswordSet
+                          ? 'Leave blank to keep current password'
+                          : 'Minimum 4 characters',
+                      helperText: roomPasswordSet
+                          ? 'Enter a value only to change the password.'
+                          : 'Password is required for a newly locked room.',
+                    ),
+                  ),
                 TextField(
                   controller: announcement,
                   maxLength: 500,
@@ -656,22 +675,48 @@ class _RoomScreenState extends State<RoomScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, {
-              'name': name.text.trim(),
-              'seat_count': seatCount,
-              'locked': locked,
-              'announcement': announcement.text.trim(),
-              'theme_id': themeId,
-              'party_mode': partyMode,
-              'group_pk_enabled': pkEnabled,
-              'welcome_image_key': welcomeImageKey,
-            }), child: const Text('Save')),
+            FilledButton(
+              onPressed: () {
+                final password = lockPassword.text.trim();
+                if (locked &&
+                    !roomPasswordSet &&
+                    password.length < 4) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Room password must be at least 4 characters'),
+                    ),
+                  );
+                  return;
+                }
+                if (locked && password.isNotEmpty && password.length < 4) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Room password must be at least 4 characters'),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext, {
+                  'name': name.text.trim(),
+                  'seat_count': seatCount,
+                  'locked': locked,
+                  'lock_password': password.isEmpty ? null : password,
+                  'announcement': announcement.text.trim(),
+                  'theme_id': themeId,
+                  'party_mode': partyMode,
+                  'group_pk_enabled': pkEnabled,
+                  'welcome_image_key': welcomeImageKey,
+                });
+              },
+              child: const Text('Save'),
+            ),
           ],
         ),
       ),
     );
     name.dispose();
     announcement.dispose();
+    lockPassword.dispose();
     if (result == null || !mounted) return;
     final ok = await widget.state.backend.saveRoomSettings(
       roomId: widget.room.id,
@@ -685,6 +730,7 @@ class _RoomScreenState extends State<RoomScreen> {
       groupPkEnabled: result['group_pk_enabled'] as bool,
       welcomeImageKey: result['welcome_image_key'] as String,
       seatThemeId: roomSeatThemeId,
+      lockPassword: result['lock_password'] as String?,
     );
     if (!mounted) return;
     if (!ok) {
@@ -695,6 +741,7 @@ class _RoomScreenState extends State<RoomScreen> {
       roomName = result['name'] as String;
       roomSeatCount = result['seat_count'] as int;
       roomLocked = result['locked'] as bool;
+      roomPasswordSet = roomLocked;
       roomThemeId = result['theme_id'] as String;
       roomPartyMode = result['party_mode'] as String;
       groupPkEnabled = result['group_pk_enabled'] as bool;
@@ -753,18 +800,85 @@ class _RoomScreenState extends State<RoomScreen> {
     widget.state.setRoomAvatarKey(widget.room.id, key);
   }
 
+  Future<String?> _promptRoomPassword({bool invalid = false}) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Locked room'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            labelText: 'Room password',
+            errorText: invalid ? 'Wrong password' : null,
+          ),
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) {
+              Navigator.pop(dialogContext, value.trim());
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Enter room'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   Future<void> _connectVoice() async {
     if (!await _ensureLegalAgreement()) return;
     if (widget.state.backendConnected) {
-      final joined = await widget.state.backend.joinRoom(
+      Map<String, dynamic>? joined =
+          await widget.state.backend.joinRoomResult(
         roomId: widget.room.id,
         userId: widget.state.userId,
         displayName: widget.state.displayName,
       );
-      if (!joined) {
+      var invalidPassword = false;
+      while (mounted &&
+          joined?['ok'] != true &&
+          (joined?['error'] == 'room_password_required' ||
+              joined?['error'] == 'room_password_invalid')) {
+        final password =
+            await _promptRoomPassword(invalid: invalidPassword);
+        if (password == null || !mounted) {
+          Navigator.of(context).pop();
+          return;
+        }
+        joined = await widget.state.backend.joinRoomResult(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+          displayName: widget.state.displayName,
+          password: password,
+        );
+        invalidPassword = joined?['error'] == 'room_password_invalid';
+      }
+      if (joined?['ok'] != true) {
         if (mounted) {
+          final error = joined?['error']?.toString() ?? '';
+          final message = error == 'room_blocked'
+              ? 'You are blocked from this room'
+              : error == 'room_locked'
+                  ? 'This locked room has no usable password yet'
+                  : 'This room is unavailable';
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('This room is locked or unavailable')),
+            SnackBar(content: Text(message)),
           );
           Navigator.of(context).pop();
         }
