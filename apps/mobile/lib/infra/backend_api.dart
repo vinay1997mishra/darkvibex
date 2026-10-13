@@ -155,6 +155,9 @@ class BackendApi {
         'code': code,
       }, returnErrorBody: true);
 
+  Future<Map<String, dynamic>?> mineOverview({required String userId}) =>
+      _json('GET', '/api/mine/overview?user_id=${Uri.encodeQueryComponent(userId)}');
+
   Future<Map<String, dynamic>?> mineWealth({required String userId}) =>
       _json('GET', '/api/mine/wealth?user_id=${Uri.encodeQueryComponent(userId)}');
 
