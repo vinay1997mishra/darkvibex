@@ -689,7 +689,7 @@ async function vsThresholds(db) {
       ? configured
       : Array.isArray(legacy)
           ? legacy.map((value) => Number(value) * 100)
-          : <dynamic>[20000000];
+          : [20000000];
   return [...new Set(
     source
       .map((value) => Number(value))
