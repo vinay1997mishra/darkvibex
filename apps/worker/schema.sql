@@ -140,6 +140,17 @@ CREATE TABLE IF NOT EXISTS room_chat_bans (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS room_seat_invites (
+  room_id TEXT NOT NULL,
+  target_user_id TEXT NOT NULL,
+  seat_index INTEGER NOT NULL,
+  invited_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, target_user_id),
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+  FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS legal_consents (
   user_id TEXT NOT NULL,
   version TEXT NOT NULL,
