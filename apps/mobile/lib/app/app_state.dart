@@ -127,8 +127,17 @@ class AppState extends ChangeNotifier {
           }
         }
       }
-    } catch (_) {
+    } on GoogleSignInException catch (error) {
       googleSignInReady = false;
+      authError = _googleSignInErrorMessage(error);
+      debugPrint(
+        'DarkVibeX Google Sign-In initialization failed: '
+        '${error.code} ${error.description ?? ''}',
+      );
+    } catch (error) {
+      googleSignInReady = false;
+      authError = 'Google Login could not be initialized. Please try again.';
+      debugPrint('DarkVibeX Google Sign-In initialization failed: $error');
     } finally {
       isInitializing = false;
       notifyListeners();
@@ -163,19 +172,43 @@ class AppState extends ChangeNotifier {
       final account = await GoogleSignIn.instance.authenticate();
       return await _completeGoogleSignIn(account);
     } on GoogleSignInException catch (error) {
-      if (error.code == GoogleSignInExceptionCode.canceled) {
-        authError = null;
-      } else {
-        authError = 'Google Login failed. Please try again.';
-      }
+      authError = _googleSignInErrorMessage(error);
+      debugPrint(
+        'DarkVibeX Google Sign-In failed: '
+        '${error.code} ${error.description ?? ''}',
+      );
       return false;
-    } catch (_) {
+    } catch (error) {
       authError = 'Google Login failed. Please try again.';
+      debugPrint('DarkVibeX Google Sign-In failed: $error');
       return false;
     } finally {
       signingIn = false;
       notifyListeners();
     }
+  }
+
+  String _googleSignInErrorMessage(GoogleSignInException error) {
+    final description = error.description?.trim();
+    final detail = description == null || description.isEmpty
+        ? ''
+        : ' ($description)';
+
+    return switch (error.code) {
+      GoogleSignInExceptionCode.canceled =>
+        'Google account was selected, but Android could not complete sign-in. '
+        'Check the Android OAuth credential for package com.darkvibex.app and '
+        'release SHA-1 15:43:D7:77:7C:86:A8:1B:79:6C:A4:22:23:77:B1:DA:4E:53:A8:BF$detail',
+      GoogleSignInExceptionCode.clientConfigurationError =>
+        'Google Login Android OAuth configuration does not match this app build$detail',
+      GoogleSignInExceptionCode.providerConfigurationError =>
+        'Google Sign-In service is unavailable or misconfigured on this device$detail',
+      GoogleSignInExceptionCode.interrupted =>
+        'Google Login was interrupted before it could finish$detail',
+      GoogleSignInExceptionCode.uiUnavailable =>
+        'Google Login UI could not be opened$detail',
+      _ => 'Google Login failed$detail',
+    };
   }
 
   Future<bool> continueAsGuest() async {
