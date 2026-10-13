@@ -66,7 +66,8 @@ class BackendApi {
   String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
 
   Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
-    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > 5 * 1024 * 1024) return null;
+    final maxBytes = contentType == 'video/mp4' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > maxBytes) return null;
     final client = HttpClient();
     try {
       final request = await client.putUrl(Uri.parse('$origin/api/files'));
@@ -786,6 +787,40 @@ class BackendApi {
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
+
+  Future<List<Map<String, dynamic>>> customGifts({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/custom-gifts?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['gifts'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> createCustomGift({
+    required String userId,
+    required String name,
+    required String assetKey,
+    int coinCost = 5000,
+  }) =>
+      _json(
+        'POST',
+        '/api/custom-gifts',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'name': name,
+          'asset_key': assetKey,
+          'coin_cost': coinCost,
+        },
+        returnErrorBody: true,
+      );
 
   Future<Map<String, dynamic>?> sendGift({
     required String roomId,
