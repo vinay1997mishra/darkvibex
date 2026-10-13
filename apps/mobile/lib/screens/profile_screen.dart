@@ -11,6 +11,7 @@ import 'cosmetics_shop_screen.dart';
 import 'mine_social_screens.dart';
 import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
+import 'personal_profile_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 import '../ui/tinni_style.dart';
@@ -422,7 +423,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => _pickAvatar(context),
+                    key: const Key('mine-edit-profile'),
+                    onPressed: () => Navigator.of(context)
+                        .push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                PersonalProfileScreen(state: state),
+                          ),
+                        )
+                        .then((_) => _loadSocialStats()),
                     icon: const TinniGlowIcon(
                       icon: Icons.edit_rounded,
                       size: 17,
