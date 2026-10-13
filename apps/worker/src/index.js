@@ -2225,8 +2225,20 @@ async function handleApi(request, env, url) {
       const totalCoins = Number(body.total_coins);
       const slots = Number(body.slots);
       const requestId = String(body.request_id ?? "").trim().slice(0, 100);
-      if (!Number.isSafeInteger(totalCoins) || totalCoins < 100 || totalCoins > 10000000 ||
-          !Number.isSafeInteger(slots) || slots < 2 || slots > 500 || !requestId) {
+      const allowedPouchCoins = {
+        5: [100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+        20: [100000, 500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+        50: [500000, 1000000, 2000000, 5000000, 8000000, 10000000],
+        100: [1000000, 2000000, 5000000, 8000000, 10000000],
+        200: [1000000, 2000000, 5000000, 8000000, 10000000],
+        500: [2000000, 5000000, 8000000, 10000000],
+      };
+      const allowedCoins = allowedPouchCoins[slots];
+      if (!Number.isSafeInteger(totalCoins) ||
+          !Number.isSafeInteger(slots) ||
+          !Array.isArray(allowedCoins) ||
+          !allowedCoins.includes(totalCoins) ||
+          !requestId) {
         return json({ ok: false, error: "invalid_pouch" }, { status: 400 });
       }
       const existing = await db.prepare("SELECT id FROM room_lucky_pouches WHERE owner_user_id = ? AND request_id = ?")
