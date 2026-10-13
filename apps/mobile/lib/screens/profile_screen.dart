@@ -16,6 +16,7 @@ import 'id_level_screen.dart';
 import 'family_screen.dart';
 import 'cp_screen.dart';
 import 'mine_feature_screen.dart';
+import 'profile_visitors_screen.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
@@ -62,34 +63,11 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showVisitors(BuildContext context) async {
-    if (!state.hasVipPrivilege('view_visitors')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Active VIP1 unlocks profile visitors')));
-      return;
-    }
-    final visitors = await state.backend.profileVisitors(userId: state.userId);
-    if (!context.mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .6,
-          child: visitors.isEmpty
-              ? const Center(child: Text('No visitors yet'))
-              : ListView.builder(
-                  itemCount: visitors.length,
-                  itemBuilder: (context, index) {
-                    final visitor = visitors[index];
-                    final name = visitor['display_name']?.toString() ?? 'User';
-                    return ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
-                      title: Text(name),
-                      subtitle: Text('Visited ${visitor['visit_count'] ?? 1} times'),
-                    );
-                  },
-                ),
-        ),
+  void _showVisitors(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileVisitorsScreen(state: state),
       ),
     );
   }
@@ -232,6 +210,8 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 14),
+          MineCharmVisitorsStrip(state: state),
           const SizedBox(height: 22),
           Card(
             child: Column(
@@ -282,8 +262,8 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 ListTile(
                   leading: const Icon(Icons.visibility_rounded),
-                  title: const Text('Profile visitors'),
-                  subtitle: Text(state.hasVipPrivilege('view_visitors') ? 'See who viewed your profile' : 'Unlocks at VIP1'),
+                  title: const Text('Visitors'),
+                  subtitle: Text(state.hasVipPrivilege('view_visitors') ? 'See profile visits' : 'Unlocks at VIP1'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _showVisitors(context),
                 ),
