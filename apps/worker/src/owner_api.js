@@ -426,7 +426,7 @@ async function handleUsers(request, db, actor, url, parts) {
     if(coinDelta!==0){
       statements.push(
         db.prepare(
-          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?,?)"
+          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
         ).bind(id(),userId,coinDelta,nextCoins,actor.id,ts)
       );
     }
