@@ -644,6 +644,21 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _tapSeat(int seat) async {
+    final occupied = membersBySeat[seat];
+    final occupiedUserId = occupied?['user_id']?.toString() ?? '';
+    if (occupied != null &&
+        occupiedUserId.isNotEmpty &&
+        occupiedUserId != widget.state.userId) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PublicProfileScreen(
+            state: widget.state,
+            userId: occupiedUserId,
+          ),
+        ),
+      );
+      return;
+    }
     final leaving = mySeat == seat;
 
     if (widget.state.backendConnected) {
@@ -1507,6 +1522,85 @@ class _RoomScreenState extends State<RoomScreen> {
     final ok = widget.state.spendCoins(giftCost);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '${gift['emoji'] ?? '🎁'} ${gift['name'] ?? 'Gift'} sent • $giftCost coins' : 'Not enough coins')));
+  }
+
+  Future<void> _sendInlineMessage([String? override]) async {
+    final value = (override ?? roomChatController.text).trim();
+    if (value.isEmpty) return;
+    if (widget.state.backendConnected) {
+      final sent = await widget.state.backend.sendRoomMessage(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        text: value,
+      );
+      if (!sent) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Message was not sent. Check your connection.')),
+          );
+        }
+        return;
+      }
+      roomChatController.clear();
+      await _loadRoomMessages();
+      return;
+    }
+    if (!mounted) return;
+    roomChatController.clear();
+    setState(() => chat.add(<String, dynamic>{
+      'display_name': widget.state.displayName,
+      'text': value,
+    }));
+  }
+
+  Future<void> _showEmojiPicker() async {
+    const emojis = <String>[
+      '😀', '😂', '😍', '🥰', '😎', '🥳', '😭', '😡',
+      '❤️', '🔥', '👏', '👍', '🎉', '🎁', '⭐', '💯',
+      '🌹', '💎', '👑', '🎤', '🎵', '🤝', '😘', '🙏',
+    ];
+    final emoji = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+          child: GridView.count(
+            shrinkWrap: true,
+            crossAxisCount: 6,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            children: [
+              for (final value in emojis)
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => Navigator.pop(sheetContext, value),
+                  child: Center(
+                    child: Text(value, style: const TextStyle(fontSize: 28)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (emoji == null || !mounted) return;
+    roomChatController
+      ..text += emoji
+      ..selection = TextSelection.collapsed(
+        offset: roomChatController.text.length,
+      );
+  }
+
+  Future<void> _openRoomInbox() async {
+    await widget.state.refreshInbox();
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => MessagesScreen(state: widget.state),
+      ),
+    );
   }
 
   Future<void> _sendMessage() async {
