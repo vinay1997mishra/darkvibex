@@ -2733,28 +2733,48 @@ async function handleApi(request, env, url) {
       const permanent = platformOwner && body.permanent === true;
       const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
       const expiresAt = permanent ? null : ts + requestedDays * 86400000;
-      const after = Number(actor.coins ?? 0) - price;
-      const statements = [
-        db.prepare(
+      if (price > 0) {
+        await db.batch([
+          db.prepare(
+            `INSERT INTO room_custom_themes(
+              id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at
+            )
+            SELECT ?,?,?,?,?,?,?,?
+             WHERE EXISTS(
+               SELECT 1 FROM users WHERE id=? AND coins>=?
+             )`
+          ).bind(themeId,roomId,actorId,name,assetKey,price,ts,expiresAt,actorId,price),
+          db.prepare(
+            "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM room_custom_themes WHERE id=?)"
+          ).bind(price,ts,actorId,themeId),
+          db.prepare(
+            `INSERT INTO wallet_ledger(
+              id,user_id,kind,amount,balance_after,reference_id,created_at
+            )
+            SELECT ?,u.id,'room_theme_purchase',?,u.coins,?,?
+              FROM users u
+             WHERE u.id=? AND EXISTS(SELECT 1 FROM room_custom_themes WHERE id=?)`
+          ).bind(id(),-price,themeId,ts,actorId,themeId),
+        ]);
+      } else {
+        await db.prepare(
           `INSERT INTO room_custom_themes(
             id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at
           ) VALUES(?,?,?,?,?,?,?,?)`
-        ).bind(themeId,roomId,actorId,name,assetKey,price,ts,expiresAt),
-      ];
-      if (price > 0) {
-        statements.push(
-          db.prepare("UPDATE users SET coins=?,updated_at=? WHERE id=? AND coins>=?")
-            .bind(after,ts,actorId,price),
-          db.prepare(
-            "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
-          ).bind(id(),actorId,"room_theme_purchase",-price,after,themeId,ts),
-        );
+        ).bind(themeId,roomId,actorId,name,assetKey,price,ts,expiresAt).run();
       }
-      await db.batch(statements);
       const created = await db.prepare(
         "SELECT id,name,asset_key,price_coins,created_at,expires_at FROM room_custom_themes WHERE id=?"
       ).bind(themeId).first();
-      return json({ ok:true,theme:created,coin_balance:after }, { status:201 });
+      if (!created) {
+        return json({ ok:false,error:"insufficient_coins",required_coins:price }, { status:409 });
+      }
+      const balance = await db.prepare("SELECT coins FROM users WHERE id=?").bind(actorId).first();
+      return json({
+        ok:true,
+        theme:created,
+        coin_balance:Number(balance?.coins ?? 0),
+      }, { status:201 });
     }
 
     return json({ ok:false,error:"method_not_allowed" }, { status:405 });
