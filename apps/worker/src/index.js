@@ -231,13 +231,13 @@ async function publicCatalog(db, kind) {
 
 async function ensureUsersSchema(db) {
   // Worker deploys do not automatically apply schema.sql to D1. Make the
-  // authentication path self-healing so an older/empty database cannot block
-  // Google login.
+  // authentication path self-healing without issuing duplicate ALTER writes.
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
+      date_of_birth TEXT,
       role TEXT NOT NULL DEFAULT 'user',
       coins INTEGER NOT NULL DEFAULT 0,
       diamonds INTEGER NOT NULL DEFAULT 0,
@@ -247,6 +247,10 @@ async function ensureUsersSchema(db) {
     )`
   ).run();
 
+  const info = await db.prepare("PRAGMA table_info(users)").all();
+  const existing = new Set(
+    (info.results ?? []).map((row) => String(row.name ?? "")),
+  );
   const additions = [
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
@@ -259,14 +263,8 @@ async function ensureUsersSchema(db) {
     ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [name, definition] of additions) {
-    try {
-      await db.prepare(`ALTER TABLE users ADD COLUMN ${name} ${definition}`).run();
-    } catch (error) {
-      const message = String(error?.message ?? error).toLowerCase();
-      if (!message.includes("duplicate column") && !message.includes("already exists")) {
-        throw error;
-      }
-    }
+    if (existing.has(name)) continue;
+    await db.prepare(`ALTER TABLE users ADD COLUMN ${name} ${definition}`).run();
   }
 }
 
