@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -2447,13 +2446,94 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _showLuckyNumber() async {
-    final number = Random.secure().nextInt(99) + 1;
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connect to the room server to draw a Lucky Number.'),
+        ),
+      );
+      return;
+    }
+    final result = await widget.state.backend.drawRoomLuckyNumber(
+      roomId: widget.room.id,
+    );
+    if (!mounted) return;
+    final rawEvent = result?['event'];
+    if (result?['ok'] != true || rawEvent is! Map) {
+      final reason = result?['error']?.toString().replaceAll('_', ' ') ??
+          'Lucky Number could not be drawn.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(reason)),
+      );
+      return;
+    }
+    final event = Map<String, dynamic>.from(rawEvent);
+    final number = int.tryParse(event['number']?.toString() ?? '') ?? 0;
+    final displayName = event['display_name']?.toString().trim();
+    final rawEvents = result?['events'];
+    final recent = rawEvents is List
+        ? rawEvents
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .take(10)
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Lucky Number'),
-        content: Text('Your number is $number. This is a local for-fun draw; it does not award coins.'),
-        actions: [FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+        content: SizedBox(
+          width: 360,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Text(
+                '${displayName == null || displayName.isEmpty ? 'You' : displayName} drew $number.',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'This result is generated and stored by the room server.',
+              ),
+              if (recent.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Recent room draws',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                for (final row in recent)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.confirmation_number_rounded),
+                    title: Text(
+                      row['display_name']?.toString().trim().isNotEmpty == true
+                          ? row['display_name'].toString()
+                          : 'User',
+                    ),
+                    trailing: Text(
+                      row['number']?.toString() ?? '-',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
