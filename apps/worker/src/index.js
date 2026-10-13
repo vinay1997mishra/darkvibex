@@ -255,7 +255,7 @@ async function activeAnnouncements(db) {
   try {
     const ts = now();
     const rows = await db.prepare(
-      `SELECT id,title,body,country,starts_at,ends_at,updated_at
+      `SELECT id,title,body,starts_at,ends_at,updated_at
          FROM owner_announcements
         WHERE enabled = 1
           AND (starts_at IS NULL OR starts_at <= ?)
@@ -272,7 +272,7 @@ async function activeAnnouncements(db) {
 async function publicCatalog(db, kind) {
   try {
     const rows = await db.prepare(
-      "SELECT kind,id,name,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
+      "SELECT kind,id,name,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
     ).bind(kind).all();
     return (rows.results ?? []).map((row) => {
       let data = {};
