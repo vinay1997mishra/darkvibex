@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
@@ -162,48 +165,62 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Future<void> _createRoom(BuildContext context) async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final draft = await showModalBottomSheet<_CreateRoomDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create room'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Room name',
-            prefixIcon: Icon(Icons.mic_rounded),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (_) => _CreateRoomSheet(maxSeats: state.vipRoomSeatLimit),
     );
-    controller.dispose();
-    if (name == null || !context.mounted) return;
+    if (draft == null || !context.mounted) return;
+
     try {
-      final created = await state.createRoom(name);
+      final created = await state.createRoom(
+        draft.title,
+        seatCount: draft.seatCount,
+        partyMode: draft.partyMode,
+      );
+
+      RoomSummary room = created;
+      if (draft.avatarBytes != null && draft.avatarBytes!.isNotEmpty) {
+        final key = await state.backend.uploadImage(
+          key: 'rooms/${created.id}/avatar-${DateTime.now().microsecondsSinceEpoch}.${draft.avatarExtension}',
+          bytes: draft.avatarBytes!,
+          contentType: draft.avatarContentType,
+        );
+        if (key != null &&
+            await state.backend.setRoomAvatar(
+              roomId: created.id,
+              userId: state.userId,
+              avatarKey: key,
+            )) {
+          state.setRoomAvatarKey(created.id, key);
+          room = RoomSummary(
+            id: created.id,
+            name: created.name,
+            ownerName: created.ownerName,
+            ownerUserId: created.ownerUserId,
+            online: created.online,
+            seatCount: created.seatCount,
+            avatarKey: key,
+            partyMode: created.partyMode,
+          );
+        }
+      }
+
       if (!context.mounted) return;
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => RoomScreen(state: state, room: created),
+          builder: (_) => RoomScreen(state: state, room: room),
         ),
       );
-    } catch (_) {
+    } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Room could not be created. Check your connection and try again.',
+            'Room could not be created: ${error.toString().replaceFirst('Bad state: ', '')}',
           ),
         ),
       );
@@ -657,4 +674,272 @@ class _RoomCard extends StatelessWidget {
           ],
         ),
       );
+}
+
+
+class _CreateRoomDraft {
+  const _CreateRoomDraft({
+    required this.title,
+    required this.seatCount,
+    required this.partyMode,
+    this.avatarBytes,
+    this.avatarExtension = 'jpg',
+    this.avatarContentType = 'image/jpeg',
+  });
+
+  final String title;
+  final int seatCount;
+  final String partyMode;
+  final Uint8List? avatarBytes;
+  final String avatarExtension;
+  final String avatarContentType;
+}
+
+class _CreateRoomSheet extends StatefulWidget {
+  const _CreateRoomSheet({required this.maxSeats});
+  final int maxSeats;
+
+  @override
+  State<_CreateRoomSheet> createState() => _CreateRoomSheetState();
+}
+
+class _CreateRoomSheetState extends State<_CreateRoomSheet> {
+  final TextEditingController _title = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+  int _seatCount = 12;
+  String _partyMode = 'Friends-making Party';
+  Uint8List? _avatarBytes;
+  String _avatarExtension = 'jpg';
+  String _avatarContentType = 'image/jpeg';
+
+  @override
+  void initState() {
+    super.initState();
+    if (_seatCount > widget.maxSeats) {
+      _seatCount = widget.maxSeats.clamp(8, 42);
+    }
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const TinniGlowIcon(icon: Icons.photo_library_rounded),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const TinniGlowIcon(icon: Icons.photo_camera_rounded),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final file = await _picker.pickImage(
+      source: source,
+      imageQuality: 70,
+      maxWidth: 768,
+      maxHeight: 768,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final type = switch (ext) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      _ => null,
+    };
+    if (type == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP room photo')),
+        );
+      }
+      return;
+    }
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _avatarBytes = bytes;
+      _avatarExtension = ext == 'jpeg' ? 'jpg' : ext;
+      _avatarContentType = type;
+    });
+  }
+
+  void _submit() {
+    final name = _title.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room name is required')),
+      );
+      return;
+    }
+    Navigator.pop(
+      context,
+      _CreateRoomDraft(
+        title: name,
+        seatCount: _seatCount,
+        partyMode: _partyMode,
+        avatarBytes: _avatarBytes,
+        avatarExtension: _avatarExtension,
+        avatarContentType: _avatarContentType,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allowedSeats = <int>[
+      for (var value = 8; value <= widget.maxSeats.clamp(8, 42); value++)
+        value,
+    ];
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      padding: EdgeInsets.fromLTRB(16, 4, 16, bottom + 20),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Create room',
+              style: TextStyle(
+                color: TinniPalette.gold,
+                fontSize: 23,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: InkWell(
+                onTap: _pickPhoto,
+                borderRadius: BorderRadius.circular(22),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 96,
+                      height: 96,
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: TinniPalette.black,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: TinniPalette.gold, width: 1.5),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: _avatarBytes == null
+                            ? const Center(
+                                child: TinniGlowIcon(
+                                  icon: Icons.add_a_photo_rounded,
+                                  size: 30,
+                                  boxSize: 62,
+                                ),
+                              )
+                            : Image.memory(_avatarBytes!, fit: BoxFit.cover),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      _avatarBytes == null ? 'Add room photo' : 'Change room DP',
+                      style: const TextStyle(
+                        color: TinniPalette.cream,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Text(
+                      'Gallery or Camera',
+                      style: TextStyle(color: TinniPalette.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Choose party mode',
+              style: TextStyle(
+                color: TinniPalette.cream,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final mode in const [
+                  'Friends-making Party',
+                  'Event hosting mode',
+                ])
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(
+                          mode == 'Friends-making Party'
+                              ? 'Friends Party'
+                              : 'Event Mode',
+                        ),
+                        selected: _partyMode == mode,
+                        onSelected: (_) => setState(() => _partyMode = mode),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _title,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(labelText: 'Room name'),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Number of mics',
+              style: TextStyle(
+                color: TinniPalette.cream,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final count in allowedSeats)
+                  ChoiceChip(
+                    label: Text(count.toString()),
+                    selected: _seatCount == count,
+                    onSelected: (_) => setState(() => _seatCount = count),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _submit,
+                icon: const Icon(Icons.add_circle_rounded),
+                label: const Text('Create room'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
