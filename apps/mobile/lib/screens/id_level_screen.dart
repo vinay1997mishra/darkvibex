@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../ui/tinni_style.dart';
 
 class IdLevelScreen extends StatefulWidget {
   const IdLevelScreen({super.key, required this.state});
@@ -77,10 +78,10 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
         const <Map<String, dynamic>>[];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0912),
+      backgroundColor: TinniPalette.black,
       appBar: AppBar(
         title: const Text('ID Level'),
-        backgroundColor: const Color(0xFF0B0912),
+        backgroundColor: TinniPalette.black,
         actions: [IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh_rounded))],
       ),
       body: loading
@@ -118,7 +119,7 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border.all(color: const Color(0x66C7A4FF)),
+        border: Border.all(color: Color(0x668C6500)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,7 +142,7 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
 
   Widget _upgradeCard() {
     return Card(
-      color: const Color(0xFF171321),
+      color: TinniPalette.panel,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
@@ -163,13 +164,13 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
     final claimed = reward['claimed'] == true;
     final items = (reward['items'] as List?)?.whereType<Map>().toList() ?? const [];
     return Card(
-      color: const Color(0xFF171321),
+      color: TinniPalette.panel,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(unlocked ? Icons.lock_open_rounded : Icons.lock_rounded,
-                color: unlocked ? const Color(0xFFFFD88A) : Colors.white38),
+                color: unlocked ? TinniPalette.brightGold : Colors.white38),
             const SizedBox(width: 8),
             Expanded(child: Text('Level $level', style: const TextStyle(fontWeight: FontWeight.w800))),
             if (claimed) const Chip(label: Text('Claimed'))
@@ -211,7 +212,7 @@ class _SourceRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
-          Icon(icon, color: const Color(0xFFBE9AFF), size: 20),
+          Icon(icon, color: TinniPalette.gold, size: 20),
           const SizedBox(width: 10),
           Expanded(child: Text(title)),
           Text(detail, style: const TextStyle(color: Color(0xFFFFD88A), fontSize: 12)),
