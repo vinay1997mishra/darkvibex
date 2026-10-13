@@ -532,7 +532,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 ),
                 const SizedBox(height: 6),
                 if (active && canUse)
-                  const SizedBox(
+                  SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: null,
