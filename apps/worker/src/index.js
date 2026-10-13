@@ -35,6 +35,8 @@ import {
   familyLeave,
   familyUpdateNotice,
   familyCheckIn,
+  familyTransferCoins,
+  familyWalletTransfers,
   cpState,
   cpRequest,
   cpRespond,
@@ -2135,6 +2137,45 @@ async function handleApi(request, env, url) {
       return json(await familyUpdateNotice(db, userId, body.notice));
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/wallet/transfers" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    return json({
+      ok: true,
+      transfers: await familyWalletTransfers(db, String(session.sub), limit),
+    });
+  }
+
+  if (url.pathname === "/api/family/wallet/send" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const body = await bodyJson(request);
+    try {
+      return json(
+        await familyTransferCoins(
+          db,
+          String(session.sub),
+          String(body.receiver_user_id ?? "").trim(),
+          body.coins,
+        ),
+        { status: 201 },
+      );
+    } catch (error) {
+      const message = String(error?.message ?? error ?? "family_transfer_failed");
+      const status = message === "insufficient_coins" ? 409 : 400;
+      return json({ ok:false,error:message }, { status });
     }
   }
 
