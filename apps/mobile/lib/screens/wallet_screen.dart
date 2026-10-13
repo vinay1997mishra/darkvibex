@@ -79,6 +79,7 @@ class WalletScreen extends StatelessWidget {
                       ),
                     ),
                 const Divider(height: 1),
+                if (state.userRole == 'coin_seller')
                 ListTile(
                   leading: const Icon(Icons.storefront_rounded),
                   title: const Text('Coin Seller'),
