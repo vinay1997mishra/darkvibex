@@ -1054,8 +1054,6 @@ class _CpScreenState extends State<CpScreen> {
   List<Map<String, dynamic>> memories = const <Map<String, dynamic>>[];
   List<Map<String, dynamic>> friends = const <Map<String, dynamic>>[];
 
-  static const inviteCost = 2222222;
-
   @override
   void initState() {
     super.initState();
