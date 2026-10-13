@@ -91,6 +91,20 @@ export async function ensureTinniSocialSchema(db) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
     )`,
+    `CREATE TABLE IF NOT EXISTS vs_gift_progress (
+      event_id TEXT PRIMARY KEY,
+      user_a TEXT NOT NULL,
+      user_b TEXT NOT NULL,
+      pair_started_at INTEGER NOT NULL,
+      sender_user_id TEXT NOT NULL,
+      receiver_user_id TEXT NOT NULL,
+      progress INTEGER NOT NULL,
+      level_before INTEGER NOT NULL,
+      level_after INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_vs_gift_progress_pair_time
+       ON vs_gift_progress(user_a,user_b,pair_started_at,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS cp_memories (
       id TEXT PRIMARY KEY,
       user_a TEXT NOT NULL,
@@ -654,6 +668,62 @@ export async function cpRanking(db, limitValue=100) {
 }
 
 
+async function vsThresholds(db) {
+  let configured = null;
+  let legacy = null;
+  try {
+    const row = await db.prepare(
+      "SELECT value_json FROM owner_settings WHERE key='vs_coin_thresholds' LIMIT 1"
+    ).first();
+    if (row?.value_json) configured = JSON.parse(String(row.value_json));
+  } catch (_) {}
+  if (!Array.isArray(configured)) {
+    try {
+      const row = await db.prepare(
+        "SELECT value_json FROM owner_settings WHERE key='enemy_level_thresholds' LIMIT 1"
+      ).first();
+      if (row?.value_json) legacy = JSON.parse(String(row.value_json));
+    } catch (_) {}
+  }
+  const source = Array.isArray(configured)
+      ? configured
+      : Array.isArray(legacy)
+          ? legacy.map((value) => Number(value) * 100)
+          : <dynamic>[20000000];
+  return [...new Set(
+    source
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0),
+  )].sort((a,b) => a-b);
+}
+
+function vsLevelFor(rivalryValue, thresholds) {
+  const rivalry = Math.max(0, Math.floor(Number(rivalryValue ?? 0)));
+  let level = 1;
+  for (const threshold of thresholds) {
+    if (rivalry >= threshold) level += 1;
+    else break;
+  }
+  return level;
+}
+
+async function vsBlockingFlow(db, userId) {
+  if (!userId) return false;
+  const row = await db.prepare(
+    "SELECT state FROM vs_relationships WHERE (user_a=? OR user_b=?) AND state IN ('pending','active') LIMIT 1"
+  ).bind(userId,userId).first();
+  return row?.state === "pending" || row?.state === "active";
+}
+
+async function mutualFriends(db, userId, targetId) {
+  const row = await db.prepare(
+    `SELECT
+       EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS a,
+       EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS b`
+  ).bind(userId,targetId,targetId,userId).first();
+  return Number(row?.a ?? 0) === 1 && Number(row?.b ?? 0) === 1;
+}
+
 export async function vsState(db, userId) {
   await ensureTinniSocialSchema(db);
   const row = await db.prepare(
@@ -662,19 +732,40 @@ export async function vsState(db, userId) {
        FROM vs_relationships v
        LEFT JOIN users ua ON ua.id=v.user_a
        LEFT JOIN users ub ON ub.id=v.user_b
-      WHERE v.user_a=? OR v.user_b=?
-      ORDER BY v.updated_at DESC LIMIT 1`
+      WHERE (v.user_a=? OR v.user_b=?)
+        AND v.state IN ('pending','active')
+      ORDER BY CASE WHEN v.state='active' THEN 0 ELSE 1 END,
+               v.updated_at DESC
+      LIMIT 1`
   ).bind(userId,userId).first();
-  return row ?? null;
+  if (!row) return null;
+  const thresholds = await vsThresholds(db);
+  const rivalry = Math.max(0, Number(row.rivalry ?? 0));
+  const level = vsLevelFor(rivalry, thresholds);
+  return {
+    ...row,
+    rivalry,
+    level,
+    previous_level_threshold:
+      level > 1 ? Number(thresholds[level - 2] ?? 0) : 0,
+    next_level_threshold:
+      level - 1 < thresholds.length ? Number(thresholds[level - 1]) : null,
+  };
 }
 
-export async function vsRequest(db, userId, targetId) {
+export async function vsRequest(db, userId, targetIdValue) {
   await ensureTinniSocialSchema(db);
+  const targetId = String(targetIdValue ?? "").trim();
   if (!targetId || userId === targetId) throw new Error("invalid_vs_target");
-  const existing = await vsState(db,userId);
-  if (existing && existing.state === "active") throw new Error("vs_already_active");
-  const targetExisting = await vsState(db,targetId);
-  if (targetExisting && targetExisting.state === "active") throw new Error("target_vs_already_active");
+  const target = await db.prepare(
+    "SELECT id FROM users WHERE id=? LIMIT 1"
+  ).bind(targetId).first();
+  if (!target) throw new Error("vs_user_not_found");
+  if (!(await mutualFriends(db,userId,targetId))) {
+    throw new Error("vs_friend_required");
+  }
+  if (await vsBlockingFlow(db,userId)) throw new Error("vs_already_active");
+  if (await vsBlockingFlow(db,targetId)) throw new Error("target_vs_already_active");
   const [a,b] = pair(userId,targetId);
   const createdAt=ts();
   await db.prepare(
@@ -682,7 +773,7 @@ export async function vsRequest(db, userId, targetId) {
      VALUES(?,?,'pending',0,1,?,?,?)
      ON CONFLICT(user_a,user_b) DO UPDATE SET
        state='pending',rivalry=0,level=1,requested_by=excluded.requested_by,
-       updated_at=excluded.updated_at`
+       created_at=excluded.created_at,updated_at=excluded.updated_at`
   ).bind(a,b,userId,createdAt,createdAt).run();
   return vsState(db,userId);
 }
@@ -708,11 +799,71 @@ export async function vsRespond(db, userId, accept) {
 
 export async function vsDisconnect(db, userId) {
   const row = await vsState(db,userId);
-  if (!row) return { ok:true };
+  if (!row) return { ok:true, vs:null };
   await db.prepare(
     "DELETE FROM vs_relationships WHERE user_a=? AND user_b=?"
   ).bind(row.user_a,row.user_b).run();
-  return { ok:true };
+  return { ok:true, vs:null };
+}
+
+export async function recordVsGiftProgress(
+  db,
+  senderUserId,
+  receiverUserId,
+  coinValue,
+  eventId,
+) {
+  await ensureTinniSocialSchema(db);
+  const relation = await vsState(db,senderUserId);
+  if (!relation || relation.state !== "active") {
+    return { progress:0, vs:relation };
+  }
+  const pairMatches =
+    (String(relation.user_a) === String(senderUserId) &&
+     String(relation.user_b) === String(receiverUserId)) ||
+    (String(relation.user_b) === String(senderUserId) &&
+     String(relation.user_a) === String(receiverUserId));
+  const progress = Math.max(0, Math.floor(Number(coinValue ?? 0)));
+  if (!pairMatches || !Number.isSafeInteger(progress) || progress <= 0) {
+    return { progress:0, vs:relation };
+  }
+  const thresholds = await vsThresholds(db);
+  const levelBefore = vsLevelFor(relation.rivalry, thresholds);
+  const rivalry = Number(relation.rivalry ?? 0) + progress;
+  if (!Number.isSafeInteger(rivalry)) throw new Error("vs_progress_limit");
+  const levelAfter = vsLevelFor(rivalry, thresholds);
+  const updatedAt = ts();
+  await db.prepare(
+    "UPDATE vs_relationships SET rivalry=?,level=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+  ).bind(
+    rivalry,levelAfter,updatedAt,relation.user_a,relation.user_b
+  ).run();
+  if (eventId) {
+    await db.prepare(
+      `INSERT OR IGNORE INTO vs_gift_progress(
+        event_id,user_a,user_b,pair_started_at,sender_user_id,receiver_user_id,
+        progress,level_before,level_after,created_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      eventId,
+      relation.user_a,
+      relation.user_b,
+      Number(relation.created_at ?? 0),
+      senderUserId,
+      receiverUserId,
+      progress,
+      levelBefore,
+      levelAfter,
+      updatedAt,
+    ).run();
+  }
+  return {
+    progress,
+    level_before:levelBefore,
+    level_after:levelAfter,
+    rivalry,
+    vs:await vsState(db,senderUserId),
+  };
 }
 
 export async function vsRanking(db, limitValue=100) {
@@ -727,7 +878,12 @@ export async function vsRanking(db, limitValue=100) {
       WHERE v.state='active'
       ORDER BY v.rivalry DESC,v.updated_at ASC LIMIT ?`
   ).bind(limit).all();
-  return rows.results ?? [];
+  const thresholds = await vsThresholds(db);
+  return (rows.results ?? []).map((row,index) => ({
+    ...row,
+    rank:index+1,
+    level:vsLevelFor(row.rivalry,thresholds),
+  }));
 }
 
 
