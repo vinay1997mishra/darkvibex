@@ -124,14 +124,18 @@ jobs:
             echo "Installing NDK $ndk_version (attempt $attempt/3)"
             rm -rf "$sdk_root/ndk/$ndk_version"
             rm -rf "$sdk_root/.temp"/* 2>/dev/null || true
-            if yes | "$sdkmanager" --install "ndk;$ndk_version"; then
+            rm -rf "${HOME}/.android/cache" 2>/dev/null || true
+            mkdir -p "${HOME}/.android"
+            yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+            if "$sdkmanager" --install "ndk;$ndk_version"; then
               test -f "$sdk_root/ndk/$ndk_version/source.properties"
               echo "NDK $ndk_version installed successfully."
               exit 0
             fi
             rm -rf "$sdk_root/ndk/$ndk_version"
             rm -rf "$sdk_root/.temp"/* 2>/dev/null || true
-            sleep 3
+            rm -rf "${HOME}/.android/cache" 2>/dev/null || true
+            sleep $((attempt * 5))
           done
           echo "NDK installation failed after retries."
           exit 1
@@ -142,35 +146,6 @@ jobs:
           KEYSTORE_PATH="$RUNNER_TEMP/darkvibex-release.jks"
           printf '%s' "$ANDROID_KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
           echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-
-      - name: Ensure Android NDK is healthy
-        shell: bash
-        run: |
-          set -euo pipefail
-          ndk_version="28.2.13676358"
-          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          sdkmanager="${sdk_root}/cmdline-tools/latest/bin/sdkmanager"
-          ndk_dir="${sdk_root}/ndk/${ndk_version}"
-
-          if [ -f "${ndk_dir}/source.properties" ]; then
-            echo "NDK ${ndk_version} already installed."
-            exit 0
-          fi
-
-          for attempt in 1 2 3; do
-            echo "Installing NDK ${ndk_version} (attempt ${attempt}/3)"
-            rm -rf "${ndk_dir}" "${HOME}/.android/cache"
-            mkdir -p "${HOME}/.android"
-            if yes | "${sdkmanager}" --licenses >/dev/null 2>&1 || true; then :; fi
-            if "${sdkmanager}" "ndk;${ndk_version}"; then
-              break
-            fi
-            rm -rf "${ndk_dir}" "${HOME}/.android/cache"
-            sleep $((attempt * 5))
-          done
-
-          test -f "${ndk_dir}/source.properties"
-          echo "NDK ${ndk_version} is ready."
 
       - name: Build debug APK
         if: env.ANDROID_KEYSTORE_PATH == ''
