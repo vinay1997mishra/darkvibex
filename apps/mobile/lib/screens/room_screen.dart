@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
@@ -16,6 +17,7 @@ import '../room/ktv_service.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/vehicle_entry_effect.dart';
+import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
@@ -38,6 +40,18 @@ class RoomScreen extends StatefulWidget {
 
 class _RoomScreenState extends State<RoomScreen> {
   static final Set<String> _acceptedLegalInSession = <String>{};
+  static const List<int> _rocketStageTargets = <int>[
+    8000000,
+    15000000,
+    30000000,
+    50000000,
+    90000000,
+    150000000,
+    200000000,
+    250000000,
+    350000000,
+    500000000,
+  ];
   int? mySeat;
   bool muted = true;
   String voiceStatus = 'Connecting…';
@@ -263,6 +277,228 @@ class _RoomScreenState extends State<RoomScreen> {
       return '${(value / 1000).toStringAsFixed(1)}K';
     }
     return value.toString();
+  }
+
+  Map<String, num> _rocketProgressState(int total) {
+    var remaining = total < 0 ? 0 : total;
+    var completed = 0;
+    var currentProgress = 0;
+    var currentTarget = _rocketStageTargets.last;
+    for (var index = 0; index < _rocketStageTargets.length; index++) {
+      final target = _rocketStageTargets[index];
+      if (remaining >= target) {
+        remaining -= target;
+        completed++;
+        continue;
+      }
+      currentProgress = remaining;
+      currentTarget = target;
+      break;
+    }
+    if (completed >= _rocketStageTargets.length) {
+      currentProgress = _rocketStageTargets.last;
+      currentTarget = _rocketStageTargets.last;
+    }
+    final percent = completed >= _rocketStageTargets.length
+        ? 1.0
+        : (currentProgress / currentTarget).clamp(0.0, 1.0);
+    return <String, num>{
+      'completed': completed,
+      'current_progress': currentProgress,
+      'current_target': currentTarget,
+      'percent': percent,
+    };
+  }
+
+  Future<void> _showRocketPanel() async {
+    await _loadRoomGiftRanking();
+    if (!mounted) return;
+    final progress = _rocketProgressState(roomGiftLifetimeTotal);
+    final completed = progress['completed']!.toInt();
+    final allComplete = completed >= _rocketStageTargets.length;
+    final currentLevel = allComplete ? 10 : completed + 1;
+    final currentProgress = progress['current_progress']!.toInt();
+    final currentTarget = progress['current_target']!.toInt();
+    final percent = progress['percent']!.toDouble();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .72,
+        child: Container(
+          key: const Key('room-rocket-panel'),
+          margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                Color(0xFF07143B),
+                Color(0xFF0B2564),
+                Color(0xFF08163F),
+              ],
+            ),
+            border: Border.all(
+              color: const Color(0xFFFFC94A),
+              width: 1.1,
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(color: Color(0x665D3BFF), blurRadius: 24),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Rocket $currentLevel/10',
+                        style: const TextStyle(
+                          color: Color(0xFFFFD45A),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _compactRoomCoins(roomGiftLifetimeTotal),
+                        key: const Key('room-rocket-social-total'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 104,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 4, 8),
+                          itemCount: _rocketStageTargets.length,
+                          itemBuilder: (context, index) {
+                            final level = index + 1;
+                            final done = index < completed;
+                            final current = !allComplete && index == completed;
+                            return Container(
+                              key: Key('room-rocket-stage-$level'),
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: current
+                                    ? const Color(0xFF173E8F)
+                                    : const Color(0xFF071B4D),
+                                borderRadius: BorderRadius.circular(9),
+                                border: Border.all(
+                                  color: done
+                                      ? const Color(0xFFFFD45A)
+                                      : current
+                                          ? const Color(0xFF61D9FF)
+                                          : const Color(0xFF56627E),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Rocket $level',
+                                    style: TextStyle(
+                                      color: done
+                                          ? const Color(0xFFFFD45A)
+                                          : Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                  Text(
+                                    _compactRoomCoins(
+                                      _rocketStageTargets[index],
+                                    ),
+                                    style: const TextStyle(
+                                      color: Color(0xFFB9C8F3),
+                                      fontSize: 8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const Expanded(
+                        child: Center(
+                          child: RoomStealthRocketLogo(size: 132),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      key: const Key('room-rocket-progress'),
+                      value: percent,
+                      minHeight: 12,
+                      backgroundColor: const Color(0xFF241B2C),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Color(0xFFFFD45A),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  allComplete
+                      ? '10/10 rockets complete'
+                      : '${_compactRoomCoins(currentProgress)} / '
+                          '${_compactRoomCoins(currentTarget)} • '
+                          '${(percent * 100).floor()}%',
+                  key: const Key('room-rocket-progress-label'),
+                  style: const TextStyle(
+                    color: Color(0xFFFFD45A),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 8, 18, 14),
+                  child: Text(
+                    'Rocket follows the same room gift total and 10-stage targets as Tinni.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFFB9C8F3),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _showRoomGiftRanking() async {
@@ -3184,6 +3420,18 @@ class _RoomScreenState extends State<RoomScreen> {
                 },
               ),
             ListTile(
+              key: const Key('room-share-menu'),
+              leading: const Icon(Icons.share_rounded),
+              title: const Text('Share room'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Future<void>.delayed(
+                  const Duration(milliseconds: 180),
+                  _shareRoom,
+                );
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.exit_to_app_rounded),
               title: const Text('Leave room'),
               onTap: () {
@@ -3195,6 +3443,34 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _shareRoom() async {
+    final text =
+        'Join my DarkVibeX room: $roomName\nRoom ID: ${widget.room.id}';
+    try {
+      await SharePlus.instance.share(ShareParams(text: text));
+      if (widget.state.backendConnected) {
+        try {
+          await widget.state.backend.shareRoomForIdLevel(
+            userId: widget.state.userId,
+            roomId: widget.room.id,
+          );
+        } catch (_) {}
+        try {
+          await widget.state.backend.recordAladdinShare(
+            roomId: widget.room.id,
+            userId: widget.state.userId,
+            platform: 'system',
+          );
+        } catch (_) {}
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room could not be shared right now')),
+      );
+    }
   }
 
   Future<void> _openLamp() async {
@@ -3999,38 +4275,53 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
             ),
           Positioned(
-            right: 9,
+            key: const Key('room-game-floating-position'),
+            right: 8,
             bottom: 138,
-            child: Tooltip(
-              message: 'Game Center floating',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: _openGames,
-                child: Container(
-                  width: 58,
-                  height: 42,
-                  alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Semantics(
+                  button: true,
+                  label: 'Rocket',
+                  child: InkResponse(
+                    key: const Key('room-rocket-floating-button'),
+                    radius: 24,
+                    onTap: _showRocketPanel,
+                    child: const RoomStealthRocketLogo(size: 42),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Container(
+                  width: 28,
+                  height: 3,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF050505),
-                    borderRadius: BorderRadius.circular(10),
+                    color: const Color(0xFF111214),
+                    borderRadius: BorderRadius.circular(3),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: .82),
-                      width: 1.1,
+                      color: const Color(0xFF5D6065),
+                      width: .8,
                     ),
-                    boxShadow: const [
+                    boxShadow: const <BoxShadow>[
                       BoxShadow(
-                        color: Color(0x44FFFFFF),
-                        blurRadius: 7,
+                        color: Color(0x44FF8A1F),
+                        blurRadius: 4,
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.sports_esports_rounded,
-                    color: Colors.white,
-                    size: 25,
+                ),
+                const SizedBox(height: 5),
+                Semantics(
+                  button: true,
+                  label: 'Game Center',
+                  child: InkResponse(
+                    key: const Key('room-game-floating-button'),
+                    radius: 26,
+                    onTap: _openGames,
+                    child: const RoomGameKeyboardLogo(size: 54),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
           if (arrivalEffectMember != null)
