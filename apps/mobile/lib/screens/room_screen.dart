@@ -707,7 +707,37 @@ class _RoomScreenState extends State<RoomScreen> {
       );
       return;
     }
+
     final leaving = mySeat == seat;
+    if (!leaving && lockedSeats.contains(seat)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Seat ${seat + 1} is locked')),
+      );
+      return;
+    }
+
+    if (!leaving &&
+        roomMicMode == 'apply' &&
+        !isRoomAdmin &&
+        widget.state.backendConnected) {
+      final result = await widget.state.backend.requestRoomSeat(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        seatIndex: seat,
+      );
+      if (!mounted) return;
+      final ok = result?['ok'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? 'Mic request sent for Seat ${seat + 1}'
+                : 'Mic request could not be sent',
+          ),
+        ),
+      );
+      return;
+    }
 
     if (widget.state.backendConnected) {
       final ok = await widget.state.backend.setSeat(
@@ -745,10 +775,17 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     });
     unawaited(_loadRoomMembers());
+    unawaited(_loadRoomControls());
   }
 
   Future<void> _toggleMic() async {
     if (mySeat == null) return;
+    if (roomMutedSeats.contains(mySeat)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This mic is muted by room owner/admin')),
+      );
+      return;
+    }
     final enable = muted;
     try {
       await rtc?.setMicPublished(enable);
