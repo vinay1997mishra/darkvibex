@@ -194,6 +194,70 @@ class BackendApi {
   Future<Map<String, dynamic>?> roomSettings({required String roomId}) =>
       _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/settings');
 
+  Future<Map<String, dynamic>?> roomControls({required String roomId}) =>
+      _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/controls');
+
+  Future<Map<String, dynamic>?> setRoomControl({
+    required String roomId,
+    required String userId,
+    required String action,
+    int? seatIndex,
+    String? targetUserId,
+    bool? enabled,
+    bool? locked,
+    bool? muted,
+    bool? banned,
+    String? micMode,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/controls',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'action': action,
+          if (seatIndex != null) 'seat_index': seatIndex,
+          if (targetUserId != null) 'target_user_id': targetUserId,
+          if (enabled != null) 'enabled': enabled,
+          if (locked != null) 'locked': locked,
+          if (muted != null) 'muted': muted,
+          if (banned != null) 'banned': banned,
+          if (micMode != null) 'mic_mode': micMode,
+        },
+      );
+
+  Future<Map<String, dynamic>?> requestRoomSeat({
+    required String roomId,
+    required String userId,
+    required int seatIndex,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/seat-request',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'seat_index': seatIndex,
+        },
+      );
+
+  Future<Map<String, dynamic>?> resolveRoomSeatRequest({
+    required String roomId,
+    required String userId,
+    required String targetUserId,
+    required bool approved,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/seat-request/resolve',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'target_user_id': targetUserId,
+          'approved': approved,
+        },
+      );
+
   Future<bool> saveRoomSettings({
     required String roomId,
     required String userId,
