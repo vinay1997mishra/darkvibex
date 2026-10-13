@@ -9,6 +9,8 @@ import 'app_settings_screen.dart';
 import 'wallet_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'mine_social_screens.dart';
+import 'conversation_screen.dart';
+import 'direct_call_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../infra/privacy_screen_protection.dart';
 import '../ui/tinni_style.dart';
@@ -828,6 +830,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool isFriend = false;
   bool isFollowing = false;
   bool followBusy = false;
+  bool startingCall = false;
 
   @override
   void initState() {
@@ -912,30 +915,54 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         if (widget.userId != widget.state.userId) ...[
                           Padding(
                             padding: const EdgeInsets.only(top: 14),
-                            child: FilledButton.icon(
-                              onPressed: followBusy ? null : _toggleFollow,
-                              icon: Icon(
-                                isFollowing
-                                    ? Icons.person_remove_alt_1_rounded
-                                    : Icons.person_add_rounded,
-                              ),
-                              label: Text(
-                                isFollowing ? 'Following' : 'Follow',
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: OutlinedButton.icon(
-                              onPressed: isFriend ? null : _addFriend,
-                              icon: Icon(
-                                isFriend
-                                    ? Icons.check_rounded
-                                    : Icons.people_alt_rounded,
-                              ),
-                              label: Text(
-                                isFriend ? 'Friend' : 'Add friend',
-                              ),
+                            child: Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                FilledButton.icon(
+                                  onPressed: followBusy ? null : _toggleFollow,
+                                  icon: Icon(
+                                    isFollowing
+                                        ? Icons.person_remove_alt_1_rounded
+                                        : Icons.person_add_rounded,
+                                  ),
+                                  label: Text(
+                                    isFollowing ? 'Following' : 'Follow',
+                                  ),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: isFriend ? null : _addFriend,
+                                  icon: Icon(
+                                    isFriend
+                                        ? Icons.check_rounded
+                                        : Icons.people_alt_rounded,
+                                  ),
+                                  label: Text(
+                                    isFriend ? 'Friend' : 'Add friend',
+                                  ),
+                                ),
+                                OutlinedButton.icon(
+                                  key: const Key('public-profile-message'),
+                                  onPressed: _openConversation,
+                                  icon: const Icon(Icons.chat_bubble_rounded),
+                                  label: const Text('Message'),
+                                ),
+                                OutlinedButton.icon(
+                                  key: const Key('public-profile-call'),
+                                  onPressed:
+                                      isFriend && !startingCall ? _startCall : null,
+                                  icon: startingCall
+                                      ? const SizedBox.square(
+                                          dimension: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.call_rounded),
+                                  label: const Text('Call'),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -954,6 +981,61 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     ),
                   ),
       );
+  }
+
+  Future<void> _openConversation() async {
+    final name = user?['display_name']?.toString().trim();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ConversationScreen(
+          state: widget.state,
+          otherUserId: widget.userId,
+          otherName:
+              name == null || name.isEmpty ? 'User ${widget.userId}' : name,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startCall() async {
+    if (!isFriend || startingCall || !widget.state.backendConnected) return;
+    setState(() => startingCall = true);
+    final value = await widget.state.backend.startDirectCall(
+      userId: widget.state.userId,
+      receiverUserId: widget.userId,
+    );
+    if (!mounted) return;
+    setState(() => startingCall = false);
+    final raw = value?['call'];
+    if (value?['ok'] != true || raw is! Map) {
+      final error = value?['error']?.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            switch (error) {
+              'friends_required' =>
+                'Both users must be friends before calling.',
+              'user_busy' => 'This user is busy on another call.',
+              _ => 'Call could not be started.',
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    final call = Map<String, dynamic>.from(raw);
+    final name = user?['display_name']?.toString().trim();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DirectCallScreen(
+          state: widget.state,
+          callId: call['id']?.toString() ?? '',
+          peerName:
+              name == null || name.isEmpty ? 'User ${widget.userId}' : name,
+          initialState: call['state']?.toString() ?? 'ringing',
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleFollow() async {
