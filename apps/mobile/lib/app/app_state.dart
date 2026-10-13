@@ -67,6 +67,13 @@ class AppState extends ChangeNotifier {
   String countryCode = '';
   String countryName = '';
   String flagEmoji = '';
+  String gender = '';
+  int ageChangeCount = 0;
+  int countryChangeCount = 0;
+  int genderChangeCount = 0;
+  int get ageChangesRemaining => (3 - ageChangeCount).clamp(0, 3);
+  int get countryChangesRemaining => (3 - countryChangeCount).clamp(0, 3);
+  int get genderChangesRemaining => (3 - genderChangeCount).clamp(0, 3);
   final ValueNotifier<String> languagePreference = ValueNotifier<String>('English');
   String? sessionToken;
   String? authProvider;
@@ -528,6 +535,13 @@ class AppState extends ChangeNotifier {
     countryCode = user['country_code']?.toString().trim() ?? '';
     countryName = user['country_name']?.toString().trim() ?? '';
     flagEmoji = user['flag_emoji']?.toString().trim() ?? '';
+    gender = user['gender']?.toString().trim().toLowerCase() ?? '';
+    ageChangeCount =
+        int.tryParse(user['age_change_count']?.toString() ?? '') ?? 0;
+    countryChangeCount =
+        int.tryParse(user['country_change_count']?.toString() ?? '') ?? 0;
+    genderChangeCount =
+        int.tryParse(user['gender_change_count']?.toString() ?? '') ?? 0;
     var restoredLanguage = user['language']?.toString().trim() ?? '';
     if (!darkVibeXIsSupportedLanguage(restoredLanguage)) {
       restoredLanguage =
@@ -556,10 +570,9 @@ class AppState extends ChangeNotifier {
     await refreshCosmetics(notify: false);
 
     final remoteRooms = await backend.listRooms();
-    if (remoteRooms.isNotEmpty) {
-      rooms
-        ..clear()
-        ..addAll(remoteRooms.map((row) => RoomSummary(
+    rooms
+      ..clear()
+      ..addAll(remoteRooms.map((row) => RoomSummary(
               id: row['id']?.toString() ?? '',
               name: row['name']?.toString() ?? 'Room',
               ownerName: row['owner_name']?.toString() ?? '',
@@ -570,7 +583,6 @@ class AppState extends ChangeNotifier {
               partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
               roomMode: row['room_mode']?.toString() ?? 'voice',
             )));
-    }
 
     await refreshInbox(notify: false);
   }
@@ -578,10 +590,9 @@ class AppState extends ChangeNotifier {
   Future<void> refreshRooms({bool notify = true}) async {
     if (!backendConnected) return;
     final remoteRooms = await backend.listRooms();
-    if (remoteRooms.isNotEmpty) {
-      rooms
-        ..clear()
-        ..addAll(remoteRooms.map((row) => RoomSummary(
+    rooms
+      ..clear()
+      ..addAll(remoteRooms.map((row) => RoomSummary(
               id: row['id']?.toString() ?? '',
               name: row['name']?.toString() ?? 'Room',
               ownerName: row['owner_name']?.toString() ?? '',
@@ -592,7 +603,6 @@ class AppState extends ChangeNotifier {
               partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
               roomMode: row['room_mode']?.toString() ?? 'voice',
             )));
-    }
     if (notify) notifyListeners();
   }
 
@@ -633,6 +643,10 @@ class AppState extends ChangeNotifier {
     countryCode = '';
     countryName = '';
     flagEmoji = '';
+    gender = '';
+    ageChangeCount = 0;
+    countryChangeCount = 0;
+    genderChangeCount = 0;
     languagePreference.value = 'English';
     messages.clear();
     coins = 2500000;
@@ -830,6 +844,7 @@ class AppState extends ChangeNotifier {
     String? countryCodeValue,
     String? countryNameValue,
     String? flagEmojiValue,
+    String? genderValue,
     String? languageValue,
     Uint8List? avatarBytes,
     String avatarExtension = 'jpg',
@@ -842,6 +857,7 @@ class AppState extends ChangeNotifier {
     final nextCountryCode = (countryCodeValue ?? countryCode).trim().toUpperCase();
     final nextCountryName = (countryNameValue ?? countryName).trim();
     final nextFlagEmoji = (flagEmojiValue ?? flagEmoji).trim();
+    final nextGender = (genderValue ?? gender).trim().toLowerCase();
     final requestedLanguage =
         (languageValue ?? languagePreference.value).trim();
     final nextLanguage = darkVibeXIsSupportedLanguage(requestedLanguage)
@@ -855,6 +871,7 @@ class AppState extends ChangeNotifier {
       countryCode: nextCountryCode,
       countryName: nextCountryName,
       flagEmoji: nextFlagEmoji,
+      gender: nextGender,
       language: nextLanguage,
     );
     if (profile?['ok'] != true) {
@@ -864,11 +881,35 @@ class AppState extends ChangeNotifier {
       return false;
     }
 
+    final returnedUser = profile?['user'];
+    final previousCountry = countryCode;
     displayName = cleanName;
     dateOfBirth = dateOfBirthValue.trim();
     countryCode = nextCountryCode;
     countryName = nextCountryName;
     flagEmoji = nextFlagEmoji;
+    gender = nextGender;
+    if (returnedUser is Map) {
+      dateOfBirth =
+          returnedUser['date_of_birth']?.toString() ?? dateOfBirth;
+      countryCode =
+          returnedUser['country_code']?.toString().trim() ?? countryCode;
+      countryName =
+          returnedUser['country_name']?.toString().trim() ?? countryName;
+      flagEmoji =
+          returnedUser['flag_emoji']?.toString().trim() ?? flagEmoji;
+      gender =
+          returnedUser['gender']?.toString().trim().toLowerCase() ?? gender;
+      ageChangeCount =
+          int.tryParse(returnedUser['age_change_count']?.toString() ?? '') ??
+              ageChangeCount;
+      countryChangeCount =
+          int.tryParse(returnedUser['country_change_count']?.toString() ?? '') ??
+              countryChangeCount;
+      genderChangeCount =
+          int.tryParse(returnedUser['gender_change_count']?.toString() ?? '') ??
+              genderChangeCount;
+    }
     setLanguagePreference(nextLanguage);
     await (await SharedPreferences.getInstance())
         .setString('dvx.language', nextLanguage);
@@ -890,6 +931,9 @@ class AppState extends ChangeNotifier {
 
     authError = null;
     await _persistSession();
+    if (previousCountry != countryCode) {
+      await refreshRooms(notify: false);
+    }
     notifyListeners();
     return true;
   }
@@ -975,6 +1019,8 @@ class AppState extends ChangeNotifier {
           'Choose Voice Room or Live Room.',
         'owner_and_name_required' =>
           'Room name is required.',
+        'country_required_for_room' =>
+          'Select your country before creating a room.',
         'room_create_storage_failed' =>
           'Room storage could not save the room. The server is being repaired.',
         'room_id_taken' || 'room_id_unavailable' =>
