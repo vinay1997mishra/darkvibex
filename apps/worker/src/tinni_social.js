@@ -17,6 +17,12 @@ export async function ensureTinniSocialSchema(db) {
       claimed_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, task_id)
     )`,
+    `CREATE TABLE IF NOT EXISTS official_notices (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS user_feedback (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -95,6 +101,14 @@ export async function ensureTinniSocialSchema(db) {
     )`,
   ];
   for (const sql of statements) await db.prepare(sql).run();
+  await db.prepare(
+    "INSERT OR IGNORE INTO official_notices(id,title,body,created_at) VALUES(?,?,?,?)"
+  ).bind(
+    "official-welcome",
+    "Welcome to DarkVibeX",
+    "Official notices, safety updates and app information will appear here.",
+    1,
+  ).run();
 }
 
 function clean(value, max) {
@@ -714,4 +728,78 @@ export async function vsRanking(db, limitValue=100) {
       ORDER BY v.rivalry DESC,v.updated_at ASC LIMIT ?`
   ).bind(limit).all();
   return rows.results ?? [];
+}
+
+
+export async function officialNotices(db) {
+  await ensureTinniSocialSchema(db);
+  const rows = await db.prepare(
+    "SELECT id,title,body,created_at FROM official_notices ORDER BY created_at DESC LIMIT 100"
+  ).all();
+  return rows.results ?? [];
+}
+
+export async function activityFeed(db, userId) {
+  await ensureTinniSocialSchema(db);
+  const items = [];
+  try {
+    const wallet = await db.prepare(
+      "SELECT id,kind,amount,balance_after,created_at FROM wallet_ledger WHERE user_id=? ORDER BY created_at DESC LIMIT 40"
+    ).bind(userId).all();
+    for (const row of wallet.results ?? []) {
+      items.push({
+        id: "wallet:" + String(row.id),
+        kind: "wallet",
+        title: String(row.kind ?? "Wallet activity"),
+        body:
+          (Number(row.amount ?? 0) >= 0 ? "+" : "") +
+          String(row.amount ?? 0) +
+          " coins • Balance " +
+          String(row.balance_after ?? 0),
+        created_at: Number(row.created_at ?? 0),
+      });
+    }
+  } catch (_) {}
+  try {
+    const visits = await db.prepare(
+      `SELECT v.visitor_user_id,u.display_name,v.last_visited_at
+         FROM profile_visitors v
+         JOIN users u ON u.id=v.visitor_user_id
+        WHERE v.viewed_user_id=?
+        ORDER BY v.last_visited_at DESC LIMIT 30`
+    ).bind(userId).all();
+    for (const row of visits.results ?? []) {
+      items.push({
+        id: "visit:" + String(row.visitor_user_id) + ":" + String(row.last_visited_at),
+        kind: "visitor",
+        title: "Profile visitor",
+        body: String(row.display_name ?? "User") + " visited your profile",
+        created_at: Number(row.last_visited_at ?? 0),
+      });
+    }
+  } catch (_) {}
+  try {
+    const gifts = await db.prepare(
+      `SELECT g.id,g.coin_cost,g.created_at,u.display_name
+         FROM gift_events g
+         LEFT JOIN users u ON u.id=g.sender_user_id
+        WHERE g.receiver_user_id=?
+        ORDER BY g.created_at DESC LIMIT 30`
+    ).bind(userId).all();
+    for (const row of gifts.results ?? []) {
+      items.push({
+        id: "gift:" + String(row.id),
+        kind: "gift",
+        title: "Gift received",
+        body:
+          String(row.display_name ?? "User") +
+          " sent a gift worth " +
+          String(row.coin_cost ?? 0) +
+          " coins",
+        created_at: Number(row.created_at ?? 0),
+      });
+    }
+  } catch (_) {}
+  items.sort((a,b) => Number(b.created_at) - Number(a.created_at));
+  return items.slice(0,100);
 }
