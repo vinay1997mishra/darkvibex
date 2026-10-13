@@ -2703,7 +2703,7 @@ async function handleApi(request, env, url) {
         ).bind(String(body.date_of_birth),now(),userId).run();
       }
       const latest=await db.prepare(
-        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth FROM users WHERE id=?"
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,language FROM users WHERE id=?"
       ).bind(userId).first();
       const token=await createSessionToken(env,userId,latest?.display_name ?? userId);
       return json({ok:true,token,user:latest,provider:"email"});
@@ -2719,7 +2719,7 @@ async function handleApi(request, env, url) {
       const userId=await emailPasswordLogin(db,body.email,body.password);
       await ensureUserAllowed(db,userId);
       const user=await db.prepare(
-        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth FROM users WHERE id=? LIMIT 1"
+        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,language FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       if(!user) throw new Error("user_not_found");
       const token=await createSessionToken(env,userId,user.display_name);
