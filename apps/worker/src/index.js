@@ -2902,6 +2902,31 @@ async function handleApi(request, env, url) {
     return json({ ok: true, amount: Number(claim.amount) });
   }
 
+  if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const rows = await db.prepare(
+      `SELECT u.id,u.display_name,u.avatar_key,u.role,
+              COALESCE(c.status,'active') AS status
+         FROM users u
+         LEFT JOIN owner_user_controls c ON c.user_id=u.id
+        WHERE u.role IN ('coin_seller','merchant')
+          AND COALESCE(c.status,'active')='active'
+        ORDER BY CASE u.role WHEN 'coin_seller' THEN 0 ELSE 1 END,
+                 u.updated_at DESC
+        LIMIT 200`
+    ).all();
+    return json({
+      ok: true,
+      providers: (rows.results ?? []).map((row) => ({
+        user_id: row.id,
+        display_name: row.display_name,
+        avatar_key: row.avatar_key,
+        role: row.role,
+      })),
+    });
+  }
+
   if (url.pathname === "/api/messages/send" && request.method === "POST") {
     const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
