@@ -7,6 +7,30 @@ class BackendApi {
 
   static String? sessionToken;
 
+  static const List<Map<String, Object>> _featuredRoomGifts =
+      <Map<String, Object>>[
+    <String, Object>{'id': 'marigold-garland', 'name': 'Marigold Garland', 'emoji': '🌼', 'coin_cost': 200000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'matar-paneer', 'name': 'Matar Paneer', 'emoji': '🍲', 'coin_cost': 300000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'royal-lantern', 'name': 'Royal Lantern', 'emoji': '🏮', 'coin_cost': 500000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'garba-duet', 'name': 'Garba Duet', 'emoji': '💃', 'coin_cost': 1200000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'kebab-platter', 'name': 'Kebab Platter', 'emoji': '🍢', 'coin_cost': 500000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'heart-crystal', 'name': 'Heart Crystal', 'emoji': '💗', 'coin_cost': 800000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'dandiya-night', 'name': 'Dandiya Night', 'emoji': '🕺', 'coin_cost': 1500000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'diya-blessing', 'name': 'Diya Blessing', 'emoji': '🪔', 'coin_cost': 250000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'royal-thali', 'name': 'Royal Thali', 'emoji': '🍽️', 'coin_cost': 900000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'magic-lamp', 'name': 'Magic Lamp', 'emoji': '🪔', 'coin_cost': 2000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'rainbow-gemstones', 'name': 'Rainbow Gemstones', 'emoji': '💎', 'coin_cost': 600000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'flower-swing', 'name': 'Flower Swing', 'emoji': '🌺', 'coin_cost': 1100000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'crown-shower', 'name': 'Crown Shower', 'emoji': '👑', 'coin_cost': 2500000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'palace-feast', 'name': 'Palace Feast', 'emoji': '🍛', 'coin_cost': 3000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'wedding-stage', 'name': 'Wedding Stage', 'emoji': '💒', 'coin_cost': 4000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'peacock-dance', 'name': 'Peacock Dance', 'emoji': '🦚', 'coin_cost': 5000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'royal-elephant', 'name': 'Royal Elephant', 'emoji': '🐘', 'coin_cost': 6000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'maharaja-carriage', 'name': 'Maharaja Carriage', 'emoji': '🎠', 'coin_cost': 8000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'firework-celebration', 'name': 'Firework Celebration', 'emoji': '🎆', 'coin_cost': 10000000, 'vip_level': 0, 'category': 'normal'},
+    <String, Object>{'id': 'galaxy-celebration', 'name': 'Galaxy Celebration', 'emoji': '🌌', 'coin_cost': 12000000, 'vip_level': 0, 'category': 'normal'},
+  ];
+
   static const String origin = String.fromEnvironment(
     'DARKVIBEX_API_ORIGIN',
     defaultValue: 'https://darkvibex-api.mishrajii7991.workers.dev',
@@ -991,10 +1015,31 @@ class BackendApi {
   }
 
   Future<List<Map<String, dynamic>>> giftCatalog({required String userId}) async {
-    final value = await _json('GET', '/api/gifts/catalog?user_id=${Uri.encodeQueryComponent(userId)}');
+    final value = await _json(
+      'GET',
+      '/api/gifts/catalog?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
     final rows = value?['gifts'];
-    if (rows is! List) return const <Map<String, dynamic>>[];
-    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+    final serverGifts = rows is List
+        ? rows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[];
+
+    final featured = _featuredRoomGifts
+        .map((gift) => Map<String, dynamic>.from(gift))
+        .toList(growable: false);
+    final featuredIds =
+        featured.map((gift) => gift['id']?.toString() ?? '').toSet();
+
+    return <Map<String, dynamic>>[
+      ...featured,
+      ...serverGifts.where(
+        (gift) => !featuredIds.contains(gift['id']?.toString() ?? ''),
+      ),
+    ];
   }
 
   Future<List<Map<String, dynamic>>> customGifts({
