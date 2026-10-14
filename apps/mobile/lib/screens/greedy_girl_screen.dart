@@ -58,7 +58,10 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   int selectedBet = 100;
   bool loading = true;
   bool loadingState = false;
-  bool placingBet = false;
+  bool drainingBetQueue = false;
+  final List<_QueuedGreedyBet> betQueue = <_QueuedGreedyBet>[];
+  final Map<String, int> queuedBets = <String, int>{};
+  int queuedDebit = 0;
   String? loadError;
   String panel = 'game';
   int serverTimeAtSync = 0;
@@ -69,8 +72,16 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   Map<String, dynamic> get round =>
       game['round'] is Map ? Map<String, dynamic>.from(game['round'] as Map) : const <String, dynamic>{};
 
-  Map<String, dynamic> get myBets =>
-      game['my_bets'] is Map ? Map<String, dynamic>.from(game['my_bets'] as Map) : const <String, dynamic>{};
+  Map<String, dynamic> get myBets {
+    final base = game['my_bets'] is Map
+        ? Map<String, dynamic>.from(game['my_bets'] as Map)
+        : <String, dynamic>{};
+    for (final entry in queuedBets.entries) {
+      final current = int.tryParse(base[entry.key]?.toString() ?? '') ?? 0;
+      base[entry.key] = current + entry.value;
+    }
+    return base;
+  }
 
   List<Map<String, dynamic>> get history {
     final raw = game['history'];
@@ -132,7 +143,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (loadingState || placingBet) return;
+    if (loadingState || drainingBetQueue || betQueue.isNotEmpty) return;
     if (!widget.state.backendConnected) {
       if (mounted) {
         setState(() {
@@ -181,7 +192,9 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   void _applyState(Map<String, dynamic> value) {
     final time = int.tryParse(value['server_time']?.toString() ?? '') ?? 0;
     final wallet = int.tryParse(value['wallet_balance']?.toString() ?? '');
-    if (wallet != null) widget.state.setCoinBalance(wallet);
+    if (wallet != null) {
+      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit));
+    }
     final allowed = value['config'] is Map
         ? Map<String, dynamic>.from(value['config'] as Map)['bet_amounts']
         : null;
@@ -206,47 +219,155 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   }
 
   Future<void> _placeBet(String foodKey) async {
-    if (!bettingOpen || placingBet) return;
-    placingBet = true;
-    try {
-      final requestId =
-          'gg-${widget.state.userId}-${DateTime.now().microsecondsSinceEpoch}';
-      final result = await widget.state.backend.greedyGirlBet(
-        userId: widget.state.userId,
-        foodKey: foodKey,
-        amount: selectedBet,
-        requestId: requestId,
-      );
-      if (!mounted) return;
-      if (result?['ok'] == true) {
-        _applyState(result!);
-        return;
-      }
+    if (!bettingOpen) return;
 
-      final returnedState = result?['state'];
-      if (returnedState is Map) {
-        _applyState(Map<String, dynamic>.from(returnedState));
-      } else {
-        unawaited(_load(silent: true));
-      }
-
-      final raw = result?['error']?.toString().trim();
-      final error = switch (raw) {
-        'insufficient_coins' => 'Not enough coins for this bet.',
-        'betting_locked' => 'Betting closed for this round. Next round is starting.',
-        'games_disabled' => 'Games are disabled by the owner.',
-        'unauthorized' || 'forbidden' => 'Login session expired. Sign in again.',
-        null || '' => 'Bet could not reach the server. Try again.',
-        _ => raw.replaceAll('_', ' '),
-      };
+    final authoritativeWallet =
+        int.tryParse(game['wallet_balance']?.toString() ?? '') ??
+            widget.state.coins;
+    final availableWallet = math.max(0, authoritativeWallet - queuedDebit);
+    final amount = selectedBet;
+    if (availableWallet < amount) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
+        const SnackBar(content: Text('Not enough coins for this bet.')),
       );
+      return;
+    }
+
+    final bet = _QueuedGreedyBet(
+      foodKey: foodKey,
+      amount: amount,
+      requestId:
+          'gg-${widget.state.userId}-${DateTime.now().microsecondsSinceEpoch}',
+    );
+
+    setState(() {
+      betQueue.add(bet);
+      queuedBets[foodKey] = (queuedBets[foodKey] ?? 0) + amount;
+      queuedDebit += amount;
+    });
+    widget.state.setCoinBalance(
+      math.max(0, authoritativeWallet - queuedDebit),
+    );
+    unawaited(_drainBetQueue());
+  }
+
+  void _removeQueuedBet(_QueuedGreedyBet bet) {
+    if (betQueue.isNotEmpty && identical(betQueue.first, bet)) {
+      betQueue.removeAt(0);
+    } else {
+      betQueue.remove(bet);
+    }
+    final next = (queuedBets[bet.foodKey] ?? 0) - bet.amount;
+    if (next <= 0) {
+      queuedBets.remove(bet.foodKey);
+    } else {
+      queuedBets[bet.foodKey] = next;
+    }
+    queuedDebit = math.max(0, queuedDebit - bet.amount);
+  }
+
+  void _applyBetAck(
+    Map<String, dynamic> result,
+    _QueuedGreedyBet bet,
+  ) {
+    final next = Map<String, dynamic>.from(game);
+    final baseBets = next['my_bets'] is Map
+        ? Map<String, dynamic>.from(next['my_bets'] as Map)
+        : <String, dynamic>{};
+    final current =
+        int.tryParse(baseBets[bet.foodKey]?.toString() ?? '') ?? 0;
+    baseBets[bet.foodKey] = current + bet.amount;
+    next['my_bets'] = baseBets;
+
+    final wallet =
+        int.tryParse(result['wallet_balance']?.toString() ?? '');
+    if (wallet != null) {
+      next['wallet_balance'] = wallet;
+      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit));
+    }
+
+    final serverTime =
+        int.tryParse(result['server_time']?.toString() ?? '') ?? 0;
+    if (serverTime > 0) {
+      next['server_time'] = serverTime;
+      serverTimeAtSync = serverTime;
+      localTimeAtSync = DateTime.now().millisecondsSinceEpoch;
+    }
+
+    if (mounted) {
+      setState(() {
+        game = next;
+        loading = false;
+        loadError = null;
+      });
+    }
+  }
+
+  Future<void> _drainBetQueue() async {
+    if (drainingBetQueue) return;
+    drainingBetQueue = true;
+    var needsReconcile = false;
+
+    try {
+      while (mounted && betQueue.isNotEmpty) {
+        final bet = betQueue.first;
+        Map<String, dynamic>? result;
+        Object? failure;
+
+        try {
+          result = await widget.state.backend.greedyGirlBet(
+            userId: widget.state.userId,
+            foodKey: bet.foodKey,
+            amount: bet.amount,
+            requestId: bet.requestId,
+          );
+        } catch (error) {
+          failure = error;
+        }
+
+        if (!mounted) return;
+        setState(() => _removeQueuedBet(bet));
+
+        if (result?['ok'] == true) {
+          if (result?['my_bets'] is Map) {
+            _applyState(result!);
+          } else {
+            _applyBetAck(result!, bet);
+          }
+          continue;
+        }
+
+        final returnedState = result?['state'];
+        if (returnedState is Map) {
+          _applyState(Map<String, dynamic>.from(returnedState));
+        } else {
+          needsReconcile = true;
+        }
+
+        final raw = result?['error']?.toString().trim();
+        final error = switch (raw) {
+          'insufficient_coins' => 'Not enough coins for this bet.',
+          'betting_locked' =>
+            'Betting closed for this round. Next round is starting.',
+          'games_disabled' => 'Games are disabled by the owner.',
+          'unauthorized' || 'forbidden' =>
+            'Login session expired. Sign in again.',
+          null || '' => failure == null
+              ? 'Bet could not reach the server. Try again.'
+              : 'Bet connection failed. Try again.',
+          _ => raw.replaceAll('_', ' '),
+        };
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
     } finally {
+      drainingBetQueue = false;
       if (mounted) {
-        setState(() => placingBet = false);
-      } else {
-        placingBet = false;
+        setState(() {});
+        if (needsReconcile || betQueue.isEmpty) {
+          unawaited(_load(silent: true));
+        }
       }
     }
   }
@@ -288,8 +409,10 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final wallet =
-        int.tryParse(game['wallet_balance']?.toString() ?? '') ?? widget.state.coins;
+    final authoritativeWallet =
+        int.tryParse(game['wallet_balance']?.toString() ?? '') ??
+            widget.state.coins;
+    final wallet = math.max(0, authoritativeWallet - queuedDebit);
     final winnings =
         int.tryParse(game['today_winnings']?.toString() ?? '') ?? 0;
     final seconds = (remainingMs / 1000).ceil();
@@ -570,9 +693,8 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
                             ),
-                            onSelected: placingBet
-                                ? null
-                                : (_) => setState(() => selectedBet = amount),
+                            onSelected: (_) =>
+                                setState(() => selectedBet = amount),
                           ),
                         ),
                     ],
@@ -665,7 +787,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     return InkWell(
       key: Key('greedy-girl-$key'),
       customBorder: const CircleBorder(),
-      onTap: bettingOpen && !placingBet ? () => _placeBet(key) : null,
+      onTap: bettingOpen ? () => unawaited(_placeBet(key)) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         decoration: BoxDecoration(
@@ -889,4 +1011,17 @@ class _SparklePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+
+class _QueuedGreedyBet {
+  const _QueuedGreedyBet({
+    required this.foodKey,
+    required this.amount,
+    required this.requestId,
+  });
+
+  final String foodKey;
+  final int amount;
+  final String requestId;
 }
