@@ -6648,6 +6648,7 @@ async function handleApi(request, env, url) {
     const fruitKey = String(body.fruit_key ?? "").trim();
     const amount = Number(body.amount ?? 0);
     const requestId = String(body.request_id ?? "").trim();
+    const compactResponse = body.compact_response === true;
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     if (!FRUIT_PARTY_BY_KEY.has(fruitKey) ||
@@ -6774,6 +6775,9 @@ async function handleApi(request, env, url) {
       "SELECT round_id,food_key,amount FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
     ).bind(userId, requestId).first();
     if (prior) {
+      if (!compactResponse) {
+        return json(await greedyGirlState(db, userId, now()));
+      }
       const wallet = await db.prepare(
         "SELECT coins FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
@@ -6818,6 +6822,9 @@ async function handleApi(request, env, url) {
         "SELECT round_id,food_key,amount FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
       ).bind(userId, requestId).first();
       if (!duplicate) throw error;
+      if (!compactResponse) {
+        return json(await greedyGirlState(db, userId, now()));
+      }
       const wallet = await db.prepare(
         "SELECT coins FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
@@ -6841,6 +6848,9 @@ async function handleApi(request, env, url) {
         { ok:false,error:"insufficient_coins",state:await greedyGirlState(db,userId,ts) },
         { status:409 },
       );
+    }
+    if (!compactResponse) {
+      return json(await greedyGirlState(db, userId, now()), { status:201 });
     }
     const wallet = await db.prepare(
       "SELECT coins FROM users WHERE id=? LIMIT 1"
