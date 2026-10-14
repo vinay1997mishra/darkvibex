@@ -5923,8 +5923,8 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                               if (speakingUserId != null)
                                 Positioned(
-                                  left: compactSeats ? -14 : -18,
-                                  bottom: compactSeats ? -4 : -3,
+                                  left: -(compactSeats ? 9 : 12),
+                                  top: -(compactSeats ? 9 : 12),
                                   child: IgnorePointer(
                                     child: ValueListenableBuilder<
                                         Map<String, double>>(
@@ -5940,6 +5940,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                         return _LiveMicWaves(
                                           level: level,
                                           compact: compactSeats,
+                                          diameter: diameter,
                                         );
                                       },
                                     ),
@@ -6414,10 +6415,12 @@ class _LiveMicWaves extends StatefulWidget {
   const _LiveMicWaves({
     required this.level,
     required this.compact,
+    required this.diameter,
   });
 
   final double level;
   final bool compact;
+  final double diameter;
 
   @override
   State<_LiveMicWaves> createState() => _LiveMicWavesState();
@@ -6432,7 +6435,7 @@ class _LiveMicWavesState extends State<_LiveMicWaves>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 680),
+      duration: const Duration(milliseconds: 760),
     )..repeat();
   }
 
@@ -6444,9 +6447,8 @@ class _LiveMicWavesState extends State<_LiveMicWaves>
 
   @override
   Widget build(BuildContext context) {
-    final size = widget.compact
-        ? const Size(28, 20)
-        : const Size(36, 24);
+    final outerPadding = widget.compact ? 9.0 : 12.0;
+    final size = Size.square(widget.diameter + outerPadding * 2);
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _controller,
@@ -6456,6 +6458,7 @@ class _LiveMicWavesState extends State<_LiveMicWaves>
             level: widget.level,
             phase: _controller.value,
             compact: widget.compact,
+            avatarDiameter: widget.diameter,
           ),
         ),
       ),
@@ -6468,100 +6471,47 @@ class _LiveMicWavePainter extends CustomPainter {
     required this.level,
     required this.phase,
     required this.compact,
+    required this.avatarDiameter,
   });
 
   final double level;
   final double phase;
   final bool compact;
+  final double avatarDiameter;
 
   @override
   void paint(Canvas canvas, Size size) {
     final normalized = level.clamp(0.0, 1.0).toDouble();
-    final centerY = size.height * .50;
-    final micX = compact ? 6.0 : 7.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final outerPadding = compact ? 9.0 : 12.0;
+    final baseRadius = avatarDiameter / 2 + (compact ? 1.2 : 1.8);
     final liveColor = Color.lerp(
       const Color(0xFFFFD76A),
       const Color(0xFF56F2C2),
-      (.35 + normalized * .65).clamp(0.0, 1.0),
+      (.30 + normalized * .70).clamp(0.0, 1.0),
     )!;
 
-    canvas.drawCircle(
-      Offset(micX + 1, centerY),
-      compact ? 6.5 : 8.0,
-      Paint()
-        ..color = liveColor.withValues(
-          alpha: (.10 + normalized * .18).clamp(0.0, .30),
-        ),
-    );
-
-    final micPaint = Paint()
-      ..color = liveColor
-      ..style = PaintingStyle.fill;
-    final body = Rect.fromCenter(
-      center: Offset(micX, centerY - (compact ? 1.8 : 2.2)),
-      width: compact ? 3.8 : 4.8,
-      height: compact ? 7.2 : 9.0,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        body,
-        Radius.circular(compact ? 2.0 : 2.5),
-      ),
-      micPaint,
-    );
-
-    final linePaint = Paint()
-      ..color = liveColor
+    final edgePaint = Paint()
+      ..color = liveColor.withValues(
+        alpha: (.30 + normalized * .55).clamp(.30, .90),
+      )
       ..style = PaintingStyle.stroke
-      ..strokeWidth = compact ? 1.15 : 1.45
-      ..strokeCap = StrokeCap.round;
-    final cradleRect = Rect.fromCenter(
-      center: Offset(micX, centerY),
-      width: compact ? 8.0 : 10.0,
-      height: compact ? 9.0 : 11.0,
-    );
-    canvas.drawArc(cradleRect, 0, math.pi, false, linePaint);
-    canvas.drawLine(
-      Offset(micX, centerY + (compact ? 4.4 : 5.4)),
-      Offset(micX, centerY + (compact ? 6.0 : 7.0)),
-      linePaint,
-    );
-    canvas.drawLine(
-      Offset(
-        micX - (compact ? 2.4 : 3.0),
-        centerY + (compact ? 6.0 : 7.0),
-      ),
-      Offset(
-        micX + (compact ? 2.4 : 3.0),
-        centerY + (compact ? 6.0 : 7.0),
-      ),
-      linePaint,
-    );
+      ..strokeWidth = (compact ? 1.15 : 1.45) + normalized * .85;
+    canvas.drawCircle(center, baseRadius, edgePaint);
 
-    final waveCenter = Offset(
-      micX + (compact ? 2.0 : 2.5),
-      centerY - 1,
-    );
     for (var index = 0; index < 3; index++) {
-      final radius =
-          (compact ? 5.2 : 6.6) + index * (compact ? 3.0 : 3.9);
-      final pulse = math
-          .sin((phase * math.pi * 2) - (index * .82))
-          .abs();
+      final progress = (phase + index / 3) % 1.0;
+      final radius = baseRadius + progress * outerPadding;
+      final fade = 1.0 - progress;
       final opacity =
-          (.28 + normalized * .50 + pulse * .18).clamp(.20, .96);
+          (fade * (.20 + normalized * .68)).clamp(0.0, .88);
+      if (opacity <= .02) continue;
       final wavePaint = Paint()
         ..color = liveColor.withValues(alpha: opacity)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = (compact ? 1.05 : 1.35) + normalized * .55
-        ..strokeCap = StrokeCap.round;
-      canvas.drawArc(
-        Rect.fromCircle(center: waveCenter, radius: radius),
-        -math.pi / 3,
-        math.pi * 2 / 3,
-        false,
-        wavePaint,
-      );
+        ..strokeWidth =
+            (compact ? 1.0 : 1.25) + normalized * (compact ? .75 : 1.05);
+      canvas.drawCircle(center, radius, wavePaint);
     }
   }
 
@@ -6569,7 +6519,8 @@ class _LiveMicWavePainter extends CustomPainter {
   bool shouldRepaint(covariant _LiveMicWavePainter oldDelegate) {
     return oldDelegate.level != level ||
         oldDelegate.phase != phase ||
-        oldDelegate.compact != compact;
+        oldDelegate.compact != compact ||
+        oldDelegate.avatarDiameter != avatarDiameter;
   }
 }
 
