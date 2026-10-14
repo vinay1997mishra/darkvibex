@@ -1870,18 +1870,15 @@ class _RoomScreenState extends State<RoomScreen> {
     final level = int.tryParse(idLevel['level']?.toString() ?? '') ?? 0;
 
     String cpPartnerId = '';
-    String cpPartnerName = '';
     String cpPartnerAvatar = '';
     if (cp?['state']?.toString() == 'active') {
       final a = cp?['user_a']?.toString() ?? '';
       final b = cp?['user_b']?.toString() ?? '';
       if (a == userId) {
         cpPartnerId = b;
-        cpPartnerName = cp?['user_b_name']?.toString() ?? '';
         cpPartnerAvatar = cp?['user_b_avatar_key']?.toString() ?? '';
       } else {
         cpPartnerId = a;
-        cpPartnerName = cp?['user_a_name']?.toString() ?? '';
         cpPartnerAvatar = cp?['user_a_avatar_key']?.toString() ?? '';
       }
     }
@@ -2440,31 +2437,6 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _roomMiniInfoChip(String label, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDEDED),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.black54),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }
