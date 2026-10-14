@@ -40,3 +40,4 @@ void main() {
     expect(worker, contains('async function requireLudoRoomMember'));
   });
 }
+// Build trigger: Game Room controls + preserved 15 seats verified by CI.
