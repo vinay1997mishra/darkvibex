@@ -2590,6 +2590,240 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  Future<void> _respondProfileRelation({
+    required bool couple,
+    required bool accept,
+  }) async {
+    if (!isSelf || cpInviteBusy) return;
+    setState(() => cpInviteBusy = true);
+    try {
+      final result = couple
+          ? await widget.state.backend.cpRespond(
+              userId: widget.state.userId,
+              accept: accept,
+            )
+          : await widget.state.backend.vsRespond(
+              userId: widget.state.userId,
+              accept: accept,
+            );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        await _load();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'Request could not be updated.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => cpInviteBusy = false);
+    }
+  }
+
+  Widget _relationRequestStatus({
+    required bool couple,
+    required Map<String, dynamic>? relation,
+  }) {
+    final data = relation ?? const <String, dynamic>{};
+    if (data['state']?.toString() != 'pending' || !isSelf) {
+      return const SizedBox.shrink();
+    }
+    final incoming =
+        data['requested_by']?.toString() != widget.state.userId;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.fromLTRB(13, 11, 10, 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F6),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: const Color(0xFFFFD1DF),
+          width: .8,
+        ),
+      ),
+      child: incoming
+          ? Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    couple
+                        ? 'CP invitation received'
+                        : 'VS invitation received',
+                    style: const TextStyle(
+                      color: Color(0xFF6D4A55),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: cpInviteBusy
+                      ? null
+                      : () => _respondProfileRelation(
+                            couple: couple,
+                            accept: false,
+                          ),
+                  child: const Text('Reject'),
+                ),
+                const SizedBox(width: 4),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF5B80),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                  ),
+                  onPressed: cpInviteBusy
+                      ? null
+                      : () => _respondProfileRelation(
+                            couple: couple,
+                            accept: true,
+                          ),
+                  child: const Text('Accept'),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                const Icon(
+                  Icons.schedule_rounded,
+                  color: Color(0xFFFF6B8D),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    couple
+                        ? 'CP invitation sent — waiting to be received'
+                        : 'VS invitation sent — waiting to be received',
+                    style: const TextStyle(
+                      color: Color(0xFF6D4A55),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _manageBoundIntimacyCard(
+    int slotIndex,
+    Map<String, dynamic> bound,
+  ) async {
+    if (!isSelf || intimacyCardBusy) return;
+    final targetId = bound['target_user_id']?.toString() ?? '';
+    final name = bound['display_name']?.toString() ?? 'User';
+    final relation = _relationLabel(
+      bound['relation_type']?.toString() ?? 'friend',
+    );
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(
+                Icons.favorite_rounded,
+                color: Color(0xFFFF7E9F),
+              ),
+              title: Text(name),
+              subtitle: Text(relation),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_rounded),
+              title: const Text('Open profile'),
+              onTap: () => Navigator.pop(sheetContext, 'profile'),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.link_off_rounded,
+                color: Color(0xFFE45468),
+              ),
+              title: const Text(
+                'Remove from card',
+                style: TextStyle(color: Color(0xFFE45468)),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'remove'),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    if (action == 'profile' && targetId.isNotEmpty) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PublicProfileScreen(
+            state: widget.state,
+            userId: targetId,
+          ),
+        ),
+      );
+      return;
+    }
+    if (action != 'remove') return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove relationship card'),
+        content: Text('Remove $name from this card?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5B80),
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => intimacyCardBusy = true);
+    try {
+      final result = await widget.state.backend.unbindIntimacyCard(
+        userId: widget.state.userId,
+        slotIndex: slotIndex,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        setState(() => intimacyCards = Map<String, dynamic>.from(result!));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'Card could not be removed.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => intimacyCardBusy = false);
+    }
+  }
+
   Widget _intimacyHeading(
     String title, {
     VoidCallback? onHelp,
@@ -2770,10 +3004,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             );
           }
 
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Stack(
-              children: [
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: active && isSelf
+                ? () => _openRelationManager(couple: false)
+                : null,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                children: [
                 Positioned.fill(
                   child: Image.asset(
                     'assets/images/vs_card_reference.webp',
@@ -2826,7 +3065,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             : null,
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -2958,10 +3198,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             );
           }
 
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              children: [
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: active && isSelf
+                ? () => _openRelationManager(couple: true)
+                : null,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
                 Positioned.fill(
                   child: Image.asset(
                     'assets/images/cp_card_reference.webp',
@@ -3053,7 +3298,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   left: w * .755,
                   width: w * .16,
                 ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -3423,16 +3669,18 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   ? isSelf
                       ? () => _bindIntimacyFriendCard(slotIndex)
                       : null
-                  : targetId.isEmpty
-                      ? null
-                      : () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => PublicProfileScreen(
-                                state: widget.state,
-                                userId: targetId,
+                  : isSelf
+                      ? () => _manageBoundIntimacyCard(slotIndex, bound)
+                      : targetId.isEmpty
+                          ? null
+                          : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => PublicProfileScreen(
+                                    state: widget.state,
+                                    userId: targetId,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
               child: SizedBox(
                 width: cardWidth,
                 height: cardHeight,
@@ -3502,6 +3750,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
         const SizedBox(height: 7),
         _versusCard(),
+        _relationRequestStatus(couple: false, relation: vs),
         const SizedBox(height: 10),
         _loveStoreStrip(),
         const SizedBox(height: 15),
@@ -3511,6 +3760,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
         const SizedBox(height: 7),
         _coupleCard(),
+        _relationRequestStatus(couple: true, relation: cp),
         const SizedBox(height: 18),
         _intimacyHeading('Friend'),
         const SizedBox(height: 9),
