@@ -11,7 +11,7 @@ void main() {
     expect(source, contains('widget.room.roomNumber'));
 
     final menuStart = source.indexOf('Future<void> _openRoomMenu()');
-    final menuEnd = source.indexOf('Future<void> _shareRoom()', menuStart);
+    final menuEnd = source.indexOf('Future<void> _openLamp()', menuStart);
     expect(menuStart, greaterThanOrEqualTo(0));
     expect(menuEnd, greaterThan(menuStart));
     final menu = source.substring(menuStart, menuEnd);
