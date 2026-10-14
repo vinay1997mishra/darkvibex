@@ -1916,7 +1916,7 @@ function greedyGirlCycleEnd(roundId) {
 
 async function ensureGreedyGirlSchema(db) {
   await db.batch([
-    db.prepare(\`CREATE TABLE IF NOT EXISTS greedy_girl_bets (
+    db.prepare(`CREATE TABLE IF NOT EXISTS greedy_girl_bets (
       id TEXT PRIMARY KEY,
       request_id TEXT NOT NULL,
       round_id INTEGER NOT NULL,
@@ -1926,8 +1926,8 @@ async function ensureGreedyGirlSchema(db) {
       created_at INTEGER NOT NULL,
       UNIQUE(user_id, request_id),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )\`),
-    db.prepare(\`CREATE TABLE IF NOT EXISTS greedy_girl_results (
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS greedy_girl_results (
       round_id INTEGER PRIMARY KEY,
       food_key TEXT NOT NULL,
       total_bet INTEGER NOT NULL DEFAULT 0,
@@ -1935,7 +1935,7 @@ async function ensureGreedyGirlSchema(db) {
       active_players INTEGER NOT NULL DEFAULT 0,
       top_winners_json TEXT NOT NULL DEFAULT '[]',
       settled_at INTEGER NOT NULL
-    )\`),
+    )`),
     db.prepare(
       "CREATE INDEX IF NOT EXISTS idx_greedy_girl_bets_round ON greedy_girl_bets(round_id)"
     ),
@@ -1952,11 +1952,11 @@ async function settleGreedyGirlRound(db, roundId) {
   if (existing) return;
 
   const rows = await db.prepare(
-    \`SELECT b.user_id,b.food_key,b.amount,u.display_name,u.avatar_key
+    `SELECT b.user_id,b.food_key,b.amount,u.display_name,u.avatar_key
        FROM greedy_girl_bets b
        JOIN users u ON u.id=b.user_id
       WHERE b.round_id=?
-      ORDER BY b.created_at ASC\`
+      ORDER BY b.created_at ASC`
   ).bind(roundId).all();
   const bets = rows.results ?? [];
   let winner = greedyGirlWeightedFood();
@@ -2005,10 +2005,10 @@ async function settleGreedyGirlRound(db, roundId) {
 
   const statements = [
     db.prepare(
-      \`INSERT INTO greedy_girl_results(
+      `INSERT INTO greedy_girl_results(
         round_id,food_key,total_bet,total_payout,active_players,
         top_winners_json,settled_at
-      ) VALUES(?,?,?,?,?,?,?)\`
+      ) VALUES(?,?,?,?,?,?,?)`
     ).bind(
       roundId,
       winner.key,
@@ -2021,16 +2021,16 @@ async function settleGreedyGirlRound(db, roundId) {
   ];
 
   for (const [userId, payout] of payouts.entries()) {
-    const reference = \`greedy-girl:\${roundId}:\${userId}\`;
+    const reference = `greedy-girl:${roundId}:${userId}`;
     statements.push(
       db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
         .bind(Number(payout), ts, userId),
       db.prepare(
-        \`INSERT INTO wallet_ledger(
+        `INSERT INTO wallet_ledger(
           id,user_id,kind,amount,balance_after,reference_id,created_at
         )
         SELECT ?,u.id,'greedy_girl_win',?,u.coins,?,?
-          FROM users u WHERE u.id=?\`
+          FROM users u WHERE u.id=?`
       ).bind(id(), Number(payout), reference, ts, userId),
     );
   }
@@ -2086,11 +2086,11 @@ async function greedyGirlState(db, userId, ts = now()) {
     "SELECT COALESCE(SUM(amount),0) AS total_bet,COUNT(DISTINCT user_id) AS active_players FROM greedy_girl_bets WHERE round_id=?"
   ).bind(roundId).first();
   const historyRows = await db.prepare(
-    \`SELECT round_id,food_key,total_bet,total_payout,active_players,
+    `SELECT round_id,food_key,total_bet,total_payout,active_players,
             top_winners_json,settled_at
        FROM greedy_girl_results
       ORDER BY round_id DESC
-      LIMIT 7\`
+      LIMIT 7`
   ).all();
   const history = (historyRows.results ?? []).map((row) => {
     let topWinners = [];
@@ -6668,7 +6668,7 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const betId = \`greedy-girl:\${userId}:\${requestId}\`;
+    const betId = `greedy-girl:${userId}:${requestId}`;
     const prior = await db.prepare(
       "SELECT id FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
     ).bind(userId, requestId).first();
@@ -6677,11 +6677,11 @@ async function handleApi(request, env, url) {
     try {
       await db.batch([
         db.prepare(
-          \`INSERT INTO greedy_girl_bets(
+          `INSERT INTO greedy_girl_bets(
             id,request_id,round_id,user_id,food_key,amount,created_at
           )
           SELECT ?,?,?,?,?,?,?
-           WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)\`
+           WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)`
         ).bind(
           betId,requestId,roundId,userId,foodKey,amount,ts,userId,amount,
         ),
@@ -6689,12 +6689,12 @@ async function handleApi(request, env, url) {
           "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM greedy_girl_bets WHERE id=?)"
         ).bind(amount,ts,userId,betId),
         db.prepare(
-          \`INSERT INTO wallet_ledger(
+          `INSERT INTO wallet_ledger(
             id,user_id,kind,amount,balance_after,reference_id,created_at
           )
           SELECT ?,u.id,'greedy_girl_bet',?,u.coins,?,?
             FROM users u
-           WHERE u.id=? AND EXISTS(SELECT 1 FROM greedy_girl_bets WHERE id=?)\`
+           WHERE u.id=? AND EXISTS(SELECT 1 FROM greedy_girl_bets WHERE id=?)`
         ).bind(id(),-amount,betId,ts,userId,betId),
       ]);
     } catch (error) {
