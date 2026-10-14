@@ -1860,6 +1860,293 @@ async function fruitPartyState(db, userId, ts = now()) {
   };
 }
 
+
+const GREEDY_GIRL_ROUND_MS = 30000;
+const GREEDY_GIRL_RESULT_MS = 5000;
+const GREEDY_GIRL_CYCLE_MS = GREEDY_GIRL_ROUND_MS + GREEDY_GIRL_RESULT_MS;
+const GREEDY_GIRL_BET_AMOUNTS = Object.freeze([
+  100, 1000, 10000, 50000, 100000, 200000, 500000, 1000000, 5000000,
+]);
+const GREEDY_GIRL_FOODS = Object.freeze([
+  { key: "tomato", emoji: "🍅", label: "Tomato", multiplier: 5 },
+  { key: "broccoli", emoji: "🥦", label: "Broccoli", multiplier: 5 },
+  { key: "cucumber", emoji: "🥒", label: "Cucumber", multiplier: 5 },
+  { key: "carrot", emoji: "🥕", label: "Carrot", multiplier: 5 },
+  { key: "hotdog", emoji: "🌭", label: "Hot dog", multiplier: 10 },
+  { key: "corn", emoji: "🌽", label: "Corn", multiplier: 15 },
+  { key: "lettuce", emoji: "🥬", label: "Lettuce", multiplier: 25 },
+  { key: "skewer", emoji: "🍢", label: "Skewer", multiplier: 45 },
+]);
+const GREEDY_GIRL_BY_KEY = new Map(
+  GREEDY_GIRL_FOODS.map((food) => [food.key, food]),
+);
+const GREEDY_GIRL_X5 = GREEDY_GIRL_FOODS.filter(
+  (food) => food.multiplier === 5,
+);
+const GREEDY_GIRL_MID = GREEDY_GIRL_FOODS.filter(
+  (food) => food.multiplier === 10 ||
+    food.multiplier === 15 ||
+    food.multiplier === 25,
+);
+const GREEDY_GIRL_HIGH = GREEDY_GIRL_FOODS.filter(
+  (food) => food.multiplier === 45,
+);
+
+function greedyGirlWeightedFood() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  const roll = values[0] % 100;
+  if (roll < 75) return GREEDY_GIRL_X5[secureIndex(GREEDY_GIRL_X5.length)];
+  if (roll < 95) return GREEDY_GIRL_MID[secureIndex(GREEDY_GIRL_MID.length)];
+  return GREEDY_GIRL_HIGH[secureIndex(GREEDY_GIRL_HIGH.length)];
+}
+
+function greedyGirlRoundId(ts) {
+  return Math.floor(ts / GREEDY_GIRL_CYCLE_MS);
+}
+function greedyGirlRoundStart(roundId) {
+  return roundId * GREEDY_GIRL_CYCLE_MS;
+}
+function greedyGirlBetEnd(roundId) {
+  return greedyGirlRoundStart(roundId) + GREEDY_GIRL_ROUND_MS;
+}
+function greedyGirlCycleEnd(roundId) {
+  return greedyGirlRoundStart(roundId) + GREEDY_GIRL_CYCLE_MS;
+}
+
+async function ensureGreedyGirlSchema(db) {
+  await db.batch([
+    db.prepare(\`CREATE TABLE IF NOT EXISTS greedy_girl_bets (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      round_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      food_key TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, request_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )\`),
+    db.prepare(\`CREATE TABLE IF NOT EXISTS greedy_girl_results (
+      round_id INTEGER PRIMARY KEY,
+      food_key TEXT NOT NULL,
+      total_bet INTEGER NOT NULL DEFAULT 0,
+      total_payout INTEGER NOT NULL DEFAULT 0,
+      active_players INTEGER NOT NULL DEFAULT 0,
+      top_winners_json TEXT NOT NULL DEFAULT '[]',
+      settled_at INTEGER NOT NULL
+    )\`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_greedy_girl_bets_round ON greedy_girl_bets(round_id)"
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_greedy_girl_results_time ON greedy_girl_results(settled_at DESC)"
+    ),
+  ]);
+}
+
+async function settleGreedyGirlRound(db, roundId) {
+  const existing = await db.prepare(
+    "SELECT round_id FROM greedy_girl_results WHERE round_id=? LIMIT 1"
+  ).bind(roundId).first();
+  if (existing) return;
+
+  const rows = await db.prepare(
+    \`SELECT b.user_id,b.food_key,b.amount,u.display_name,u.avatar_key
+       FROM greedy_girl_bets b
+       JOIN users u ON u.id=b.user_id
+      WHERE b.round_id=?
+      ORDER BY b.created_at ASC\`
+  ).bind(roundId).all();
+  const bets = rows.results ?? [];
+  let winner = greedyGirlWeightedFood();
+
+  const previous = await db.prepare(
+    "SELECT food_key FROM greedy_girl_results WHERE round_id<? ORDER BY round_id DESC LIMIT 1"
+  ).bind(roundId).first();
+  if (previous && String(previous.food_key) === winner.key) {
+    const alternatives = GREEDY_GIRL_FOODS.filter(
+      (food) => food.key !== String(previous.food_key),
+    );
+    winner = alternatives[secureIndex(alternatives.length)];
+  }
+
+  const payouts = new Map();
+  const profiles = new Map();
+  let totalBet = 0;
+  for (const bet of bets) {
+    const amount = Number(bet.amount ?? 0);
+    totalBet += amount;
+    const userId = String(bet.user_id);
+    profiles.set(userId, {
+      display_name: String(bet.display_name ?? bet.user_id ?? "User"),
+      avatar_key: String(bet.avatar_key ?? ""),
+    });
+    if (String(bet.food_key) !== winner.key) continue;
+    const payout = amount * winner.multiplier;
+    payouts.set(userId, Number(payouts.get(userId) ?? 0) + payout);
+  }
+
+  const totalPayout = [...payouts.values()].reduce(
+    (sum, value) => sum + Number(value),
+    0,
+  );
+  const topWinners = [...payouts.entries()]
+    .filter(([, amount]) => Number(amount) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 3)
+    .map(([userId, amount]) => ({
+      user_id: userId,
+      display_name: profiles.get(userId)?.display_name ?? userId,
+      avatar_key: profiles.get(userId)?.avatar_key ?? "",
+      winning_coins: Number(amount),
+    }));
+  const ts = now();
+
+  const statements = [
+    db.prepare(
+      \`INSERT INTO greedy_girl_results(
+        round_id,food_key,total_bet,total_payout,active_players,
+        top_winners_json,settled_at
+      ) VALUES(?,?,?,?,?,?,?)\`
+    ).bind(
+      roundId,
+      winner.key,
+      totalBet,
+      totalPayout,
+      new Set(bets.map((bet) => String(bet.user_id))).size,
+      JSON.stringify(topWinners),
+      ts,
+    ),
+  ];
+
+  for (const [userId, payout] of payouts.entries()) {
+    const reference = \`greedy-girl:\${roundId}:\${userId}\`;
+    statements.push(
+      db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+        .bind(Number(payout), ts, userId),
+      db.prepare(
+        \`INSERT INTO wallet_ledger(
+          id,user_id,kind,amount,balance_after,reference_id,created_at
+        )
+        SELECT ?,u.id,'greedy_girl_win',?,u.coins,?,?
+          FROM users u WHERE u.id=?\`
+      ).bind(id(), Number(payout), reference, ts, userId),
+    );
+  }
+
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    const after = await db.prepare(
+      "SELECT round_id FROM greedy_girl_results WHERE round_id=? LIMIT 1"
+    ).bind(roundId).first();
+    if (!after) throw error;
+  }
+
+  await db.prepare(
+    "DELETE FROM greedy_girl_results WHERE round_id NOT IN (SELECT round_id FROM greedy_girl_results ORDER BY round_id DESC LIMIT 100)"
+  ).run();
+  await db.prepare(
+    "DELETE FROM greedy_girl_bets WHERE round_id<?"
+  ).bind(roundId - 120).run();
+}
+
+async function syncGreedyGirl(db, ts = now()) {
+  await ensureGreedyGirlSchema(db);
+  const currentRound = greedyGirlRoundId(ts);
+  const eligible =
+    ts >= greedyGirlBetEnd(currentRound) ? currentRound : currentRound - 1;
+  const start = Math.max(0, eligible - 7);
+  for (let round = start; round <= eligible; round++) {
+    await settleGreedyGirlRound(db, round);
+  }
+}
+
+async function greedyGirlState(db, userId, ts = now()) {
+  await syncGreedyGirl(db, ts);
+  const roundId = greedyGirlRoundId(ts);
+  const betEnd = greedyGirlBetEnd(roundId);
+  const cycleEnd = greedyGirlCycleEnd(roundId);
+  const inResultSpin = ts >= betEnd;
+
+  const myRows = await db.prepare(
+    "SELECT food_key,COALESCE(SUM(amount),0) AS amount FROM greedy_girl_bets WHERE round_id=? AND user_id=? GROUP BY food_key"
+  ).bind(roundId, userId).all();
+  const myBets = Object.fromEntries(
+    GREEDY_GIRL_FOODS.map((food) => [food.key, 0]),
+  );
+  for (const row of myRows.results ?? []) {
+    if (Object.prototype.hasOwnProperty.call(myBets, row.food_key)) {
+      myBets[row.food_key] = Number(row.amount ?? 0);
+    }
+  }
+
+  const totals = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS total_bet,COUNT(DISTINCT user_id) AS active_players FROM greedy_girl_bets WHERE round_id=?"
+  ).bind(roundId).first();
+  const historyRows = await db.prepare(
+    \`SELECT round_id,food_key,total_bet,total_payout,active_players,
+            top_winners_json,settled_at
+       FROM greedy_girl_results
+      ORDER BY round_id DESC
+      LIMIT 7\`
+  ).all();
+  const history = (historyRows.results ?? []).map((row) => {
+    let topWinners = [];
+    try {
+      topWinners = JSON.parse(String(row.top_winners_json ?? "[]"));
+    } catch (_) {}
+    return {
+      round_id: Number(row.round_id),
+      food: GREEDY_GIRL_BY_KEY.get(String(row.food_key)) ?? null,
+      total_bet: Number(row.total_bet ?? 0),
+      total_payout: Number(row.total_payout ?? 0),
+      active_players: Number(row.active_players ?? 0),
+      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
+      settled_at: Number(row.settled_at ?? 0),
+    };
+  });
+
+  const wallet = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  const dayStart = Math.floor(ts / 86400000) * 86400000;
+  const winRow = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='greedy_girl_win' AND created_at>=?"
+  ).bind(userId, dayStart).first();
+
+  return {
+    ok: true,
+    server_time: ts,
+    round: {
+      round_id: roundId,
+      round_start: greedyGirlRoundStart(roundId),
+      round_end: betEnd,
+      cycle_end: cycleEnd,
+      remaining_ms: Math.max(0, betEnd - ts),
+      result_spin_remaining_ms: inResultSpin
+        ? Math.max(0, cycleEnd - ts)
+        : 0,
+      result_spin_ms: GREEDY_GIRL_RESULT_MS,
+      phase: inResultSpin ? "result_spin" : "betting",
+      round_duration_ms: GREEDY_GIRL_ROUND_MS,
+      round_cycle_ms: GREEDY_GIRL_CYCLE_MS,
+      betting_open: !inResultSpin && betEnd > ts,
+      total_bet: Number(totals?.total_bet ?? 0),
+      active_players: Number(totals?.active_players ?? 0),
+    },
+    config: {
+      bet_amounts: GREEDY_GIRL_BET_AMOUNTS,
+      foods: GREEDY_GIRL_FOODS,
+    },
+    wallet_balance: Number(wallet?.coins ?? 0),
+    today_winnings: Number(winRow?.winnings ?? 0),
+    my_bets: myBets,
+    history,
+  };
+}
+
 let cachedFcmAccessToken = "";
 let cachedFcmAccessTokenUntil = 0;
 let cachedFcmProjectId = "";
@@ -6330,6 +6617,104 @@ async function handleApi(request, env, url) {
       );
     }
     return json(await fruitPartyState(db, userId, now()), { status:201 });
+  }
+
+
+  if (url.pathname === "/api/games/greedy-girl/state" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await greedyGirlState(db, userId, now()));
+  }
+
+  if (url.pathname === "/api/games/greedy-girl/bet" && request.method === "POST") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    if (gamesFeature.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const foodKey = String(body.food_key ?? "").trim();
+    const amount = Number(body.amount ?? 0);
+    const requestId = String(body.request_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    if (!GREEDY_GIRL_BY_KEY.has(foodKey) ||
+        !GREEDY_GIRL_BET_AMOUNTS.includes(amount) ||
+        !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
+      return json({ ok:false,error:"invalid_bet" }, { status:400 });
+    }
+
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    await ensureGreedyGirlSchema(db);
+    const ts = now();
+    await syncGreedyGirl(db, ts);
+    const roundId = greedyGirlRoundId(ts);
+    if (ts >= greedyGirlBetEnd(roundId)) {
+      return json(
+        { ok:false,error:"betting_locked",state:await greedyGirlState(db,userId,ts) },
+        { status:409 },
+      );
+    }
+
+    const betId = \`greedy-girl:\${userId}:\${requestId}\`;
+    const prior = await db.prepare(
+      "SELECT id FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
+    ).bind(userId, requestId).first();
+    if (prior) return json(await greedyGirlState(db, userId, ts));
+
+    try {
+      await db.batch([
+        db.prepare(
+          \`INSERT INTO greedy_girl_bets(
+            id,request_id,round_id,user_id,food_key,amount,created_at
+          )
+          SELECT ?,?,?,?,?,?,?
+           WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND coins>=?)\`
+        ).bind(
+          betId,requestId,roundId,userId,foodKey,amount,ts,userId,amount,
+        ),
+        db.prepare(
+          "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM greedy_girl_bets WHERE id=?)"
+        ).bind(amount,ts,userId,betId),
+        db.prepare(
+          \`INSERT INTO wallet_ledger(
+            id,user_id,kind,amount,balance_after,reference_id,created_at
+          )
+          SELECT ?,u.id,'greedy_girl_bet',?,u.coins,?,?
+            FROM users u
+           WHERE u.id=? AND EXISTS(SELECT 1 FROM greedy_girl_bets WHERE id=?)\`
+        ).bind(id(),-amount,betId,ts,userId,betId),
+      ]);
+    } catch (error) {
+      const duplicate = await db.prepare(
+        "SELECT id FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
+      ).bind(userId, requestId).first();
+      if (!duplicate) throw error;
+      return json(await greedyGirlState(db, userId, now()));
+    }
+
+    const accepted = await db.prepare(
+      "SELECT id FROM greedy_girl_bets WHERE id=? LIMIT 1"
+    ).bind(betId).first();
+    if (!accepted) {
+      return json(
+        { ok:false,error:"insufficient_coins",state:await greedyGirlState(db,userId,ts) },
+        { status:409 },
+      );
+    }
+    return json(await greedyGirlState(db, userId, now()), { status:201 });
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
