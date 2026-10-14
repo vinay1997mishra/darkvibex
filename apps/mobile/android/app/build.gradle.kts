@@ -55,3 +55,9 @@ android {
 flutter {
     source = "../.."
 }
+
+
+dependencies {
+    // 24.1.2 keeps Android API 21 compatibility while providing native FCM delivery.
+    implementation("com.google.firebase:firebase-messaging:24.1.2")
+}
