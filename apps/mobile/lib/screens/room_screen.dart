@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -113,7 +114,12 @@ class _RoomScreenState extends State<RoomScreen> {
   bool giftBubbleEnabled = true;
   bool rocketDrawNoticeEnabled = true;
   Map<String, dynamic>? activeGiftEffect;
+  String? activeGiftReceiverId;
+  String? activeGiftReceiverAvatarKey;
+  int giftEffectSequence = 0;
   Timer? giftEffectTimer;
+  final ValueNotifier<Map<String, double>> _silentSpeakingLevels =
+      ValueNotifier<Map<String, double>>(const <String, double>{});
   final KtvService roomMusic = KtvService();
   final RoomForegroundServiceBridge roomForegroundService =
       const RoomForegroundServiceBridge();
@@ -1345,6 +1351,8 @@ class _RoomScreenState extends State<RoomScreen> {
   void dispose() {
     memberRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
+    giftEffectTimer?.cancel();
+    _silentSpeakingLevels.dispose();
     roomChatController.dispose();
     unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
@@ -3221,18 +3229,114 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  void _playGiftEffect(Map<String, dynamic> gift) {
+  Offset _giftFlightOriginOffset(BuildContext context) {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      return Offset.zero;
+    }
+    final screen = MediaQuery.sizeOf(context);
+    final centerGlobal = Offset(screen.width / 2, screen.height / 2);
+    final centerLocal = renderObject.globalToLocal(centerGlobal);
+    return centerLocal - renderObject.size.center(Offset.zero);
+  }
+
+  String? _giftReceiverAvatar(String receiverId) {
+    for (final member in roomMembers) {
+      if (member['user_id']?.toString() == receiverId) {
+        final key = member['avatar_key']?.toString().trim() ?? '';
+        if (key.isNotEmpty) return key;
+      }
+    }
+    for (final member in membersBySeat.values) {
+      if (member['user_id']?.toString() == receiverId) {
+        final key = member['avatar_key']?.toString().trim() ?? '';
+        if (key.isNotEmpty) return key;
+      }
+    }
+    if (receiverId == widget.state.userId) return widget.state.avatarKey;
+    return null;
+  }
+
+  void _playGiftEffect(
+    Map<String, dynamic> gift, {
+    required String receiverId,
+  }) {
     if (!effectsEnabled || !giftEffectsEnabled) return;
     giftEffectTimer?.cancel();
     if (giftSoundEnabled) {
       unawaited(SystemSound.play(SystemSoundType.click));
     }
     if (giftFlyInEnabled || giftBubbleEnabled) {
-      setState(() => activeGiftEffect = Map<String, dynamic>.from(gift));
+      setState(() {
+        activeGiftEffect = Map<String, dynamic>.from(gift);
+        activeGiftReceiverId = receiverId;
+        activeGiftReceiverAvatarKey = _giftReceiverAvatar(receiverId);
+        giftEffectSequence++;
+      });
       giftEffectTimer = Timer(const Duration(milliseconds: 2200), () {
-        if (mounted) setState(() => activeGiftEffect = null);
+        if (!mounted) return;
+        setState(() {
+          activeGiftEffect = null;
+          activeGiftReceiverId = null;
+          activeGiftReceiverAvatarKey = null;
+        });
       });
     }
+  }
+
+  Widget _buildSeatGiftImpactEffect(double seatDiameter) {
+    final gift = activeGiftEffect;
+    if (gift == null) return const SizedBox.shrink();
+    final emoji = gift['emoji']?.toString() ?? '🎁';
+    return IgnorePointer(
+      child: TweenAnimationBuilder<double>(
+        key: ValueKey<int>(giftEffectSequence),
+        tween: Tween<double>(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 1450),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) {
+          final fade = value < .72
+              ? 1.0
+              : ((1 - value) / .28).clamp(0.0, 1.0).toDouble();
+          final scale = .38 + Curves.easeOutBack.transform(value) * .86;
+          final rise = math.sin(math.pi * value) * seatDiameter * .42;
+          final origin = _giftFlightOriginOffset(context);
+          return Transform.translate(
+            offset: Offset(
+              origin.dx * (1 - value),
+              origin.dy * (1 - value) - rise,
+            ),
+            child: Transform.scale(
+              scale: scale,
+              child: Opacity(
+                opacity: fade,
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: TinniPalette.brightGold,
+                      width: 1.2,
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x99FFD45A),
+                        blurRadius: 14,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    emoji,
+                    style: TextStyle(fontSize: seatDiameter * .56),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Color get _seatThemeAccent => switch (roomSeatThemeId) {
@@ -4185,51 +4289,145 @@ class _RoomScreenState extends State<RoomScreen> {
     final members =
         await widget.state.backend.roomMembers(roomId: widget.room.id);
     if (!mounted) return null;
+
     final candidates = members
-        .where((member) =>
-            member['user_id']?.toString().isNotEmpty == true &&
-            member['user_id']?.toString() != widget.state.userId)
-        .toList();
+        .where((member) => member['user_id']?.toString().isNotEmpty == true)
+        .map((member) => Map<String, dynamic>.from(member))
+        .toList(growable: true);
+
+    final selfIndex = candidates.indexWhere(
+      (member) => member['user_id']?.toString() == widget.state.userId,
+    );
+    if (selfIndex < 0) {
+      candidates.insert(0, <String, dynamic>{
+        'user_id': widget.state.userId,
+        'display_name': widget.state.displayName,
+        'avatar_key': widget.state.avatarKey,
+        'seat_index': mySeat,
+      });
+    } else if (selfIndex > 0) {
+      final self = candidates.removeAt(selfIndex);
+      candidates.insert(0, self);
+    }
+
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No other user is in the room yet')),
+        const SnackBar(content: Text('No gift receiver is available')),
       );
       return null;
     }
+
     return showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: Text(
-                'Send gift to',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-            ),
-            for (final member in candidates)
-              ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.person_rounded),
-                ),
-                title: Text(
-                  member['display_name']?.toString().trim().isNotEmpty == true
-                      ? member['display_name'].toString()
-                      : 'User ' + member['user_id'].toString(),
-                ),
-                subtitle: Text(
-                  member['seat_index'] == null ? 'Audience' : 'On mic',
-                ),
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  member['user_id'].toString(),
+        child: SizedBox(
+          height: math.min(
+            MediaQuery.sizeOf(sheetContext).height * .52,
+            520,
+          ),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Send gift to',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
                 ),
               ),
-          ],
+              Expanded(
+                child: GridView.builder(
+                  key: const Key('room-gift-recipient-grid'),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 18),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: .78,
+                  ),
+                  itemCount: candidates.length,
+                  itemBuilder: (context, index) {
+                    final member = candidates[index];
+                    final userId = member['user_id']?.toString() ?? '';
+                    final isSelf = userId == widget.state.userId;
+                    final avatar = member['avatar_key']?.toString().trim() ?? '';
+                    final displayName =
+                        member['display_name']?.toString().trim().isNotEmpty ==
+                                true
+                            ? member['display_name'].toString().trim()
+                            : 'User $userId';
+                    final seat = int.tryParse(
+                      member['seat_index']?.toString() ?? '',
+                    );
+                    return InkWell(
+                      key: Key('gift-recipient-$userId'),
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => Navigator.pop(sheetContext, userId),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelf
+                                    ? TinniPalette.brightGold
+                                    : TinniPalette.bronze,
+                                width: isSelf ? 2.4 : 1.2,
+                              ),
+                              boxShadow: isSelf
+                                  ? const <BoxShadow>[
+                                      BoxShadow(
+                                        color: Color(0x66FFD45A),
+                                        blurRadius: 12,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: CircleAvatar(
+                              backgroundImage: avatar.isNotEmpty
+                                  ? NetworkImage(
+                                      widget.state.backend.fileUrl(avatar),
+                                      headers: widget.state.backend.fileHeaders,
+                                    )
+                                  : null,
+                              child: avatar.isEmpty
+                                  ? Icon(
+                                      isSelf
+                                          ? Icons.account_circle_rounded
+                                          : Icons.person_rounded,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isSelf ? '$displayName (You)' : displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                          Text(
+                            seat == null ? 'Audience' : 'Seat ${seat + 1}',
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Colors.white60,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -4351,7 +4549,7 @@ class _RoomScreenState extends State<RoomScreen> {
         int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
     if (remoteBalance != null) {
       widget.state.setCoinBalance(remoteBalance);
-      _playGiftEffect(gift);
+      _playGiftEffect(gift, receiverId: receiverId);
       await widget.state.refreshIdLevel(notify: false);
       if (!mounted) return;
       unawaited(_loadRoomGiftRanking());
@@ -4383,16 +4581,16 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendGift() async {
-    String receiverId = widget.room.ownerUserId;
-    if (isRoomHost) {
-      if (!widget.state.backendConnected) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the server to send a gift')));
-        return;
-      }
-      final selected = await _chooseGiftReceiver();
-      if (selected == null || selected.isEmpty) return;
-      receiverId = selected;
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connect to the server to send a gift')),
+      );
+      return;
     }
+    final selected = await _chooseGiftReceiver();
+    if (selected == null || selected.isEmpty) return;
+    final receiverId = selected;
+
     final gifts = widget.state.backendConnected
         ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
         : <Map<String, dynamic>>[{'id': 'basic-star', 'name': 'Star', 'emoji': '⭐', 'coin_cost': 5000}];
