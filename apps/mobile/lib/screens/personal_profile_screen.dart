@@ -577,12 +577,12 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                 children: [
                   ListTile(
                     title: const Text('DarkVibeX ID'),
-                    subtitle: Text(widget.state.userId),
+                    subtitle: Text(widget.state.publicId),
                     trailing: IconButton(
                       tooltip: 'Copy ID',
                       onPressed: () async {
                         await Clipboard.setData(
-                          ClipboardData(text: widget.state.userId),
+                          ClipboardData(text: widget.state.publicId),
                         );
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
