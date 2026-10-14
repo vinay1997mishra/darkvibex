@@ -15,3 +15,7 @@ Working Android package: `com.darkvibex.app`.
 Cloudflare Workers Builds is connected to the `main` branch. Production Worker source lives in `apps/worker`.
 
 - VIP system: VIP1–VIP18 with Coin Seller EXP progression and premium privileges.
+
+## Games
+- Fruit Party: half-screen server-settled fruit game.
+- Greedy Girl: half-screen 30-second food-multiplier game with server-authoritative bets, payouts, records and an adult 21+ anime-style center character.
