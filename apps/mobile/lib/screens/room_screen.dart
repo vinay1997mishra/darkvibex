@@ -28,7 +28,6 @@ import 'greedy_girl_screen.dart';
 import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
-import 'sharing_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -4167,34 +4166,6 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
           ],
         )),
-      ),
-    );
-  }
-
-  Future<void> _shareRoom() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => SharingScreen(
-          title: roomName,
-          roomId: widget.room.roomNumber,
-          onShared: (platform) async {
-            if (!widget.state.backendConnected) return;
-            try {
-              await widget.state.backend.shareRoomForIdLevel(
-                userId: widget.state.userId,
-                roomId: widget.room.id,
-              );
-            } catch (_) {}
-            try {
-              await widget.state.backend.recordAladdinShare(
-                roomId: widget.room.id,
-                userId: widget.state.userId,
-                platform: platform,
-              );
-            } catch (_) {}
-            await widget.state.refreshIdLevel(notify: false);
-          },
-        ),
       ),
     );
   }
