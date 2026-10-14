@@ -285,6 +285,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
     final values = rows.map((row) {
       return RoomSummary(
         id: row['id']?.toString() ?? '',
+        displayId: row['display_id']?.toString(),
         name: row['name']?.toString() ?? 'Room',
         ownerName: row['owner_name']?.toString() ?? 'Owner',
         ownerUserId: row['owner_user_id']?.toString() ?? '',
@@ -362,6 +363,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           state.setRoomAvatarKey(created.id, key);
           room = RoomSummary(
             id: created.id,
+            displayId: created.displayId,
             name: created.name,
             ownerName: created.ownerName,
             ownerUserId: created.ownerUserId,
@@ -1067,7 +1069,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
           (room) =>
               q.isEmpty ||
               room.name.toLowerCase().contains(q) ||
-              room.id.toLowerCase().contains(q) ||
+              room.roomNumber.toLowerCase().contains(q) ||
               room.ownerName.toLowerCase().contains(q),
         )
         .toList();
@@ -1357,7 +1359,7 @@ class _RoomCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'ID ${room.id} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
+                    'ID ${room.roomNumber} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
                     style: const TextStyle(
                       color: TinniPalette.muted,
                       fontSize: 10,
