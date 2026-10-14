@@ -4852,12 +4852,28 @@ class _RoomScreenState extends State<RoomScreen> {
           ),
           _videoStage(),
           Expanded(
-            flex: 1,
+            key: const Key('darkvibex-seat-grid'),
+            flex: 11,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compactSeats = roomSeatCount >= 36;
-                final diameter =
+                final compactSeats = roomSeatCount >= 31;
+                final widthSeatDiameter =
                     spec.seatDiameter(constraints.maxWidth - 8);
+                final rowLabelSpace = compactSeats
+                    ? 18.0
+                    : (widthSeatDiameter < 48 ? 28.0 : 38.0);
+                final heightSeatDiameter =
+                    (constraints.maxHeight / spec.rows) - rowLabelSpace;
+                final diameter =
+                    (widthSeatDiameter < heightSeatDiameter
+                            ? widthSeatDiameter
+                            : heightSeatDiameter)
+                        .clamp(compactSeats ? 22.0 : 30.0, 68.0)
+                        .toDouble();
+                final seatWidth =
+                    (diameter + (diameter < 44 ? 8 : 16))
+                        .clamp(38.0, 78.0)
+                        .toDouble();
 
                 Widget seatTile(int seat) {
                   final mine = mySeat == seat;
@@ -4880,7 +4896,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           member['mic_muted']?.toString() == '0');
 
                   return SizedBox(
-                    width: diameter + (compactSeats ? 6 : 12),
+                    width: seatWidth,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
                       onTap: () => unawaited(_tapSeat(seat)),
@@ -4976,7 +4992,8 @@ class _RoomScreenState extends State<RoomScreen> {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: compactSeats ? 8 : (diameter < 48 ? 9 : 11),
+                              fontSize:
+                                  compactSeats ? 8 : (diameter < 48 ? 9 : 11),
                               color: TinniPalette.cream,
                             ),
                           ),
@@ -4993,34 +5010,33 @@ class _RoomScreenState extends State<RoomScreen> {
                   );
                 }
 
-                return SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(4, compactSeats ? 2 : 8, 4, compactSeats ? 2 : 10),
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
                   child: Column(
                     children: [
                       for (var row = 0; row < spec.rows; row++)
-                        Builder(
-                          builder: (context) {
-                            final range = spec.rangeForRow(row);
-                            return Padding(
-                              padding: EdgeInsets.only(
-                                bottom: compactSeats ? 2 : (diameter < 48 ? 6 : 10),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                        Expanded(
+                          child: Builder(
+                            builder: (context) {
+                              final range = spec.rangeForRow(row);
+                              return Row(
+                                key: Key('darkvibex-seat-row-$row'),
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.center,
                                 children: [
                                   for (var seat = range.$1;
                                       seat < range.$2;
                                       seat++)
-                                    Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: compactSeats ? 1 : 2,
-                                      ),
+                                    SizedBox(
+                                      width: seatWidth,
                                       child: seatTile(seat),
                                     ),
                                 ],
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                     ],
                   ),
@@ -5029,7 +5045,7 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           ),
           Expanded(
-            flex: 1,
+            flex: 9,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
