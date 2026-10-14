@@ -5499,9 +5499,56 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                   child: Row(
                     children: [
-                      Text(
-                        activeGiftEffect?['emoji']?.toString() ?? '🎁',
-                        style: const TextStyle(fontSize: 34),
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned.fill(
+                              child: CircleAvatar(
+                                backgroundColor: TinniPalette.panel2,
+                                backgroundImage:
+                                    activeGiftReceiverAvatarKey != null &&
+                                            activeGiftReceiverAvatarKey!
+                                                .isNotEmpty
+                                        ? NetworkImage(
+                                            widget.state.backend.fileUrl(
+                                              activeGiftReceiverAvatarKey!,
+                                            ),
+                                            headers:
+                                                widget.state.backend.fileHeaders,
+                                          )
+                                        : null,
+                                child: activeGiftReceiverAvatarKey == null ||
+                                        activeGiftReceiverAvatarKey!.isEmpty
+                                    ? const Icon(Icons.person_rounded)
+                                    : null,
+                              ),
+                            ),
+                            Positioned(
+                              right: -5,
+                              bottom: -5,
+                              child: Container(
+                                width: 25,
+                                height: 25,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: const Color(0xFF35103F),
+                                  border: Border.all(
+                                    color: TinniPalette.brightGold,
+                                  ),
+                                ),
+                                child: Text(
+                                  activeGiftEffect?['emoji']?.toString() ??
+                                      '🎁',
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -5638,6 +5685,170 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
       ),
     );
+  }
+}
+
+
+class _LiveMicWaves extends StatefulWidget {
+  const _LiveMicWaves({
+    required this.level,
+    required this.compact,
+  });
+
+  final double level;
+  final bool compact;
+
+  @override
+  State<_LiveMicWaves> createState() => _LiveMicWavesState();
+}
+
+class _LiveMicWavesState extends State<_LiveMicWaves>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 680),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = widget.compact
+        ? const Size(28, 20)
+        : const Size(36, 24);
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) => CustomPaint(
+          size: size,
+          painter: _LiveMicWavePainter(
+            level: widget.level,
+            phase: _controller.value,
+            compact: widget.compact,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveMicWavePainter extends CustomPainter {
+  const _LiveMicWavePainter({
+    required this.level,
+    required this.phase,
+    required this.compact,
+  });
+
+  final double level;
+  final double phase;
+  final bool compact;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final normalized = level.clamp(0.0, 1.0).toDouble();
+    final centerY = size.height * .50;
+    final micX = compact ? 6.0 : 7.0;
+    final liveColor = Color.lerp(
+      const Color(0xFFFFD76A),
+      const Color(0xFF56F2C2),
+      (.35 + normalized * .65).clamp(0.0, 1.0),
+    )!;
+
+    canvas.drawCircle(
+      Offset(micX + 1, centerY),
+      compact ? 6.5 : 8.0,
+      Paint()
+        ..color = liveColor.withValues(
+          alpha: (.10 + normalized * .18).clamp(0.0, .30),
+        ),
+    );
+
+    final micPaint = Paint()
+      ..color = liveColor
+      ..style = PaintingStyle.fill;
+    final body = Rect.fromCenter(
+      center: Offset(micX, centerY - (compact ? 1.8 : 2.2)),
+      width: compact ? 3.8 : 4.8,
+      height: compact ? 7.2 : 9.0,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        body,
+        Radius.circular(compact ? 2.0 : 2.5),
+      ),
+      micPaint,
+    );
+
+    final linePaint = Paint()
+      ..color = liveColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = compact ? 1.15 : 1.45
+      ..strokeCap = StrokeCap.round;
+    final cradleRect = Rect.fromCenter(
+      center: Offset(micX, centerY),
+      width: compact ? 8.0 : 10.0,
+      height: compact ? 9.0 : 11.0,
+    );
+    canvas.drawArc(cradleRect, 0, math.pi, false, linePaint);
+    canvas.drawLine(
+      Offset(micX, centerY + (compact ? 4.4 : 5.4)),
+      Offset(micX, centerY + (compact ? 6.0 : 7.0)),
+      linePaint,
+    );
+    canvas.drawLine(
+      Offset(
+        micX - (compact ? 2.4 : 3.0),
+        centerY + (compact ? 6.0 : 7.0),
+      ),
+      Offset(
+        micX + (compact ? 2.4 : 3.0),
+        centerY + (compact ? 6.0 : 7.0),
+      ),
+      linePaint,
+    );
+
+    final waveCenter = Offset(
+      micX + (compact ? 2.0 : 2.5),
+      centerY - 1,
+    );
+    for (var index = 0; index < 3; index++) {
+      final radius =
+          (compact ? 5.2 : 6.6) + index * (compact ? 3.0 : 3.9);
+      final pulse = math
+          .sin((phase * math.pi * 2) - (index * .82))
+          .abs();
+      final opacity =
+          (.28 + normalized * .50 + pulse * .18).clamp(.20, .96);
+      final wavePaint = Paint()
+        ..color = liveColor.withValues(alpha: opacity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (compact ? 1.05 : 1.35) + normalized * .55
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: waveCenter, radius: radius),
+        -math.pi / 3,
+        math.pi * 2 / 3,
+        false,
+        wavePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LiveMicWavePainter oldDelegate) {
+    return oldDelegate.level != level ||
+        oldDelegate.phase != phase ||
+        oldDelegate.compact != compact;
   }
 }
 
