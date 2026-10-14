@@ -4,6 +4,7 @@ import 'package:darkvibex/room/seat_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  // Tinni Star parity lock: 42 seats = 6 per row x 7 rows.
   test('legacy business hierarchy roles are rejected', () {
     expect(() => RolePolicy.parse('host'), throwsStateError);
     expect(() => RolePolicy.parse('agency'), throwsStateError);
