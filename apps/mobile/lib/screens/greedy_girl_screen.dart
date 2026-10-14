@@ -12,7 +12,8 @@ Future<void> showGreedyGirl(BuildContext context, AppState state) async {
     backgroundColor: Colors.transparent,
     barrierColor: Colors.transparent,
     builder: (_) => SizedBox(
-      height: MediaQuery.sizeOf(context).height * .56,
+      key: const Key('greedy-girl-room-overlay'),
+      height: MediaQuery.sizeOf(context).height * .69,
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: GreedyGirlScreen(state: state),
@@ -407,54 +408,124 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   Widget _gamePanel(int wallet, int winnings, int seconds) => Column(
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.center,
-                        radius: .9,
-                        colors: <Color>[
-                          Color(0xFF522C9D),
-                          Color(0xFF25104D),
-                          Color(0xFF130A25),
-                        ],
+            child: LayoutBuilder(
+              builder: (context, bounds) {
+                final timerSize =
+                    (bounds.maxWidth * .145).clamp(48.0, 62.0).toDouble();
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: Alignment.center,
+                            radius: 1.05,
+                            colors: <Color>[
+                              Color(0xFF6B32BD),
+                              Color(0xFF2C125D),
+                              Color(0xFF130A25),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: CustomPaint(painter: _SparklePainter()),
-                ),
-                Positioned.fill(
-                  child: LayoutBuilder(
-                    builder: (context, bounds) => Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        for (var i = 0; i < foods.length; i++)
-                          _positionedFood(
-                            bounds.maxWidth,
-                            bounds.maxHeight,
-                            positions[i],
-                            foods[i],
-                          ),
-                        Positioned(
-                          left: bounds.maxWidth / 2 - 57,
-                          top: bounds.maxHeight / 2 - 68,
-                          child: _adultAnimeCharacter(seconds),
-                        ),
-                        if (currentResult != null)
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: _resultOverlay(currentResult!),
+                    Positioned.fill(
+                      child: Image.asset(
+                        'assets/images/greedy_girl_mascot.webp',
+                        key: const Key('greedy-girl-mascot'),
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: <Color>[
+                                Color(0x220C031A),
+                                Colors.transparent,
+                                Colors.transparent,
+                                Color(0x330C031A),
+                              ],
+                              stops: <double>[0, .18, .76, 1],
                             ),
                           ),
-                      ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(painter: _SparklePainter()),
+                      ),
+                    ),
+                    for (var i = 0; i < foods.length; i++)
+                      _positionedFood(
+                        bounds.maxWidth,
+                        bounds.maxHeight,
+                        positions[i],
+                        foods[i],
+                      ),
+                    Positioned(
+                      key: const Key('greedy-girl-countdown'),
+                      left: (bounds.maxWidth - timerSize) / 2,
+                      top: bounds.maxHeight * .56 - timerSize / 2,
+                      width: timerSize,
+                      height: timerSize,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const RadialGradient(
+                              colors: <Color>[
+                                Color(0xFF4C177C),
+                                Color(0xFF210833),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: const Color(0xFFFFC84A),
+                              width: 2.4,
+                            ),
+                            boxShadow: const <BoxShadow>[
+                              BoxShadow(
+                                color: Color(0xAA8B43FF),
+                                blurRadius: 13,
+                                spreadRadius: 2,
+                              ),
+                              BoxShadow(
+                                color: Color(0x88FFCF4A),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$seconds',
+                              key: const Key('greedy-girl-countdown-number'),
+                              style: TextStyle(
+                                color: const Color(0xFFFFE7A2),
+                                fontSize: timerSize * .44,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (currentResult != null)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: _resultOverlay(currentResult!),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
           Container(
@@ -574,7 +645,8 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     Offset p,
     Map<String, Object> food,
   ) {
-    const bubble = 64.0;
+    final bubble =
+        (width * .165).clamp(52.0, 66.0).toDouble();
     return Positioned(
       left: p.dx * width - bubble / 2,
       top: p.dy * height - bubble / 2,
@@ -651,70 +723,6 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
       ),
     );
   }
-
-  Widget _adultAnimeCharacter(int seconds) => SizedBox(
-        width: 126,
-        height: 168,
-        child: Stack(
-          alignment: Alignment.bottomCenter,
-          children: [
-            Positioned.fill(
-              bottom: 18,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0xAA7B3CFF),
-                      blurRadius: 18,
-                      spreadRadius: 2,
-                    ),
-                    BoxShadow(
-                      color: Color(0x88FFD25A),
-                      blurRadius: 12,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Image.asset(
-                    'assets/images/greedy_girl_mascot.webp',
-                    key: const Key('greedy-girl-mascot'),
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                    filterQuality: FilterQuality.high,
-                  ),
-                ),
-              ),
-            ),
-            Container(
-              height: 25,
-              constraints: const BoxConstraints(minWidth: 74),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: <Color>[Color(0xFFFFB938), Color(0xFFEA5A7B)],
-                ),
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: Colors.white70),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(color: Colors.black45, blurRadius: 6),
-                ],
-              ),
-              child: Text(
-                '${round['phase'] == 'result_spin' ? 'Result' : 'Bet'}  ${seconds}s',
-                style: const TextStyle(
-                  color: Color(0xFF2A0D21),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
 
   Widget _resultOverlay(Map<String, dynamic> result) {
     final food = result['food'] is Map
