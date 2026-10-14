@@ -58,6 +58,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   bool loading = true;
   bool loadingState = false;
   bool placingBet = false;
+  String? loadError;
   String panel = 'game';
   int serverTimeAtSync = 0;
   int localTimeAtSync = 0;
@@ -114,7 +115,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     super.initState();
     unawaited(_load());
     refreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 3),
       (_) => unawaited(_load(silent: true)),
     );
     clockTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -132,19 +133,45 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   Future<void> _load({bool silent = false}) async {
     if (loadingState || placingBet) return;
     if (!widget.state.backendConnected) {
-      if (!silent && mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() {
+          loading = false;
+          loadError = 'Server connection unavailable. Tap Retry.';
+        });
+      }
       return;
     }
+
     loadingState = true;
     Map<String, dynamic>? value;
+    Object? failure;
     try {
       value = await widget.state.backend.greedyGirlState();
+    } catch (error) {
+      failure = error;
     } finally {
       loadingState = false;
     }
+
     if (!mounted) return;
     if (value == null || value['ok'] != true) {
-      if (!silent) setState(() => loading = false);
+      final raw = value?['error']?.toString().trim();
+      final message = raw == null || raw.isEmpty
+          ? (failure == null
+              ? 'Greedy Girl server did not respond. Tap Retry.'
+              : 'Greedy Girl connection failed. Tap Retry.')
+          : switch (raw) {
+              'games_disabled' => 'Games are disabled by the owner.',
+              'unauthorized' || 'forbidden' =>
+                'Login session expired. Sign in again.',
+              _ => raw.replaceAll('_', ' '),
+            };
+      if (!silent || game.isEmpty) {
+        setState(() {
+          loading = false;
+          loadError = message;
+        });
+      }
       return;
     }
     _applyState(value);
@@ -166,6 +193,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     setState(() {
       game = Map<String, dynamic>.from(value);
       loading = false;
+      loadError = null;
       if (time > 0) {
         serverTimeAtSync = time;
         localTimeAtSync = DateTime.now().millisecondsSinceEpoch;
@@ -193,8 +221,23 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
         _applyState(result!);
         return;
       }
-      final error =
-          result?['error']?.toString().replaceAll('_', ' ') ?? 'Bet failed';
+
+      final returnedState = result?['state'];
+      if (returnedState is Map) {
+        _applyState(Map<String, dynamic>.from(returnedState));
+      } else {
+        unawaited(_load(silent: true));
+      }
+
+      final raw = result?['error']?.toString().trim();
+      final error = switch (raw) {
+        'insufficient_coins' => 'Not enough coins for this bet.',
+        'betting_locked' => 'Betting closed for this round. Next round is starting.',
+        'games_disabled' => 'Games are disabled by the owner.',
+        'unauthorized' || 'forbidden' => 'Login session expired. Sign in again.',
+        null || '' => 'Bet could not reach the server. Try again.',
+        _ => raw.replaceAll('_', ' '),
+      };
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error)),
       );
@@ -260,15 +303,49 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
             Expanded(
               child: loading
                   ? const Center(child: CircularProgressIndicator())
-                  : panel == 'game'
-                      ? _gamePanel(wallet, winnings, seconds)
-                      : _detailPanel(),
+                  : loadError != null && game.isEmpty
+                      ? _errorPanel()
+                      : panel == 'game'
+                          ? _gamePanel(wallet, winnings, seconds)
+                          : _detailPanel(),
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _errorPanel() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: Color(0xFFFFD878),
+                size: 36,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                loadError ?? 'Greedy Girl is unavailable.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: loadingState
+                    ? null
+                    : () {
+                        setState(() => loading = true);
+                        unawaited(_load());
+                      },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _header() => Container(
         height: 42,
@@ -583,26 +660,6 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
             Positioned.fill(
               child: CustomPaint(
                 painter: _AdultAnimeGirlPainter(),
-              ),
-            ),
-            Positioned(
-              right: 1,
-              top: 1,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF180A2C).withValues(alpha: .85),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFFD56A)),
-                ),
-                child: const Text(
-                  '21+',
-                  style: TextStyle(
-                    color: Color(0xFFFFE8AE),
-                    fontSize: 8,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
               ),
             ),
             Positioned(
