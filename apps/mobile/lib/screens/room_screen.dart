@@ -5206,7 +5206,10 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => MessagesScreen(state: widget.state),
+        builder: (_) => MessagesScreen(
+          state: widget.state,
+          standalone: true,
+        ),
       ),
     );
   }
