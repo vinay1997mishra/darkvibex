@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../background/message_push_service.dart';
 import '../core/app_identity.dart';
 import '../screens/home_shell.dart';
 import '../screens/login_screen.dart';
@@ -15,15 +18,22 @@ class DarkVibeXApp extends StatefulWidget {
 
 class _DarkVibeXAppState extends State<DarkVibeXApp> {
   final AppState state = AppState();
+  final MessagePushService messagePush = MessagePushService();
 
   @override
   void initState() {
     super.initState();
-    state.initialize();
+    state.addListener(_syncMessagePush);
+    unawaited(state.initialize().whenComplete(_syncMessagePush));
+  }
+
+  void _syncMessagePush() {
+    unawaited(messagePush.sync(state));
   }
 
   @override
   void dispose() {
+    state.removeListener(_syncMessagePush);
     state.dispose();
     super.dispose();
   }
