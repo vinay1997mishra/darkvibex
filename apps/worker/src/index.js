@@ -1860,6 +1860,228 @@ async function fruitPartyState(db, userId, ts = now()) {
   };
 }
 
+let cachedFcmAccessToken = "";
+let cachedFcmAccessTokenUntil = 0;
+let cachedFcmProjectId = "";
+
+function base64UrlBytes(bytes) {
+  let binary = "";
+  for (const value of bytes) binary += String.fromCharCode(value);
+  return btoa(binary)
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function base64UrlText(value) {
+  return base64UrlBytes(new TextEncoder().encode(value));
+}
+
+function pemPkcs8Bytes(pem) {
+  const body = String(pem ?? "")
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+  if (!body) throw new Error("fcm_private_key_missing");
+  const binary = atob(body);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function fcmAccess(env) {
+  const raw = String(env.FCM_SERVICE_ACCOUNT_JSON ?? "").trim();
+  if (!raw) return null;
+
+  const service = JSON.parse(raw);
+  const projectId = String(service.project_id ?? "").trim();
+  const clientEmail = String(service.client_email ?? "").trim();
+  const privateKey = String(service.private_key ?? "");
+  if (!projectId || !clientEmail || !privateKey) return null;
+
+  const currentSeconds = Math.floor(Date.now() / 1000);
+  if (
+    cachedFcmAccessToken &&
+    cachedFcmProjectId === projectId &&
+    cachedFcmAccessTokenUntil > currentSeconds + 60
+  ) {
+    return {
+      token: cachedFcmAccessToken,
+      projectId: cachedFcmProjectId,
+    };
+  }
+
+  const header = base64UrlText(JSON.stringify({
+    alg: "RS256",
+    typ: "JWT",
+  }));
+  const claim = base64UrlText(JSON.stringify({
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: currentSeconds,
+    exp: currentSeconds + 3600,
+  }));
+  const unsigned = `${header}.${claim}`;
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pemPkcs8Bytes(privateKey),
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: "SHA-256",
+    },
+    false,
+    ["sign"],
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      new TextEncoder().encode(unsigned),
+    ),
+  );
+  const assertion = `${unsigned}.${base64UrlBytes(signature)}`;
+  const tokenResponse = await fetch(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion,
+      }),
+    },
+  );
+  if (!tokenResponse.ok) {
+    throw new Error(`fcm_oauth_${tokenResponse.status}`);
+  }
+  const tokenBody = await tokenResponse.json();
+  const accessToken = String(tokenBody.access_token ?? "").trim();
+  const expiresIn = Number(tokenBody.expires_in ?? 3600);
+  if (!accessToken) throw new Error("fcm_oauth_token_missing");
+
+  cachedFcmAccessToken = accessToken;
+  cachedFcmProjectId = projectId;
+  cachedFcmAccessTokenUntil = currentSeconds + Math.max(300, expiresIn);
+  return {
+    token: accessToken,
+    projectId,
+  };
+}
+
+async function ensurePushTables(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS push_devices (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      platform TEXT NOT NULL DEFAULT 'android',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS push_preferences (
+      user_id TEXT PRIMARY KEY,
+      message_enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id,enabled,updated_at DESC)"
+    ),
+  ]);
+}
+
+async function sendDirectMessagePush(
+  env,
+  db,
+  {
+    receiverUserId,
+    senderUserId,
+    messageId,
+    preview,
+  },
+) {
+  if (!String(env.FCM_SERVICE_ACCOUNT_JSON ?? "").trim()) return;
+  await ensurePushTables(db);
+
+  const preference = await db.prepare(
+    "SELECT message_enabled FROM push_preferences WHERE user_id=? LIMIT 1"
+  ).bind(receiverUserId).first();
+  if (Number(preference?.message_enabled ?? 1) !== 1) return;
+
+  const deviceRows = await db.prepare(
+    `SELECT token
+       FROM push_devices
+      WHERE user_id=? AND enabled=1
+      ORDER BY updated_at DESC
+      LIMIT 8`
+  ).bind(receiverUserId).all();
+  const devices = deviceRows.results ?? [];
+  if (!devices.length) return;
+
+  const sender = await db.prepare(
+    "SELECT display_name FROM users WHERE id=? LIMIT 1"
+  ).bind(senderUserId).first();
+  const senderName = String(sender?.display_name ?? "DarkVibeX user").slice(0, 80);
+  const safePreview = String(preview ?? "").trim().slice(0, 180) || "You received a new message.";
+
+  const auth = await fcmAccess(env);
+  if (!auth) return;
+
+  await Promise.all(
+    devices.map(async (device) => {
+      const token = String(device.token ?? "").trim();
+      if (!token) return;
+      try {
+        const response = await fetch(
+          `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(auth.projectId)}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${auth.token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              message: {
+                token,
+                data: {
+                  type: "direct_message",
+                  sender_user_id: String(senderUserId),
+                  sender_name: senderName,
+                  message_id: String(messageId),
+                  preview: safePreview,
+                },
+                android: {
+                  priority: "high",
+                  ttl: "86400s",
+                },
+              },
+            }),
+          },
+        );
+        if (response.ok) return;
+        const errorText = await response.text();
+        if (
+          errorText.includes("UNREGISTERED") ||
+          errorText.includes("registration-token-not-registered")
+        ) {
+          await db.prepare(
+            "DELETE FROM push_devices WHERE token=?"
+          ).bind(token).run();
+        }
+        console.error("DarkVibeX FCM send failed", {
+          receiverUserId,
+          status: response.status,
+          error: errorText.slice(0, 300),
+        });
+      } catch (error) {
+        console.error("DarkVibeX FCM request failed", {
+          receiverUserId,
+          error: String(error?.message ?? error),
+        });
+      }
+    }),
+  );
+}
+
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -1882,6 +2104,63 @@ async function handleApi(request, env, url) {
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  if (url.pathname === "/api/push/device" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const token = String(body.token ?? "").trim();
+    const platform = String(body.platform ?? "android").trim().slice(0, 24) || "android";
+    const enabled = body.enabled !== false;
+    if (!userId || token.length < 16 || token.length > 4096) {
+      return json({ ok: false, error: "invalid_push_device" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensurePushTables(db);
+    if (enabled) {
+      await db.batch([
+        db.prepare(
+          `INSERT INTO push_devices(token,user_id,platform,enabled,updated_at)
+           VALUES(?,?,?,?,?)
+           ON CONFLICT(token) DO UPDATE SET
+             user_id=excluded.user_id,
+             platform=excluded.platform,
+             enabled=excluded.enabled,
+             updated_at=excluded.updated_at`
+        ).bind(token, userId, platform, 1, now()),
+        db.prepare(
+          `INSERT INTO push_preferences(user_id,message_enabled,updated_at)
+           VALUES(?,1,?)
+           ON CONFLICT(user_id) DO NOTHING`
+        ).bind(userId, now()),
+      ]);
+    } else {
+      await db.prepare(
+        "DELETE FROM push_devices WHERE token=? AND user_id=?"
+      ).bind(token, userId).run();
+    }
+    return json({ ok: true, enabled });
+  }
+
+  if (url.pathname === "/api/push/preferences" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    if (!userId) {
+      return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensurePushTables(db);
+    const enabled = body.message_enabled !== false;
+    await db.prepare(
+      `INSERT INTO push_preferences(user_id,message_enabled,updated_at)
+       VALUES(?,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         message_enabled=excluded.message_enabled,
+         updated_at=excluded.updated_at`
+    ).bind(userId, enabled ? 1 : 0, now()).run();
+    return json({ ok: true, message_enabled: enabled });
   }
 
   if (url.pathname === "/api/profile-media" && request.method === "GET") {
@@ -4817,6 +5096,20 @@ async function handleApi(request, env, url) {
       ).bind(messageId, imageKey, createdAt));
     }
     await db.batch(statements);
+    try {
+      await sendDirectMessagePush(env, db, {
+        receiverUserId: receiver,
+        senderUserId: sender,
+        messageId,
+        preview: textValue || (imageKey ? "📷 Photo" : "You received a new message."),
+      });
+    } catch (error) {
+      console.error("DarkVibeX message push failed", {
+        receiver,
+        messageId,
+        error: String(error?.message ?? error),
+      });
+    }
     return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
   }
 
