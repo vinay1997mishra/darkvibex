@@ -2275,104 +2275,121 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final active = data['state']?.toString() == 'active';
     final rivalId = active ? _partnerId(vs) : '';
     final rivalAvatar = active ? _partnerAvatar(vs) : '';
-    final rivalName = active ? _partnerName(vs) : '';
     final ownAvatar = user?['avatar_key']?.toString() ?? '';
 
-    return Container(
-      key: const Key('profile-intimacy-versus-card'),
-      height: 154,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF22030B),
-            Color(0xFF6C0A2D),
-            Color(0xFF21030C),
-          ],
-        ),
-        border: Border.all(
-          color: const Color(0xFFFF356C),
-          width: 1.2,
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _roundRelationAvatar(
-                  avatarKey: ownAvatar,
-                  size: 76,
-                  horned: true,
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  user?['display_name']?.toString() ?? 'User',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+    return AspectRatio(
+      aspectRatio: 867 / 282,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          final avatarSize = h * .57;
+
+          Widget liveCircle({
+            required String avatarKey,
+            required bool empty,
+            required VoidCallback? onTap,
+          }) {
+            final image = _avatar(avatarKey);
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Container(
+                width: avatarSize,
+                height: avatarSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: empty
+                      ? const Color(0xFF1B0610)
+                      : const Color(0xFF18070F),
+                  border: Border.all(
+                    color: const Color(0xFFFF4B79),
+                    width: 2,
                   ),
+                  image: !empty && image != null
+                      ? DecorationImage(
+                          image: image,
+                          fit: BoxFit.cover,
+                        )
+                      : null,
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(
-            width: 64,
-            child: Center(
-              child: Text(
-                'VS',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                  fontStyle: FontStyle.italic,
-                  shadows: [
-                    Shadow(
-                      color: Color(0xFFFF2F66),
-                      blurRadius: 14,
-                    ),
-                  ],
-                ),
+                child: empty
+                    ? const Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: 34,
+                      )
+                    : image == null
+                        ? const Icon(
+                            Icons.person_rounded,
+                            color: Colors.white70,
+                            size: 34,
+                          )
+                        : null,
               ),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            );
+          }
+
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
               children: [
-                _roundRelationAvatar(
-                  avatarKey: rivalAvatar,
-                  size: 76,
-                  horned: true,
-                  showPlus: !active,
-                  onTap: active && rivalId.isNotEmpty
-                      ? () => _openPartner(vs)
-                      : isSelf
-                          ? () => _openRelationManager(couple: false)
-                          : null,
+                Positioned.fill(
+                  child: Image.asset(
+                    'assets/images/vs_card_reference.webp',
+                    fit: BoxFit.cover,
+                  ),
                 ),
-                const SizedBox(height: 1),
-                Text(
-                  active && rivalName.isNotEmpty ? rivalName : 'None',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                Positioned(
+                  left: w * .279 - avatarSize / 2,
+                  top: h * .515 - avatarSize / 2,
+                  child: liveCircle(
+                    avatarKey: ownAvatar,
+                    empty: false,
+                    onTap: null,
+                  ),
+                ),
+                Positioned(
+                  left: w * .732 - avatarSize / 2,
+                  top: h * .515 - avatarSize / 2,
+                  child: liveCircle(
+                    avatarKey: rivalAvatar,
+                    empty: !active,
+                    onTap: active && rivalId.isNotEmpty
+                        ? () => _openPartner(vs)
+                        : isSelf
+                            ? () => _openRelationManager(couple: false)
+                            : null,
+                  ),
+                ),
+                Positioned(
+                  left: w * .19,
+                  top: 0,
+                  width: w * .18,
+                  height: h,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: null,
+                  ),
+                ),
+                Positioned(
+                  left: w * .64,
+                  top: 0,
+                  width: w * .19,
+                  height: h,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: active && rivalId.isNotEmpty
+                        ? () => _openPartner(vs)
+                        : isSelf
+                            ? () => _openRelationManager(couple: false)
+                            : null,
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -2461,159 +2478,145 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final partnerName = active ? _partnerName(cp) : '';
     final ownAvatar = user?['avatar_key']?.toString() ?? '';
 
-    return Container(
-      key: const Key('profile-intimacy-couple-card'),
-      height: 148,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFD07A87),
-            Color(0xFFCC6F7E),
-            Color(0xFFD48692),
-          ],
-        ),
-        border: Border.all(
-          color: const Color(0xFFC9A12B),
-          width: 1.5,
-        ),
-      ),
-      child: Stack(
-        children: [
-          const Positioned(
-            left: 4,
-            top: 2,
-            child: Icon(
-              Icons.auto_awesome_rounded,
-              color: Color(0xFFE8C85C),
-              size: 17,
-            ),
-          ),
-          const Positioned(
-            right: 4,
-            top: 2,
-            child: Icon(
-              Icons.auto_awesome_rounded,
-              color: Color(0xFFE8C85C),
-              size: 17,
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFD8C6FF),
-                          width: 4,
-                        ),
-                      ),
-                      child: _roundRelationAvatar(
-                        avatarKey: ownAvatar,
-                        size: 66,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      user?['display_name']?.toString() ?? 'User',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFFFECEF),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+    return AspectRatio(
+      aspectRatio: 635 / 258,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          final ownSize = h * .31;
+          final partnerSize = h * .42;
+
+          final ownImage = _avatar(ownAvatar);
+          final partnerImage = _avatar(partnerAvatar);
+
+          Widget namePatch({
+            required String text,
+            required double left,
+            required double width,
+          }) {
+            return Positioned(
+              left: left,
+              bottom: h * .055,
+              width: width,
+              height: h * .13,
+              child: Container(
+                alignment: Alignment.center,
+                color: const Color(0xFFD17D89).withValues(alpha: .96),
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: const Color(0xFFFFEBEE),
+                    fontSize: h * .085,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-              SizedBox(
-                width: 88,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const Positioned(
-                      left: 2,
-                      child: Icon(
-                        Icons.air_rounded,
-                        color: Color(0xFFEDE7EA),
-                        size: 35,
-                      ),
+            );
+          }
+
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Image.asset(
+                    'assets/images/cp_card_reference.webp',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                Positioned(
+                  left: w * .184 - ownSize / 2,
+                  top: h * .415 - ownSize / 2,
+                  child: Container(
+                    width: ownSize,
+                    height: ownSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      image: ownImage == null
+                          ? null
+                          : DecorationImage(
+                              image: ownImage,
+                              fit: BoxFit.cover,
+                            ),
                     ),
-                    const Positioned(
-                      right: 2,
-                      child: Icon(
-                        Icons.air_rounded,
-                        color: Color(0xFFEDE7EA),
-                        size: 35,
-                      ),
-                    ),
-                    Container(
-                      width: 49,
-                      height: 49,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Color(0x55F94C61),
-                            blurRadius: 12,
+                    child: ownImage == null
+                        ? const Icon(
+                            Icons.person_rounded,
+                            color: Colors.white70,
+                          )
+                        : null,
+                  ),
+                ),
+                if (active)
+                  Positioned(
+                    left: w * .833 - partnerSize / 2,
+                    top: h * .415 - partnerSize / 2,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: partnerId.isEmpty
+                          ? null
+                          : () => _openPartner(cp),
+                      child: Container(
+                        width: partnerSize,
+                        height: partnerSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFFCC7482),
+                          border: Border.all(
+                            color: Colors.white70,
+                            width: 1.8,
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.favorite_rounded,
-                        color: Color(0xFFF24B5E),
-                        size: 47,
+                          image: partnerImage == null
+                              ? null
+                              : DecorationImage(
+                                  image: partnerImage,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                        child: partnerImage == null
+                            ? const Icon(
+                                Icons.person_rounded,
+                                color: Colors.white,
+                                size: 32,
+                              )
+                            : null,
                       ),
                     ),
-                    const Icon(
-                      Icons.monitor_heart_rounded,
-                      color: Colors.white,
-                      size: 25,
-                    ),
-                  ],
+                  ),
+                Positioned(
+                  left: w * .735,
+                  top: h * .18,
+                  width: w * .195,
+                  height: h * .55,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: active && partnerId.isNotEmpty
+                        ? () => _openPartner(cp)
+                        : isSelf
+                            ? _openCpBinding
+                            : null,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _roundRelationAvatar(
-                      avatarKey: partnerAvatar,
-                      size: 72,
-                      showPlus: !active,
-                      onTap: active && partnerId.isNotEmpty
-                          ? () => _openPartner(cp)
-                          : isSelf
-                              ? _openCpBinding
-                              : null,
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      active && partnerName.isNotEmpty ? partnerName : 'None',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFFFECEF),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                namePatch(
+                  text: user?['display_name']?.toString() ?? 'User',
+                  left: w * .075,
+                  width: w * .24,
                 ),
-              ),
-            ],
-          ),
-        ],
+                namePatch(
+                  text: active && partnerName.isNotEmpty
+                      ? partnerName
+                      : 'None',
+                  left: w * .755,
+                  width: w * .16,
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
