@@ -4142,7 +4142,12 @@ async function handleApi(request, env, url) {
     const result = await db.prepare(
       "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
     ).bind(roomId, userId).run();
-    return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
+    // Exit is intentionally idempotent: if the member was already removed,
+    // the client is still fully outside the room and should be allowed to close.
+    return json({
+      ok: true,
+      left: Number(result.meta?.changes ?? 0) > 0,
+    });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "seat" && request.method === "POST") {
