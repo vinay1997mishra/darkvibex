@@ -1220,6 +1220,7 @@ class BackendApi {
           'food_key': foodKey,
           'amount': amount,
           'request_id': requestId,
+          'compact_response': true,
         },
       );
 
