@@ -55,6 +55,10 @@ class SeatLayoutSpec {
 
   double seatDiameter(double availableWidth) {
     if (columns <= 0) return 30;
+    if (seatCount >= 36) {
+      final denseDiameter = (availableWidth / columns) * 0.58;
+      return denseDiameter.clamp(28.0, 36.0).toDouble();
+    }
     final diameter = (availableWidth / columns) * 0.76;
     return diameter.clamp(30.0, 68.0).toDouble();
   }
