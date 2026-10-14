@@ -309,6 +309,7 @@ async function ensureUsersSchema(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      public_id TEXT,
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
       date_of_birth TEXT,
@@ -334,6 +335,7 @@ async function ensureUsersSchema(db) {
     (info.results ?? []).map((row) => String(row.name ?? "")),
   );
   const additions = [
+    ["public_id", "TEXT"],
     ["display_name", "TEXT NOT NULL DEFAULT ''"],
     ["avatar_key", "TEXT"],
     ["date_of_birth", "TEXT"],
@@ -356,6 +358,37 @@ async function ensureUsersSchema(db) {
     if (existing.has(name)) continue;
     await db.prepare(`ALTER TABLE users ADD COLUMN ${name} ${definition}`).run();
   }
+  await db.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_public_id ON users(public_id) WHERE public_id IS NOT NULL AND public_id <> ''"
+  ).run();
+}
+
+async function ensureUserPublicId(db, userId) {
+  const row = await db.prepare(
+    "SELECT public_id FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  const current = String(row?.public_id ?? "").trim();
+  if (/^[1-9]\d{6}$/.test(current)) return current;
+
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const candidate = String(Math.floor(1000000 + Math.random() * 9000000));
+    const taken = await db.prepare(
+      "SELECT id FROM users WHERE public_id=? AND id<>? LIMIT 1"
+    ).bind(candidate, userId).first();
+    if (taken) continue;
+    try {
+      await db.prepare(
+        "UPDATE users SET public_id=?,updated_at=? WHERE id=?"
+      ).bind(candidate, now(), userId).run();
+      return candidate;
+    } catch (error) {
+      if (String(error?.message ?? error).toLowerCase().includes("unique")) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("public_id_unavailable");
 }
 
 async function ensureUser(db, userId, displayName = "DarkVibeX User") {
@@ -368,8 +401,9 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
        display_name = CASE WHEN excluded.display_name <> '' THEN excluded.display_name ELSE users.display_name END,
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
+  await ensureUserPublicId(db, userId);
   return db.prepare(
-    "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -898,6 +932,7 @@ async function listRooms(db, viewerUserId) {
   if (!viewerCountry) return [];
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
+            u.public_id AS display_id,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
             COALESCE(rs.room_mode, 'voice') AS room_mode,
@@ -914,7 +949,14 @@ async function listRooms(db, viewerUserId) {
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).bind(now(), viewerCountry).all();
-  return result.results ?? [];
+  const rows = result.results ?? [];
+  for (const row of rows) {
+    const currentDisplayId = String(row.display_id ?? "").trim();
+    if (!/^[1-9]\d{6}$/.test(currentDisplayId)) {
+      row.display_id = await ensureUserPublicId(db, String(row.owner_user_id ?? ""));
+    }
+  }
+  return rows;
 }
 
 async function ensureCustomGiftSchema(db) {
@@ -3096,6 +3138,7 @@ async function handleApi(request, env, url) {
     if (!viewerCountry) return json({ ok:true,rooms:[] });
     const rows = await db.prepare(
       `SELECT r.id,r.name,
+              u.public_id AS display_id,
               COALESCE(u.display_name,'Owner') AS owner_name,
               r.owner_user_id,
               COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
@@ -3113,7 +3156,14 @@ async function handleApi(request, env, url) {
         WHERE rf.user_id=? AND r.country_code=?
         ORDER BY rf.updated_at DESC LIMIT 100`
     ).bind(userId,viewerCountry).all();
-    return json({ ok:true,rooms:rows.results ?? [] });
+    const followedRooms = rows.results ?? [];
+    for (const room of followedRooms) {
+      const currentDisplayId = String(room.display_id ?? "").trim();
+      if (!/^[1-9]\d{6}$/.test(currentDisplayId)) {
+        room.display_id = await ensureUserPublicId(db, String(room.owner_user_id ?? ""));
+      }
+    }
+    return json({ ok:true,rooms:followedRooms });
   }
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
@@ -3312,7 +3362,7 @@ async function handleApi(request, env, url) {
         ).bind(String(body.date_of_birth),now(),userId).run();
       }
       const latest=await db.prepare(
-        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=?"
+        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=?"
       ).bind(userId).first();
       const token=await createSessionToken(env,userId,latest?.display_name ?? userId);
       return json({ok:true,token,user:latest,provider:"email"});
@@ -3629,7 +3679,7 @@ async function handleApi(request, env, url) {
     }
 
     const user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(userId).first();
     return json({
       ok:true,
@@ -3698,29 +3748,40 @@ async function handleApi(request, env, url) {
     const viewerId = String(session.sub);
     const requestedUserId = String(parts[2] ?? "").trim();
     await ensureVipSchema(db);
+    await ensureUsersSchema(db);
     let viewedUserId = requestedUserId;
     let user = await db.prepare(
-      "SELECT id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (!user && requestedUserId) {
-      const byPublicId = await db.prepare(
-        `SELECT u.id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.gender,u.age_change_count,u.country_change_count,u.gender_change_count,u.language
+      const byStablePublicId = await db.prepare(
+        "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE public_id=? LIMIT 1"
+      ).bind(requestedUserId).first();
+      if (byStablePublicId) {
+        user = byStablePublicId;
+        viewedUserId = String(byStablePublicId.id);
+      }
+    }
+    if (!user && requestedUserId) {
+      const byVipCustomId = await db.prepare(
+        `SELECT u.id,u.public_id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.gender,u.age_change_count,u.country_change_count,u.gender_change_count,u.language
            FROM user_vip v
            JOIN users u ON u.id=v.user_id
           WHERE v.custom_id=?
             AND (v.custom_id_expires_at IS NULL OR v.custom_id_expires_at>?)
           LIMIT 1`
       ).bind(requestedUserId,now()).first();
-      if (byPublicId) {
-        user = byPublicId;
-        viewedUserId = String(byPublicId.id);
+      if (byVipCustomId) {
+        user = byVipCustomId;
+        viewedUserId = String(byVipCustomId.id);
       }
     }
     if (user) {
       const targetVip = await getVipStatus(db, viewedUserId);
       user.active_vip_level = targetVip.active ? targetVip.level : 0;
-      user.public_id = targetVip.custom_id || user.id;
-      user.public_id_expires_at = targetVip.custom_id_expires_at ?? null;
+      user.public_id = await ensureUserPublicId(db, viewedUserId);
+      user.vip_custom_id = targetVip.custom_id || null;
+      user.public_id_expires_at = null;
       const owned = await ownedCosmetics(db, viewedUserId, now());
       for (const prop of owned) {
         if (!(prop.active === true || Number(prop.active ?? 0) === 1)) continue;
@@ -4574,29 +4635,23 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, ownerId);
     await ensureRoomSettingsTable(db);
     const ownerProfile = await db.prepare(
-      "SELECT country_code FROM users WHERE id=? LIMIT 1"
+      "SELECT country_code,public_id FROM users WHERE id=? LIMIT 1"
     ).bind(ownerId).first();
     const ownerCountry = String(ownerProfile?.country_code ?? "").trim().toUpperCase();
+    const ownerPublicId = /^[1-9]\d{6}$/.test(String(ownerProfile?.public_id ?? "").trim())
+      ? String(ownerProfile.public_id).trim()
+      : await ensureUserPublicId(db, ownerId);
     if (!ownerCountry) {
       return json({ ok:false,error:"country_required_for_room" }, { status:409 });
     }
 
     const seatCount = requestedSeatCount;
-    const requestedRoomId = String(body.id ?? "").trim();
-    let roomId = requestedRoomId;
-    if (roomId) {
-      const existing = await db.prepare("SELECT 1 AS found FROM rooms WHERE id = ? LIMIT 1").bind(roomId).first();
-      if (existing) return json({ ok: false, error: "room_id_taken" }, { status: 409 });
-    } else {
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        const candidate = String(Math.floor(100000 + Math.random() * 900000));
-        const existing = await db.prepare("SELECT 1 AS found FROM rooms WHERE id = ? LIMIT 1").bind(candidate).first();
-        if (!existing) {
-          roomId = candidate;
-          break;
-        }
-      }
-      if (!roomId) return json({ ok: false, error: "room_id_unavailable" }, { status: 503 });
+    const roomId = ownerPublicId;
+    const existingRoomId = await db.prepare(
+      "SELECT owner_user_id FROM rooms WHERE id=? LIMIT 1"
+    ).bind(roomId).first();
+    if (existingRoomId) {
+      return json({ ok: false, error: "room_id_taken" }, { status: 409 });
     }
 
     const ts = now();
@@ -4622,7 +4677,7 @@ async function handleApi(request, env, url) {
       });
       return json({ ok: false, error: "room_create_storage_failed" }, { status: 503 });
     }
-    return json({ ok: true, room_id: roomId, party_mode: partyMode, room_mode: roomMode }, { status: 201 });
+    return json({ ok: true, room_id: roomId, display_id: ownerPublicId, party_mode: partyMode, room_mode: roomMode }, { status: 201 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "delete" && request.method === "POST") {
@@ -4918,9 +4973,7 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 14 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.invisible_entry') = 1
                      THEN 1 ELSE 0 END AS invisible_entry,
-                CASE WHEN v.custom_id IS NOT NULL
-                           AND (v.custom_id_expires_at IS NULL OR v.custom_id_expires_at > ?)
-                     THEN v.custom_id ELSE m.user_id END AS public_id,
+                COALESCE(NULLIF(u.public_id,''), m.user_id) AS public_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
@@ -4941,7 +4994,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
