@@ -56,6 +56,7 @@ void main() {
       );
       expect(find.text('Greedy Girl'), findsOneWidget);
       expect(find.text('21+'), findsNothing);
+      expect(find.byKey(const Key('greedy-girl-mascot')), findsOneWidget);
       expect(find.byKey(const Key('greedy-girl-tomato')), findsOneWidget);
       expect(find.byKey(const Key('greedy-girl-skewer')), findsOneWidget);
       expect(tester.takeException(), isNull);
