@@ -46,10 +46,21 @@ void main() {
     expect(personal, contains('widget.state.publicId'));
   });
 
-  test('36 to 42 seats use dense spacing while chat remains present', () {
+  test('Tinni-style 42-seat grid is non-scroll and chat stays visible', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
-    expect(source, contains('compactSeats = roomSeatCount >= 36'));
-    expect(source, contains("key: const Key('room-chat-list')"));
-    expect(source, contains('compactSeats ? 2 : (diameter < 48 ? 6 : 10)'));
+    final seatStart =
+        source.indexOf("key: const Key('darkvibex-seat-grid')");
+    final chatStart =
+        source.indexOf("key: const Key('room-chat-list')", seatStart);
+
+    expect(seatStart, greaterThanOrEqualTo(0));
+    expect(chatStart, greaterThan(seatStart));
+
+    final seatBlock = source.substring(seatStart, chatStart);
+    expect(seatBlock, contains('flex: 11'));
+    expect(seatBlock, contains('MainAxisAlignment.spaceBetween'));
+    expect(seatBlock, contains('heightSeatDiameter'));
+    expect(seatBlock, isNot(contains('SingleChildScrollView')));
+    expect(source, contains('flex: 9'));
   });
 }
