@@ -2152,33 +2152,66 @@ class _RoomScreenState extends State<RoomScreen> {
     ));
   }
 
-  Future<void> _cleanupMinimizedRoom() async {
-    if (widget.state.backendConnected) {
-      try {
-        await widget.state.backend.leaveRoom(
-          roomId: widget.room.id,
-          userId: widget.state.userId,
-        );
-      } catch (_) {}
-    }
+  Future<void> _disconnectRoomRuntime() async {
     try {
       await roomMusic.stopRoomPlayback();
     } catch (_) {}
+
+    final current = rtc;
+    rtc = null;
+
     try {
-      await rtc?.setMicPublished(false);
+      await current?.setMicPublished(false);
     } catch (_) {}
     try {
-      if (cameraPublished && rtc is LiveKitRtcAdapter) {
-        await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+      if (cameraPublished && current is LiveKitRtcAdapter) {
+        await current.setCameraPublished(false);
       }
     } catch (_) {}
+
+    rtcEvents?.dispose();
+    rtcEvents = null;
+
     try {
-      await rtc?.leave();
+      await current?.leave();
     } catch (_) {}
+    if (current is LiveKitRtcAdapter) {
+      current.dispose();
+    } else if (current is LocalRtcAdapter) {
+      current.dispose();
+    }
+
+    cameraPublished = false;
+    localVideoTrack = null;
+    remoteVideoTracks.clear();
+    mySeat = null;
+    muted = true;
+
     try {
       await roomForegroundService.stop();
-      roomForegroundServiceStarted = false;
     } catch (_) {}
+    roomForegroundServiceStarted = false;
+  }
+
+  Future<void> _leaveServerMembership() async {
+    if (!widget.state.backendConnected) return;
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        final ok = await widget.state.backend.leaveRoom(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+        );
+        if (ok) return;
+      } catch (_) {}
+      if (attempt < 2) {
+        await Future<void>.delayed(const Duration(milliseconds: 180));
+      }
+    }
+  }
+
+  Future<void> _cleanupMinimizedRoom() async {
+    await _leaveServerMembership();
+    await _disconnectRoomRuntime();
   }
 
   Future<void> _minimizeRoom() async {
@@ -2211,23 +2244,11 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _leaveRoom() async {
-    if (widget.state.backendConnected) {
-      final ok = await widget.state.backend.leaveRoom(
-        roomId: widget.room.id,
-        userId: widget.state.userId,
-      );
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not leave the room on the server')),
-        );
-        return;
-      }
-    }
-    await roomMusic.stopRoomPlayback();
-    try {
-      await roomForegroundService.stop();
-      roomForegroundServiceStarted = false;
-    } catch (_) {}
+    // Exit always tears down the local room first-class resources. The server
+    // membership request is retried, but a transient network error must never
+    // leave mic/RTC/foreground-service work running after the user exits.
+    await _leaveServerMembership();
+    await _disconnectRoomRuntime();
     if (mounted) Navigator.of(context).pop();
   }
 
