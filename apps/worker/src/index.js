@@ -1939,6 +1939,7 @@ const GREEDY_GIRL_FOODS = Object.freeze([
 const GREEDY_GIRL_BY_KEY = new Map(
   GREEDY_GIRL_FOODS.map((food) => [food.key, food]),
 );
+let greedyGirlSchemaReady = false;
 const GREEDY_GIRL_X5 = GREEDY_GIRL_FOODS.filter(
   (food) => food.multiplier === 5,
 );
@@ -1974,6 +1975,7 @@ function greedyGirlCycleEnd(roundId) {
 }
 
 async function ensureGreedyGirlSchema(db) {
+  if (greedyGirlSchemaReady) return;
   await ensureWalletLedgerSchema(db);
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS greedy_girl_bets (
@@ -2003,6 +2005,7 @@ async function ensureGreedyGirlSchema(db) {
       "CREATE INDEX IF NOT EXISTS idx_greedy_girl_results_time ON greedy_girl_results(settled_at DESC)"
     ),
   ]);
+  greedyGirlSchemaReady = true;
 }
 
 async function settleGreedyGirlRound(db, roundId) {
@@ -4125,12 +4128,32 @@ async function handleApi(request, env, url) {
         return json({ ok: true, public_screen_enabled: Boolean(enabled) });
       }
       if (action === "seat_lock" || action === "seat_mute" || action === "seat_down") {
-        if (!mod.isOwner && !mod.isAdmin) return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
+        if (!mod.isOwner && !mod.isAdmin) {
+          return json({ ok: false, error: "room_moderator_required" }, { status: 403 });
+        }
         const seatIndex = Number(body.seat_index);
-        const roomRow = await db.prepare("SELECT seat_count,owner_user_id FROM rooms WHERE id=?").bind(roomId).first();
-        if (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(roomRow?.seat_count ?? 0)) {
+        const roomRow = await db.prepare(
+          "SELECT seat_count,owner_user_id FROM rooms WHERE id=?"
+        ).bind(roomId).first();
+        if (!Number.isSafeInteger(seatIndex) ||
+            seatIndex < 0 ||
+            seatIndex >= Number(roomRow?.seat_count ?? 0)) {
           return json({ ok: false, error: "invalid_seat_index" }, { status: 400 });
         }
+
+        const occupant = await db.prepare(
+          "SELECT m.user_id, CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin FROM room_members m LEFT JOIN room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id WHERE m.room_id=? AND m.seat_index=?"
+        ).bind(roomId, seatIndex).first();
+
+        if (occupant && !mod.isOwner) {
+          if (String(occupant.user_id) === String(mod.room.owner_user_id)) {
+            return json({ ok: false, error: "owner_seat_protected" }, { status: 403 });
+          }
+          if (Number(occupant.is_admin) === 1) {
+            return json({ ok: false, error: "admin_seat_protected" }, { status: 403 });
+          }
+        }
+
         if (action === "seat_lock") {
           const locked = body.locked === true ? 1 : 0;
           await db.prepare(
@@ -4138,18 +4161,17 @@ async function handleApi(request, env, url) {
           ).bind(roomId, seatIndex, locked, now()).run();
           return json({ ok: true, seat_index: seatIndex, locked: Boolean(locked) });
         }
-        const occupant = await db.prepare(
-          "SELECT m.user_id, CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin FROM room_members m LEFT JOIN room_admins ra ON ra.room_id=m.room_id AND ra.user_id=m.user_id WHERE m.room_id=? AND m.seat_index=?"
-        ).bind(roomId, seatIndex).first();
-        if (!occupant) return json({ ok: false, error: "seat_empty" }, { status: 404 });
-        if (occupant.user_id === mod.room.owner_user_id) return json({ ok: false, error: "owner_seat_protected" }, { status: 403 });
-        if (!mod.isOwner && Number(occupant.is_admin) === 1) return json({ ok: false, error: "admin_seat_protected" }, { status: 403 });
+
         if (action === "seat_down") {
+          if (!occupant) {
+            return json({ ok: false, error: "seat_empty" }, { status: 404 });
+          }
           await db.prepare(
             "UPDATE room_members SET seat_index=NULL,mic_muted=1,updated_at=? WHERE room_id=? AND user_id=?"
           ).bind(now(), roomId, occupant.user_id).run();
           return json({ ok: true, seat_index: seatIndex, user_id: occupant.user_id });
         }
+
         const muted = body.muted === true ? 1 : 0;
         await db.batch([
           db.prepare(
@@ -4802,7 +4824,7 @@ async function handleApi(request, env, url) {
     await ensureRoomControlTables(db, roomId);
     const room = await db.prepare("SELECT seat_count,owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
-    const member = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?")
+    const member = await db.prepare("SELECT seat_index FROM room_members WHERE room_id = ? AND user_id = ?")
       .bind(roomId, userId).first();
     if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
     if (seatIndex != null && (!Number.isSafeInteger(seatIndex) || seatIndex < 0 || seatIndex >= Number(room.seat_count))) {
@@ -4814,10 +4836,13 @@ async function handleApi(request, env, url) {
       const seatControl = await db.prepare(
         "SELECT locked,room_muted FROM room_seat_controls WHERE room_id=? AND seat_index=?"
       ).bind(roomId,seatIndex).first();
-      if (Number(seatControl?.locked ?? 0) === 1 && !stayingOnSameSeat) {
+      const moderator = await roomModeratorState(db, roomId, userId);
+      if (Number(seatControl?.locked ?? 0) === 1 &&
+          !stayingOnSameSeat &&
+          !moderator.isOwner &&
+          !moderator.isAdmin) {
         return json({ ok:false,error:"seat_locked" }, { status:409 });
       }
-      const moderator = await roomModeratorState(db, roomId, userId);
       const roomSettings = await db.prepare(
         "SELECT COALESCE(mic_mode,'free') AS mic_mode FROM room_settings WHERE room_id=?"
       ).bind(roomId).first();
@@ -6730,8 +6755,14 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     await ensureGreedyGirlSchema(db);
     const ts = now();
-    await syncGreedyGirl(db, ts);
     const roundId = greedyGirlRoundId(ts);
+
+    // Normal bet placement stays lightweight. Settle only the immediately
+    // previous round here; full history/state reconciliation is handled by
+    // the state endpoint and result phase.
+    if (roundId > 0) {
+      await settleGreedyGirlRound(db, roundId - 1);
+    }
     if (ts >= greedyGirlBetEnd(roundId)) {
       return json(
         { ok:false,error:"betting_locked",state:await greedyGirlState(db,userId,ts) },
@@ -6739,12 +6770,26 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const betId = `greedy-girl:${userId}:${requestId}`;
     const prior = await db.prepare(
-      "SELECT id FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
+      "SELECT round_id,food_key,amount FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
     ).bind(userId, requestId).first();
-    if (prior) return json(await greedyGirlState(db, userId, ts));
+    if (prior) {
+      const wallet = await db.prepare(
+        "SELECT coins FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      return json({
+        ok:true,
+        server_time:now(),
+        wallet_balance:Number(wallet?.coins ?? 0),
+        accepted_bet:{
+          round_id:Number(prior.round_id),
+          food_key:String(prior.food_key),
+          amount:Number(prior.amount ?? 0),
+        },
+      });
+    }
 
+    const betId = `greedy-girl:${userId}:${requestId}`;
     try {
       await db.batch([
         db.prepare(
@@ -6770,14 +6815,26 @@ async function handleApi(request, env, url) {
       ]);
     } catch (error) {
       const duplicate = await db.prepare(
-        "SELECT id FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
+        "SELECT round_id,food_key,amount FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
       ).bind(userId, requestId).first();
       if (!duplicate) throw error;
-      return json(await greedyGirlState(db, userId, now()));
+      const wallet = await db.prepare(
+        "SELECT coins FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      return json({
+        ok:true,
+        server_time:now(),
+        wallet_balance:Number(wallet?.coins ?? 0),
+        accepted_bet:{
+          round_id:Number(duplicate.round_id),
+          food_key:String(duplicate.food_key),
+          amount:Number(duplicate.amount ?? 0),
+        },
+      });
     }
 
     const accepted = await db.prepare(
-      "SELECT id FROM greedy_girl_bets WHERE id=? LIMIT 1"
+      "SELECT round_id,food_key,amount FROM greedy_girl_bets WHERE id=? LIMIT 1"
     ).bind(betId).first();
     if (!accepted) {
       return json(
@@ -6785,7 +6842,19 @@ async function handleApi(request, env, url) {
         { status:409 },
       );
     }
-    return json(await greedyGirlState(db, userId, now()), { status:201 });
+    const wallet = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    return json({
+      ok:true,
+      server_time:now(),
+      wallet_balance:Number(wallet?.coins ?? 0),
+      accepted_bet:{
+        round_id:Number(accepted.round_id),
+        food_key:String(accepted.food_key),
+        amount:Number(accepted.amount ?? 0),
+      },
+    }, { status:201 });
   }
 
   if (url.pathname === "/api/files" && request.method === "PUT") {
