@@ -1034,7 +1034,10 @@ export async function cpRequest(db, userId, targetIdValue) {
         user_a,user_b,state,intimacy,level,cycle_a_to_b,cycle_b_to_a,requested_by,created_at,updated_at
       ) VALUES(?,?,'pending',0,1,0,0,?,?,?)
       ON CONFLICT(user_a,user_b) DO UPDATE SET
-        state='pending',intimacy=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,requested_by=excluded.requested_by,
+        state='pending',intimacy=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,
+        requested_by=excluded.requested_by,activated_at=NULL,
+        disconnect_state='none',disconnect_requested_by=NULL,disconnect_requested_at=NULL,
+        heartbeat_state='idle',heartbeat_choice_a=NULL,heartbeat_choice_b=NULL,heartbeat_updated_at=NULL,
         created_at=excluded.created_at,updated_at=excluded.updated_at`
     ).bind(a,b,userId,createdAt,createdAt).run();
     const wallet = await db.prepare(
@@ -1212,7 +1215,7 @@ export async function cpRanking(db, limitValue=100) {
        LEFT JOIN users ua ON ua.id=c.user_a
        LEFT JOIN users ub ON ub.id=c.user_b
       WHERE c.state='active'
-      ORDER BY c.intimacy DESC,c.updated_at ASC LIMIT ?`
+      ORDER BY c.level DESC,c.intimacy DESC,c.updated_at ASC LIMIT ?`
   ).bind(limit).all();
   return (rows.results ?? [])
     .sort((a,b) =>
@@ -1312,7 +1315,10 @@ export async function vsRequest(db, userId, targetIdValue) {
     `INSERT INTO vs_relationships(user_a,user_b,state,rivalry,level,cycle_a_to_b,cycle_b_to_a,requested_by,created_at,updated_at)
      VALUES(?,?,'pending',0,1,0,0,?,?,?)
      ON CONFLICT(user_a,user_b) DO UPDATE SET
-       state='pending',rivalry=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,requested_by=excluded.requested_by,
+       state='pending',rivalry=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,
+       requested_by=excluded.requested_by,activated_at=NULL,
+       disconnect_state='none',disconnect_requested_by=NULL,disconnect_requested_at=NULL,
+       heartbeat_state='idle',heartbeat_choice_a=NULL,heartbeat_choice_b=NULL,heartbeat_updated_at=NULL,
        created_at=excluded.created_at,updated_at=excluded.updated_at`
   ).bind(a,b,userId,createdAt,createdAt).run();
   return vsState(db,userId);
@@ -1449,7 +1455,7 @@ export async function vsRanking(db, limitValue=100) {
        LEFT JOIN users ua ON ua.id=v.user_a
        LEFT JOIN users ub ON ub.id=v.user_b
       WHERE v.state='active'
-      ORDER BY v.rivalry DESC,v.updated_at ASC LIMIT ?`
+      ORDER BY v.level DESC,v.rivalry DESC,v.updated_at ASC LIMIT ?`
   ).bind(limit).all();
   return (rows.results ?? [])
     .sort((a,b) =>
