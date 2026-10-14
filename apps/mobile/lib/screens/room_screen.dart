@@ -1473,41 +1473,6 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  Widget _seatProfileAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      width: 82,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TinniGlowIcon(icon: icon, size: 20, boxSize: 38),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: TinniPalette.cream,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _sendGiftToSeatUser(String receiverId) async {
     if (!widget.state.backendConnected || receiverId.isEmpty) return;
     final gifts =
@@ -2241,11 +2206,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                           builder: (_) =>
                                               ConversationScreen(
                                             state: widget.state,
-                                            peerUserId: userId,
-                                            peerName: name,
-                                            peerAvatarKey: avatar.isEmpty
-                                                ? null
-                                                : avatar,
+                                            otherUserId: userId,
+                                            otherName: name,
                                           ),
                                         ),
                                       );
