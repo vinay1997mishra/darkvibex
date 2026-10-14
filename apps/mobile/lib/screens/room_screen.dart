@@ -2066,7 +2066,9 @@ class _RoomScreenState extends State<RoomScreen> {
                 (row) => row['id']?.toString() == userId,
               );
               followersCount =
-                  (followersCount + (next ? 1 : -1)).clamp(0, 1 << 31);
+                  (followersCount + (next ? 1 : -1))
+                      .clamp(0, 1 << 31)
+                      .toInt();
             });
           }
 
