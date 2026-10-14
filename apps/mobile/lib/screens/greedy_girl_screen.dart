@@ -193,7 +193,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     final time = int.tryParse(value['server_time']?.toString() ?? '') ?? 0;
     final wallet = int.tryParse(value['wallet_balance']?.toString() ?? '');
     if (wallet != null) {
-      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit));
+      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit).toInt());
     }
     final allowed = value['config'] is Map
         ? Map<String, dynamic>.from(value['config'] as Map)['bet_amounts']
@@ -224,7 +224,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     final authoritativeWallet =
         int.tryParse(game['wallet_balance']?.toString() ?? '') ??
             widget.state.coins;
-    final availableWallet = math.max(0, authoritativeWallet - queuedDebit);
+    final availableWallet = math.max(0, authoritativeWallet - queuedDebit).toInt();
     final amount = selectedBet;
     if (availableWallet < amount) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -246,7 +246,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
       queuedDebit += amount;
     });
     widget.state.setCoinBalance(
-      math.max(0, authoritativeWallet - queuedDebit),
+      math.max(0, authoritativeWallet - queuedDebit).toInt(),
     );
     unawaited(_drainBetQueue());
   }
@@ -263,7 +263,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     } else {
       queuedBets[bet.foodKey] = next;
     }
-    queuedDebit = math.max(0, queuedDebit - bet.amount);
+    queuedDebit = math.max(0, queuedDebit - bet.amount).toInt();
   }
 
   void _applyBetAck(
@@ -283,7 +283,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
         int.tryParse(result['wallet_balance']?.toString() ?? '');
     if (wallet != null) {
       next['wallet_balance'] = wallet;
-      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit));
+      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit).toInt());
     }
 
     final serverTime =
@@ -412,7 +412,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     final authoritativeWallet =
         int.tryParse(game['wallet_balance']?.toString() ?? '') ??
             widget.state.coins;
-    final wallet = math.max(0, authoritativeWallet - queuedDebit);
+    final wallet = math.max(0, authoritativeWallet - queuedDebit).toInt();
     final winnings =
         int.tryParse(game['today_winnings']?.toString() ?? '') ?? 0;
     final seconds = (remainingMs / 1000).ceil();
