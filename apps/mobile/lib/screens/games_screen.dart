@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import 'fruit_party_screen.dart';
+import 'greedy_girl_screen.dart';
 import 'game_room_screen.dart';
 import 'ludo_screen.dart';
 
@@ -12,6 +13,7 @@ class GamesScreen extends StatefulWidget {
     required this.state,
     this.roomId,
     this.onFruitParty,
+    this.onGreedyGirl,
     this.roomOwnerUserId,
     this.onToggleMic,
     this.micOn,
@@ -21,6 +23,7 @@ class GamesScreen extends StatefulWidget {
   final AppState state;
   final String? roomId;
   final VoidCallback? onFruitParty;
+  final VoidCallback? onGreedyGirl;
   final String? roomOwnerUserId;
   final Future<void> Function()? onToggleMic;
   final bool Function()? micOn;
@@ -87,6 +90,24 @@ class _GamesScreenState extends State<GamesScreen> {
               onTap:
                   widget.onFruitParty ??
                   () => showFruitParty(context, widget.state),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: ListTile(
+              key: const Key('open-greedy-girl'),
+              leading: const Text('👩🏻‍🎤', style: TextStyle(fontSize: 32)),
+              title: const Text(
+                'GREEDY GIRL',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              subtitle: const Text(
+                '30s rounds • food multipliers • server-settled results',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap:
+                  widget.onGreedyGirl ??
+                  () => showGreedyGirl(context, widget.state),
             ),
           ),
           const SizedBox(height: 10),
