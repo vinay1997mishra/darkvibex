@@ -5,6 +5,22 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 
+Future<void> showFruitParty(BuildContext context, AppState state) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.transparent,
+    builder: (_) => SizedBox(
+      height: MediaQuery.sizeOf(context).height * .5,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: FruitPartyScreen(state: state),
+      ),
+    ),
+  );
+}
+
 class FruitPartyScreen extends StatefulWidget {
   const FruitPartyScreen({super.key, required this.state});
 
@@ -20,6 +36,8 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   Map<String, dynamic> game = const <String, dynamic>{};
   int selectedBet = 5000;
   bool loading = true;
+  String panel = 'game';
+  bool loadingState = false;
   bool placingBet = false;
   int serverTimeAtSync = 0;
   int localTimeAtSync = 0;
@@ -30,8 +48,18 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     {'key': 'kiwi', 'emoji': '🥝', 'label': 'Kiwi', 'multiplier': 5},
     {'key': 'plum', 'emoji': '🍑', 'label': 'Plum', 'multiplier': 5},
     {'key': 'banana', 'emoji': '🍌', 'label': 'Banana', 'multiplier': 10},
-    {'key': 'strawberry', 'emoji': '🍓', 'label': 'Strawberry', 'multiplier': 15},
-    {'key': 'watermelon', 'emoji': '🍉', 'label': 'Watermelon', 'multiplier': 25},
+    {
+      'key': 'strawberry',
+      'emoji': '🍓',
+      'label': 'Strawberry',
+      'multiplier': 15,
+    },
+    {
+      'key': 'watermelon',
+      'emoji': '🍉',
+      'label': 'Watermelon',
+      'multiplier': 25,
+    },
     {'key': 'cherry', 'emoji': '🍒', 'label': 'Cherry', 'multiplier': 45},
   ];
 
@@ -43,12 +71,9 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
       const Duration(seconds: 5),
       (_) => unawaited(_load(silent: true)),
     );
-    clockTimer = Timer.periodic(
-      const Duration(milliseconds: 250),
-      (_) {
-        if (mounted && game.isNotEmpty) setState(() {});
-      },
-    );
+    clockTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (mounted && game.isNotEmpty) setState(() {});
+    });
   }
 
   @override
@@ -129,14 +154,25 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   }
 
   Future<void> _load({bool silent = false}) async {
+    if (loadingState || placingBet) return;
     if (!widget.state.backendConnected) {
       if (!silent && mounted) {
         setState(() => loading = false);
       }
       return;
     }
-    final value = await widget.state.backend.fruitPartyState();
-    if (!mounted || value == null) return;
+    loadingState = true;
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.fruitPartyState();
+    } finally {
+      loadingState = false;
+    }
+    if (!mounted) return;
+    if (value == null) {
+      setState(() => loading = false);
+      return;
+    }
     if (value['ok'] != true) {
       if (!silent) {
         setState(() => loading = false);
@@ -149,17 +185,16 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   void _applyState(Map<String, dynamic> value) {
     final serverTime =
         int.tryParse(value['server_time']?.toString() ?? '') ?? 0;
-    final balance =
-        int.tryParse(value['wallet_balance']?.toString() ?? '');
+    final balance = int.tryParse(value['wallet_balance']?.toString() ?? '');
     if (balance != null) widget.state.setCoinBalance(balance);
     final bets = value['config'] is Map
         ? Map<String, dynamic>.from(value['config'] as Map)['bet_amounts']
         : null;
     final allowed = bets is List
         ? bets
-            .map((entry) => int.tryParse(entry.toString()) ?? 0)
-            .where((entry) => entry > 0)
-            .toList(growable: false)
+              .map((entry) => int.tryParse(entry.toString()) ?? 0)
+              .where((entry) => entry > 0)
+              .toList(growable: false)
         : const <int>[];
     setState(() {
       game = Map<String, dynamic>.from(value);
@@ -196,9 +231,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     }
     final error =
         result?['error']?.toString().replaceAll('_', ' ') ?? 'Bet failed';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 
   String _compact(int value) {
@@ -226,393 +259,513 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     return '🎰';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final phase = _round['phase']?.toString() ?? 'betting';
-    final seconds = (_remainingMs / 1000).ceil();
-    final history = _history;
-    final latest = history.isNotEmpty ? history.first : null;
-    final wallet =
-        int.tryParse(game['wallet_balance']?.toString() ?? '') ??
-            widget.state.coins;
-    final winnings =
-        int.tryParse(game['today_winnings']?.toString() ?? '') ?? 0;
+  String _resultLabel(Map<String, dynamic> result) {
+    if (result['lucky_type'] == 'silver') return 'Silver Lucky';
+    if (result['lucky_type'] == 'gold') return 'Gold Lucky';
+    if (result['lucky11'] == true) return 'Lucky 11';
+    return _fruitEmoji((result['fruit'] as Map?)?['key']?.toString() ?? '');
+  }
 
-    return Scaffold(
-      backgroundColor: TinniPalette.black,
-      appBar: AppBar(
-        title: const Text(
-          'Fruit Party',
-          style: TextStyle(
-            color: TinniPalette.gold,
-            fontWeight: FontWeight.w900,
+  Widget _lucky(String type) {
+    final silver = type == 'silver';
+    final active =
+        _round['phase'] == 'result_spin' &&
+        _history.isNotEmpty &&
+        _history.first['lucky_type'] == type;
+    return Expanded(
+      child: InkWell(
+        key: Key('fruit-party-$type-lucky'),
+        onTap: () => setState(() => panel = 'rules'),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: 54,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: silver
+                  ? const [Color(0xFFE2E8FF), Color(0xFF625DD5)]
+                  : const [Color(0xFFFFE996), Color(0xFFC77A18)],
+            ),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: active ? Colors.white : const Color(0xFFDAA54C),
+              width: active ? 3 : 1,
+            ),
+            boxShadow: active
+                ? [const BoxShadow(color: Colors.amber, blurRadius: 14)]
+                : null,
+          ),
+          child: Text(
+            silver ? 'Silver\nLucky' : 'Gold\nLucky',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF291208),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: () => _load(),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
-      body: TinniBackground(
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _metric(
-                            'Balance',
-                            _compact(wallet),
-                            Icons.monetization_on_rounded,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _metric(
-                            'Today win',
-                            _compact(winnings),
-                            Icons.emoji_events_rounded,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _metric(
-                            phase == 'result_spin' ? 'Result' : 'Bet time',
-                            '${seconds}s',
-                            phase == 'result_spin'
-                                ? Icons.casino_rounded
-                                : Icons.timer_rounded,
-                          ),
-                        ),
-                      ],
+    );
+  }
+
+  Widget _fruitTile(Map<String, dynamic> fruit) {
+    final key = fruit['key']?.toString() ?? '';
+    final bet = int.tryParse(_myBets[key]?.toString() ?? '') ?? 0;
+    final latest = _history.isEmpty ? null : _history.first;
+    final bonus = latest?['bonus_fruits'];
+    final won =
+        _round['phase'] == 'result_spin' &&
+        latest != null &&
+        (latest['lucky11'] == true
+            ? bonus is List &&
+                  bonus.whereType<Map>().any((f) => f['key'] == key)
+            : (latest['fruit'] as Map?)?['key'] == key);
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: InkWell(
+          key: Key('fruit-party-$key'),
+          onTap: _bettingOpen && !placingBet ? () => _placeBet(key) : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: 79,
+            decoration: BoxDecoration(
+              color: won ? const Color(0xFF795010) : const Color(0xFF190B12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: won || bet > 0
+                    ? const Color(0xFFFFDF83)
+                    : const Color(0xFF774A29),
+                width: won ? 2 : 1,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  bet > 0 ? _compact(bet) : fruit['label']?.toString() ?? key,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: bet > 0 ? Colors.amberAccent : TinniPalette.cream,
+                  ),
+                ),
+                Text(
+                  fruit['emoji']?.toString() ?? '🍒',
+                  style: const TextStyle(fontSize: 29),
+                ),
+                Text(
+                  '${fruit['multiplier']}×',
+                  style: const TextStyle(
+                    color: Color(0xFFFFDD80),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seconds = (_remainingMs / 1000).ceil();
+    final wallet =
+        int.tryParse(game['wallet_balance']?.toString() ?? '') ??
+        widget.state.coins;
+    final winnings =
+        int.tryParse(game['today_winnings']?.toString() ?? '') ?? 0;
+    return Material(
+      color: const Color(0xFF260F17),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: panel == 'game' ? 'Game records' : 'Back to game',
+                    onPressed: () => setState(
+                      () => panel = panel == 'game' ? 'records' : 'game',
                     ),
-                    const SizedBox(height: 10),
-                    TinniPanel(
-                      child: Column(
-                        children: [
-                          Text(
-                            phase == 'result_spin'
-                                ? 'RESULT SPIN'
-                                : 'BETTING OPEN',
-                            style: TextStyle(
-                              color: phase == 'result_spin'
-                                  ? Colors.orangeAccent
-                                  : TinniPalette.gold,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            phase == 'result_spin' && latest != null
-                                ? (latest['lucky11'] == true
-                                    ? 'LUCKY 11 • 4 FRUITS WIN'
-                                    : '${_fruitEmoji((latest['fruit'] as Map?)?['key']?.toString() ?? '')} ${(latest['fruit'] as Map?)?['label'] ?? 'Result'}')
-                                : 'Round #${_round['round_id'] ?? '-'}',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              color: TinniPalette.cream,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Active ${_round['active_players'] ?? 0} • Total bet ${_compact(int.tryParse(_round['total_bet']?.toString() ?? '') ?? 0)}',
-                            style: const TextStyle(
-                              color: TinniPalette.muted,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
+                    icon: Icon(
+                      panel == 'game'
+                          ? Icons.history_rounded
+                          : Icons.arrow_back_rounded,
+                      color: TinniPalette.gold,
+                      size: 20,
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Bet amount',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
+                  ),
+                  Expanded(
+                    child: Text(
+                      panel == 'game'
+                          ? 'Fruit Party'
+                          : panel == 'rules'
+                          ? 'How to play'
+                          : 'Game records',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFFFDD80),
+                        fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final amount in _betAmounts)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 7),
-                              child: ChoiceChip(
-                                selected: selectedBet == amount,
-                                label: Text(_compact(amount)),
-                                onSelected: placingBet
-                                    ? null
-                                    : (_) =>
-                                        setState(() => selectedBet = amount),
+                  ),
+                  IconButton(
+                    tooltip: 'Rules',
+                    onPressed: () => setState(() => panel = 'rules'),
+                    icon: const Icon(
+                      Icons.help_outline,
+                      size: 20,
+                      color: TinniPalette.gold,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close Fruit Party',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: TinniPalette.gold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : panel != 'game'
+                  ? _detailPanel()
+                  : game.isEmpty
+                  ? Center(
+                      child: TextButton(
+                        onPressed: _load,
+                        child: const Text('Game unavailable · Retry'),
+                      ),
+                    )
+                  : LayoutBuilder(
+                      builder: (context, constraints) => Center(
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: SizedBox(
+                            width: 400,
+                            height: 360,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
                               ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _fruits.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        crossAxisSpacing: 7,
-                        mainAxisSpacing: 7,
-                        childAspectRatio: .78,
-                      ),
-                      itemBuilder: (context, index) {
-                        final fruit = _fruits[index];
-                        final key = fruit['key']?.toString() ?? '';
-                        final myBet = int.tryParse(
-                              _myBets[key]?.toString() ?? '',
-                            ) ??
-                            0;
-                        return InkWell(
-                          key: Key('fruit-party-$key'),
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: _bettingOpen && !placingBet
-                              ? () => _placeBet(key)
-                              : null,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF17120B),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: myBet > 0
-                                    ? TinniPalette.gold
-                                    : TinniPalette.deepGold,
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 9,
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  fruit['emoji']?.toString() ?? '🎰',
-                                  style: const TextStyle(fontSize: 30),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  fruit['label']?.toString() ?? key,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: TinniPalette.cream,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                Text(
-                                  'x${fruit['multiplier'] ?? 0}',
-                                  style: const TextStyle(
-                                    color: TinniPalette.gold,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  myBet > 0 ? _compact(myBet) : 'Tap to bet',
-                                  style: TextStyle(
-                                    color: myBet > 0
-                                        ? TinniPalette.gold
-                                        : TinniPalette.muted,
-                                    fontSize: 9,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Last 7',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    if (history.isEmpty)
-                      const TinniPanel(
-                        child: Text(
-                          'Results will appear after the first settled round.',
-                          style: TextStyle(color: TinniPalette.muted),
-                        ),
-                      )
-                    else
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final row in history)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 7),
-                                child: Container(
-                                  width: 62,
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF17120B),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: row['lucky11'] == true
-                                          ? Colors.orangeAccent
-                                          : TinniPalette.deepGold,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Round #${_round['round_id'] ?? '-'}',
+                                    style: const TextStyle(
+                                      color: TinniPalette.cream,
+                                      fontSize: 10,
                                     ),
                                   ),
-                                  child: Column(
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF642822),
+                                          Color(0xFF31131E),
+                                        ],
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                      ),
+                                      border: Border.all(
+                                        color: const Color(0xFFEAB95E),
+                                        width: 2,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          children: [
+                                            for (final fruit in _fruits.take(4))
+                                              _fruitTile(fruit),
+                                          ],
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 3,
+                                            vertical: 3,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              _lucky('silver'),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                flex: 2,
+                                                child: Container(
+                                                  height: 54,
+                                                  alignment: Alignment.center,
+                                                  decoration: BoxDecoration(
+                                                    gradient:
+                                                        const LinearGradient(
+                                                          colors: [
+                                                            Color(0xFFBA4343),
+                                                            Color(0xFF551523),
+                                                          ],
+                                                          begin: Alignment
+                                                              .topCenter,
+                                                          end: Alignment
+                                                              .bottomCenter,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          9,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: const Color(
+                                                        0xFFFFCF84,
+                                                      ),
+                                                      width: 2,
+                                                    ),
+                                                  ),
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Text(
+                                                        seconds
+                                                            .toString()
+                                                            .padLeft(2, '0'),
+                                                        style: const TextStyle(
+                                                          color: Color(
+                                                            0xFFFFE598,
+                                                          ),
+                                                          fontSize: 30,
+                                                          height: 1,
+                                                          fontWeight:
+                                                              FontWeight.w900,
+                                                          fontFamily:
+                                                              'monospace',
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        _bettingOpen
+                                                            ? 'PLACE YOUR BET'
+                                                            : 'RESULT',
+                                                        style: const TextStyle(
+                                                          fontSize: 8,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              _lucky('gold'),
+                                            ],
+                                          ),
+                                        ),
+                                        Row(
+                                          children: [
+                                            for (final fruit in _fruits.skip(4))
+                                              _fruitTile(fruit),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    height: 38,
+                                    child: ListView(
+                                      scrollDirection: Axis.horizontal,
+                                      children: [
+                                        for (final amount in _betAmounts)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              right: 6,
+                                            ),
+                                            child: ChoiceChip(
+                                              selected: amount == selectedBet,
+                                              selectedColor: const Color(
+                                                0xFF7662D5,
+                                              ),
+                                              backgroundColor: const Color(
+                                                0xFF784A22,
+                                              ),
+                                              labelStyle: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                              label: Text(_compact(amount)),
+                                              onSelected: placingBet
+                                                  ? null
+                                                  : (_) => setState(
+                                                      () =>
+                                                          selectedBet = amount,
+                                                    ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
                                     children: [
                                       Text(
-                                        row['lucky11'] == true
-                                            ? '11'
-                                            : _fruitEmoji(
-                                                (row['fruit'] as Map?)?['key']
-                                                        ?.toString() ??
-                                                    '',
-                                              ),
-                                        style:
-                                            const TextStyle(fontSize: 24),
+                                        'Balance  ${_compact(wallet)}',
+                                        style: const TextStyle(
+                                          color: TinniPalette.cream,
+                                          fontSize: 12,
+                                        ),
                                       ),
                                       Text(
-                                        '#${row['round_id'] ?? '-'}',
-                                        overflow: TextOverflow.ellipsis,
+                                        'Today win  ${_compact(winnings)}',
                                         style: const TextStyle(
-                                          color: TinniPalette.muted,
-                                          fontSize: 8,
+                                          color: TinniPalette.gold,
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
+                                  const SizedBox(height: 7),
+                                  SizedBox(
+                                    height: 25,
+                                    child: Row(
+                                      children: [
+                                        const Text(
+                                          'Last 7  ',
+                                          style: TextStyle(
+                                            color: TinniPalette.muted,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: ListView(
+                                            scrollDirection: Axis.horizontal,
+                                            children: [
+                                              for (final result
+                                                  in _history.take(7))
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 8,
+                                                      ),
+                                                  child: Tooltip(
+                                                    message:
+                                                        'Round ${result['round_id']}: ${_resultLabel(result)}',
+                                                    child: Text(
+                                                      _resultLabel(result),
+                                                      style: TextStyle(
+                                                        fontSize:
+                                                            result['lucky11'] ==
+                                                                true
+                                                            ? 11
+                                                            : 18,
+                                                        color:
+                                                            result['lucky_type'] ==
+                                                                'silver'
+                                                            ? const Color(
+                                                                0xFFCCC9FF,
+                                                              )
+                                                            : TinniPalette.gold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                          ],
+                            ),
+                          ),
                         ),
                       ),
-                    if (latest != null) ...[
-                      const SizedBox(height: 14),
-                      _winnerPanel(latest),
-                    ],
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-
-  Widget _metric(String title, String value, IconData icon) => TinniPanel(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        child: Column(
-          children: [
-            Icon(icon, color: TinniPalette.gold, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: TinniPalette.cream,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            Text(
-              title,
-              style: const TextStyle(
-                color: TinniPalette.muted,
-                fontSize: 9,
-              ),
+                    ),
             ),
           ],
         ),
-      );
-
-  Widget _winnerPanel(Map<String, dynamic> latest) {
-    final raw = latest['top_winners'];
-    final winners = raw is List
-        ? raw
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(growable: false)
-        : const <Map<String, dynamic>>[];
-    final bonusRaw = latest['bonus_fruits'];
-    final bonus = bonusRaw is List
-        ? bonusRaw
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(growable: false)
-        : const <Map<String, dynamic>>[];
-    return TinniPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            latest['lucky11'] == true ? 'Lucky 11 Result' : 'Latest Winners',
-            style: const TextStyle(
-              color: TinniPalette.gold,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          if (bonus.isNotEmpty) ...[
-            const SizedBox(height: 7),
-            Wrap(
-              spacing: 7,
-              children: [
-                for (final fruit in bonus)
-                  Chip(
-                    label: Text(
-                      '${fruit['emoji'] ?? '🎰'} x${fruit['multiplier'] ?? 0}',
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 6),
-          if (winners.isEmpty)
-            const Text(
-              'No winning bet in this round.',
-              style: TextStyle(color: TinniPalette.muted),
-            )
-          else
-            for (var index = 0; index < winners.length; index++)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: TinniPalette.nearBlack,
-                  child: Text('${index + 1}'),
-                ),
-                title: Text(
-                  winners[index]['display_name']?.toString() ?? 'User',
-                ),
-                subtitle: Text(
-                  'ID ${winners[index]['user_id'] ?? '-'}',
-                ),
-                trailing: Text(
-                  '+${_compact(int.tryParse(winners[index]['winning_coins']?.toString() ?? '') ?? 0)}',
-                  style: const TextStyle(
-                    color: TinniPalette.gold,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-        ],
       ),
     );
   }
+
+  Widget _detailPanel() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: panel == 'rules'
+        ? [
+            const Text(
+              'Choose a coin amount, then tap a fruit to place a bet. A winning fruit pays the multiplier shown on its tile.',
+              style: TextStyle(color: TinniPalette.cream),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Silver Lucky • ${_fruits.take(4).map((f) => "${f['emoji']} ${f['label']}").join(', ')} all win at their displayed multipliers.',
+              style: const TextStyle(color: Color(0xFFCCC9FF)),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Gold Lucky • ${_fruits.skip(4).map((f) => "${f['emoji']} ${f['label']}").join(', ')} all win at their displayed multipliers.',
+              style: const TextStyle(color: TinniPalette.gold),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Lucky tiles show special results; bets are placed on fruits. Betting closes when the timer reaches zero. Results settle on the server. Earlier Lucky 11 records retain their original winning fruits.',
+              style: TextStyle(color: TinniPalette.cream),
+            ),
+          ]
+        : [
+            if (_history.isEmpty) const Text('No settled rounds yet.'),
+            for (final result in _history)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Round #${result['round_id']} · ${_resultLabel(result)}',
+                        style: const TextStyle(
+                          color: TinniPalette.gold,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (result['bonus_fruits'] is List)
+                        Text(
+                          (result['bonus_fruits'] as List)
+                              .whereType<Map>()
+                              .map((f) => '${f['emoji']} ${f['multiplier']}×')
+                              .join('  '),
+                        ),
+                      const SizedBox(height: 6),
+                      if (result['top_winners'] is List &&
+                          (result['top_winners'] as List).isNotEmpty)
+                        for (final winner
+                            in (result['top_winners'] as List).whereType<Map>())
+                          Text(
+                            '${winner['display_name'] ?? 'User'} · +${_compact(int.tryParse(winner['winning_coins']?.toString() ?? '') ?? 0)}',
+                          )
+                      else
+                        const Text('No winning bet in this round.'),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+  );
 }

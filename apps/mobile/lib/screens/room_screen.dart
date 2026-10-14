@@ -23,6 +23,7 @@ import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
+import 'fruit_party_screen.dart';
 import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
@@ -868,7 +869,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   controller: announcement,
                   maxLength: 500,
                   maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Room announcement', hintText: 'Rules or message shown in room chat'),
+                  decoration: const InputDecoration(labelText: 'Room owner greeting', hintText: 'Your welcome message; official terms cannot be edited'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
@@ -2231,18 +2232,25 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _openGames() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => GamesScreen(
+    final selection = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * .6,
+        child: GamesScreen(
           state: widget.state,
           roomId: widget.room.id,
           roomOwnerUserId: widget.room.ownerUserId,
+          onFruitParty: () => Navigator.pop(context, 'fruit-party'),
           onToggleMic: _toggleMic,
           micOn: () => mySeat != null && !muted,
           hasMicSeat: () => mySeat != null,
         ),
       ),
     );
+    if (mounted && selection == 'fruit-party') {
+      await showFruitParty(context, widget.state);
+    }
   }
 
   Future<void> _shareRoomId() async {
@@ -4025,12 +4033,35 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
+  Future<void> _openExitMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            key: const Key('room-exit-minimize'),
+            leading: const Icon(Icons.minimize_rounded),
+            title: const Text('Minimize'),
+            onTap: () { Navigator.pop(sheetContext); _minimizeRoom(); },
+          ),
+          ListTile(
+            key: const Key('room-exit-leave'),
+            leading: const Icon(Icons.exit_to_app_rounded),
+            title: const Text('Exit'),
+            onTap: () { Navigator.pop(sheetContext); _leaveRoom(); },
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _openRoomMenu() async {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
+        child: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
@@ -4129,7 +4160,7 @@ class _RoomScreenState extends State<RoomScreen> {
               },
             ),
           ],
-        ),
+        )),
       ),
     );
   }
@@ -4636,12 +4667,17 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
         title: Row(
           children: [
-            CircleAvatar(
+            InkWell(
+              key: const Key('room-dp-settings'),
+              onTap: _openRoomMenu,
+              customBorder: const CircleBorder(),
+              child: CircleAvatar(
               radius: 19,
               backgroundImage: roomAvatarKey == null
                   ? null
                   : NetworkImage(widget.state.backend.fileUrl(roomAvatarKey!), headers: widget.state.backend.fileHeaders),
               child: roomAvatarKey == null ? const Icon(Icons.mic_rounded, size: 18) : null,
+            ),
             ),
             const SizedBox(width: 9),
             Expanded(
@@ -4691,8 +4727,8 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           ),
           IconButton(
-            onPressed: _openRoomMenu,
-            tooltip: 'Room options',
+            onPressed: _openExitMenu,
+            tooltip: 'Exit or minimize',
             icon: const TinniGlowIcon(
               icon: Icons.power_settings_new_rounded,
               size: 18,
@@ -4854,7 +4890,7 @@ class _RoomScreenState extends State<RoomScreen> {
           ),
           _videoStage(),
           Expanded(
-            flex: 5,
+            flex: 1,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final diameter =
@@ -5030,7 +5066,7 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           ),
           Expanded(
-            flex: 2,
+            flex: 1,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
@@ -5040,47 +5076,49 @@ class _RoomScreenState extends State<RoomScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (roomNoticesEnabled)
-                    Card(
-                    color: const Color(0xFF2A1F12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            const Icon(Icons.campaign_rounded, size: 18, color: Color(0xFFFFD36A)),
-                            const SizedBox(width: 6),
-                            const Expanded(child: Text('Room announcement & safety rules', style: TextStyle(fontWeight: FontWeight.w800))),
-                            TextButton(onPressed: _showRoomRules, child: const Text('Terms')),
-                          ]),
-                          Text(roomAnnouncement ?? 'Be respectful. No harassment, explicit or unlawful content, scams, or sharing private information. Room chat and voice are visible to participants.'),
-                          if (roomWelcomeImageKey?.isNotEmpty == true)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.network(
-                                  widget.state.backend.fileUrl(roomWelcomeImageKey!),
-                                  height: 116,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const SizedBox(
-                                    height: 48,
-                                    child: Center(child: Text('Welcome picture unavailable')),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: chat.length,
+                      key: const Key('room-chat-list'),
+                      itemCount: chat.length + 1,
                       itemBuilder: (context, index) {
-                        final message = chat[index];
+                        if (index == 0) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Card(
+                                key: const Key('official-announcement'),
+                                color: const Color(0xFF2A1F12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Row(children: [
+                                      const Icon(Icons.campaign_rounded, size: 18, color: Color(0xFFFFD36A)),
+                                      const SizedBox(width: 6),
+                                      const Expanded(child: Text('Official Announcement', style: TextStyle(fontWeight: FontWeight.w800))),
+                                      TextButton(onPressed: _showRoomRules, child: const Text('Terms')),
+                                    ]),
+                                    const Text('Be respectful. No harassment, explicit or unlawful content, scams, or sharing private information. Room chat and voice are visible to participants.'),
+                                  ]),
+                                ),
+                              ),
+                              if (roomNoticesEnabled && (roomAnnouncement != null || roomWelcomeImageKey?.isNotEmpty == true))
+                                Card(
+                                  key: const Key('room-owner-greeting'),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      const Text('Room owner greeting', style: TextStyle(fontWeight: FontWeight.w800)),
+                                      if (roomAnnouncement != null) Text(roomAnnouncement!),
+                                      if (roomWelcomeImageKey?.isNotEmpty == true)
+                                        Image.network(widget.state.backend.fileUrl(roomWelcomeImageKey!), height: 116, fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => const Text('Welcome picture unavailable')),
+                                    ]),
+                                  ),
+                                ),
+                            ],
+                          );
+                        }
+                        final message = chat[index - 1];
                         final name = message['display_name']?.toString().trim();
                         final text = message['text']?.toString() ?? '';
                         final imageKey = message['image_key']?.toString();
