@@ -41,6 +41,9 @@ import {
   cpRequest,
   cpRespond,
   cpDisconnect,
+  cpDisconnectRequest,
+  cpDisconnectRespond,
+  cpHeartbeat,
   cpAddMemory,
   cpMemories,
   cpRanking,
@@ -49,6 +52,9 @@ import {
   vsRequest,
   vsRespond,
   vsDisconnect,
+  vsDisconnectRequest,
+  vsDisconnectRespond,
+  vsHeartbeat,
   vsRanking,
   recordVsGiftProgress,
   profileTrends,
@@ -3057,6 +3063,45 @@ async function handleApi(request, env, url) {
     }
   }
 
+  if (url.pathname === "/api/vs/disconnect/request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok:true, vs:await vsDisconnectRequest(db,userId) });
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
+  }
+
+  if (url.pathname === "/api/vs/disconnect/respond" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok:true, vs:await vsDisconnectRespond(db,userId,body.accept === true) });
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
+  }
+
+  if (url.pathname === "/api/vs/heartbeat" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({
+        ok:true,
+        vs:await vsHeartbeat(db,userId,body.action,body.choice),
+      });
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
+  }
+
   if (url.pathname === "/api/vs/disconnect" && request.method === "POST") {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
@@ -3172,6 +3217,45 @@ async function handleApi(request, env, url) {
       return json({ ok: true, cp: await cpRespond(db, userId, body.accept === true) });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/cp/disconnect/request" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok:true, cp:await cpDisconnectRequest(db,userId) });
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
+  }
+
+  if (url.pathname === "/api/cp/disconnect/respond" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({ ok:true, cp:await cpDisconnectRespond(db,userId,body.accept === true) });
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
+  }
+
+  if (url.pathname === "/api/cp/heartbeat" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json({
+        ok:true,
+        cp:await cpHeartbeat(db,userId,body.action,body.choice),
+      });
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
     }
   }
 
