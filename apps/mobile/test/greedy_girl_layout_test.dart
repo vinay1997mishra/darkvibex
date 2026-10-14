@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   for (final size in [const Size(360, 640), const Size(412, 892)]) {
-    testWidgets('Greedy Girl half-screen layout is stable at $size', (
+    testWidgets('Greedy Girl in-room overlay keeps room seats visible at $size', (
       tester,
     ) async {
       tester.view.physicalSize = size;
@@ -52,11 +52,19 @@ void main() {
 
       expect(
         tester.getSize(find.byType(GreedyGirlScreen)).height,
-        closeTo(size.height * .56, .1),
+        closeTo(size.height * .69, .1),
       );
       expect(find.text('Greedy Girl'), findsOneWidget);
       expect(find.text('21+'), findsNothing);
+      expect(find.byKey(const Key('greedy-girl-room-overlay')), findsOneWidget);
       expect(find.byKey(const Key('greedy-girl-mascot')), findsOneWidget);
+      expect(find.byKey(const Key('greedy-girl-countdown')), findsOneWidget);
+      expect(
+        find.byKey(const Key('greedy-girl-countdown-number')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Bet '), findsNothing);
+      expect(find.textContaining('Result '), findsNothing);
       expect(find.byKey(const Key('greedy-girl-tomato')), findsOneWidget);
       expect(find.byKey(const Key('greedy-girl-skewer')), findsOneWidget);
       expect(tester.takeException(), isNull);
