@@ -41,6 +41,7 @@ class D1 {
 test('Greedy Girl settles a 30-second round once with ledger-backed payout', async () => {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+  sqlite.exec('DROP TABLE wallet_ledger');
   const db = new D1(sqlite);
   let sequence = 0;
   const api = runInNewContext(
@@ -59,6 +60,10 @@ test('Greedy Girl settles a 30-second round once with ledger-backed payout', asy
 
   assert.equal(api.GREEDY_GIRL_ROUND_MS, 30000);
   await api.ensureGreedyGirlSchema(db);
+  assert.equal(
+    sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='wallet_ledger'").get().name,
+    'wallet_ledger',
+  );
   sqlite.prepare(
     "INSERT INTO users(id,display_name,coins,created_at,updated_at) VALUES('player','Player',1000000,0,0)"
   ).run();
