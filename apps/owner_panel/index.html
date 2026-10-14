@@ -12,15 +12,16 @@
     <aside id="sidebar" class="sidebar" hidden>
       <div class="brand"><span class="brand-dot"></span><div><b>DARKVIBEX</b><small>Master Owner Panel</small></div></div>
       <nav id="nav">
-        <button class="nav-btn active" data-view="overview">Overview</button>
+        <button class="nav-btn active" data-view="overview">Dashboard</button>
         <button class="nav-btn" data-view="users">Users</button>
         <button class="nav-btn" data-view="rooms">Rooms</button>
-        <button class="nav-btn" data-view="catalog">Content</button>
-        <button class="nav-btn" data-view="settings">Settings</button>
+        <button class="nav-btn" data-view="wallets">Wallets / Treasury</button>
+        <button class="nav-btn" data-view="catalog">VIP / Gifts / Assets</button>
+        <button class="nav-btn" data-view="settings">Master Switches</button>
         <button class="nav-btn" data-view="announcements">Announcements</button>
         <button class="nav-btn" data-view="support">VIP Support</button>
-        <button class="nav-btn" data-view="staff">Staff</button>
-        <button class="nav-btn" data-view="audit">Audit log</button>
+        <button class="nav-btn" data-view="staff">Custom Panels</button>
+        <button class="nav-btn" data-view="audit">Audit Log</button>
       </nav>
       <div class="sidebar-foot">
         <div id="actorCard" class="actor-card"></div>
@@ -54,6 +55,19 @@
             <article class="panel"><div class="panel-head"><div><h2>Live rooms</h2><p>Current room activity and lock state.</p></div></div><div id="overviewRooms" class="stack"></div></article>
             <article class="panel"><div class="panel-head"><div><h2>Recent owner activity</h2><p>Latest protected changes.</p></div></div><div id="overviewAudit" class="stack"></div></article>
           </div>
+          <article class="panel">
+            <div class="panel-head"><div><h2>A-to-Z Owner Controls</h2><p>DarkVibeX master control center. Excluded Tinni modules such as Agency, BD, Host, Guardian and 3-photo verification are intentionally not included.</p></div><span class="badge">Owner master</span></div>
+            <div class="module-grid">
+              <div class="module-card"><b>Users</b><span>ID status, role, VIP, moderation and wallet controls</span></div>
+              <div class="module-card"><b>Rooms</b><span>Search, lock, rename, seats and removal controls</span></div>
+              <div class="module-card"><b>Wallets</b><span>Normal, Coin Seller, Merchant and separate Owner Treasury</span></div>
+              <div class="module-card"><b>VIP & Gifts</b><span>Data-driven levels, privileges, gifts and prices</span></div>
+              <div class="module-card"><b>Assets</b><span>Frames, rings, bubbles, profile backgrounds and vehicles</span></div>
+              <div class="module-card"><b>Games</b><span>Game configuration through the live catalog and switches</span></div>
+              <div class="module-card"><b>Custom Panels</b><span>Admin / Super Admin / Manager / Moderator with exact permissions</span></div>
+              <div class="module-card"><b>Audit</b><span>Every protected owner and staff change is recorded</span></div>
+            </div>
+          </article>
         </section>
 
         <section class="view" data-view-panel="users">
@@ -89,9 +103,48 @@
           </article>
         </section>
 
+        <section class="view" data-view-panel="wallets">
+          <div class="two-col">
+            <article class="panel">
+              <div class="panel-head"><div><h2>Owner Treasury Wallet</h2><p>Separate master wallet. Treasury top-up/deduction is Owner-only; permitted staff can view or distribute only when explicitly allowed.</p></div><span class="badge">Separate wallet</span></div>
+              <div class="treasury-balance"><span>Available balance</span><strong id="treasuryBalance">0</strong><small>coins</small></div>
+              <div class="form-grid">
+                <label>Amount<input id="treasuryAmount" type="number" min="1" placeholder="Coins" /></label>
+                <label>Target user ID<input id="treasuryUserId" placeholder="Required only for Send" /></label>
+                <label class="span-2">Owner note<input id="treasuryNote" placeholder="Optional audit note" /></label>
+              </div>
+              <div class="action-row">
+                <button id="treasuryAdd" class="primary">Add Coins</button>
+                <button id="treasuryDeduct" class="secondary">Deduct</button>
+                <button id="treasurySend" class="primary">Send to User</button>
+              </div>
+            </article>
+            <article class="panel">
+              <div class="panel-head"><div><h2>Wallet Types</h2><p>All role wallets remain separate from Owner Treasury.</p></div></div>
+              <div class="stack">
+                <div class="item-card"><div class="item-title">Normal User Wallet</div><div class="item-meta">Coins + diamonds; edit from Users → Manage.</div></div>
+                <div class="item-card"><div class="item-title">Coin Seller Wallet</div><div class="item-meta">Dedicated seller wallet remains distinct from the normal user wallet.</div></div>
+                <div class="item-card"><div class="item-title">Merchant Wallet</div><div class="item-meta">Dedicated merchant wallet remains distinct from normal and treasury balances.</div></div>
+              </div>
+            </article>
+          </div>
+          <article class="panel"><div class="panel-head"><div><h2>Treasury Ledger</h2><p>Top-ups, deductions and sends with actor + target records.</p></div><button id="reloadTreasury" class="secondary">Refresh</button></div><div id="treasuryLedger" class="stack"></div></article>
+        </section>
+
         <section class="view" data-view-panel="catalog">
           <article class="panel">
-            <div class="panel-head"><div><h2>Content catalog</h2><p>Manage gifts, VIPs, tags, themes, frames, rings, bubbles, profile backgrounds, vehicles and future modules.</p></div></div>
+            <div class="panel-head"><div><h2>VIP / Gifts / Assets / Games</h2><p>Tinni-style data-driven content controls adapted for DarkVibeX. Use the category shortcuts or selector below.</p></div></div>
+            <div class="catalog-shortcuts">
+              <button class="secondary mini" data-catalog-shortcut="vip">VIP</button>
+              <button class="secondary mini" data-catalog-shortcut="vip_privilege">VIP Privileges</button>
+              <button class="secondary mini" data-catalog-shortcut="gift">Gifts</button>
+              <button class="secondary mini" data-catalog-shortcut="tag">Tags / Posts</button>
+              <button class="secondary mini" data-catalog-shortcut="frame">Frames</button>
+              <button class="secondary mini" data-catalog-shortcut="vehicle">Vehicles / Entries</button>
+              <button class="secondary mini" data-catalog-shortcut="theme">Room Themes</button>
+              <button class="secondary mini" data-catalog-shortcut="profile_background">Profile Backgrounds</button>
+              <button class="secondary mini" data-catalog-shortcut="game_config">Games</button>
+            </div>
             <div class="form-grid">
               <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="vip">VIP levels</option><option value="vip_privilege">VIP privileges / effects</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
               <label>Item ID<input id="catalogId" placeholder="Optional; generated if blank" /></label>
@@ -133,7 +186,11 @@
           <article class="panel">
             <div class="panel-head"><div><h2>Staff access</h2><p>Create protected panel access for trusted team members. Generated access tokens are shown only once.</p></div></div>
             <div class="form-grid"><label>Staff name<input id="staffName" /></label><label>Role<select id="staffRole"><option value="super_admin">Super admin</option><option value="admin">Admin</option><option value="manager" selected>Manager</option><option value="moderator">Moderator</option></select></label></div>
-            <button id="createStaff" class="primary">Create staff access</button>
+            <div class="permission-wrap">
+              <div class="panel-head"><div><h3>Exact Permissions</h3><p>Leave all unchecked to use the role defaults, or select only the controls this sub-panel may use.</p></div><button id="clearPermissions" class="secondary mini" type="button">Clear</button></div>
+              <div id="staffPermissions" class="permission-grid"></div>
+            </div>
+            <button id="createStaff" class="primary">Create Custom Panel Access</button>
             <div id="newStaffToken" class="secret-once" hidden></div>
           </article>
           <article class="panel"><div id="staffList" class="stack"></div></article>
