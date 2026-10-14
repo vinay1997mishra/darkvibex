@@ -1511,6 +1511,9 @@ async function ensureLudoPlayer(db, roomId, userId) {
 }
 
 async function publicLudoState(db, roomId, userId, loadedValue = null) {
+  await db.prepare(
+    "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))"
+  ).run();
   const loaded = loadedValue ?? await loadLudoState(db, roomId);
   const rows = await db.prepare(
     `SELECT p.user_id,p.color,p.joined_at,u.display_name,u.avatar_key,
@@ -6012,6 +6015,7 @@ async function handleApi(request, env, url) {
     await db.prepare(
       "DELETE FROM game_room_members WHERE room_id=? AND user_id=?"
     ).bind(roomId,userId).run();
+    await ensureLudoSchema(db);
     await db.prepare(
       "DELETE FROM ludo_room_players WHERE room_id=? AND user_id=?"
     ).bind(roomId,userId).run();
