@@ -951,6 +951,7 @@ class AppState extends ChangeNotifier {
           returnedUser['flag_emoji']?.toString().trim() ?? flagEmoji;
       gender =
           returnedUser['gender']?.toString().trim().toLowerCase() ?? gender;
+      bio = returnedUser['bio']?.toString().trim() ?? bio;
       ageChangeCount =
           int.tryParse(returnedUser['age_change_count']?.toString() ?? '') ??
               ageChangeCount;
