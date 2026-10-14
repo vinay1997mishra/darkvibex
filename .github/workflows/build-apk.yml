@@ -60,6 +60,8 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      FIREBASE_ANDROID_CONFIG_JSON: ${{ secrets.FIREBASE_ANDROID_CONFIG_JSON }}
+      DVX_PUSH_CONFIGURED: "false"
     steps:
       - uses: actions/checkout@v4
       - name: Free unused Android runner storage
@@ -82,6 +84,8 @@ jobs:
           cp android/app/build.gradle.kts /tmp/dvx-build.gradle.kts
           cp android/app/src/main/AndroidManifest.xml /tmp/dvx-manifest.xml
           cp android/app/src/main/kotlin/com/darkvibex/app/MainActivity.kt /tmp/dvx-main-activity.kt
+          cp android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXRoomForegroundService.kt /tmp/dvx-room-service.kt
+          cp android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXMessagingService.kt /tmp/dvx-messaging-service.kt
           flutter create --platforms=android --org com.darkvibex --project-name app .
           rm -rf lib test
           cp -R /tmp/dvx-lib lib
@@ -91,6 +95,65 @@ jobs:
           cp /tmp/dvx-manifest.xml android/app/src/main/AndroidManifest.xml
           mkdir -p android/app/src/main/kotlin/com/darkvibex/app
           cp /tmp/dvx-main-activity.kt android/app/src/main/kotlin/com/darkvibex/app/MainActivity.kt
+          cp /tmp/dvx-room-service.kt android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXRoomForegroundService.kt
+          cp /tmp/dvx-messaging-service.kt android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXMessagingService.kt
+
+      - name: Configure optional Firebase message push
+        working-directory: apps/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DVX_PUSH_CONFIGURED=false" >> "$GITHUB_ENV"
+          if [ -z "${FIREBASE_ANDROID_CONFIG_JSON:-}" ]; then
+            echo "Firebase Android config secret is not set; message push stays disabled."
+            exit 0
+          fi
+          mkdir -p android/app/src/main/res/values
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = process.env.FIREBASE_ANDROID_CONFIG_JSON || '';
+          const config = JSON.parse(raw);
+          const clients = Array.isArray(config.client) ? config.client : [];
+          const client = clients.find((item) =>
+            item?.client_info?.android_client_info?.package_name === 'com.darkvibex.app'
+          ) || clients[0];
+          if (!client) throw new Error('Firebase Android client is missing');
+          const appId = String(client?.client_info?.mobilesdk_app_id || '').trim();
+          const apiKey = String(client?.api_key?.[0]?.current_key || '').trim();
+          const senderId = String(config?.project_info?.project_number || '').trim();
+          const projectId = String(config?.project_info?.project_id || '').trim();
+          const bucket = String(config?.project_info?.storage_bucket || '').trim();
+          if (!appId || !apiKey || !senderId || !projectId) {
+            throw new Error('Firebase Android config is incomplete');
+          }
+          const escapeXml = (value) => value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+          const values = [
+            ['google_app_id', appId],
+            ['google_api_key', apiKey],
+            ['gcm_defaultSenderId', senderId],
+            ['project_id', projectId],
+          ];
+          if (bucket) values.push(['google_storage_bucket', bucket]);
+          const xml = [
+            '<?xml version="1.0" encoding="utf-8"?>',
+            '<resources>',
+            ...values.map(([name, value]) =>
+              `    <string name="${name}" translatable="false">${escapeXml(value)}</string>`
+            ),
+            '</resources>',
+            '',
+          ].join('\n');
+          fs.writeFileSync(
+            'android/app/src/main/res/values/firebase_push.xml',
+            xml,
+          );
+          NODE
+          echo "DVX_PUSH_CONFIGURED=true" >> "$GITHUB_ENV"
+          echo "Firebase message push config generated for com.darkvibex.app."
 
       - name: Dependencies
         working-directory: apps/mobile
@@ -150,7 +213,7 @@ jobs:
       - name: Build debug APK
         if: env.ANDROID_KEYSTORE_PATH == ''
         working-directory: apps/mobile
-        run: flutter build apk --debug --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
+        run: flutter build apk --debug --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
 
       - name: Build signed release APK
         if: env.ANDROID_KEYSTORE_PATH != ''
@@ -158,7 +221,7 @@ jobs:
         run: |
           flutter clean
           flutter pub get
-          flutter build apk --release --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN"
+          flutter build apk --release --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
 
       - name: Print APK signing certificate fingerprint
         shell: bash
