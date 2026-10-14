@@ -5092,6 +5092,18 @@ class _RoomScreenState extends State<RoomScreen> {
                   final micOn = member != null &&
                       (member['mic_muted'] == 0 ||
                           member['mic_muted']?.toString() == '0');
+                  final memberId = member?['user_id']?.toString() ?? '';
+                  final speakingUserId = memberId.isNotEmpty
+                      ? memberId
+                      : (mine ? widget.state.userId : null);
+                  final isMicBlocked = mine
+                      ? muted
+                      : (!micOn || roomMutedSeats.contains(seat));
+                  final showGiftImpact = memberId.isNotEmpty &&
+                      activeGiftReceiverId == memberId &&
+                      activeGiftEffect != null &&
+                      effectsEnabled &&
+                      giftEffectsEnabled;
 
                   return SizedBox(
                     width: seatWidth,
@@ -5104,79 +5116,115 @@ class _RoomScreenState extends State<RoomScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: diameter,
-                            height: diameter,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                width: mine ? 3 : 1.2,
-                                color: mine
-                                    ? TinniPalette.brightGold
-                                    : effectsEnabled
-                                        ? _seatThemeAccent
-                                        : TinniPalette.bronze,
-                              ),
-                              boxShadow: effectsEnabled
-                                  ? [
-                                      BoxShadow(
-                                        color: _seatThemeAccent
-                                            .withValues(alpha: .18),
-                                        blurRadius: 9,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: member != null
-                                ? VipAnimatedFrame(
-                                    size: diameter - 2,
-                                    enabled: activeFrame != null ||
-                                        vipLevel >= 7 ||
-                                        (vipLevel >= 16 && micOn),
-                                    level: frameTier,
-                                    styleId: activeFrame,
-                                    child: CircleAvatar(
-                                      backgroundImage:
-                                          avatar != null && avatar.isNotEmpty
-                                              ? NetworkImage(
-                                                  widget.state.backend
-                                                      .fileUrl(avatar),
-                                                  headers: widget.state.backend
-                                                      .fileHeaders,
-                                                )
-                                              : null,
-                                      child: Stack(
-                                        alignment: Alignment.bottomRight,
-                                        children: [
-                                          if (avatar == null || avatar.isEmpty)
-                                            const Center(
-                                              child:
-                                                  Icon(Icons.person_rounded),
-                                            ),
-                                          Icon(
-                                            micOn
-                                                ? Icons.mic_rounded
-                                                : Icons.mic_off_rounded,
-                                            size: diameter < 48 ? 11 : 13,
-                                            color: Colors.white,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                : Icon(
-                                    lockedSeats.contains(seat)
-                                        ? Icons.lock_rounded
-                                        : mine
-                                            ? (muted
-                                                ? Icons.mic_off_rounded
-                                                : Icons.mic_rounded)
-                                            : Icons.add_rounded,
-                                    size: diameter < 48 ? 17 : 22,
-                                    color: lockedSeats.contains(seat)
-                                        ? Colors.orangeAccent
-                                        : TinniPalette.cream,
+                          Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.center,
+                            children: [
+                              Container(
+                                width: diameter,
+                                height: diameter,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    width: mine ? 3 : 1.2,
+                                    color: mine
+                                        ? TinniPalette.brightGold
+                                        : effectsEnabled
+                                            ? _seatThemeAccent
+                                            : TinniPalette.bronze,
                                   ),
+                                  boxShadow: effectsEnabled
+                                      ? [
+                                          BoxShadow(
+                                            color: _seatThemeAccent
+                                                .withValues(alpha: .18),
+                                            blurRadius: 9,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: member != null
+                                    ? VipAnimatedFrame(
+                                        size: diameter - 2,
+                                        enabled: activeFrame != null ||
+                                            vipLevel >= 7 ||
+                                            (vipLevel >= 16 && micOn),
+                                        level: frameTier,
+                                        styleId: activeFrame,
+                                        child: CircleAvatar(
+                                          backgroundImage:
+                                              avatar != null && avatar.isNotEmpty
+                                                  ? NetworkImage(
+                                                      widget.state.backend
+                                                          .fileUrl(avatar),
+                                                      headers: widget.state.backend
+                                                          .fileHeaders,
+                                                    )
+                                                  : null,
+                                          child: Stack(
+                                            alignment: Alignment.bottomRight,
+                                            children: [
+                                              if (avatar == null || avatar.isEmpty)
+                                                const Center(
+                                                  child:
+                                                      Icon(Icons.person_rounded),
+                                                ),
+                                              Icon(
+                                                micOn
+                                                    ? Icons.mic_rounded
+                                                    : Icons.mic_off_rounded,
+                                                size: diameter < 48 ? 11 : 13,
+                                                color: Colors.white,
+                                              ),
+                                              if (showGiftImpact)
+                                                Positioned.fill(
+                                                  child: _buildSeatGiftImpactEffect(
+                                                    diameter,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                    : Icon(
+                                        lockedSeats.contains(seat)
+                                            ? Icons.lock_rounded
+                                            : mine
+                                                ? (muted
+                                                    ? Icons.mic_off_rounded
+                                                    : Icons.mic_rounded)
+                                                : Icons.add_rounded,
+                                        size: diameter < 48 ? 17 : 22,
+                                        color: lockedSeats.contains(seat)
+                                            ? Colors.orangeAccent
+                                            : TinniPalette.cream,
+                                      ),
+                              ),
+                              if (speakingUserId != null)
+                                Positioned(
+                                  left: compactSeats ? -14 : -18,
+                                  bottom: compactSeats ? -4 : -3,
+                                  child: IgnorePointer(
+                                    child: ValueListenableBuilder<
+                                        Map<String, double>>(
+                                      valueListenable:
+                                          rtc?.speakingLevelsListenable ??
+                                              _silentSpeakingLevels,
+                                      builder: (context, levels, child) {
+                                        final level =
+                                            levels[speakingUserId] ?? 0.0;
+                                        if (isMicBlocked || level <= 0) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return _LiveMicWaves(
+                                          level: level,
+                                          compact: compactSeats,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           SizedBox(height: compactSeats ? 1 : 3),
                           Text(
