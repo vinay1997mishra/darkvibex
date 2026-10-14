@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.view.WindowManager
+import com.google.firebase.messaging.FirebaseMessaging
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -13,8 +15,16 @@ class MainActivity : FlutterActivity() {
     private val roomServiceChannel = "darkvibex/room_service"
     private val permissionChannel = "darkvibex/permissions"
     private val privacyChannel = "darkvibex/privacy"
+    private val pushChannel = "darkvibex/push"
     private val voicePermissionRequest = 744
+    private val notificationPermissionRequest = 745
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingNotificationPermissionResult: MethodChannel.Result? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        DarkVibeXMessagingService.ensureChannel(this)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -68,6 +78,29 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            pushChannel
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getToken" -> {
+                    FirebaseMessaging.getInstance().token
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                result.success(task.result)
+                            } else {
+                                result.success(null)
+                            }
+                        }
+                }
+                "requestPermission" ->
+                    requestMessageNotificationPermission(result)
+                "hasPermission" ->
+                    result.success(hasMessageNotificationPermission())
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun voiceRoomPermissions(): Array<String> {
@@ -108,12 +141,49 @@ class MainActivity : FlutterActivity() {
         requestPermissions(voiceRoomPermissions(), voicePermissionRequest)
     }
 
+    private fun hasMessageNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestMessageNotificationPermission(result: MethodChannel.Result) {
+        if (hasMessageNotificationPermission()) {
+            result.success(true)
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            result.success(true)
+            return
+        }
+        if (pendingNotificationPermissionResult != null) {
+            result.error(
+                "permission_busy",
+                "Notification permission request is already active.",
+                null
+            )
+            return
+        }
+        pendingNotificationPermissionResult = result
+        requestPermissions(
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            notificationPermissionRequest
+        )
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == notificationPermissionRequest) {
+            pendingNotificationPermissionResult?.success(
+                hasMessageNotificationPermission()
+            )
+            pendingNotificationPermissionResult = null
+            return
+        }
         if (requestCode != voicePermissionRequest) return
         pendingPermissionResult?.success(hasVoiceRoomPermissions())
         pendingPermissionResult = null
@@ -121,6 +191,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         pendingPermissionResult = null
+        pendingNotificationPermissionResult = null
         super.onDestroy()
     }
 }
