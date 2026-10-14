@@ -29,3 +29,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/greedy_girl_mascot.webp
+    - assets/images/cp_card_reference.webp
+    - assets/images/vs_card_reference.webp
