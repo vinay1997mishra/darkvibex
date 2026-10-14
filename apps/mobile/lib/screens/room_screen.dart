@@ -5923,8 +5923,8 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                               if (speakingUserId != null)
                                 Positioned(
-                                  left: -(compactSeats ? 9 : 12),
-                                  top: -(compactSeats ? 9 : 12),
+                                  left: -(compactSeats ? 9.0 : 12.0),
+                                  top: -(compactSeats ? 9.0 : 12.0),
                                   child: IgnorePointer(
                                     child: ValueListenableBuilder<
                                         Map<String, double>>(
