@@ -200,7 +200,11 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
         SnackBar(content: Text(error)),
       );
     } finally {
-      placingBet = false;
+      if (mounted) {
+        setState(() => placingBet = false);
+      } else {
+        placingBet = false;
+      }
     }
   }
 
@@ -218,13 +222,6 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
           : '${n.toStringAsFixed(1)}K';
     }
     return value.toString();
-  }
-
-  Map<String, Object>? _food(String key) {
-    for (final food in foods) {
-      if (food['key'] == key) return food;
-    }
-    return null;
   }
 
   Map<String, dynamic>? get currentResult {
