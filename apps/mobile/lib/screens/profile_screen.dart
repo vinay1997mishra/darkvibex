@@ -1000,7 +1000,6 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
 
   Future<void> _unfollow(Map<String, dynamic> row) async {
     if (!widget.following) return;
-    if (row['mutual'] == true || row['mutual']?.toString() == '1') return;
     final id = row['id']?.toString() ?? '';
     if (id.isEmpty) return;
     final ok = await widget.state.backend.setUserFollow(
@@ -1091,7 +1090,22 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
                               ),
                             ),
                           ),
-                          if (mutual)
+                          if (mutual && widget.following)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 18),
+                              child: TextButton(
+                                onPressed: () => _unfollow(row),
+                                child: const Text(
+                                  'Mutual Friend',
+                                  style: TextStyle(
+                                    color: Color(0xFFF14A8B),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else if (mutual)
                             const Padding(
                               padding: EdgeInsets.only(right: 18),
                               child: Text(
