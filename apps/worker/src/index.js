@@ -1537,22 +1537,6 @@ async function secureDieRoll() {
   return Number(values[0] % 6) + 1;
 }
 
-async function ensureWalletLedgerSchema(db) {
-  await db.prepare(`CREATE TABLE IF NOT EXISTS wallet_ledger (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    amount INTEGER NOT NULL,
-    balance_after INTEGER NOT NULL,
-    reference_id TEXT,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`).run();
-  await db.prepare(
-    "CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC)"
-  ).run();
-}
-
 const FRUIT_PARTY_ROUND_MS = 21000;
 const FRUIT_PARTY_RESULT_MS = 5000;
 const FRUIT_PARTY_CYCLE_MS = FRUIT_PARTY_ROUND_MS + FRUIT_PARTY_RESULT_MS;
@@ -1573,6 +1557,22 @@ const FRUIT_PARTY_FRUITS = Object.freeze([
 const FRUIT_PARTY_BY_KEY = new Map(
   FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, fruit]),
 );
+
+async function ensureWalletLedgerSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS wallet_ledger (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    reference_id TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC)"
+  ).run();
+}
 const FRUIT_PARTY_X5 = FRUIT_PARTY_FRUITS.filter((fruit) => fruit.multiplier === 5);
 const FRUIT_PARTY_MID = FRUIT_PARTY_FRUITS.filter(
   (fruit) => fruit.multiplier === 10 ||
