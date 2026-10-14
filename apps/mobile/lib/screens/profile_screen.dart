@@ -1929,6 +1929,439 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     controller.dispose();
   }
 
+  Future<void> _openVsBinding() async {
+    if (!isSelf || cpInviteBusy) return;
+    final rows = await widget.state.backend.friends(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+
+    final controller = TextEditingController();
+    var query = '';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) {
+          final q = query.trim().toLowerCase();
+          final filtered = rows.where((row) {
+            if (q.isEmpty) return true;
+            final id = row['id']?.toString().toLowerCase() ?? '';
+            final name = row['display_name']?.toString().toLowerCase() ?? '';
+            return id.contains(q) || name.contains(q);
+          }).toList(growable: false);
+
+          return FractionallySizedBox(
+            heightFactor: .76,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 18),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 18),
+                      child: Text(
+                        'Friends that can be bound to VS',
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: TextField(
+                        controller: controller,
+                        onChanged: (value) {
+                          setModalState(() => query = value);
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Enter ID',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFB6B8BE),
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: Color(0xFFAEB2BA),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FB),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No more',
+                                style: TextStyle(
+                                  color: Color(0xFFC8C8CC),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                2,
+                                16,
+                                24,
+                              ),
+                              itemCount: filtered.length,
+                              itemBuilder: (itemContext, index) {
+                                final friend = filtered[index];
+                                final avatarKey =
+                                    friend['avatar_key']?.toString() ?? '';
+                                final id = friend['id']?.toString() ?? '';
+                                final name = friend['display_name']
+                                        ?.toString()
+                                        .trim() ??
+                                    '';
+                                final image = _avatar(avatarKey);
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 7),
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 27,
+                                        backgroundColor:
+                                            const Color(0xFFF0F0F2),
+                                        backgroundImage: image,
+                                        child: image == null
+                                            ? const Icon(
+                                                Icons.person_rounded,
+                                                color: Colors.black38,
+                                              )
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              name.isEmpty ? 'User' : name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.black87,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              'ID:' + id,
+                                              style: const TextStyle(
+                                                color: Color(0xFFB3B3B7),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        height: 43,
+                                        child: FilledButton(
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor:
+                                                const Color(0xFF24CCE8),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 23,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(22),
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            Navigator.pop(sheetContext);
+                                            await Future<void>.delayed(
+                                              const Duration(milliseconds: 120),
+                                            );
+                                            if (!mounted) return;
+                                            await _confirmVsInvite(friend);
+                                          },
+                                          child: const Text(
+                                            'Protect',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _confirmVsInvite(Map<String, dynamic> friend) async {
+    if (cpInviteBusy) return;
+    final id = friend['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+
+    final name = friend['display_name']?.toString().trim() ?? '';
+    final avatarKey = friend['avatar_key']?.toString() ?? '';
+    final image = _avatar(avatarKey);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFFFE7EF),
+                Colors.white,
+                Colors.white,
+              ],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Form VS',
+                style: TextStyle(
+                  color: Color(0xFFE94B71),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Are you sure you want to invite ' +
+                    (name.isEmpty ? 'this user' : name) +
+                    ' to be your VS?',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 16,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 18),
+              CircleAvatar(
+                radius: 42,
+                backgroundColor: const Color(0xFFF1F1F3),
+                backgroundImage: image,
+                child: image == null
+                    ? const Icon(
+                        Icons.person_rounded,
+                        size: 42,
+                        color: Colors.black38,
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name.isEmpty ? 'User' : name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'ID:' + id,
+                style: const TextStyle(
+                  color: Color(0xFFB5B5BA),
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFE8EF),
+                          foregroundColor: const Color(0xFFE84A6F),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, false),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF587D),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, true),
+                        child: const Text(
+                          'Invite',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => cpInviteBusy = true);
+    try {
+      final result = await widget.state.backend.vsRequest(
+        userId: widget.state.userId,
+        targetUserId: id,
+      );
+      if (!mounted) return;
+
+      if (result?['ok'] == true) {
+        await _showVsInviteSent();
+        await _load();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'VS invitation failed',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => cpInviteBusy = false);
+    }
+  }
+
+  Future<void> _showVsInviteSent() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(28, 30, 28, 22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(25),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'The invitation has been sent and\nis waiting to be received',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 20,
+                  height: 1.35,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF587D),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text(
+                    'Confirm',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmCpInvite(Map<String, dynamic> friend) async {
     if (cpInviteBusy) return;
     final id = friend['id']?.toString() ?? '';
@@ -2365,7 +2798,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     onTap: active && rivalId.isNotEmpty
                         ? () => _openPartner(vs)
                         : isSelf
-                            ? () => _openRelationManager(couple: false)
+                            ? _openVsBinding
                             : null,
                   ),
                 ),
