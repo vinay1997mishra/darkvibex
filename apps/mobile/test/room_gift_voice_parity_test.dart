@@ -17,7 +17,7 @@ void main() {
     final chooser = source.substring(chooserStart, chooserEnd);
 
     expect(chooser, contains("'user_id': widget.state.userId"));
-    expect(chooser, contains("Key('gift-recipient-$userId')"));
+    expect(chooser, contains("Key('gift-recipient-\$userId')"));
     expect(chooser, contains('room-gift-recipient-grid'));
     expect(
       chooser,
