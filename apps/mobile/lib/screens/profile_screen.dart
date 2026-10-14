@@ -1875,7 +1875,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                             ),
                                             const SizedBox(height: 3),
                                             Text(
-                                              'ID:$id',
+                                              'ID:$displayId',
                                               style: const TextStyle(
                                                 color: Color(0xFFB3B3B7),
                                                 fontSize: 12,
@@ -2871,86 +2871,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _roundRelationAvatar({
-    required String avatarKey,
-    required double size,
-    VoidCallback? onTap,
-    bool showPlus = false,
-    bool horned = false,
-  }) {
-    final provider = _avatar(avatarKey);
-    final circle = InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: showPlus ? const Color(0x22FFFFFF) : const Color(0xFF29101B),
-          border: Border.all(
-            color: horned ? const Color(0xFFFF3F73) : Colors.white,
-            width: horned ? 2.8 : 1.8,
-          ),
-          boxShadow: horned
-              ? const [
-                  BoxShadow(
-                    color: Color(0x77FF2F67),
-                    blurRadius: 10,
-                    spreadRadius: .5,
-                  ),
-                ]
-              : null,
-          image: provider == null || showPlus
-              ? null
-              : DecorationImage(
-                  image: provider,
-                  fit: BoxFit.cover,
-                ),
-        ),
-        child: showPlus
-            ? const Icon(
-                Icons.add_rounded,
-                color: Colors.white,
-                size: 35,
-              )
-            : provider == null
-                ? const Icon(
-                    Icons.person_rounded,
-                    color: Colors.white70,
-                    size: 31,
-                  )
-                : null,
-      ),
-    );
-
-    if (!horned) return circle;
-
-    return SizedBox(
-      width: size + 26,
-      height: size + 22,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: CustomPaint(
-              size: Size(size + 26, 42),
-              painter: const _DevilHornPainter(),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            child: circle,
-          ),
-        ],
-      ),
     );
   }
 
@@ -4295,64 +4215,4 @@ class _CpRuleScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-
-class _DevilHornPainter extends CustomPainter {
-  const _DevilHornPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFFF3F73)
-      ..style = PaintingStyle.fill;
-
-    final left = Path()
-      ..moveTo(size.width * .31, size.height * .84)
-      ..cubicTo(
-        size.width * .12,
-        size.height * .76,
-        size.width * .10,
-        size.height * .30,
-        size.width * .23,
-        size.height * .06,
-      )
-      ..cubicTo(
-        size.width * .18,
-        size.height * .41,
-        size.width * .27,
-        size.height * .61,
-        size.width * .39,
-        size.height * .68,
-      )
-      ..close();
-
-    final right = Path()
-      ..moveTo(size.width * .69, size.height * .84)
-      ..cubicTo(
-        size.width * .88,
-        size.height * .76,
-        size.width * .90,
-        size.height * .30,
-        size.width * .77,
-        size.height * .06,
-      )
-      ..cubicTo(
-        size.width * .82,
-        size.height * .41,
-        size.width * .73,
-        size.height * .61,
-        size.width * .61,
-        size.height * .68,
-      )
-      ..close();
-
-    canvas.drawShadow(left, const Color(0xFFFF2F67), 7, false);
-    canvas.drawShadow(right, const Color(0xFFFF2F67), 7, false);
-    canvas.drawPath(left, paint);
-    canvas.drawPath(right, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _DevilHornPainter oldDelegate) => false;
 }
