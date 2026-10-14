@@ -653,36 +653,62 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   }
 
   Widget _adultAnimeCharacter(int seconds) => SizedBox(
-        width: 114,
-        height: 136,
+        width: 126,
+        height: 168,
         child: Stack(
+          alignment: Alignment.bottomCenter,
           children: [
             Positioned.fill(
-              child: CustomPaint(
-                painter: _AdultAnimeGirlPainter(),
+              bottom: 18,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0xAA7B3CFF),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                    ),
+                    BoxShadow(
+                      color: Color(0x88FFD25A),
+                      blurRadius: 12,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Image.asset(
+                    'assets/images/greedy_girl_mascot.webp',
+                    key: const Key('greedy-girl-mascot'),
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
               ),
             ),
-            Positioned(
-              left: 24,
-              right: 24,
-              bottom: 0,
-              child: Container(
-                height: 24,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: <Color>[Color(0xFFFFB938), Color(0xFFEA5A7B)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white70),
+            Container(
+              height: 25,
+              constraints: const BoxConstraints(minWidth: 74),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: <Color>[Color(0xFFFFB938), Color(0xFFEA5A7B)],
                 ),
-                child: Text(
-                  '${round['phase'] == 'result_spin' ? 'Result' : 'Bet'}  ${seconds}s',
-                  style: const TextStyle(
-                    color: Color(0xFF2A0D21),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                  ),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: Colors.white70),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(color: Colors.black45, blurRadius: 6),
+                ],
+              ),
+              child: Text(
+                '${round['phase'] == 'result_spin' ? 'Result' : 'Bet'}  ${seconds}s',
+                style: const TextStyle(
+                  color: Color(0xFF2A0D21),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
@@ -851,121 +877,6 @@ class _SparklePainter extends CustomPainter {
       final p = Offset(points[i].dx * size.width, points[i].dy * size.height);
       canvas.drawCircle(p, i.isEven ? 2.2 : 1.4, paint);
     }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _AdultAnimeGirlPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, 42);
-    final hair = Paint()..color = const Color(0xFF32102F);
-    final hairGlow = Paint()..color = const Color(0xFF7A2C78);
-    final skin = Paint()..color = const Color(0xFFF4C3A6);
-    final outline = Paint()
-      ..color = const Color(0xFF4A213A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6;
-    final outfit = Paint()..color = const Color(0xFF8B274E);
-    final outfitDark = Paint()..color = const Color(0xFF4B1632);
-    final eye = Paint()..color = const Color(0xFF24162C);
-
-    canvas.drawOval(
-      Rect.fromCenter(center: Offset(center.dx, 52), width: 79, height: 103),
-      hairGlow,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(center: Offset(center.dx, 48), width: 70, height: 96),
-      hair,
-    );
-
-    canvas.drawOval(
-      Rect.fromCenter(center: center, width: 42, height: 50),
-      skin,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(center: center, width: 42, height: 50),
-      outline,
-    );
-
-    final leftEye = Offset(center.dx - 9, center.dy - 2);
-    final rightEye = Offset(center.dx + 9, center.dy - 2);
-    canvas.drawOval(
-      Rect.fromCenter(center: leftEye, width: 6, height: 9),
-      eye,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(center: rightEye, width: 6, height: 9),
-      eye,
-    );
-    final shine = Paint()..color = Colors.white;
-    canvas.drawCircle(leftEye.translate(1, -2), 1.2, shine);
-    canvas.drawCircle(rightEye.translate(1, -2), 1.2, shine);
-
-    final mouth = Paint()
-      ..color = const Color(0xFFB84962)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: Offset(center.dx, center.dy + 10),
-        width: 11,
-        height: 7,
-      ),
-      .15,
-      math.pi - .3,
-      false,
-      mouth,
-    );
-
-    final body = Path()
-      ..moveTo(center.dx - 16, 66)
-      ..quadraticBezierTo(center.dx - 32, 76, center.dx - 28, 99)
-      ..lineTo(center.dx - 24, 122)
-      ..lineTo(center.dx + 24, 122)
-      ..lineTo(center.dx + 28, 99)
-      ..quadraticBezierTo(center.dx + 32, 76, center.dx + 16, 66)
-      ..close();
-    canvas.drawPath(body, skin);
-    canvas.drawPath(body, outline);
-
-    final top = Path()
-      ..moveTo(center.dx - 24, 81)
-      ..quadraticBezierTo(center.dx - 10, 70, center.dx, 81)
-      ..quadraticBezierTo(center.dx + 10, 70, center.dx + 24, 81)
-      ..lineTo(center.dx + 19, 101)
-      ..quadraticBezierTo(center.dx, 95, center.dx - 19, 101)
-      ..close();
-    canvas.drawPath(top, outfit);
-    canvas.drawPath(top, outline);
-
-    final shorts = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: Offset(center.dx, 113),
-        width: 49,
-        height: 25,
-      ),
-      const Radius.circular(7),
-    );
-    canvas.drawRRect(shorts, outfitDark);
-    canvas.drawRRect(shorts, outline);
-
-    final hairFront = Paint()
-      ..color = const Color(0xFF3A1337)
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(center.dx - 17, 21),
-      Offset(center.dx - 23, 71),
-      hairFront,
-    );
-    canvas.drawLine(
-      Offset(center.dx + 17, 21),
-      Offset(center.dx + 25, 72),
-      hairFront,
-    );
   }
 
   @override
