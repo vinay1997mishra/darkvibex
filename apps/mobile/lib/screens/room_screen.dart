@@ -1587,6 +1587,8 @@ class _RoomScreenState extends State<RoomScreen> {
                           0;
                       final emoji = item['emoji']?.toString() ?? '🎁';
                       final name = item['name']?.toString() ?? 'Gift';
+                      final giftAssetKey =
+                          item['asset_key']?.toString().trim() ?? '';
                       return InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: () => Navigator.pop(sheetContext, item),
@@ -1616,16 +1618,58 @@ class _RoomScreenState extends State<RoomScreen> {
                                   alignment: Alignment.center,
                                   children: [
                                     Container(
-                                      width: 52,
-                                      height: 52,
-                                      decoration: const BoxDecoration(
+                                      width: 56,
+                                      height: 56,
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: Color(0x1FFFFFFF),
+                                        color: const Color(0x1FFFFFFF),
+                                        border: Border.all(
+                                          color: TinniPalette.brightGold
+                                              .withValues(alpha: .55),
+                                          width: 1.2,
+                                        ),
+                                        boxShadow: const <BoxShadow>[
+                                          BoxShadow(
+                                            color: Color(0x44FFD45A),
+                                            blurRadius: 9,
+                                            spreadRadius: 1,
+                                          ),
+                                        ],
                                       ),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        emoji,
-                                        style: const TextStyle(fontSize: 34),
+                                      child: ClipOval(
+                                        child: giftAssetKey.isNotEmpty
+                                            ? Image.network(
+                                                widget.state.backend
+                                                    .fileUrl(giftAssetKey),
+                                                headers: widget.state.backend
+                                                    .fileHeaders,
+                                                fit: BoxFit.cover,
+                                                errorBuilder:
+                                                    (context, error, stack) =>
+                                                        Container(
+                                                  alignment: Alignment.center,
+                                                  color:
+                                                      const Color(0xFF21183F),
+                                                  child: Text(
+                                                    emoji,
+                                                    style: const TextStyle(
+                                                      fontSize: 32,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            : Container(
+                                                alignment: Alignment.center,
+                                                color:
+                                                    const Color(0xFF21183F),
+                                                child: Text(
+                                                  emoji,
+                                                  style: const TextStyle(
+                                                    fontSize: 32,
+                                                  ),
+                                                ),
+                                              ),
                                       ),
                                     ),
                                     if (vipLevel > 0)
@@ -1656,17 +1700,63 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: TinniPalette.cream,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.05,
-                                ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 16,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white24,
+                                        width: .7,
+                                      ),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: giftAssetKey.isNotEmpty
+                                        ? Image.network(
+                                            widget.state.backend
+                                                .fileUrl(giftAssetKey),
+                                            headers: widget.state.backend
+                                                .fileHeaders,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                (context, error, stack) =>
+                                                    Center(
+                                              child: Text(
+                                                emoji,
+                                                style: const TextStyle(
+                                                  fontSize: 9,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        : Center(
+                                            child: Text(
+                                              emoji,
+                                              style: const TextStyle(
+                                                fontSize: 9,
+                                              ),
+                                            ),
+                                          ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: TinniPalette.cream,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        height: 1.05,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Row(
