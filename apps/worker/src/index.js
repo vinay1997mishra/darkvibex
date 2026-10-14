@@ -1654,7 +1654,9 @@ async function settleFruitPartyRound(db, roundId) {
   const bets = rows.results ?? [];
   const luckyRounds = await fruitPartyLuckyRounds(db, roundId);
   const lucky11 = luckyRounds.includes(roundId);
-  const bonus = lucky11 ? fruitPartyDistinctFruits(4) : [];
+  const luckyType = lucky11 ? (secureIndex(2) === 0 ? "silver" : "gold") : null;
+  const bonus = luckyType === "silver" ? FRUIT_PARTY_FRUITS.slice(0, 4)
+    : luckyType === "gold" ? FRUIT_PARTY_FRUITS.slice(4, 8) : [];
   let winner = lucky11 ? bonus[0] : fruitPartyWeightedFruit();
 
   if (!lucky11) {
@@ -1716,7 +1718,7 @@ async function settleFruitPartyRound(db, roundId) {
     ).bind(
       roundId,
       winner.key,
-      lucky11 ? "lucky_11_random_4" : "weighted_random",
+      lucky11 ? `lucky_11_${luckyType}` : "weighted_random",
       JSON.stringify(bonus.map((fruit) => fruit.key)),
       totalBet,
       totalPayout,
@@ -1804,6 +1806,7 @@ async function fruitPartyState(db, userId, ts = now()) {
       fruit: FRUIT_PARTY_BY_KEY.get(String(row.fruit_key)) ?? null,
       mode: String(row.mode ?? ""),
       lucky11: String(row.mode ?? "").startsWith("lucky_11_"),
+      lucky_type: row.mode === "lucky_11_silver" ? "silver" : row.mode === "lucky_11_gold" ? "gold" : null,
       bonus_fruits: bonusKeys
         .map((key) => FRUIT_PARTY_BY_KEY.get(String(key)))
         .filter(Boolean),
