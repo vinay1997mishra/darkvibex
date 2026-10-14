@@ -1730,8 +1730,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((row) {
             if (q.isEmpty) return true;
             final id = row['id']?.toString().toLowerCase() ?? '';
+            final publicId = row['public_id']?.toString().toLowerCase() ?? '';
             final name = row['display_name']?.toString().toLowerCase() ?? '';
-            return id.contains(q) || name.contains(q);
+            return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
 
           return FractionallySizedBox(
@@ -1830,6 +1831,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final avatarKey =
                                     friend['avatar_key']?.toString() ?? '';
                                 final id = friend['id']?.toString() ?? '';
+                                final displayId =
+                                    friend['public_id']?.toString().trim().isNotEmpty == true
+                                        ? friend['public_id'].toString()
+                                        : id;
                                 final name = friend['display_name']
                                         ?.toString()
                                         .trim() ??
@@ -1949,8 +1954,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((row) {
             if (q.isEmpty) return true;
             final id = row['id']?.toString().toLowerCase() ?? '';
+            final publicId = row['public_id']?.toString().toLowerCase() ?? '';
             final name = row['display_name']?.toString().toLowerCase() ?? '';
-            return id.contains(q) || name.contains(q);
+            return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
 
           return FractionallySizedBox(
@@ -2038,6 +2044,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final avatarKey =
                                     friend['avatar_key']?.toString() ?? '';
                                 final id = friend['id']?.toString() ?? '';
+                                final displayId =
+                                    friend['public_id']?.toString().trim().isNotEmpty == true
+                                        ? friend['public_id'].toString()
+                                        : id;
                                 final name = friend['display_name']
                                         ?.toString()
                                         .trim() ??
@@ -2078,7 +2088,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                             ),
                                             const SizedBox(height: 3),
                                             Text(
-                                              'ID:' + id,
+                                              'ID:' + displayId,
                                               style: const TextStyle(
                                                 color: Color(0xFFB3B3B7),
                                                 fontSize: 12,
@@ -3379,8 +3389,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((item) {
             if (q.isEmpty) return true;
             final id = item['id']?.toString().toLowerCase() ?? '';
+            final publicId = item['public_id']?.toString().toLowerCase() ?? '';
             final name = item['display_name']?.toString().toLowerCase() ?? '';
-            return id.contains(q) || name.contains(q);
+            return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
 
           return FractionallySizedBox(
@@ -3454,7 +3465,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                     item['display_name']?.toString() ?? 'User',
                                   ),
                                   subtitle: Text(
-                                    'ID:' + (item['id']?.toString() ?? ''),
+                                    'ID:' +
+                                        (item['public_id']?.toString().trim().isNotEmpty == true
+                                            ? item['public_id'].toString()
+                                            : (item['id']?.toString() ?? '')),
                                   ),
                                   trailing: FilledButton(
                                     style: FilledButton.styleFrom(
