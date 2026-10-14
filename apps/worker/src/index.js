@@ -3845,7 +3845,7 @@ async function handleApi(request, env, url) {
       }
       user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
     }
-    if (user && viewerId !== viewedUserId) {
+    if (user && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
       const targetVip = await getVipStatus(db, viewedUserId);
       if (targetVip.active && targetVip.level >= 18 && targetVip.preferences.anonymous_everywhere === true) {
         user.display_name = "Anonymous";
