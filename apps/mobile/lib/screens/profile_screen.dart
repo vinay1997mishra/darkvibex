@@ -1193,7 +1193,7 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
       'Jan','Feb','Mar','Apr','May','Jun',
       'Jul','Aug','Sep','Oct','Nov','Dec',
     ];
-    return '\${value.day.toString().padLeft(2, '0')} \${months[value.month - 1]}';
+    return '${value.day.toString().padLeft(2, '0')} ${months[value.month - 1]}';
   }
 
   ImageProvider<Object>? _avatar(String key) {
@@ -1919,7 +1919,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           children: [
                             Flexible(
                               child: Text(
-                                'ID \${_publicId(value)}',
+                                'ID ${_publicId(value)}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
