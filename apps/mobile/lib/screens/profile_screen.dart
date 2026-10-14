@@ -2889,7 +2889,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           final h = constraints.maxHeight;
-          final avatarSize = h * .57;
+          // Shared CP/VS relation-circle geometry. Both cards use the exact
+          // same diameter so the different background artwork never changes
+          // the perceived avatar/add-circle size.
+          final relationCircleSize = w * .185;
 
           Widget liveCircle({
             required String avatarKey,
@@ -2901,8 +2904,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               behavior: HitTestBehavior.opaque,
               onTap: onTap,
               child: Container(
-                width: avatarSize,
-                height: avatarSize,
+                width: relationCircleSize,
+                height: relationCircleSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: empty
@@ -2952,8 +2955,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   ),
                 ),
                 Positioned(
-                  left: w * .279 - avatarSize / 2,
-                  top: h * .515 - avatarSize / 2,
+                  left: w * .279 - relationCircleSize / 2,
+                  top: h * .515 - relationCircleSize / 2,
                   child: liveCircle(
                     avatarKey: ownAvatar,
                     empty: false,
@@ -2961,8 +2964,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   ),
                 ),
                 Positioned(
-                  left: w * .732 - avatarSize / 2,
-                  top: h * .515 - avatarSize / 2,
+                  left: w * .732 - relationCircleSize / 2,
+                  top: h * .515 - relationCircleSize / 2,
                   child: liveCircle(
                     avatarKey: rivalAvatar,
                     empty: !active,
@@ -3125,11 +3128,54 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           final h = constraints.maxHeight;
-          final ownSize = h * .31;
-          final partnerSize = h * .42;
+          final relationCircleSize = w * .185;
 
           final ownImage = _avatar(ownAvatar);
           final partnerImage = _avatar(partnerAvatar);
+
+          Widget cpRelationCircle({
+            required ImageProvider? image,
+            required bool empty,
+            required VoidCallback? onTap,
+          }) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Container(
+                width: relationCircleSize,
+                height: relationCircleSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: empty
+                      ? const Color(0xFFCF7C89)
+                      : const Color(0xFFCC7482),
+                  border: Border.all(
+                    color: Colors.white70,
+                    width: 2,
+                  ),
+                  image: !empty && image != null
+                      ? DecorationImage(
+                          image: image,
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: empty
+                    ? Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: relationCircleSize * .36,
+                      )
+                    : image == null
+                        ? Icon(
+                            Icons.person_rounded,
+                            color: Colors.white,
+                            size: relationCircleSize * .36,
+                          )
+                        : null,
+              ),
+            );
+          }
 
           Widget namePatch({
             required String text,
@@ -3175,71 +3221,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   ),
                 ),
                 Positioned(
-                  left: w * .184 - ownSize / 2,
-                  top: h * .415 - ownSize / 2,
-                  child: Container(
-                    width: ownSize,
-                    height: ownSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      image: ownImage == null
-                          ? null
-                          : DecorationImage(
-                              image: ownImage,
-                              fit: BoxFit.cover,
-                            ),
-                    ),
-                    child: ownImage == null
-                        ? const Icon(
-                            Icons.person_rounded,
-                            color: Colors.white70,
-                          )
-                        : null,
+                  left: w * .184 - relationCircleSize / 2,
+                  top: h * .415 - relationCircleSize / 2,
+                  child: cpRelationCircle(
+                    image: ownImage,
+                    empty: false,
+                    onTap: null,
                   ),
                 ),
-                if (active)
-                  Positioned(
-                    left: w * .833 - partnerSize / 2,
-                    top: h * .415 - partnerSize / 2,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: partnerId.isEmpty
-                          ? null
-                          : () => _openPartner(cp),
-                      child: Container(
-                        width: partnerSize,
-                        height: partnerSize,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFFCC7482),
-                          border: Border.all(
-                            color: Colors.white70,
-                            width: 1.8,
-                          ),
-                          image: partnerImage == null
-                              ? null
-                              : DecorationImage(
-                                  image: partnerImage,
-                                  fit: BoxFit.cover,
-                                ),
-                        ),
-                        child: partnerImage == null
-                            ? const Icon(
-                                Icons.person_rounded,
-                                color: Colors.white,
-                                size: 32,
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
                 Positioned(
-                  left: w * .735,
-                  top: h * .18,
-                  width: w * .195,
-                  height: h * .55,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
+                  left: w * .833 - relationCircleSize / 2,
+                  top: h * .415 - relationCircleSize / 2,
+                  child: cpRelationCircle(
+                    image: partnerImage,
+                    empty: !active,
                     onTap: active && partnerId.isNotEmpty
                         ? () => _openPartner(cp)
                         : isSelf
