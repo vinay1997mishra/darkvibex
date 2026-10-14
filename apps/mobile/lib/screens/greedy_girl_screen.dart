@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
-import '../ui/tinni_style.dart';
 
 Future<void> showGreedyGirl(BuildContext context, AppState state) async {
   await showModalBottomSheet<void>(
