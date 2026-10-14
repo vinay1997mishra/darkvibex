@@ -1556,6 +1556,20 @@ class _RoomScreenState extends State<RoomScreen> {
                       ),
                       const SizedBox(width: 6),
                       IconButton(
+                        key: const Key('room-create-custom-gift-grid'),
+                        tooltip: 'Custom Gift',
+                        onPressed: () async {
+                          Navigator.pop(sheetContext);
+                          final created = await _createRoomCustomGift();
+                          if (created == null || !mounted) return;
+                          await _sendGiftByDefinition(created, receiverId);
+                        },
+                        icon: const Icon(
+                          Icons.add_photo_alternate_rounded,
+                          color: TinniPalette.brightGold,
+                        ),
+                      ),
+                      IconButton(
                         tooltip: 'Close',
                         onPressed: () => Navigator.pop(sheetContext),
                         icon: const Icon(Icons.close_rounded),
@@ -5326,50 +5340,7 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     final selected = await _chooseGiftReceiver();
     if (selected == null || selected.isEmpty) return;
-    final receiverId = selected;
-
-    final gifts = widget.state.backendConnected
-        ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
-        : <Map<String, dynamic>>[{'id': 'basic-star', 'name': 'Star', 'emoji': '⭐', 'coin_cost': 5000}];
-    if (!mounted || gifts.isEmpty) return;
-    final gift = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(shrinkWrap: true, children: [
-          const Padding(padding: EdgeInsets.all(18), child: Text('Choose a gift', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
-          ListTile(
-            key: const Key('room-create-custom-gift'),
-            leading: const TinniGlowIcon(
-              icon: Icons.add_photo_alternate_rounded,
-              size: 20,
-              boxSize: 38,
-            ),
-            title: const Text('Custom Gift'),
-            subtitle: const Text('Create with PNG, JPG, WebP or MP4'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () async {
-              Navigator.pop(sheetContext);
-              final created = await _createRoomCustomGift();
-              if (created == null || !mounted) return;
-              await _sendGiftByDefinition(created, receiverId);
-            },
-          ),
-          const Divider(height: 1),
-          ...gifts.map((item) => ListTile(
-            leading: Text(item['emoji']?.toString() ?? '🎁', style: const TextStyle(fontSize: 30)),
-            title: Text(item['name']?.toString() ?? 'Gift'),
-            subtitle: Text('${item['coin_cost'] ?? 0} coins'),
-            onTap: () => Navigator.pop(sheetContext, item),
-          )),
-        ]),
-      ),
-    );
-    if (!mounted || gift == null) return;
-    if (widget.state.backendConnected && receiverId.isNotEmpty) {
-      await _sendGiftByDefinition(gift, receiverId);
-      return;
-    }
+    await _sendGiftToSeatUser(selected);
   }
 
   Future<void> _sendInlineMessage([String? override]) async {
