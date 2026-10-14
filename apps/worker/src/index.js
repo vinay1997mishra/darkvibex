@@ -6493,6 +6493,9 @@ export default {
         service: "darkvibex-api",
         db_bound: Boolean(env.DB),
         files_bound: Boolean(env.FILES),
+        fcm_push_configured: Boolean(
+          String(env.FCM_SERVICE_ACCOUNT_JSON ?? "").trim(),
+        ),
       });
     }
 
