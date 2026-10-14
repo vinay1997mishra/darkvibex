@@ -11,6 +11,10 @@ on:
       - "apps/owner_panel/**"
       - ".github/workflows/darkvibex-worker-deploy.yml"
 
+permissions:
+  contents: read
+  statuses: write
+
 concurrency:
   group: darkvibex-worker-deploy-${{ github.ref }}
   cancel-in-progress: true
@@ -23,6 +27,17 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
+      - name: Mark Worker deploy pending
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context=darkvibex/worker-deploy \
+            -f description="DarkVibeX Worker deploy is running"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -83,3 +98,26 @@ jobs:
           probe_room_id="$(PROBE_ROOM="$probe_room" node -e 'const c=JSON.parse(process.env.PROBE_ROOM||"{}");if(!c.ok||!c.room_id){console.error("Room create probe failed:",c.error||"missing_room_id");process.exit(1)}process.stdout.write(String(c.room_id))')"
           probe_delete="$(curl --fail-with-body --silent --show-error --request POST "$base/api/rooms/$probe_room_id/delete" -H 'content-type: application/json' -H "authorization: Bearer $probe_token" --data '{"user_id":"deploy_room_probe"}')"
           PROBE_DELETE="$probe_delete" node -e 'const c=JSON.parse(process.env.PROBE_DELETE||"{}");if(!c.ok){console.error("Room cleanup probe failed:",c.error||"unknown_error");process.exit(1)}console.log("End-to-end room create/delete probe passed.")'
+
+
+      - name: Mark Worker deploy success
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context=darkvibex/worker-deploy \
+            -f description="DarkVibeX Worker deployed successfully"
+
+      - name: Mark Worker deploy failure
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=failure \
+            -f context=darkvibex/worker-deploy \
+            -f description="DarkVibeX Worker deploy failed"
