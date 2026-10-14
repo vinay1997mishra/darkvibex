@@ -2453,7 +2453,8 @@ class _VsScreenState extends State<VsScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Remove VS'),
         content: const Text(
-          'Remove this VS relation? The current rivalry level will be cleared.',
+          'Send a VS disconnect request? Your VS partner must accept it. '
+          'If nobody responds, the request times out after 24 hours.',
         ),
         actions: [
           TextButton(
@@ -2465,7 +2466,7 @@ class _VsScreenState extends State<VsScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF202D),
             ),
-            child: const Text('Remove'),
+            child: const Text('Send request'),
           ),
         ],
       ),
@@ -2473,11 +2474,57 @@ class _VsScreenState extends State<VsScreen> {
     if (confirmed != true || !mounted) return;
     setState(() => busy = true);
     try {
-      final ok = await widget.state.backend.vsDisconnect(
+      final result = await widget.state.backend.vsDisconnectRequest(
         userId: widget.state.userId,
       );
-      if (!ok) _notice('VS could not be removed.');
-      await _load();
+      if (!mounted) return;
+      if (result?['ok'] == true && result?['vs'] is Map) {
+        setState(() => vs = Map<String, dynamic>.from(result!['vs'] as Map));
+      } else {
+        _notice(result?['error']?.toString() ?? 'VS disconnect request failed');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _respondVsDisconnect(bool accept) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.vsDisconnectRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        final raw = result?['vs'];
+        setState(() {
+          vs = raw is Map ? Map<String, dynamic>.from(raw) : null;
+        });
+      } else {
+        _notice(result?['error']?.toString() ?? 'VS disconnect response failed');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _heartbeatVs(String action, {String? choice}) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.vsHeartbeat(
+        userId: widget.state.userId,
+        action: action,
+        choice: choice,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true && result?['vs'] is Map) {
+        setState(() => vs = Map<String, dynamic>.from(result!['vs'] as Map));
+      } else {
+        _notice(result?['error']?.toString() ?? 'VS heartbeat could not be updated');
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -2568,6 +2615,16 @@ class _VsScreenState extends State<VsScreen> {
         next <= 0 ? 0.0 : (levelSending / next).clamp(0.0, 1.0);
     final receivingProgress =
         next <= 0 ? 0.0 : (levelReceiving / next).clamp(0.0, 1.0);
+    final vsDays = int.tryParse(vs?['vs_days']?.toString() ?? '') ?? 0;
+    final disconnectState = vs?['disconnect_state']?.toString() ?? 'none';
+    final disconnectIncoming = disconnectState == 'requested' &&
+        vs?['disconnect_requested_by']?.toString() != widget.state.userId;
+    final disconnectOutgoing = disconnectState == 'requested' &&
+        vs?['disconnect_requested_by']?.toString() == widget.state.userId;
+    final heartbeatState = vs?['heartbeat_state']?.toString() ?? 'idle';
+    final heartbeatChoice = vs?['heartbeat_choice']?.toString() ?? '';
+    final partnerHeartbeatChoice =
+        vs?['partner_heartbeat_choice']?.toString() ?? '';
     final avatarKey = _rivalAvatarKey();
 
     return Scaffold(
@@ -2772,6 +2829,14 @@ class _VsScreenState extends State<VsScreen> {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'VS Days $vsDays',
+                              style: const TextStyle(
+                                color: Color(0xFF9A8285),
+                                fontSize: 11,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             Row(
                               children: [
@@ -2920,11 +2985,157 @@ class _VsScreenState extends State<VsScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: busy ? null : _disconnect,
-                        icon: const Icon(Icons.link_off_rounded),
-                        label: const Text('Remove VS'),
+                      TinniPanel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              heartbeatState == 'idle'
+                                  ? 'VS Heartbeat'
+                                  : heartbeatState == 'matched'
+                                      ? 'VS Heartbeat matched ❤️'
+                                      : heartbeatState == 'failed'
+                                          ? 'VS Heartbeat did not match'
+                                          : 'VS Heartbeat selecting',
+                              style: const TextStyle(
+                                color: Color(0xFFFF202D),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            if (heartbeatState == 'idle')
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: busy
+                                      ? null
+                                      : () => _heartbeatVs('start'),
+                                  icon: const Icon(Icons.monitor_heart_rounded),
+                                  label: const Text('Start Heartbeat'),
+                                ),
+                              )
+                            else ...[
+                              Text(
+                                'You: ${heartbeatChoice.isEmpty ? 'waiting' : heartbeatChoice} • '
+                                'Partner: ${partnerHeartbeatChoice.isEmpty ? 'waiting' : partnerHeartbeatChoice}',
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (heartbeatState == 'selecting')
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: busy
+                                            ? null
+                                            : () => _heartbeatVs(
+                                                  'choose',
+                                                  choice: 'A',
+                                                ),
+                                        child: const Text('❤️ A'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: busy
+                                            ? null
+                                            : () => _heartbeatVs(
+                                                  'choose',
+                                                  choice: 'B',
+                                                ),
+                                        child: const Text('❤️ B'),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton(
+                                    onPressed: busy
+                                        ? null
+                                        : () => _heartbeatVs('close'),
+                                    child: const Text('Close Heartbeat'),
+                                  ),
+                                ),
+                            ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(height: 10),
+                      if (disconnectIncoming)
+                        TinniPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'VS disconnect request received',
+                                style: TextStyle(
+                                  color: Color(0xFFFF202D),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: busy
+                                          ? null
+                                          : () => _respondVsDisconnect(false),
+                                      child: const Text('Keep VS'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed: busy
+                                          ? null
+                                          : () => _respondVsDisconnect(true),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFFFF202D),
+                                      ),
+                                      child: const Text('Accept disconnect'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (disconnectOutgoing)
+                        const TinniPanel(
+                          child: Text(
+                            'Disconnect request sent. Waiting for VS partner response.',
+                            style: TextStyle(color: TinniPalette.muted),
+                          ),
+                        )
+                      else ...[
+                        if (disconnectState == 'refused' ||
+                            disconnectState == 'timedOut')
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              disconnectState == 'refused'
+                                  ? 'Last VS disconnect request was refused.'
+                                  : 'Last VS disconnect request timed out.',
+                              style: const TextStyle(
+                                color: TinniPalette.muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        OutlinedButton.icon(
+                          onPressed: busy ? null : _disconnect,
+                          icon: const Icon(Icons.link_off_rounded),
+                          label: const Text('Request VS Disconnect'),
+                        ),
+                      ],
                     ],
                   ],
                 ],
