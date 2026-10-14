@@ -1201,7 +1201,8 @@ class _CpScreenState extends State<CpScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Disconnect CP'),
         content: const Text(
-          'Disconnect this CP relationship? Current CP intimacy and level will be cleared.',
+          'Send a CP disconnect request? Your partner must accept it. '
+          'If nobody responds, the request times out after 24 hours.',
         ),
         actions: [
           TextButton(
@@ -1210,7 +1211,7 @@ class _CpScreenState extends State<CpScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Disconnect'),
+            child: const Text('Send request'),
           ),
         ],
       ),
@@ -1218,11 +1219,60 @@ class _CpScreenState extends State<CpScreen> {
     if (confirmed != true || !mounted) return;
     setState(() => busy = true);
     try {
-      final ok = await widget.state.backend.cpDisconnect(
+      final result = await widget.state.backend.cpDisconnectRequest(
         userId: widget.state.userId,
       );
-      if (!ok) _notice('CP could not be disconnected.');
-      await _load();
+      if (!mounted) return;
+      if (result?['ok'] == true && result?['cp'] is Map) {
+        setState(() => cp = Map<String, dynamic>.from(result!['cp'] as Map));
+      } else {
+        _notice(result?['error']?.toString() ?? 'CP disconnect request failed');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _respondDisconnect(bool accept) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.cpDisconnectRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        final raw = result?['cp'];
+        setState(() {
+          cp = raw is Map ? Map<String, dynamic>.from(raw) : null;
+        });
+        if (accept) {
+          memories = const <Map<String, dynamic>>[];
+        }
+      } else {
+        _notice(result?['error']?.toString() ?? 'CP disconnect response failed');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _heartbeatCp(String action, {String? choice}) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final result = await widget.state.backend.cpHeartbeat(
+        userId: widget.state.userId,
+        action: action,
+        choice: choice,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true && result?['cp'] is Map) {
+        setState(() => cp = Map<String, dynamic>.from(result!['cp'] as Map));
+      } else {
+        _notice(result?['error']?.toString() ?? 'Heartbeat could not be updated');
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1529,6 +1579,16 @@ class _CpScreenState extends State<CpScreen> {
         next <= 0 ? 0.0 : (levelSending / next).clamp(0.0, 1.0);
     final receivingProgress =
         next <= 0 ? 0.0 : (levelReceiving / next).clamp(0.0, 1.0);
+    final loveDays = int.tryParse(cp?['love_days']?.toString() ?? '') ?? 0;
+    final disconnectState = cp?['disconnect_state']?.toString() ?? 'none';
+    final disconnectIncoming = disconnectState == 'requested' &&
+        cp?['disconnect_requested_by']?.toString() != widget.state.userId;
+    final disconnectOutgoing = disconnectState == 'requested' &&
+        cp?['disconnect_requested_by']?.toString() == widget.state.userId;
+    final heartbeatState = cp?['heartbeat_state']?.toString() ?? 'idle';
+    final heartbeatChoice = cp?['heartbeat_choice']?.toString() ?? '';
+    final partnerHeartbeatChoice =
+        cp?['partner_heartbeat_choice']?.toString() ?? '';
     final partnerAvatar = _partnerAvatarKey();
 
     return Scaffold(
@@ -1715,6 +1775,14 @@ class _CpScreenState extends State<CpScreen> {
                                 style: const TextStyle(
                                   color: TinniPalette.cream,
                                   fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Love Days $loveDays',
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                  fontSize: 11,
                                 ),
                               ),
                               const SizedBox(height: 9),
@@ -1924,20 +1992,26 @@ class _CpScreenState extends State<CpScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: TinniPanel(
-                                onTap: busy ? null : _disconnect,
-                                child: const Column(
+                                onTap: heartbeatState == 'idle'
+                                    ? (busy ? null : () => _heartbeatCp('start'))
+                                    : null,
+                                child: Column(
                                   children: [
-                                    TinniGlowIcon(
-                                      icon: Icons.link_off_rounded,
+                                    const TinniGlowIcon(
+                                      icon: Icons.monitor_heart_rounded,
                                       size: 22,
                                       boxSize: 42,
                                     ),
-                                    SizedBox(height: 5),
+                                    const SizedBox(height: 5),
                                     Text(
-                                      'Disconnect',
-                                      style: TextStyle(
-                                        color: Colors.redAccent,
+                                      heartbeatState == 'idle'
+                                          ? 'Heartbeat'
+                                          : 'Heartbeat: $heartbeatState',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: TinniPalette.gold,
                                         fontWeight: FontWeight.w900,
+                                        fontSize: 11,
                                       ),
                                     ),
                                   ],
@@ -1946,6 +2020,141 @@ class _CpScreenState extends State<CpScreen> {
                             ),
                           ],
                         ),
+                        if (heartbeatState != 'idle') ...[
+                          const SizedBox(height: 8),
+                          TinniPanel(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  heartbeatState == 'selecting'
+                                      ? 'Choose heartbeat'
+                                      : heartbeatState == 'matched'
+                                          ? 'Heartbeat matched ❤️'
+                                          : 'Heartbeat did not match',
+                                  style: const TextStyle(
+                                    color: TinniPalette.gold,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'You: ${heartbeatChoice.isEmpty ? 'waiting' : heartbeatChoice} • '
+                                  'Partner: ${partnerHeartbeatChoice.isEmpty ? 'waiting' : partnerHeartbeatChoice}',
+                                  style: const TextStyle(
+                                    color: TinniPalette.muted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                if (heartbeatState == 'selecting')
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: busy
+                                              ? null
+                                              : () => _heartbeatCp(
+                                                    'choose',
+                                                    choice: 'A',
+                                                  ),
+                                          child: const Text('❤️ A'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: busy
+                                              ? null
+                                              : () => _heartbeatCp(
+                                                    'choose',
+                                                    choice: 'B',
+                                                  ),
+                                          child: const Text('❤️ B'),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton(
+                                      onPressed: busy
+                                          ? null
+                                          : () => _heartbeatCp('close'),
+                                      child: const Text('Close Heartbeat'),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        if (disconnectIncoming)
+                          TinniPanel(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'CP disconnect request received',
+                                  style: TextStyle(
+                                    color: Colors.redAccent,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: busy
+                                            ? null
+                                            : () => _respondDisconnect(false),
+                                        child: const Text('Keep CP'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: FilledButton(
+                                        onPressed: busy
+                                            ? null
+                                            : () => _respondDisconnect(true),
+                                        child: const Text('Accept disconnect'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (disconnectOutgoing)
+                          const TinniPanel(
+                            child: Text(
+                              'Disconnect request sent. Waiting for partner response.',
+                              style: TextStyle(color: TinniPalette.muted),
+                            ),
+                          )
+                        else ...[
+                          if (disconnectState == 'refused' ||
+                              disconnectState == 'timedOut')
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Text(
+                                disconnectState == 'refused'
+                                    ? 'Last disconnect request was refused.'
+                                    : 'Last disconnect request timed out.',
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          OutlinedButton.icon(
+                            onPressed: busy ? null : _disconnect,
+                            icon: const Icon(Icons.link_off_rounded),
+                            label: const Text('Request Disconnect'),
+                          ),
+                        ],
                       ],
                     ],
                   ],
