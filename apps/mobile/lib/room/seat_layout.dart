@@ -55,15 +55,13 @@ class SeatLayoutSpec {
 
   double seatDiameter(double availableWidth) {
     if (columns <= 0) return 30;
-    if (seatCount >= 36) {
-      final denseDiameter = (availableWidth / columns) * 0.58;
-      return denseDiameter.clamp(28.0, 36.0).toDouble();
-    }
     final diameter = (availableWidth / columns) * 0.76;
     return diameter.clamp(30.0, 68.0).toDouble();
   }
 
   double preferredHeight(double seatDiameter) {
+    // Keep enough vertical room for the reference seat stack:
+    // avatar/lock + No.X/name + heart pill + optional tags/medals.
     final rowLabelSpace = seatDiameter < 48 ? 28.0 : 38.0;
     final rowHeight = seatDiameter + rowLabelSpace;
     return rowHeight * rows;
