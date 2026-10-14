@@ -6309,7 +6309,7 @@ async function handleApi(request, env, url) {
     await ensureTinniSocialSchema(db);
     const vip = await getVipStatus(db, userId, now());
     const friends = await db.prepare(
-      `SELECT u.id,u.display_name,u.avatar_key,u.vip_level,
+      `SELECT u.id,u.public_id,u.display_name,u.avatar_key,u.vip_level,
               MAX(a.created_at,b.created_at) AS created_at
          FROM user_follows a
          JOIN user_follows b
