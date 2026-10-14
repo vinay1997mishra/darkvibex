@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
@@ -12,7 +10,6 @@ import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
 import 'personal_profile_screen.dart';
 import '../widgets/vip_animated_frame.dart';
-import '../infra/privacy_screen_protection.dart';
 import '../ui/tinni_style.dart';
 
 class ProfileScreen extends StatefulWidget {
