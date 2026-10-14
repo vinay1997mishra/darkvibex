@@ -337,3 +337,28 @@ jobs:
             -f state=failure \
             -f context=darkvibex/apk \
             -f description="DarkVibeX APK build failed"
+
+
+  direct-apk-alias:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish stable direct APK alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dvx-apk"
+          gh release download darkvibex-latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "DarkVibeX-latest-*.apk" \
+            --dir "$RUNNER_TEMP/dvx-apk" \
+            --clobber
+          apk="$(find "$RUNNER_TEMP/dvx-apk" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          cp "$apk" "$RUNNER_TEMP/DarkVibeX-latest.apk"
+          gh release upload darkvibex-latest \
+            "$RUNNER_TEMP/DarkVibeX-latest.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
