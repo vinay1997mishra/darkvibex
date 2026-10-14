@@ -24,6 +24,7 @@ import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
 import 'games_screen.dart';
 import 'fruit_party_screen.dart';
+import 'greedy_girl_screen.dart';
 import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
@@ -2263,14 +2264,18 @@ class _RoomScreenState extends State<RoomScreen> {
           roomId: widget.room.id,
           roomOwnerUserId: widget.room.ownerUserId,
           onFruitParty: () => Navigator.pop(context, 'fruit-party'),
+          onGreedyGirl: () => Navigator.pop(context, 'greedy-girl'),
           onToggleMic: _toggleMic,
           micOn: () => mySeat != null && !muted,
           hasMicSeat: () => mySeat != null,
         ),
       ),
     );
-    if (mounted && selection == 'fruit-party') {
+    if (!mounted) return;
+    if (selection == 'fruit-party') {
       await showFruitParty(context, widget.state);
+    } else if (selection == 'greedy-girl') {
+      await showGreedyGirl(context, widget.state);
     }
   }
 
