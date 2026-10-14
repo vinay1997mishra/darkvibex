@@ -1048,6 +1048,19 @@ class CpScreen extends StatefulWidget {
 }
 
 class _CpScreenState extends State<CpScreen> {
+  String _cpCompact(int value) {
+    if (value >= 1000000000) {
+      return '${(value / 1000000000).toStringAsFixed(value % 1000000000 == 0 ? 0 : 1)}B';
+    }
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(value % 1000000 == 0 ? 0 : 1)}M';
+    }
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1)}K';
+    }
+    return value.toString();
+  }
+
   bool loading = true;
   bool busy = false;
   Map<String, dynamic>? cp;
@@ -1458,9 +1471,9 @@ class _CpScreenState extends State<CpScreen> {
                   Icons.card_giftcard_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: Text('CP gift intimacy'),
+                title: Text('Partner-only level progress'),
                 subtitle: Text(
-                  'Only CP-category gifts exchanged between the active CP pair increase intimacy and CP level.',
+                  'Only gifts sent directly between the two active CP partners count. Gifts from any third user do not increase CP level.',
                 ),
               ),
               ListTile(
@@ -1468,9 +1481,9 @@ class _CpScreenState extends State<CpScreen> {
                   Icons.layers_rounded,
                   color: TinniPalette.gold,
                 ),
-                title: Text('Separate progress'),
+                title: Text('Sending + receiving required'),
                 subtitle: Text(
-                  'CP, VS, Normal and Luxury gift progress remain separate.',
+                  'Both partners must complete the current level target in both directions. Lv.1→2 needs 150M sent and 150M received; Lv.2→3 needs 250M each; every next level adds 100M. After level-up both counters reset to 0.',
                 ),
               ),
               ListTile(
@@ -1506,15 +1519,16 @@ class _CpScreenState extends State<CpScreen> {
     final pendingForMe = relationState == 'pending' &&
         cp?['requested_by']?.toString() != widget.state.userId;
     final intimacy = int.tryParse(cp?['intimacy']?.toString() ?? '') ?? 0;
-    final previous = int.tryParse(
-          cp?['previous_level_threshold']?.toString() ?? '',
-        ) ??
-        0;
-    final next =
-        int.tryParse(cp?['next_level_threshold']?.toString() ?? '');
-    final progress = next == null || next <= previous
-        ? 1.0
-        : ((intimacy - previous) / (next - previous)).clamp(0.0, 1.0);
+    final levelSending =
+        int.tryParse(cp?['level_sending']?.toString() ?? '') ?? 0;
+    final levelReceiving =
+        int.tryParse(cp?['level_receiving']?.toString() ?? '') ?? 0;
+    final next = int.tryParse(cp?['next_level_target']?.toString() ?? '') ??
+        150000000;
+    final sendingProgress =
+        next <= 0 ? 0.0 : (levelSending / next).clamp(0.0, 1.0);
+    final receivingProgress =
+        next <= 0 ? 0.0 : (levelReceiving / next).clamp(0.0, 1.0);
     final partnerAvatar = _partnerAvatarKey();
 
     return Scaffold(
@@ -1703,17 +1717,70 @@ class _CpScreenState extends State<CpScreen> {
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              const SizedBox(height: 7),
-                              LinearProgressIndicator(
-                                value: progress,
-                                minHeight: 7,
-                                borderRadius: BorderRadius.circular(8),
+                              const SizedBox(height: 9),
+                              Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 66,
+                                    child: Text(
+                                      'Sending',
+                                      style: TextStyle(
+                                        color: TinniPalette.muted,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: LinearProgressIndicator(
+                                      value: sendingProgress,
+                                      minHeight: 7,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Text(
+                                    '${_cpCompact(levelSending)} / ${_cpCompact(next)}',
+                                    style: const TextStyle(
+                                      color: TinniPalette.muted,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 5),
+                              const SizedBox(height: 7),
+                              Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 66,
+                                    child: Text(
+                                      'Receiving',
+                                      style: TextStyle(
+                                        color: TinniPalette.muted,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: LinearProgressIndicator(
+                                      value: receivingProgress,
+                                      minHeight: 7,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Text(
+                                    '${_cpCompact(levelReceiving)} / ${_cpCompact(next)}',
+                                    style: const TextStyle(
+                                      color: TinniPalette.muted,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 7),
                               Text(
-                                next == null
-                                    ? 'Maximum configured CP level reached'
-                                    : '$intimacy / $next intimacy',
+                                'Both must reach ${_cpCompact(next)} • next level resets both to 0',
+                                textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   color: TinniPalette.muted,
                                   fontSize: 10,
@@ -1969,6 +2036,19 @@ class VsScreen extends StatefulWidget {
 }
 
 class _VsScreenState extends State<VsScreen> {
+  String _vsCompact(int value) {
+    if (value >= 1000000000) {
+      return '${(value / 1000000000).toStringAsFixed(value % 1000000000 == 0 ? 0 : 1)}B';
+    }
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(value % 1000000 == 0 ? 0 : 1)}M';
+    }
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1)}K';
+    }
+    return value.toString();
+  }
+
   bool loading = true;
   bool busy = false;
   Map<String, dynamic>? vs;
@@ -2206,18 +2286,79 @@ class _VsScreenState extends State<VsScreen> {
     if (mounted) await _load();
   }
 
+  Future<void> _showVsRules() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => const SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: .68,
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(14, 4, 14, 22),
+            children: [
+              Text(
+                'VS Rules',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFFFF202D),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              SizedBox(height: 14),
+              ListTile(
+                leading: Icon(Icons.people_alt_rounded, color: Color(0xFFFF202D)),
+                title: Text('Partner-only progress'),
+                subtitle: Text(
+                  'Only gifts exchanged directly between the two active VS partners count. Gifts from any other user add 0 VS level progress.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.swap_horiz_rounded, color: Color(0xFFFF202D)),
+                title: Text('Both directions required'),
+                subtitle: Text(
+                  'Every level requires both sending and receiving. Lv.1→2: 150M each. Lv.2→3: 250M each. Every following level target increases by 100M.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.restart_alt_rounded, color: Color(0xFFFF202D)),
+                title: Text('Reset each level'),
+                subtitle: Text(
+                  'When both targets are complete, VS level increases by 1 and both current-level counters reset to 0. Extra progress is not carried to the next level.',
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.leaderboard_rounded, color: Color(0xFFFF202D)),
+                title: Text('VS Ranking'),
+                subtitle: Text(
+                  'Ranking prioritizes higher VS level, then total direct partner gift value.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final relationState = vs?['state']?.toString();
     final incoming = relationState == 'pending' &&
         vs?['requested_by']?.toString() != widget.state.userId;
     final rivalry = int.tryParse(vs?['rivalry']?.toString() ?? '') ?? 0;
-    final previous =
-        int.tryParse(vs?['previous_level_threshold']?.toString() ?? '') ?? 0;
-    final next = int.tryParse(vs?['next_level_threshold']?.toString() ?? '');
-    final progress = next == null || next <= previous
-        ? 1.0
-        : ((rivalry - previous) / (next - previous)).clamp(0.0, 1.0);
+    final levelSending =
+        int.tryParse(vs?['level_sending']?.toString() ?? '') ?? 0;
+    final levelReceiving =
+        int.tryParse(vs?['level_receiving']?.toString() ?? '') ?? 0;
+    final next = int.tryParse(vs?['next_level_target']?.toString() ?? '') ??
+        150000000;
+    final sendingProgress =
+        next <= 0 ? 0.0 : (levelSending / next).clamp(0.0, 1.0);
+    final receivingProgress =
+        next <= 0 ? 0.0 : (levelReceiving / next).clamp(0.0, 1.0);
     final avatarKey = _rivalAvatarKey();
 
     return Scaffold(
@@ -2232,6 +2373,14 @@ class _VsScreenState extends State<VsScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'VS Rules',
+            onPressed: _showVsRules,
+            icon: const Icon(
+              Icons.info_outline_rounded,
+              color: Color(0xFFFF202D),
+            ),
+          ),
           IconButton(
             tooltip: 'VS Ranking',
             onPressed: () => Navigator.of(context).push(
@@ -2414,17 +2563,70 @@ class _VsScreenState extends State<VsScreen> {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 7,
-                              borderRadius: BorderRadius.circular(8),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                const SizedBox(
+                                  width: 66,
+                                  child: Text(
+                                    'Sending',
+                                    style: TextStyle(
+                                      color: Color(0xFF9A8285),
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: LinearProgressIndicator(
+                                    value: sendingProgress,
+                                    minHeight: 7,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                const SizedBox(width: 7),
+                                Text(
+                                  '${_vsCompact(levelSending)} / ${_vsCompact(next)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF9A8285),
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 5),
+                            const SizedBox(height: 7),
+                            Row(
+                              children: [
+                                const SizedBox(
+                                  width: 66,
+                                  child: Text(
+                                    'Receiving',
+                                    style: TextStyle(
+                                      color: Color(0xFF9A8285),
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: LinearProgressIndicator(
+                                    value: receivingProgress,
+                                    minHeight: 7,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                const SizedBox(width: 7),
+                                Text(
+                                  '${_vsCompact(levelReceiving)} / ${_vsCompact(next)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF9A8285),
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 7),
                             Text(
-                              next == null
-                                  ? 'Maximum configured VS level reached'
-                                  : '$rivalry / $next rivalry',
+                              'Both must reach ${_vsCompact(next)} • next level resets both to 0',
+                              textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Color(0xFF9A8285),
                                 fontSize: 10,
@@ -2485,7 +2687,7 @@ class _VsScreenState extends State<VsScreen> {
                             ),
                             const SizedBox(height: 5),
                             const Text(
-                              'Only VS-category gifts exchanged with your connected VS raise the rivalry level.',
+                              'Any gift sent directly between you and your connected VS counts toward that level. Third-party gifts never count.',
                               style: TextStyle(
                                 color: TinniPalette.muted,
                                 fontSize: 11,
