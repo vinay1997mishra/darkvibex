@@ -1864,7 +1864,7 @@ let cachedFcmAccessToken = "";
 let cachedFcmAccessTokenUntil = 0;
 let cachedFcmProjectId = "";
 
-function base64UrlBytes(bytes) {
+function fcmBase64UrlBytes(bytes) {
   let binary = "";
   for (const value of bytes) binary += String.fromCharCode(value);
   return btoa(binary)
@@ -1873,8 +1873,8 @@ function base64UrlBytes(bytes) {
     .replace(/\//g, "_");
 }
 
-function base64UrlText(value) {
-  return base64UrlBytes(new TextEncoder().encode(value));
+function fcmBase64UrlText(value) {
+  return fcmBase64UrlBytes(new TextEncoder().encode(value));
 }
 
 function pemPkcs8Bytes(pem) {
@@ -1909,11 +1909,11 @@ async function fcmAccess(env) {
     };
   }
 
-  const header = base64UrlText(JSON.stringify({
+  const header = fcmBase64UrlText(JSON.stringify({
     alg: "RS256",
     typ: "JWT",
   }));
-  const claim = base64UrlText(JSON.stringify({
+  const claim = fcmBase64UrlText(JSON.stringify({
     iss: clientEmail,
     scope: "https://www.googleapis.com/auth/firebase.messaging",
     aud: "https://oauth2.googleapis.com/token",
@@ -1938,7 +1938,7 @@ async function fcmAccess(env) {
       new TextEncoder().encode(unsigned),
     ),
   );
-  const assertion = `${unsigned}.${base64UrlBytes(signature)}`;
+  const assertion = `${unsigned}.${fcmBase64UrlBytes(signature)}`;
   const tokenResponse = await fetch(
     "https://oauth2.googleapis.com/token",
     {
