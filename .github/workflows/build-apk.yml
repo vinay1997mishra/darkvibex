@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: darkvibex-build-${{ github.ref }}
@@ -65,6 +66,16 @@ jobs:
       DVX_PUSH_CONFIGURED: "false"
     steps:
       - uses: actions/checkout@v4
+      - name: Mark APK build pending
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context=darkvibex/apk \
+            -f description="DarkVibeX APK build is running"
       - name: Free unused Android runner storage
         run: |
           sudo apt-get clean
@@ -303,3 +314,26 @@ jobs:
           fi
           cp "$apk" "$RUNNER_TEMP/$asset_name"
           gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name" --clobber
+
+      - name: Mark APK build success
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context=darkvibex/apk \
+            -f description="DarkVibeX APK published" \
+            -f target_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/darkvibex-latest"
+
+      - name: Mark APK build failure
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=failure \
+            -f context=darkvibex/apk \
+            -f description="DarkVibeX APK build failed"
