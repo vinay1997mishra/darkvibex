@@ -37,6 +37,11 @@ void main() {
     expect(source, contains('speakingLevelsListenable'));
     expect(source, contains('_LiveMicWaves'));
     expect(source, contains('_LiveMicWavePainter'));
+    expect(source, contains('required this.diameter'));
+    expect(source, contains('final baseRadius = avatarDiameter / 2'));
+    expect(source, contains('canvas.drawCircle(center, radius, wavePaint)'));
+    expect(source, contains('left: -(compactSeats ? 9 : 12)'));
+    expect(source, contains('top: -(compactSeats ? 9 : 12)'));
   });
 
   test('LiveKit speaking levels are sampled from active speakers', () {
