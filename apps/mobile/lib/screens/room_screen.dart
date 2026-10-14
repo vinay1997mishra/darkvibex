@@ -1373,33 +1373,449 @@ class _RoomScreenState extends State<RoomScreen> {
     super.dispose();
   }
 
-  Future<void> _tapSeat(int seat) async {
-    final occupied = membersBySeat[seat];
-    final occupiedUserId = occupied?['user_id']?.toString() ?? '';
-    if (occupied != null &&
-        occupiedUserId.isNotEmpty &&
-        occupiedUserId != widget.state.userId) {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => PublicProfileScreen(
-            state: widget.state,
-            userId: occupiedUserId,
+  bool _seatMemberIsAdmin(Map<String, dynamic>? member) {
+    if (member == null) return false;
+    return member['is_admin'] == true || member['is_admin']?.toString() == '1';
+  }
+
+  bool _canModerateSeatMember(Map<String, dynamic>? member) {
+    if (!isRoomAdmin || member == null) return false;
+    final userId = member['user_id']?.toString() ?? '';
+    if (userId.isEmpty || userId == widget.state.userId) return false;
+    if (isRoomHost) return true;
+    if (userId == widget.room.ownerUserId) return false;
+    return !_seatMemberIsAdmin(member);
+  }
+
+  Future<bool> _leaveMySeat() async {
+    final currentSeat = mySeat;
+    if (currentSeat == null) return true;
+
+    if (widget.state.backendConnected) {
+      final ok = await widget.state.backend.setSeat(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        seatIndex: null,
+        micMuted: true,
+      );
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not leave this seat')),
+          );
+        }
+        return false;
+      }
+    }
+
+    await roomMusic.stopForSeatDown(widget.state.userId);
+    if (!muted) {
+      await rtc?.setMicPublished(false);
+    }
+    if (cameraPublished && rtc is LiveKitRtcAdapter) {
+      await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+    }
+    if (!mounted) return true;
+    setState(() {
+      mySeat = null;
+      muted = true;
+      cameraPublished = false;
+      localVideoTrack = null;
+    });
+    unawaited(_loadRoomMembers());
+    unawaited(_loadRoomControls());
+    return true;
+  }
+
+  Future<void> _showMySeatLeavePanel() async {
+    if (mySeat == null || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: TinniPalette.nearBlack,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: TinniPalette.gold),
+        ),
+        child: InkWell(
+          key: const Key('room-self-seat-leave'),
+          borderRadius: BorderRadius.circular(18),
+          onTap: () async {
+            Navigator.pop(dialogContext);
+            await _leaveMySeat();
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 34, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TinniGlowIcon(
+                  icon: Icons.keyboard_double_arrow_down_rounded,
+                  size: 28,
+                  boxSize: 46,
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Leave Seat',
+                  style: TextStyle(
+                    color: TinniPalette.cream,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _seatProfileAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: 82,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TinniGlowIcon(icon: icon, size: 20, boxSize: 38),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: TinniPalette.cream,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendGiftToSeatUser(String receiverId) async {
+    if (!widget.state.backendConnected || receiverId.isEmpty) return;
+    final gifts =
+        await widget.state.backend.giftCatalog(userId: widget.state.userId);
+    if (!mounted || gifts.isEmpty) return;
+    final gift = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: TinniPalette.nearBlack,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                'Choose a gift',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+            ),
+            ...gifts.map(
+              (item) => ListTile(
+                leading: Text(
+                  item['emoji']?.toString() ?? '🎁',
+                  style: const TextStyle(fontSize: 30),
+                ),
+                title: Text(item['name']?.toString() ?? 'Gift'),
+                subtitle: Text('${item['coin_cost'] ?? 0} coins'),
+                onTap: () => Navigator.pop(sheetContext, item),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || gift == null) return;
+    await _sendGiftByDefinition(gift, receiverId);
+  }
+
+  Future<void> _showSeatMemberProfile(
+    Map<String, dynamic> member,
+    int seat,
+  ) async {
+    final userId = member['user_id']?.toString() ?? '';
+    if (userId.isEmpty) return;
+    if (userId == widget.state.userId) {
+      await _showMySeatLeavePanel();
       return;
     }
 
-    final leaving = mySeat == seat;
-    if (!leaving && lockedSeats.contains(seat)) {
+    final targetIsOwner = userId == widget.room.ownerUserId;
+    final targetIsAdmin = _seatMemberIsAdmin(member);
+    final canModerate = _canModerateSeatMember(member);
+    final avatar = member['avatar_key']?.toString();
+    final rawName = member['display_name']?.toString().trim();
+    final name = rawName == null || rawName.isEmpty ? 'User $userId' : rawName;
+    final roomMuted = roomMutedSeats.contains(seat);
+    final chatIsBanned =
+        member['chat_banned'] == true || member['chat_banned']?.toString() == '1';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      useSafeArea: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refresh) => Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            key: Key('room-seat-profile-card-$userId'),
+            width: double.infinity,
+            height: MediaQuery.sizeOf(sheetContext).height * .43,
+            decoration: const BoxDecoration(
+              color: TinniPalette.nearBlack,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border(top: BorderSide(color: TinniPalette.bronze)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      key: Key('room-seat-profile-dp-$userId'),
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => PublicProfileScreen(
+                              state: widget.state,
+                              userId: userId,
+                            ),
+                          ),
+                        );
+                      },
+                      child: CircleAvatar(
+                        radius: 32,
+                        backgroundColor: TinniPalette.panel2,
+                        backgroundImage: avatar != null && avatar.isNotEmpty
+                            ? NetworkImage(
+                                widget.state.backend.fileUrl(avatar),
+                                headers: widget.state.backend.fileHeaders,
+                              )
+                            : null,
+                        child: avatar == null || avatar.isEmpty
+                            ? Text(
+                                name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
+                                style: const TextStyle(
+                                  color: TinniPalette.gold,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$name${targetIsOwner ? ' • Owner' : (targetIsAdmin ? ' • Admin' : '')}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: TinniPalette.cream,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      'ID $userId • Seat ${seat + 1}',
+                      style: const TextStyle(
+                        color: TinniPalette.muted,
+                        fontSize: 10,
+                      ),
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      height: 70,
+                      child: ListView(
+                        key: Key('room-seat-profile-actions-$userId'),
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          _seatProfileAction(
+                            icon: Icons.person_rounded,
+                            label: 'Profile',
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => PublicProfileScreen(
+                                    state: widget.state,
+                                    userId: userId,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          _seatProfileAction(
+                            icon: Icons.card_giftcard_rounded,
+                            label: 'Gifting',
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              unawaited(_sendGiftToSeatUser(userId));
+                            },
+                          ),
+                          if (isRoomHost && !targetIsOwner)
+                            _seatProfileAction(
+                              icon: targetIsAdmin
+                                  ? Icons.remove_moderator_rounded
+                                  : Icons.admin_panel_settings_rounded,
+                              label: targetIsAdmin ? 'Remove Admin' : 'Set Admin',
+                              onTap: () async {
+                                await _setRoomAdmin(
+                                  userId,
+                                  admin: !targetIsAdmin,
+                                );
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                              },
+                            ),
+                          if (canModerate)
+                            _seatProfileAction(
+                              icon: roomMuted
+                                  ? Icons.mic_rounded
+                                  : Icons.mic_off_rounded,
+                              label: roomMuted ? 'Unmute' : 'Mute',
+                              onTap: () async {
+                                final result =
+                                    await widget.state.backend.setRoomControl(
+                                  roomId: widget.room.id,
+                                  userId: widget.state.userId,
+                                  action: 'seat_mute',
+                                  seatIndex: seat,
+                                  muted: !roomMuted,
+                                );
+                                if (result?['ok'] == true) {
+                                  await _loadRoomMembers();
+                                  await _loadRoomControls();
+                                }
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                              },
+                            ),
+                          if (canModerate)
+                            _seatProfileAction(
+                              icon: Icons.airline_seat_recline_normal_rounded,
+                              label: 'Seat down',
+                              onTap: () async {
+                                Navigator.pop(sheetContext);
+                                final result =
+                                    await widget.state.backend.setRoomControl(
+                                  roomId: widget.room.id,
+                                  userId: widget.state.userId,
+                                  action: 'seat_down',
+                                  seatIndex: seat,
+                                );
+                                if (result?['ok'] == true) {
+                                  await _loadRoomMembers();
+                                  await _loadRoomControls();
+                                }
+                              },
+                            ),
+                          if (canModerate)
+                            _seatProfileAction(
+                              icon: chatIsBanned
+                                  ? Icons.chat_rounded
+                                  : Icons.comments_disabled_rounded,
+                              label: chatIsBanned ? 'Chat Unban' : 'Chat Ban',
+                              onTap: () async {
+                                await _setChatBan(userId, !chatIsBanned);
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                              },
+                            ),
+                          if (canModerate)
+                            _seatProfileAction(
+                              icon: Icons.logout_rounded,
+                              label: 'Kick',
+                              onTap: () async {
+                                Navigator.pop(sheetContext);
+                                await _removeRoomMember(userId);
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _takeSeatDirect(int seat) async {
+    if (widget.state.backendConnected) {
+      final ok = await widget.state.backend.setSeat(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        seatIndex: seat,
+        micMuted: true,
+      );
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Seat is not available')),
+          );
+        }
+        return false;
+      }
+    }
+    if (!mounted) return true;
+    setState(() {
+      mySeat = seat;
+      muted = true;
+    });
+    unawaited(_loadRoomMembers());
+    unawaited(_loadRoomControls());
+    return true;
+  }
+
+  Future<void> _handleUserSeatTap(int seat) async {
+    if (lockedSeats.contains(seat)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Seat ${seat + 1} is locked')),
       );
       return;
     }
+    if (membersBySeat.containsKey(seat)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Seat ${seat + 1} is occupied')),
+      );
+      return;
+    }
+    if (mySeat != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Leave your current seat first')),
+      );
+      return;
+    }
 
-    if (!leaving &&
-        roomMicMode == 'apply' &&
+    if (roomMicMode == 'apply' &&
         !isRoomAdmin &&
         widget.state.backendConnected) {
       final result = await widget.state.backend.requestRoomSeat(
@@ -1408,11 +1824,10 @@ class _RoomScreenState extends State<RoomScreen> {
         seatIndex: seat,
       );
       if (!mounted) return;
-      final ok = result?['ok'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            ok
+            result?['ok'] == true
                 ? 'Mic request sent for Seat ${seat + 1}'
                 : 'Mic request could not be sent',
           ),
@@ -1421,43 +1836,33 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
 
-    if (widget.state.backendConnected) {
-      final ok = await widget.state.backend.setSeat(
-        roomId: widget.room.id,
-        userId: widget.state.userId,
-        seatIndex: leaving ? null : seat,
-        micMuted: true,
-      );
-      if (!ok) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Seat is not available')),
-        );
-        return;
-      }
+    await _takeSeatDirect(seat);
+  }
+
+  Future<void> _tapSeat(int seat) async {
+    final occupied = membersBySeat[seat];
+
+    if (mySeat == seat) {
+      await _showMySeatLeavePanel();
+      return;
     }
 
-    if (leaving) await roomMusic.stopForSeatDown(widget.state.userId);
-    if (leaving && !muted) {
-      await rtc?.setMicPublished(false);
+    if (isRoomAdmin && occupied == null) {
+      await _showSeatControls(seat);
+      return;
     }
-    if (leaving && cameraPublished && rtc is LiveKitRtcAdapter) {
-      await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+
+    if (occupied != null) {
+      await _showSeatMemberProfile(occupied, seat);
+      return;
     }
-    if (!mounted) return;
-    setState(() {
-      if (leaving) {
-        mySeat = null;
-        muted = true;
-        cameraPublished = false;
-        localVideoTrack = null;
-      } else {
-        mySeat = seat;
-        muted = true;
-      }
-    });
-    unawaited(_loadRoomMembers());
-    unawaited(_loadRoomControls());
+
+    if (isRoomAdmin) {
+      await _showSeatControls(seat);
+      return;
+    }
+
+    await _handleUserSeatTap(seat);
   }
 
   Future<void> _toggleMic() async {
@@ -2853,17 +3258,39 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _showSeatControls(int seat) async {
-    if (!isRoomAdmin) return;
+    if (!isRoomAdmin || seat < 0 || seat >= roomSeatCount) return;
     final member = membersBySeat[seat];
     final locked = lockedSeats.contains(seat);
     final roomMuted = roomMutedSeats.contains(seat);
+    final memberId = member?['user_id']?.toString() ?? '';
+    final memberIsOwner =
+        memberId.isNotEmpty && memberId == widget.room.ownerUserId;
+    final memberIsAdmin = _seatMemberIsAdmin(member);
+
+    if (member != null &&
+        !isRoomHost &&
+        (memberIsOwner || memberIsAdmin)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            memberIsOwner
+                ? 'Admin cannot mute, lock or seat down the room owner.'
+                : 'Admin cannot control another admin seat.',
+          ),
+        ),
+      );
+      return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        key: const Key('reference-seat-control-panel'),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
           children: [
             ListTile(
               leading: const TinniGlowIcon(icon: Icons.event_seat_rounded),
@@ -2874,7 +3301,70 @@ class _RoomScreenState extends State<RoomScreen> {
                     : (member['display_name']?.toString() ?? 'Occupied'),
               ),
             ),
-            if (member == null && !locked)
+            ListTile(
+              key: const Key('seat-control-lock'),
+              leading: Icon(
+                locked ? Icons.lock_open_rounded : Icons.lock_rounded,
+              ),
+              title: Text(locked ? 'Seat Unlock' : 'Seat Lock'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final result = await widget.state.backend.setRoomControl(
+                  roomId: widget.room.id,
+                  userId: widget.state.userId,
+                  action: 'seat_lock',
+                  seatIndex: seat,
+                  locked: !locked,
+                );
+                if (result?['ok'] == true) {
+                  await _loadRoomControls();
+                } else if (mounted) {
+                  final error = result?['error']?.toString() ?? '';
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        error.isEmpty
+                            ? 'Seat lock could not be changed'
+                            : error.replaceAll('_', ' '),
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            ListTile(
+              key: const Key('seat-control-mute'),
+              leading: Icon(
+                roomMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+              ),
+              title: Text(roomMuted ? 'Seat Unmute' : 'Seat Mute'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final result = await widget.state.backend.setRoomControl(
+                  roomId: widget.room.id,
+                  userId: widget.state.userId,
+                  action: 'seat_mute',
+                  seatIndex: seat,
+                  muted: !roomMuted,
+                );
+                if (result?['ok'] == true) {
+                  await _loadRoomMembers();
+                  await _loadRoomControls();
+                } else if (mounted) {
+                  final error = result?['error']?.toString() ?? '';
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        error.isEmpty
+                            ? 'Seat mute could not be changed'
+                            : error.replaceAll('_', ' '),
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            if (member == null)
               ListTile(
                 key: Key('room-seat-invite-$seat'),
                 leading: const Icon(
@@ -2887,64 +3377,48 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
                 onTap: () {
                   Navigator.pop(sheetContext);
-                  Future<void>.delayed(
-                    const Duration(milliseconds: 180),
-                    () {
-                      if (mounted) {
-                        unawaited(_inviteOffSeatMemberToSeat(seat));
-                      }
-                    },
-                  );
+                  Future<void>.delayed(Duration.zero, () {
+                    if (mounted) {
+                      unawaited(_inviteOffSeatMemberToSeat(seat));
+                    }
+                  });
                 },
               ),
-            ListTile(
-              leading: Icon(
-                locked ? Icons.lock_open_rounded : Icons.lock_rounded,
-              ),
-              title: Text(locked ? 'Seat Unlock' : 'Seat Lock'),
-              onTap: () async {
-                final result = await widget.state.backend.setRoomControl(
-                  roomId: widget.room.id,
-                  userId: widget.state.userId,
-                  action: 'seat_lock',
-                  seatIndex: seat,
-                  locked: !locked,
-                );
-                if (result?['ok'] == true) await _loadRoomControls();
-                if (sheetContext.mounted) Navigator.pop(sheetContext);
-              },
-            ),
-            if (member != null)
+            if (member == null)
               ListTile(
-                leading: Icon(
-                  roomMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                key: const Key('seat-control-take'),
+                leading: const Icon(
+                  Icons.event_seat_rounded,
+                  color: TinniPalette.gold,
                 ),
-                title: Text(roomMuted ? 'Seat Unmute' : 'Seat Mute'),
+                title: const Text('Take Seat'),
+                subtitle: const Text(
+                  'Owner/Admin can take this empty seat directly.',
+                ),
                 onTap: () async {
-                  final result = await widget.state.backend.setRoomControl(
-                    roomId: widget.room.id,
-                    userId: widget.state.userId,
-                    action: 'seat_mute',
-                    seatIndex: seat,
-                    muted: !roomMuted,
-                  );
-                  if (result?['ok'] == true) {
-                    await _loadRoomMembers();
-                    await _loadRoomControls();
+                  Navigator.pop(sheetContext);
+                  if (mySeat != null && mySeat != seat) {
+                    final left = await _leaveMySeat();
+                    if (!left) return;
                   }
-                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  await _takeSeatDirect(seat);
                 },
               ),
             if (member != null &&
-                member['user_id']?.toString() != widget.room.ownerUserId)
+                memberId != widget.state.userId &&
+                (isRoomHost || _canModerateSeatMember(member)))
               ListTile(
+                key: const Key('seat-control-down'),
                 leading: const Icon(
                   Icons.airline_seat_recline_normal_rounded,
                   color: Colors.orangeAccent,
                 ),
                 title: const Text('Seat Down'),
-                subtitle: const Text('Move this user to audience and mute mic.'),
+                subtitle: Text(
+                  '${member['display_name']?.toString() ?? 'User'} ko audience me bheje',
+                ),
                 onTap: () async {
+                  Navigator.pop(sheetContext);
                   final result = await widget.state.backend.setRoomControl(
                     roomId: widget.room.id,
                     userId: widget.state.userId,
@@ -2955,7 +3429,19 @@ class _RoomScreenState extends State<RoomScreen> {
                     await _loadRoomMembers();
                     await _loadRoomControls();
                   }
-                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                },
+              ),
+            if (mySeat == seat)
+              ListTile(
+                key: const Key('seat-control-leave'),
+                leading: const Icon(
+                  Icons.logout_rounded,
+                  color: Colors.orangeAccent,
+                ),
+                title: const Text('Leave this seat'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await _leaveMySeat();
                 },
               ),
           ],
@@ -5109,9 +5595,19 @@ class _RoomScreenState extends State<RoomScreen> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
                       onTap: () => unawaited(_tapSeat(seat)),
-                      onLongPress: isRoomAdmin
-                          ? () => unawaited(_showSeatControls(seat))
-                          : null,
+                      onLongPress: () {
+                        if (isRoomAdmin) {
+                          unawaited(_showSeatControls(seat));
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Only the room owner or room admin can control seats.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
