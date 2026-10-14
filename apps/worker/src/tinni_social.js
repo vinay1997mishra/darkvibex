@@ -101,6 +101,14 @@ export async function ensureTinniSocialSchema(db) {
       cycle_b_to_a INTEGER NOT NULL DEFAULT 0,
       requested_by TEXT,
       ring_id TEXT,
+      activated_at INTEGER,
+      disconnect_state TEXT NOT NULL DEFAULT 'none',
+      disconnect_requested_by TEXT,
+      disconnect_requested_at INTEGER,
+      heartbeat_state TEXT NOT NULL DEFAULT 'idle',
+      heartbeat_choice_a TEXT,
+      heartbeat_choice_b TEXT,
+      heartbeat_updated_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
@@ -128,6 +136,14 @@ export async function ensureTinniSocialSchema(db) {
       cycle_a_to_b INTEGER NOT NULL DEFAULT 0,
       cycle_b_to_a INTEGER NOT NULL DEFAULT 0,
       requested_by TEXT,
+      activated_at INTEGER,
+      disconnect_state TEXT NOT NULL DEFAULT 'none',
+      disconnect_requested_by TEXT,
+      disconnect_requested_at INTEGER,
+      heartbeat_state TEXT NOT NULL DEFAULT 'idle',
+      heartbeat_choice_a TEXT,
+      heartbeat_choice_b TEXT,
+      heartbeat_updated_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (user_a, user_b)
@@ -171,6 +187,26 @@ export async function ensureTinniSocialSchema(db) {
   try {
     await db.prepare("ALTER TABLE vs_relationships ADD COLUMN cycle_b_to_a INTEGER NOT NULL DEFAULT 0").run();
   } catch (_) {}
+  for (const sql of [
+    "ALTER TABLE cp_relationships ADD COLUMN activated_at INTEGER",
+    "ALTER TABLE cp_relationships ADD COLUMN disconnect_state TEXT NOT NULL DEFAULT 'none'",
+    "ALTER TABLE cp_relationships ADD COLUMN disconnect_requested_by TEXT",
+    "ALTER TABLE cp_relationships ADD COLUMN disconnect_requested_at INTEGER",
+    "ALTER TABLE cp_relationships ADD COLUMN heartbeat_state TEXT NOT NULL DEFAULT 'idle'",
+    "ALTER TABLE cp_relationships ADD COLUMN heartbeat_choice_a TEXT",
+    "ALTER TABLE cp_relationships ADD COLUMN heartbeat_choice_b TEXT",
+    "ALTER TABLE cp_relationships ADD COLUMN heartbeat_updated_at INTEGER",
+    "ALTER TABLE vs_relationships ADD COLUMN activated_at INTEGER",
+    "ALTER TABLE vs_relationships ADD COLUMN disconnect_state TEXT NOT NULL DEFAULT 'none'",
+    "ALTER TABLE vs_relationships ADD COLUMN disconnect_requested_by TEXT",
+    "ALTER TABLE vs_relationships ADD COLUMN disconnect_requested_at INTEGER",
+    "ALTER TABLE vs_relationships ADD COLUMN heartbeat_state TEXT NOT NULL DEFAULT 'idle'",
+    "ALTER TABLE vs_relationships ADD COLUMN heartbeat_choice_a TEXT",
+    "ALTER TABLE vs_relationships ADD COLUMN heartbeat_choice_b TEXT",
+    "ALTER TABLE vs_relationships ADD COLUMN heartbeat_updated_at INTEGER"
+  ]) {
+    try { await db.prepare(sql).run(); } catch (_) {}
+  }
   await db.prepare(
     "INSERT OR IGNORE INTO official_notices(id,title,body,created_at) VALUES(?,?,?,?)"
   ).bind(
@@ -764,6 +800,156 @@ function relationCanLevelUp(level, aToB, bToA) {
   return aToB >= target && bToA >= target;
 }
 
+const RELATION_DISCONNECT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+function relationDays(row) {
+  if (String(row?.state ?? "") !== "active") return 0;
+  const start = Math.max(0, Number(row?.activated_at ?? row?.created_at ?? 0));
+  if (start <= 0) return 0;
+  return Math.max(1, Math.floor((ts() - start) / (24 * 60 * 60 * 1000)) + 1);
+}
+
+async function normalizeDisconnectTimeout(db, kind, row) {
+  if (!row || String(row.disconnect_state ?? "none") !== "requested") return row;
+  const requestedAt = Math.max(0, Number(row.disconnect_requested_at ?? 0));
+  if (requestedAt <= 0 || ts() - requestedAt < RELATION_DISCONNECT_TIMEOUT_MS) return row;
+  const table = kind === "cp" ? "cp_relationships" : "vs_relationships";
+  await db.prepare(
+    `UPDATE ${table}
+        SET disconnect_state='timedOut',updated_at=?
+      WHERE user_a=? AND user_b=? AND disconnect_state='requested'`
+  ).bind(ts(),row.user_a,row.user_b).run();
+  return { ...row, disconnect_state:"timedOut" };
+}
+
+async function relationDisconnectRequest(db, kind, userId) {
+  const state = kind === "cp" ? await cpState(db,userId) : await vsState(db,userId);
+  if (!state || state.state !== "active") throw new Error(kind + "_not_active");
+  if (state.disconnect_state === "requested") {
+    if (String(state.disconnect_requested_by ?? "") === String(userId)) return state;
+    throw new Error(kind + "_disconnect_waiting_for_response");
+  }
+  const table = kind === "cp" ? "cp_relationships" : "vs_relationships";
+  const updatedAt = ts();
+  await db.prepare(
+    `UPDATE ${table}
+        SET disconnect_state='requested',
+            disconnect_requested_by=?,
+            disconnect_requested_at=?,
+            updated_at=?
+      WHERE user_a=? AND user_b=? AND state='active'`
+  ).bind(userId,updatedAt,updatedAt,state.user_a,state.user_b).run();
+  return kind === "cp" ? cpState(db,userId) : vsState(db,userId);
+}
+
+async function relationDisconnectRespond(db, kind, userId, accept) {
+  const state = kind === "cp" ? await cpState(db,userId) : await vsState(db,userId);
+  if (!state || state.state !== "active") throw new Error(kind + "_not_active");
+  if (state.disconnect_state !== "requested") {
+    throw new Error(kind + "_disconnect_request_not_found");
+  }
+  if (String(state.disconnect_requested_by ?? "") === String(userId)) {
+    throw new Error(kind + "_disconnect_waiting_for_partner");
+  }
+  const table = kind === "cp" ? "cp_relationships" : "vs_relationships";
+  if (accept) {
+    await db.prepare(
+      `DELETE FROM ${table} WHERE user_a=? AND user_b=?`
+    ).bind(state.user_a,state.user_b).run();
+    return null;
+  }
+  await db.prepare(
+    `UPDATE ${table}
+        SET disconnect_state='refused',updated_at=?
+      WHERE user_a=? AND user_b=?`
+  ).bind(ts(),state.user_a,state.user_b).run();
+  return kind === "cp" ? cpState(db,userId) : vsState(db,userId);
+}
+
+async function relationHeartbeat(db, kind, userId, actionValue, choiceValue) {
+  const state = kind === "cp" ? await cpState(db,userId) : await vsState(db,userId);
+  if (!state || state.state !== "active") throw new Error(kind + "_not_active");
+  const table = kind === "cp" ? "cp_relationships" : "vs_relationships";
+  const action = String(actionValue ?? "state").trim().toLowerCase();
+  const viewerIsA = String(state.user_a) === String(userId);
+  const updatedAt = ts();
+
+  if (action === "start") {
+    await db.prepare(
+      `UPDATE ${table}
+          SET heartbeat_state='selecting',
+              heartbeat_choice_a=NULL,
+              heartbeat_choice_b=NULL,
+              heartbeat_updated_at=?,
+              updated_at=?
+        WHERE user_a=? AND user_b=?`
+    ).bind(updatedAt,updatedAt,state.user_a,state.user_b).run();
+  } else if (action === "choose") {
+    const choice = clean(choiceValue,20).toUpperCase();
+    if (choice !== "A" && choice !== "B") throw new Error("invalid_heartbeat_choice");
+    const column = viewerIsA ? "heartbeat_choice_a" : "heartbeat_choice_b";
+    await db.prepare(
+      `UPDATE ${table}
+          SET heartbeat_state='selecting',
+              ${column}=?,
+              heartbeat_updated_at=?,
+              updated_at=?
+        WHERE user_a=? AND user_b=? AND state='active'`
+    ).bind(choice,updatedAt,updatedAt,state.user_a,state.user_b).run();
+    const current = await db.prepare(
+      `SELECT heartbeat_choice_a,heartbeat_choice_b
+         FROM ${table} WHERE user_a=? AND user_b=? LIMIT 1`
+    ).bind(state.user_a,state.user_b).first();
+    const a = String(current?.heartbeat_choice_a ?? "");
+    const b = String(current?.heartbeat_choice_b ?? "");
+    if (a && b) {
+      await db.prepare(
+        `UPDATE ${table}
+            SET heartbeat_state=?,heartbeat_updated_at=?,updated_at=?
+          WHERE user_a=? AND user_b=?`
+      ).bind(a === b ? "matched" : "failed",updatedAt,updatedAt,state.user_a,state.user_b).run();
+    }
+  } else if (action === "close") {
+    await db.prepare(
+      `UPDATE ${table}
+          SET heartbeat_state='idle',
+              heartbeat_choice_a=NULL,
+              heartbeat_choice_b=NULL,
+              heartbeat_updated_at=?,
+              updated_at=?
+        WHERE user_a=? AND user_b=?`
+    ).bind(updatedAt,updatedAt,state.user_a,state.user_b).run();
+  } else if (action !== "state") {
+    throw new Error("invalid_heartbeat_action");
+  }
+
+  return kind === "cp" ? cpState(db,userId) : vsState(db,userId);
+}
+
+export async function cpDisconnectRequest(db,userId) {
+  return relationDisconnectRequest(db,"cp",userId);
+}
+
+export async function cpDisconnectRespond(db,userId,accept) {
+  return relationDisconnectRespond(db,"cp",userId,accept);
+}
+
+export async function cpHeartbeat(db,userId,action,choice) {
+  return relationHeartbeat(db,"cp",userId,action,choice);
+}
+
+export async function vsDisconnectRequest(db,userId) {
+  return relationDisconnectRequest(db,"vs",userId);
+}
+
+export async function vsDisconnectRespond(db,userId,accept) {
+  return relationDisconnectRespond(db,"vs",userId,accept);
+}
+
+export async function vsHeartbeat(db,userId,action,choice) {
+  return relationHeartbeat(db,"vs",userId,action,choice);
+}
+
 async function cpBlockingFlow(db, userId) {
   if (!userId) return false;
   const row = await db.prepare(
@@ -774,7 +960,7 @@ async function cpBlockingFlow(db, userId) {
 
 export async function cpState(db, userId) {
   await ensureTinniSocialSchema(db);
-  const row = await db.prepare(
+  let row = await db.prepare(
     `SELECT c.*,ua.display_name AS user_a_name,ua.avatar_key AS user_a_avatar_key,
             ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key
        FROM cp_relationships c
@@ -787,6 +973,7 @@ export async function cpState(db, userId) {
       LIMIT 1`
   ).bind(userId,userId).first();
   if (!row) return null;
+  row = await normalizeDisconnectTimeout(db,"cp",row);
   const intimacy = Math.max(0, Number(row.intimacy ?? 0));
   const level = Math.max(1, Math.floor(Number(row.level ?? 1)));
   const target = relationLevelTarget(level);
@@ -804,6 +991,15 @@ export async function cpState(db, userId) {
     next_level_receiving_required: target,
     level_sending_remaining: Math.max(0, target - cycle.sending),
     level_receiving_remaining: Math.max(0, target - cycle.receiving),
+    love_days: relationDays(row),
+    heartbeat_choice:
+      String(row.user_a) === String(userId)
+        ? row.heartbeat_choice_a
+        : row.heartbeat_choice_b,
+    partner_heartbeat_choice:
+      String(row.user_a) === String(userId)
+        ? row.heartbeat_choice_b
+        : row.heartbeat_choice_a,
     previous_level_threshold: 0,
     next_level_threshold: target,
   };
@@ -873,8 +1069,8 @@ export async function cpRespond(db, userId, accept) {
   if (row.requested_by === userId) throw new Error("cp_request_waiting_for_partner");
   if (accept) {
     await db.prepare(
-      "UPDATE cp_relationships SET state='active',updated_at=? WHERE user_a=? AND user_b=?"
-    ).bind(ts(),row.user_a,row.user_b).run();
+      "UPDATE cp_relationships SET state='active',activated_at=?,disconnect_state='none',disconnect_requested_by=NULL,disconnect_requested_at=NULL,heartbeat_state='idle',heartbeat_choice_a=NULL,heartbeat_choice_b=NULL,updated_at=? WHERE user_a=? AND user_b=?"
+    ).bind(ts(),ts(),row.user_a,row.user_b).run();
   } else {
     await db.prepare(
       "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
@@ -1052,7 +1248,7 @@ async function mutualFriends(db, userId, targetId) {
 
 export async function vsState(db, userId) {
   await ensureTinniSocialSchema(db);
-  const row = await db.prepare(
+  let row = await db.prepare(
     `SELECT v.*,ua.display_name AS user_a_name,ua.avatar_key AS user_a_avatar_key,
             ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key
        FROM vs_relationships v
@@ -1065,6 +1261,7 @@ export async function vsState(db, userId) {
       LIMIT 1`
   ).bind(userId,userId).first();
   if (!row) return null;
+  row = await normalizeDisconnectTimeout(db,"vs",row);
   const rivalry = Math.max(0, Number(row.rivalry ?? 0));
   const level = Math.max(1, Math.floor(Number(row.level ?? 1)));
   const target = relationLevelTarget(level);
@@ -1082,6 +1279,15 @@ export async function vsState(db, userId) {
     next_level_receiving_required: target,
     level_sending_remaining: Math.max(0, target - cycle.sending),
     level_receiving_remaining: Math.max(0, target - cycle.receiving),
+    vs_days: relationDays(row),
+    heartbeat_choice:
+      String(row.user_a) === String(userId)
+        ? row.heartbeat_choice_a
+        : row.heartbeat_choice_b,
+    partner_heartbeat_choice:
+      String(row.user_a) === String(userId)
+        ? row.heartbeat_choice_b
+        : row.heartbeat_choice_a,
     previous_level_threshold: 0,
     next_level_threshold: target,
   };
@@ -1121,8 +1327,8 @@ export async function vsRespond(db, userId, accept) {
   if (row.requested_by === userId) throw new Error("vs_request_waiting_for_rival");
   if (accept) {
     await db.prepare(
-      "UPDATE vs_relationships SET state='active',updated_at=? WHERE user_a=? AND user_b=?"
-    ).bind(ts(),row.user_a,row.user_b).run();
+      "UPDATE vs_relationships SET state='active',activated_at=?,disconnect_state='none',disconnect_requested_by=NULL,disconnect_requested_at=NULL,heartbeat_state='idle',heartbeat_choice_a=NULL,heartbeat_choice_b=NULL,updated_at=? WHERE user_a=? AND user_b=?"
+    ).bind(ts(),ts(),row.user_a,row.user_b).run();
     return vsState(db,userId);
   }
   await db.prepare(
