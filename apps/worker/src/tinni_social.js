@@ -280,21 +280,35 @@ export async function followStatus(db, followerId, targetId) {
 export async function listFollowers(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
-    `SELECT u.id,u.display_name,u.avatar_key,f.created_at
+    `SELECT u.id,u.public_id,u.display_name,u.avatar_key,f.created_at,
+            EXISTS(
+              SELECT 1 FROM user_follows reverse_follow
+               WHERE reverse_follow.follower_id=? AND reverse_follow.target_id=u.id
+            ) AS mutual
        FROM user_follows f JOIN users u ON u.id=f.follower_id
       WHERE f.target_id=? ORDER BY f.created_at DESC LIMIT 300`
-  ).bind(userId).all();
-  return rows.results ?? [];
+  ).bind(userId,userId).all();
+  return (rows.results ?? []).map((row) => ({
+    ...row,
+    mutual: Number(row.mutual ?? 0) === 1,
+  }));
 }
 
 export async function listFollowing(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
-    `SELECT u.id,u.display_name,u.avatar_key,f.created_at
+    `SELECT u.id,u.public_id,u.display_name,u.avatar_key,f.created_at,
+            EXISTS(
+              SELECT 1 FROM user_follows reverse_follow
+               WHERE reverse_follow.follower_id=u.id AND reverse_follow.target_id=?
+            ) AS mutual
        FROM user_follows f JOIN users u ON u.id=f.target_id
       WHERE f.follower_id=? ORDER BY f.created_at DESC LIMIT 300`
-  ).bind(userId).all();
-  return rows.results ?? [];
+  ).bind(userId,userId).all();
+  return (rows.results ?? []).map((row) => ({
+    ...row,
+    mutual: Number(row.mutual ?? 0) === 1,
+  }));
 }
 
 export async function taskState(db, userId) {
