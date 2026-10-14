@@ -2658,7 +2658,7 @@ class _VsScreenState extends State<VsScreen> {
       showDragHandle: true,
       isScrollControlled: true,
       backgroundColor: TinniPalette.nearBlack,
-      builder: (sheetContext) => const SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: FractionallySizedBox(
           heightFactor: .68,
           child: ListView(
