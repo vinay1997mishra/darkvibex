@@ -19,6 +19,7 @@ class PersonalProfileScreen extends StatefulWidget {
 
 class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   late final TextEditingController nameController;
+  late final TextEditingController bioController;
   final ImagePicker picker = ImagePicker();
 
   DateTime? dob;
@@ -39,6 +40,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     super.initState();
     nameController =
         TextEditingController(text: widget.state.displayName);
+    bioController = TextEditingController(text: widget.state.bio);
     final raw = widget.state.dateOfBirth?.trim() ?? '';
     dob = raw.isEmpty ? null : DateTime.tryParse(raw);
     countryCode = widget.state.countryCode;
@@ -51,6 +53,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   @override
   void dispose() {
     nameController.dispose();
+    bioController.dispose();
     super.dispose();
   }
 
@@ -403,6 +406,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
       countryNameValue: countryName,
       flagEmojiValue: flagEmoji,
       genderValue: gender,
+      bioValue: bioController.text.trim(),
       avatarBytes: avatarBytes,
       avatarExtension: avatarExtension,
       avatarContentType: avatarContentType,
@@ -602,6 +606,20 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         labelText: 'Name',
                         counterText: '',
                         prefixIcon: Icon(Icons.badge_rounded),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      controller: bioController,
+                      maxLength: 160,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Bio',
+                        counterText: '',
+                        prefixIcon: Icon(Icons.edit_note_rounded),
                       ),
                     ),
                   ),

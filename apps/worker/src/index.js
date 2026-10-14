@@ -317,6 +317,7 @@ async function ensureUsersSchema(db) {
       country_name TEXT,
       flag_emoji TEXT,
       gender TEXT,
+      bio TEXT NOT NULL DEFAULT '',
       age_change_count INTEGER NOT NULL DEFAULT 0,
       country_change_count INTEGER NOT NULL DEFAULT 0,
       gender_change_count INTEGER NOT NULL DEFAULT 0,
@@ -343,6 +344,7 @@ async function ensureUsersSchema(db) {
     ["country_name", "TEXT"],
     ["flag_emoji", "TEXT"],
     ["gender", "TEXT"],
+    ["bio", "TEXT NOT NULL DEFAULT ''"],
     ["age_change_count", "INTEGER NOT NULL DEFAULT 0"],
     ["country_change_count", "INTEGER NOT NULL DEFAULT 0"],
     ["gender_change_count", "INTEGER NOT NULL DEFAULT 0"],
@@ -403,7 +405,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId, displayName, ts, ts).run();
   await ensureUserPublicId(db, userId);
   return db.prepare(
-    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -2842,7 +2844,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/medals" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    const authError = await requireSession(request, env);
     if (authError) return authError;
     return json({ ok: true, medals: await medalState(db, userId) });
   }
@@ -3023,7 +3025,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/vs" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    const authError = await requireSession(request, env);
     if (authError) return authError;
     return json({ ok: true, vs: await vsState(db, userId) });
   }
@@ -3074,7 +3076,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/cp" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    const authError = await requireSession(request, env);
     if (authError) return authError;
     return json({ ok: true, cp: await cpState(db, userId) });
   }
@@ -3599,12 +3601,14 @@ async function handleApi(request, env, url) {
     const hasCountry = Object.prototype.hasOwnProperty.call(body, "country_code") ||
       Object.prototype.hasOwnProperty.call(body, "country_name");
     const hasGender = Object.prototype.hasOwnProperty.call(body, "gender");
+    const hasBio = Object.prototype.hasOwnProperty.call(body, "bio");
     const hasLanguage = Object.prototype.hasOwnProperty.call(body, "language");
     const dateOfBirth = String(body.date_of_birth ?? "").trim();
     const countryCode = String(body.country_code ?? "").trim().toUpperCase();
     const countryName = String(body.country_name ?? "").trim().slice(0, 80);
     const flagEmoji = String(body.flag_emoji ?? "").trim().slice(0, 24);
     const gender = String(body.gender ?? "").trim().toLowerCase();
+    const bio = String(body.bio ?? "").trim().slice(0, 160);
     const language = String(body.language ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
@@ -3626,7 +3630,7 @@ async function handleApi(request, env, url) {
     await ensureUsersSchema(db);
     await ensureRoomCoreSchema(db);
     const current = await db.prepare(
-      `SELECT date_of_birth,country_code,country_name,flag_emoji,gender,language,
+      `SELECT date_of_birth,country_code,country_name,flag_emoji,gender,bio,language,
               age_change_count,country_change_count,gender_change_count
          FROM users WHERE id=? LIMIT 1`
     ).bind(userId).first();
@@ -3640,6 +3644,7 @@ async function handleApi(request, env, url) {
     const nextCountryName = hasCountry ? countryName : String(current.country_name ?? "").trim();
     const nextFlag = hasCountry ? flagEmoji : String(current.flag_emoji ?? "").trim();
     const nextGender = hasGender ? gender : oldGender;
+    const nextBio = hasBio ? bio : String(current.bio ?? "").trim();
     const nextLanguage = hasLanguage ? language : String(current.language ?? "English").trim();
 
     const ageChanged = Boolean(oldDob) && nextDob !== oldDob;
@@ -3671,6 +3676,7 @@ async function handleApi(request, env, url) {
               country_name=?,
               flag_emoji=?,
               gender=?,
+              bio=?,
               language=?,
               age_change_count=?,
               country_change_count=?,
@@ -3687,6 +3693,7 @@ async function handleApi(request, env, url) {
       nextCountryName || null,
       nextFlag || null,
       nextGender || null,
+      nextBio,
       nextLanguage || "English",
       nextAgeCount,
       nextCountryCount,
@@ -3728,7 +3735,7 @@ async function handleApi(request, env, url) {
     }
 
     const user = await db.prepare(
-      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(userId).first();
     return json({
       ok:true,
@@ -3800,11 +3807,11 @@ async function handleApi(request, env, url) {
     await ensureUsersSchema(db);
     let viewedUserId = requestedUserId;
     let user = await db.prepare(
-      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (!user && requestedUserId) {
       const byStablePublicId = await db.prepare(
-        "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, age_change_count, country_change_count, gender_change_count, language FROM users WHERE public_id=? LIMIT 1"
+        "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE public_id=? LIMIT 1"
       ).bind(requestedUserId).first();
       if (byStablePublicId) {
         user = byStablePublicId;
@@ -3813,7 +3820,7 @@ async function handleApi(request, env, url) {
     }
     if (!user && requestedUserId) {
       const byVipCustomId = await db.prepare(
-        `SELECT u.id,u.public_id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.gender,u.age_change_count,u.country_change_count,u.gender_change_count,u.language
+        `SELECT u.id,u.public_id,u.display_name,u.role,u.coins,u.diamonds,u.vip_level,u.avatar_key,u.date_of_birth,u.country_code,u.country_name,u.flag_emoji,u.gender,u.bio,u.age_change_count,u.country_change_count,u.gender_change_count,u.language
            FROM user_vip v
            JOIN users u ON u.id=v.user_id
           WHERE v.custom_id=?
@@ -3838,7 +3845,7 @@ async function handleApi(request, env, url) {
       }
       user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
     }
-    if (user && viewerId !== viewedUserId) {
+    if (user && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
       const targetVip = await getVipStatus(db, viewedUserId);
       if (targetVip.active && targetVip.level >= 18 && targetVip.preferences.anonymous_everywhere === true) {
         user.display_name = "Anonymous";
@@ -6299,7 +6306,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/id-level" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    const authError = await requireSession(request, env);
     if (authError) return authError;
     await ensureUser(db, userId);
     return json({ ok: true, level: await getIdLevelStatus(db, userId) });

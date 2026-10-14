@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   country_name TEXT,
   flag_emoji TEXT,
   gender TEXT,
+  bio TEXT NOT NULL DEFAULT '',
   age_change_count INTEGER NOT NULL DEFAULT 0,
   country_change_count INTEGER NOT NULL DEFAULT 0,
   gender_change_count INTEGER NOT NULL DEFAULT 0,

@@ -75,6 +75,7 @@ class AppState extends ChangeNotifier {
   String countryName = '';
   String flagEmoji = '';
   String gender = '';
+  String bio = '';
   int ageChangeCount = 0;
   int countryChangeCount = 0;
   int genderChangeCount = 0;
@@ -549,6 +550,7 @@ class AppState extends ChangeNotifier {
     countryName = user['country_name']?.toString().trim() ?? '';
     flagEmoji = user['flag_emoji']?.toString().trim() ?? '';
     gender = user['gender']?.toString().trim().toLowerCase() ?? '';
+    bio = user['bio']?.toString().trim() ?? '';
     ageChangeCount =
         int.tryParse(user['age_change_count']?.toString() ?? '') ?? 0;
     countryChangeCount =
@@ -676,6 +678,7 @@ class AppState extends ChangeNotifier {
     countryName = '';
     flagEmoji = '';
     gender = '';
+    bio = '';
     ageChangeCount = 0;
     countryChangeCount = 0;
     genderChangeCount = 0;
@@ -877,6 +880,7 @@ class AppState extends ChangeNotifier {
     String? countryNameValue,
     String? flagEmojiValue,
     String? genderValue,
+    String? bioValue,
     String? languageValue,
     Uint8List? avatarBytes,
     String avatarExtension = 'jpg',
@@ -890,6 +894,7 @@ class AppState extends ChangeNotifier {
     final nextCountryName = (countryNameValue ?? countryName).trim();
     final nextFlagEmoji = (flagEmojiValue ?? flagEmoji).trim();
     final nextGender = (genderValue ?? gender).trim().toLowerCase();
+    final nextBio = (bioValue ?? bio).trim();
     final requestedLanguage =
         (languageValue ?? languagePreference.value).trim();
     final nextLanguage = darkVibeXIsSupportedLanguage(requestedLanguage)
@@ -904,6 +909,7 @@ class AppState extends ChangeNotifier {
       countryName: nextCountryName,
       flagEmoji: nextFlagEmoji,
       gender: nextGender,
+      bio: nextBio,
       language: nextLanguage,
     );
     if (profile?['ok'] != true) {
@@ -933,6 +939,7 @@ class AppState extends ChangeNotifier {
     countryName = nextCountryName;
     flagEmoji = nextFlagEmoji;
     gender = nextGender;
+    bio = nextBio;
     if (returnedUser is Map) {
       dateOfBirth =
           returnedUser['date_of_birth']?.toString() ?? dateOfBirth;
@@ -944,6 +951,7 @@ class AppState extends ChangeNotifier {
           returnedUser['flag_emoji']?.toString().trim() ?? flagEmoji;
       gender =
           returnedUser['gender']?.toString().trim().toLowerCase() ?? gender;
+      bio = returnedUser['bio']?.toString().trim() ?? bio;
       ageChangeCount =
           int.tryParse(returnedUser['age_change_count']?.toString() ?? '') ??
               ageChangeCount;

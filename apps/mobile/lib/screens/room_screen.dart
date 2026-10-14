@@ -29,6 +29,7 @@ import 'greedy_girl_screen.dart';
 import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
+import 'conversation_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -1472,41 +1473,6 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  Widget _seatProfileAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      width: 82,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TinniGlowIcon(icon: icon, size: 20, boxSize: 38),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: TinniPalette.cream,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _sendGiftToSeatUser(String receiverId) async {
     if (!widget.state.backendConnected || receiverId.isEmpty) return;
     final gifts =
@@ -1814,222 +1780,663 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _showSeatMemberProfile(
     Map<String, dynamic> member,
-    int seat,
+    int? seat,
   ) async {
     final userId = member['user_id']?.toString() ?? '';
     if (userId.isEmpty) return;
     if (userId == widget.state.userId) {
-      await _showMySeatLeavePanel();
+      if (seat != null) {
+        await _showMySeatLeavePanel();
+      }
       return;
     }
+
+    final rawName = member['display_name']?.toString().trim();
+    final fallbackName =
+        rawName == null || rawName.isEmpty ? 'User' : rawName;
+
+    final values = await Future.wait<Object?>([
+      widget.state.backend.userProfile(
+        userId: userId,
+        recordVisit: false,
+      ),
+      widget.state.backend.socialStats(userId: userId),
+      widget.state.backend.idLevelStatus(userId: userId),
+      widget.state.backend.medals(userId: userId),
+      widget.state.backend.cpState(userId: userId),
+      widget.state.backend.followStatus(
+        userId: widget.state.userId,
+        targetUserId: userId,
+      ),
+      widget.state.backend.friends(userId: widget.state.userId),
+    ]);
+    if (!mounted) return;
+
+    final profileResponse = values[0] is Map ? values[0] as Map : null;
+    final rawUser = profileResponse?['user'];
+    final profile = rawUser is Map
+        ? Map<String, dynamic>.from(rawUser)
+        : <String, dynamic>{
+            'id': userId,
+            'display_name': fallbackName,
+            'avatar_key': member['avatar_key'],
+          };
+    final statsResponse = values[1] is Map ? values[1] as Map : null;
+    final stats = statsResponse?['stats'] is Map
+        ? Map<String, dynamic>.from(statsResponse!['stats'] as Map)
+        : <String, dynamic>{};
+    final levelResponse = values[2] is Map ? values[2] as Map : null;
+    final idLevel = levelResponse?['level'] is Map
+        ? Map<String, dynamic>.from(levelResponse!['level'] as Map)
+        : <String, dynamic>{};
+    final medals = values[3] is List
+        ? (values[3] as List)
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+        : <Map<String, dynamic>>[];
+    final cpResponse = values[4] is Map ? values[4] as Map : null;
+    final rawCp = cpResponse?['cp'];
+    final cp = rawCp is Map ? Map<String, dynamic>.from(rawCp) : null;
+    var following = values[5] == true;
+    final friends = values[6] is List ? values[6] as List : const [];
+    var mutual = friends.whereType<Map>().any(
+          (row) => row['id']?.toString() == userId,
+        );
+    var followersCount =
+        int.tryParse(stats['followers_count']?.toString() ?? '') ?? 0;
 
     final targetIsOwner = userId == widget.room.ownerUserId;
     final targetIsAdmin = _seatMemberIsAdmin(member);
     final canModerate = _canModerateSeatMember(member);
-    final avatar = member['avatar_key']?.toString();
-    final rawName = member['display_name']?.toString().trim();
-    final name = rawName == null || rawName.isEmpty ? 'User $userId' : rawName;
-    final roomMuted = roomMutedSeats.contains(seat);
+    final roomMuted = seat != null && roomMutedSeats.contains(seat);
     final chatIsBanned =
         member['chat_banned'] == true || member['chat_banned']?.toString() == '1';
+
+    final name = profile['display_name']?.toString().trim().isNotEmpty == true
+        ? profile['display_name']!.toString().trim()
+        : fallbackName;
+    final avatar = profile['avatar_key']?.toString() ?? '';
+    final publicId = (profile['vip_custom_id']?.toString().trim().isNotEmpty == true
+            ? profile['vip_custom_id']
+            : profile['public_id'])
+        ?.toString()
+        .trim();
+    final shownId = publicId == null || publicId.isEmpty ? userId : publicId;
+    final country = profile['country_name']?.toString().trim() ?? '';
+    final flag = profile['flag_emoji']?.toString().trim() ?? '';
+    final gender = profile['gender']?.toString().trim().toLowerCase() ?? '';
+    final bio = profile['bio']?.toString().trim() ?? '';
+    final level = int.tryParse(idLevel['level']?.toString() ?? '') ?? 0;
+
+    String cpPartnerId = '';
+    String cpPartnerAvatar = '';
+    if (cp?['state']?.toString() == 'active') {
+      final a = cp?['user_a']?.toString() ?? '';
+      final b = cp?['user_b']?.toString() ?? '';
+      if (a == userId) {
+        cpPartnerId = b;
+        cpPartnerAvatar = cp?['user_b_avatar_key']?.toString() ?? '';
+      } else {
+        cpPartnerId = a;
+        cpPartnerAvatar = cp?['user_a_avatar_key']?.toString() ?? '';
+      }
+    }
+
+    ImageProvider<Object>? avatarProvider(String value) {
+      if (value.trim().isEmpty) return null;
+      return NetworkImage(
+        widget.state.backend.fileUrl(value),
+        headers: widget.state.backend.fileHeaders,
+      );
+    }
+
+    void openFullProfile(String target) {
+      if (target.isEmpty) return;
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PublicProfileScreen(
+            state: widget.state,
+            userId: target,
+          ),
+        ),
+      );
+    }
+
+    Future<void> openModeration() async {
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: TinniPalette.nearBlack,
+        builder: (actionContext) => SafeArea(
+          child: Wrap(
+            children: [
+              if (isRoomHost && !targetIsOwner)
+                ListTile(
+                  leading: Icon(
+                    targetIsAdmin
+                        ? Icons.remove_moderator_rounded
+                        : Icons.admin_panel_settings_rounded,
+                  ),
+                  title: Text(targetIsAdmin ? 'Remove Admin' : 'Set Admin'),
+                  onTap: () async {
+                    Navigator.pop(actionContext);
+                    await _setRoomAdmin(
+                      userId,
+                      admin: !targetIsAdmin,
+                    );
+                  },
+                ),
+              if (canModerate && seat != null)
+                ListTile(
+                  leading: Icon(
+                    roomMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                  ),
+                  title: Text(roomMuted ? 'Unmute' : 'Mute'),
+                  onTap: () async {
+                    Navigator.pop(actionContext);
+                    final result = await widget.state.backend.setRoomControl(
+                      roomId: widget.room.id,
+                      userId: widget.state.userId,
+                      action: 'seat_mute',
+                      seatIndex: seat,
+                      muted: !roomMuted,
+                    );
+                    if (result?['ok'] == true) {
+                      await _loadRoomMembers();
+                      await _loadRoomControls();
+                    }
+                  },
+                ),
+              if (canModerate && seat != null)
+                ListTile(
+                  leading: const Icon(
+                    Icons.airline_seat_recline_normal_rounded,
+                  ),
+                  title: const Text('Seat down'),
+                  onTap: () async {
+                    Navigator.pop(actionContext);
+                    final result = await widget.state.backend.setRoomControl(
+                      roomId: widget.room.id,
+                      userId: widget.state.userId,
+                      action: 'seat_down',
+                      seatIndex: seat,
+                    );
+                    if (result?['ok'] == true) {
+                      await _loadRoomMembers();
+                      await _loadRoomControls();
+                    }
+                  },
+                ),
+              if (canModerate)
+                ListTile(
+                  leading: Icon(
+                    chatIsBanned
+                        ? Icons.chat_rounded
+                        : Icons.comments_disabled_rounded,
+                  ),
+                  title: Text(chatIsBanned ? 'Chat Unban' : 'Chat Ban'),
+                  onTap: () async {
+                    Navigator.pop(actionContext);
+                    await _setChatBan(userId, !chatIsBanned);
+                  },
+                ),
+              if (canModerate)
+                ListTile(
+                  leading: const Icon(Icons.logout_rounded),
+                  title: const Text('Kick'),
+                  onTap: () async {
+                    Navigator.pop(actionContext);
+                    await _removeRoomMember(userId);
+                  },
+                ),
+              if (!isRoomHost && !canModerate)
+                const ListTile(
+                  leading: Icon(Icons.more_horiz_rounded),
+                  title: Text('No room controls available'),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: false,
-      useSafeArea: false,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black54,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, refresh) => Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            key: Key('room-seat-profile-card-$userId'),
-            width: double.infinity,
-            height: MediaQuery.sizeOf(sheetContext).height * .43,
-            decoration: const BoxDecoration(
-              color: TinniPalette.nearBlack,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-              border: Border(top: BorderSide(color: TinniPalette.bronze)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                child: Column(
-                  children: [
-                    GestureDetector(
-                      key: Key('room-seat-profile-dp-$userId'),
-                      onTap: () {
-                        Navigator.pop(sheetContext);
-                        Navigator.of(context).push<void>(
-                          MaterialPageRoute<void>(
-                            builder: (_) => PublicProfileScreen(
-                              state: widget.state,
-                              userId: userId,
+        builder: (sheetContext, refresh) {
+          Future<void> toggleFollow() async {
+            final next = !following;
+            final ok = await widget.state.backend.setUserFollow(
+              userId: widget.state.userId,
+              targetUserId: userId,
+              follow: next,
+            );
+            if (!ok || !sheetContext.mounted) return;
+            final newFriends = await widget.state.backend.friends(
+              userId: widget.state.userId,
+            );
+            if (!sheetContext.mounted) return;
+            refresh(() {
+              following = next;
+              mutual = newFriends.any(
+                (row) => row['id']?.toString() == userId,
+              );
+              followersCount =
+                  (followersCount + (next ? 1 : -1))
+                      .clamp(0, 1 << 31)
+                      .toInt();
+            });
+          }
+
+          final followLabel = mutual
+              ? 'Mutual Friend'
+              : following
+                  ? 'Followed'
+                  : 'Follow';
+
+          return Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 50),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    key: Key('room-seat-profile-card-$userId'),
+                    width: double.infinity,
+                    constraints: BoxConstraints(
+                      maxHeight:
+                          MediaQuery.sizeOf(sheetContext).height * .62,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 62, 16, 16),
+                        child: Column(
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: CircleAvatar(
-                        radius: 32,
-                        backgroundColor: TinniPalette.panel2,
-                        backgroundImage: avatar != null && avatar.isNotEmpty
-                            ? NetworkImage(
-                                widget.state.backend.fileUrl(avatar),
-                                headers: widget.state.backend.fileHeaders,
-                              )
-                            : null,
-                        child: avatar == null || avatar.isEmpty
-                            ? Text(
-                                name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
-                                style: const TextStyle(
-                                  color: TinniPalette.gold,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              )
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '$name${targetIsOwner ? ' • Owner' : (targetIsAdmin ? ' • Admin' : '')}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: TinniPalette.cream,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      'ID $userId • Seat ${seat + 1}',
-                      style: const TextStyle(
-                        color: TinniPalette.muted,
-                        fontSize: 10,
-                      ),
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      height: 70,
-                      child: ListView(
-                        key: Key('room-seat-profile-actions-$userId'),
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          _seatProfileAction(
-                            icon: Icons.person_rounded,
-                            label: 'Profile',
-                            onTap: () {
-                              Navigator.pop(sheetContext);
-                              Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => PublicProfileScreen(
-                                    state: widget.state,
-                                    userId: userId,
+                            const SizedBox(height: 10),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 5,
+                              children: [
+                                if (gender == 'male' || gender == 'female')
+                                  Icon(
+                                    gender == 'male'
+                                        ? Icons.male_rounded
+                                        : Icons.female_rounded,
+                                    size: 20,
+                                    color: gender == 'male'
+                                        ? const Color(0xFF4789E7)
+                                        : const Color(0xFFE868A7),
+                                  ),
+                                Text(
+                                  'ID $shownId',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                          _seatProfileAction(
-                            icon: Icons.card_giftcard_rounded,
-                            label: 'Gifting',
-                            onTap: () {
-                              Navigator.pop(sheetContext);
-                              unawaited(_sendGiftToSeatUser(userId));
-                            },
-                          ),
-                          if (isRoomHost && !targetIsOwner)
-                            _seatProfileAction(
-                              icon: targetIsAdmin
-                                  ? Icons.remove_moderator_rounded
-                                  : Icons.admin_panel_settings_rounded,
-                              label: targetIsAdmin ? 'Remove Admin' : 'Set Admin',
-                              onTap: () async {
-                                await _setRoomAdmin(
-                                  userId,
-                                  admin: !targetIsAdmin,
-                                );
-                                if (sheetContext.mounted) {
-                                  Navigator.pop(sheetContext);
-                                }
-                              },
+                                const Text(
+                                  '|',
+                                  style: TextStyle(color: Colors.black26),
+                                ),
+                                Text(
+                                  '$followersCount followers',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (country.isNotEmpty) ...[
+                                  const Text(
+                                    '|',
+                                    style: TextStyle(color: Colors.black26),
+                                  ),
+                                  Text(
+                                    flag.isEmpty ? country : '$flag $country',
+                                    style: const TextStyle(
+                                      color: Colors.black54,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                          if (canModerate)
-                            _seatProfileAction(
-                              icon: roomMuted
-                                  ? Icons.mic_rounded
-                                  : Icons.mic_off_rounded,
-                              label: roomMuted ? 'Unmute' : 'Mute',
-                              onTap: () async {
-                                final result =
-                                    await widget.state.backend.setRoomControl(
-                                  roomId: widget.room.id,
-                                  userId: widget.state.userId,
-                                  action: 'seat_mute',
-                                  seatIndex: seat,
-                                  muted: !roomMuted,
-                                );
-                                if (result?['ok'] == true) {
-                                  await _loadRoomMembers();
-                                  await _loadRoomControls();
-                                }
-                                if (sheetContext.mounted) {
-                                  Navigator.pop(sheetContext);
-                                }
-                              },
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2E8E55),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFFF1D15F),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Text(
+                                'LV.$level',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
                             ),
-                          if (canModerate)
-                            _seatProfileAction(
-                              icon: Icons.airline_seat_recline_normal_rounded,
-                              label: 'Seat down',
-                              onTap: () async {
-                                Navigator.pop(sheetContext);
-                                final result =
-                                    await widget.state.backend.setRoomControl(
-                                  roomId: widget.room.id,
-                                  userId: widget.state.userId,
-                                  action: 'seat_down',
-                                  seatIndex: seat,
-                                );
-                                if (result?['ok'] == true) {
-                                  await _loadRoomMembers();
-                                  await _loadRoomControls();
-                                }
-                              },
+                            if (medals.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                height: 42,
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: medals.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 8),
+                                  itemBuilder: (_, index) => Tooltip(
+                                    message: medals[index]['name']
+                                            ?.toString() ??
+                                        'Medal',
+                                    child: const CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: Color(0xFF2D2341),
+                                      child: Icon(
+                                        Icons.workspace_premium_rounded,
+                                        color: Color(0xFFFFD66B),
+                                        size: 25,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            if (bio.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                bio,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  height: 1.3,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(sheetContext);
+                                      Navigator.of(context).push<void>(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              ConversationScreen(
+                                            state: widget.state,
+                                            otherUserId: userId,
+                                            otherName: name,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                    ),
+                                    label: const Text('Chat'),
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize:
+                                          const Size.fromHeight(48),
+                                      foregroundColor: Colors.black87,
+                                      side: const BorderSide(
+                                        color: Color(0xFFD7D7D7),
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(24),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(24),
+                                    onTap: () {
+                                      Navigator.pop(sheetContext);
+                                      unawaited(
+                                        _sendGiftToSeatUser(userId),
+                                      );
+                                    },
+                                    child: Container(
+                                      height: 48,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        borderRadius:
+                                            BorderRadius.circular(24),
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFF26D5E8),
+                                            Color(0xFFB977F4),
+                                          ],
+                                        ),
+                                      ),
+                                      child: const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.card_giftcard_rounded,
+                                            color: Colors.white,
+                                          ),
+                                          SizedBox(width: 7),
+                                          Text(
+                                            'Give Gifts',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          if (canModerate)
-                            _seatProfileAction(
-                              icon: chatIsBanned
-                                  ? Icons.chat_rounded
-                                  : Icons.comments_disabled_rounded,
-                              label: chatIsBanned ? 'Chat Unban' : 'Chat Ban',
-                              onTap: () async {
-                                await _setChatBan(userId, !chatIsBanned);
-                                if (sheetContext.mounted) {
-                                  Navigator.pop(sheetContext);
-                                }
-                              },
-                            ),
-                          if (canModerate)
-                            _seatProfileAction(
-                              icon: Icons.logout_rounded,
-                              label: 'Kick',
-                              onTap: () async {
-                                Navigator.pop(sheetContext);
-                                await _removeRoomMember(userId);
-                              },
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: 8,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'More',
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            Future<void>.delayed(
+                              Duration.zero,
+                              openModeration,
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.more_horiz_rounded,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Mention in room',
+                          onPressed: () {
+                            final mention = '@$name ';
+                            final current = roomChatController.text;
+                            roomChatController.text = mention + current;
+                            roomChatController.selection =
+                                TextSelection.collapsed(
+                              offset: roomChatController.text.length,
+                            );
+                            Navigator.pop(sheetContext);
+                          },
+                          icon: const Icon(
+                            Icons.alternate_email_rounded,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: 13,
+                    right: 16,
+                    child: SizedBox(
+                      height: 38,
+                      child: OutlinedButton(
+                        onPressed: toggleFollow,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black87,
+                          side: const BorderSide(
+                            color: Color(0xFFD6D6D6),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 15,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: Text(
+                          followLabel,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: -48,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: SizedBox(
+                        width: cpPartnerId.isEmpty ? 92 : 136,
+                        height: 96,
+                        child: Stack(
+                          alignment: Alignment.bottomLeft,
+                          children: [
+                            if (cpPartnerId.isNotEmpty)
+                              Positioned(
+                                left: 66,
+                                bottom: 2,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    Navigator.pop(sheetContext);
+                                    Future<void>.delayed(
+                                      Duration.zero,
+                                      () =>
+                                          openFullProfile(cpPartnerId),
+                                    );
+                                  },
+                                  child: CircleAvatar(
+                                    radius: 30,
+                                    backgroundColor:
+                                        const Color(0xFFE8E8E8),
+                                    backgroundImage:
+                                        avatarProvider(cpPartnerAvatar),
+                                    child: cpPartnerAvatar.isEmpty
+                                        ? const Icon(
+                                            Icons.favorite_rounded,
+                                            color: Color(0xFFE868A7),
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            GestureDetector(
+                              key: Key('room-seat-profile-dp-$userId'),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                Future<void>.delayed(
+                                  Duration.zero,
+                                  () => openFullProfile(userId),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFFD6A846),
+                                    width: 2.5,
+                                  ),
+                                  color: Colors.white,
+                                ),
+                                child: CircleAvatar(
+                                  radius: 42,
+                                  backgroundColor:
+                                      const Color(0xFFE8E8E8),
+                                  backgroundImage:
+                                      avatarProvider(avatar),
+                                  child: avatar.isEmpty
+                                      ? Text(
+                                          name.isEmpty
+                                              ? '?'
+                                              : name
+                                                  .substring(0, 1)
+                                                  .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Color(0xFF6B3E8D),
+                                            fontSize: 27,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -2676,9 +3083,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     Navigator.pop(sheetContext);
                                     Future<void>.delayed(Duration.zero, () {
                                       if (!mounted) return;
-                                      Navigator.of(this.context).push(MaterialPageRoute<void>(
-                                        builder: (_) => PublicProfileScreen(state: widget.state, userId: userId),
-                                      ));
+                                      _showSeatMemberProfile(member, seat);
                                     });
                                   },
                             leading: VipAnimatedFrame(

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
@@ -12,7 +10,6 @@ import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
 import 'personal_profile_screen.dart';
 import '../widgets/vip_animated_frame.dart';
-import '../infra/privacy_screen_protection.dart';
 import '../ui/tinni_style.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -178,170 +175,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required Future<List<Map<String, dynamic>>> Function() load,
   }) async {
-    final rows = await load();
-    if (!context.mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .68,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    Text('${rows.length}'),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: rows.isEmpty
-                    ? Center(child: Text('No $title yet'))
-                    : ListView.builder(
-                        itemCount: rows.length,
-                        itemBuilder: (itemContext, index) {
-                          final row = rows[index];
-                          final id = (row['id'] ??
-                                  row['user_id'] ??
-                                  row['target_user_id'] ??
-                                  row['follower_id'])
-                              ?.toString() ??
-                              '';
-                          final avatarKey =
-                              row['avatar_key']?.toString() ?? '';
-                          final name =
-                              row['display_name']?.toString().trim();
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: TinniPalette.panel2,
-                              backgroundImage: avatarKey.isEmpty
-                                  ? null
-                                  : NetworkImage(
-                                      state.backend.fileUrl(avatarKey),
-                                      headers: state.backend.fileHeaders,
-                                    ),
-                              child: avatarKey.isEmpty
-                                  ? const Icon(Icons.person_rounded)
-                                  : null,
-                            ),
-                            title: Text(
-                              name == null || name.isEmpty
-                                  ? (id.isEmpty ? 'User' : 'User $id')
-                                  : name,
-                            ),
-                            subtitle:
-                                id.isEmpty ? null : Text('ID $id'),
-                            trailing:
-                                const Icon(Icons.chevron_right_rounded),
-                            onTap: id.isEmpty
-                                ? null
-                                : () => Navigator.of(sheetContext).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => PublicProfileScreen(
-                                          state: state,
-                                          userId: id,
-                                        ),
-                                      ),
-                                    ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+    final following = title.toLowerCase().startsWith('following');
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _SocialPeopleListScreen(
+          state: state,
+          following: following,
         ),
       ),
     );
+    if (mounted) await _loadSocialStats();
   }
 
   Future<void> _showVisitors(BuildContext context) async {
-    final visitors = await state.backend.profileVisitors(userId: state.userId);
-    if (!context.mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .65,
-          child: visitors.isEmpty
-              ? const Center(child: Text('No visitors yet'))
-              : ListView.builder(
-                  itemCount: visitors.length,
-                  itemBuilder: (itemContext, index) {
-                    final visitor = visitors[index];
-                    final userId = visitor['user_id']?.toString() ?? '';
-                    final name = visitor['display_name']?.toString() ?? 'User';
-                    final avatarKey = visitor['avatar_key']?.toString() ?? '';
-                    final count =
-                        int.tryParse(visitor['visit_count']?.toString() ?? '') ?? 1;
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundImage: avatarKey.isEmpty
-                            ? null
-                            : NetworkImage(
-                                state.backend.fileUrl(avatarKey),
-                                headers: state.backend.fileHeaders,
-                              ),
-                        child: avatarKey.isEmpty
-                            ? const Icon(Icons.person_rounded)
-                            : null,
-                      ),
-                      title: Text(name),
-                      subtitle: Text(
-                        '${_formatVisitTime(visitor['last_visited_at'])} • '
-                        '${count == 1 ? '1 visit' : '$count visits'}',
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: userId.isEmpty
-                          ? null
-                          : () => Navigator.of(sheetContext).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => PublicProfileScreen(
-                                    state: state,
-                                    userId: userId,
-                                  ),
-                                ),
-                              ),
-                    );
-                  },
-                ),
-        ),
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _VisitorsListScreen(state: state),
       ),
     );
   }
-
-  String _formatVisitTime(dynamic raw) {
-    DateTime? value;
-    final numeric = raw is num
-        ? raw.toInt()
-        : int.tryParse(raw?.toString() ?? '');
-    if (numeric != null && numeric > 0) {
-      final millis = numeric < 100000000000 ? numeric * 1000 : numeric;
-      value = DateTime.fromMillisecondsSinceEpoch(millis).toLocal();
-    } else {
-      final parsed = DateTime.tryParse(raw?.toString() ?? '');
-      value = parsed?.toLocal();
-    }
-    if (value == null) return 'Recently';
-    final day = value.day.toString().padLeft(2, '0');
-    final month = value.month.toString().padLeft(2, '0');
-    final hour = value.hour.toString().padLeft(2, '0');
-    final minute = value.minute.toString().padLeft(2, '0');
-    return '$day/$month/${value.year} $hour:$minute';
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -527,7 +379,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   darkVibeXText(language, 'follow'),
                   onTap: () => _showPeopleList(
                     context,
-                    title: 'Following',
+                    title: 'Followings',
                     load: () => state.backend.following(
                       userId: state.userId,
                     ),
@@ -1096,8 +948,383 @@ class _MineDivider extends StatelessWidget {
       );
 }
 
+
+class _SocialPeopleListScreen extends StatefulWidget {
+  const _SocialPeopleListScreen({
+    required this.state,
+    required this.following,
+  });
+
+  final AppState state;
+  final bool following;
+
+  @override
+  State<_SocialPeopleListScreen> createState() =>
+      _SocialPeopleListScreenState();
+}
+
+class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
+  bool loading = true;
+  List<Map<String, dynamic>> rows = <Map<String, dynamic>>[];
+
+  String get title => widget.following ? 'Followings' : 'Followers';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final result = widget.following
+        ? await widget.state.backend.following(userId: widget.state.userId)
+        : await widget.state.backend.followers(userId: widget.state.userId);
+    if (!mounted) return;
+    setState(() {
+      rows = result;
+      loading = false;
+    });
+  }
+
+  ImageProvider<Object>? _avatar(String key) {
+    final value = key.trim();
+    if (value.isEmpty) return null;
+    return NetworkImage(
+      widget.state.backend.fileUrl(value),
+      headers: widget.state.backend.fileHeaders,
+    );
+  }
+
+  Future<void> _unfollow(Map<String, dynamic> row) async {
+    if (!widget.following) return;
+    final id = row['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final ok = await widget.state.backend.setUserFollow(
+      userId: widget.state.userId,
+      targetUserId: id,
+      follow: false,
+    );
+    if (!mounted || !ok) return;
+    setState(() => rows.removeWhere((item) => item['id']?.toString() == id));
+  }
+
+  void _openProfile(String id) {
+    if (id.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(
+          state: widget.state,
+          userId: id,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
+        title: Text(title),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : rows.isEmpty
+              ? Center(
+                  child: Text(
+                    widget.following
+                        ? 'No followings yet'
+                        : 'No followers yet',
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    height: 1,
+                    indent: 82,
+                    color: Color(0xFFE9E9E9),
+                  ),
+                  itemBuilder: (context, index) {
+                    final row = rows[index];
+                    final id = row['id']?.toString() ?? '';
+                    final name = row['display_name']?.toString().trim();
+                    final avatarKey = row['avatar_key']?.toString() ?? '';
+                    final mutual = row['mutual'] == true ||
+                        row['mutual']?.toString() == '1';
+                    return SizedBox(
+                      height: 74,
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 14),
+                          GestureDetector(
+                            onTap: () => _openProfile(id),
+                            child: CircleAvatar(
+                              radius: 27,
+                              backgroundColor: const Color(0xFFF0F0F0),
+                              backgroundImage: _avatar(avatarKey),
+                              child: avatarKey.isEmpty
+                                  ? const Icon(
+                                      Icons.person_rounded,
+                                      color: Colors.black45,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              name == null || name.isEmpty ? 'User' : name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (mutual && widget.following)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 18),
+                              child: TextButton(
+                                onPressed: () => _unfollow(row),
+                                child: const Text(
+                                  'Mutual Friend',
+                                  style: TextStyle(
+                                    color: Color(0xFFF14A8B),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else if (mutual)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 18),
+                              child: Text(
+                                'Mutual Friend',
+                                style: TextStyle(
+                                  color: Colors.black45,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          else if (widget.following)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 18),
+                              child: TextButton(
+                                onPressed: () => _unfollow(row),
+                                child: const Text(
+                                  'Followed',
+                                  style: TextStyle(
+                                    color: Colors.black45,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            const SizedBox(width: 18),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class _VisitorsListScreen extends StatefulWidget {
+  const _VisitorsListScreen({required this.state});
+
+  final AppState state;
+
+  @override
+  State<_VisitorsListScreen> createState() => _VisitorsListScreenState();
+}
+
+class _VisitorsListScreenState extends State<_VisitorsListScreen> {
+  bool loading = true;
+  List<Map<String, dynamic>> visitors = <Map<String, dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final rows = await widget.state.backend.profileVisitors(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    setState(() {
+      visitors = rows;
+      loading = false;
+    });
+  }
+
+  DateTime? _visitDate(dynamic raw) {
+    final number = raw is num
+        ? raw.toInt()
+        : int.tryParse(raw?.toString() ?? '');
+    if (number != null && number > 0) {
+      final millis = number < 100000000000 ? number * 1000 : number;
+      return DateTime.fromMillisecondsSinceEpoch(millis).toLocal();
+    }
+    return DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+  }
+
+  String _time(DateTime? value) {
+    if (value == null) return '';
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  String _date(DateTime? value) {
+    if (value == null) return '';
+    const months = <String>[
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec',
+    ];
+    return '${value.day.toString().padLeft(2, '0')} ${months[value.month - 1]}';
+  }
+
+  ImageProvider<Object>? _avatar(String key) {
+    final value = key.trim();
+    if (value.isEmpty) return null;
+    return NetworkImage(
+      widget.state.backend.fileUrl(value),
+      headers: widget.state.backend.fileHeaders,
+    );
+  }
+
+  void _open(String id) {
+    if (id.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(
+          state: widget.state,
+          userId: id,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text('Visitors'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : visitors.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No visitors yet',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: visitors.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    height: 1,
+                    indent: 82,
+                    color: Color(0xFFE9E9E9),
+                  ),
+                  itemBuilder: (context, index) {
+                    final row = visitors[index];
+                    final id = row['user_id']?.toString() ?? '';
+                    final name = row['display_name']?.toString().trim();
+                    final avatarKey = row['avatar_key']?.toString() ?? '';
+                    final visit = _visitDate(row['last_visited_at']);
+                    return SizedBox(
+                      height: 74,
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 14),
+                          GestureDetector(
+                            onTap: () => _open(id),
+                            child: CircleAvatar(
+                              radius: 27,
+                              backgroundColor: const Color(0xFFF0F0F0),
+                              backgroundImage: _avatar(avatarKey),
+                              child: avatarKey.isEmpty
+                                  ? const Icon(
+                                      Icons.person_rounded,
+                                      color: Colors.black45,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              name == null || name.isEmpty ? 'User' : name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 18),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _time(visit),
+                                  style: const TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  _date(visit),
+                                  style: const TextStyle(
+                                    color: Colors.black45,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
 class PublicProfileScreen extends StatefulWidget {
-  const PublicProfileScreen({super.key, required this.state, required this.userId});
+  const PublicProfileScreen({
+    super.key,
+    required this.state,
+    required this.userId,
+  });
 
   final AppState state;
   final String userId;
@@ -1106,48 +1333,20 @@ class PublicProfileScreen extends StatefulWidget {
   State<PublicProfileScreen> createState() => _PublicProfileScreenState();
 }
 
-class _PublicStat extends StatelessWidget {
-  const _PublicStat({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: TinniPalette.gold,
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              color: TinniPalette.muted,
-              fontSize: 9,
-            ),
-          ),
-        ],
-      );
-}
-
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
-  final Object _privacyScope = Object();
   Map<String, dynamic>? user;
   Map<String, dynamic> socialStats = const <String, dynamic>{};
-  List<Map<String, dynamic>> trends = const <Map<String, dynamic>>[];
-  Map<String, String?> media = const <String, String?>{};
+  Map<String, dynamic> idLevel = const <String, dynamic>{};
+  List<Map<String, dynamic>> medals = const <Map<String, dynamic>>[];
+  Map<String, dynamic>? cp;
+  Map<String, dynamic>? vs;
   bool loading = true;
-  bool isFriend = false;
   bool isFollowing = false;
-  bool isBlocked = false;
+  bool isMutual = false;
   bool followBusy = false;
-  bool blockBusy = false;
-  bool startingCall = false;
+
+  String get targetId => user?['id']?.toString() ?? widget.userId;
+  bool get isSelf => targetId == widget.state.userId;
 
   @override
   void initState() {
@@ -1155,83 +1354,81 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     _load();
   }
 
-  String get _resolvedUserId =>
-      user?['id']?.toString() ?? widget.userId;
-
-  bool get _isSelf => _resolvedUserId == widget.state.userId;
-
   Future<void> _load() async {
     final response = await widget.state.backend.userProfile(
       userId: widget.userId,
     );
-    final loadedUser = response?['user'] is Map
-        ? Map<String, dynamic>.from(response!['user'] as Map)
+    final rawUser = response?['user'];
+    final loadedUser = rawUser is Map
+        ? Map<String, dynamic>.from(rawUser)
         : null;
-    final targetId = loadedUser?['id']?.toString() ?? widget.userId;
-
-    var friendStatus = false;
-    var blockedStatus = false;
-    var following = false;
-    Map<String, dynamic> stats = const <String, dynamic>{};
-    if (loadedUser != null) {
-      final values = await Future.wait<Object?>([
-        widget.state.backend.friends(userId: widget.state.userId),
-        widget.state.backend.blockedUsers(userId: widget.state.userId),
-        widget.state.backend.socialStats(userId: targetId),
-        if (targetId != widget.state.userId)
-          widget.state.backend.followStatus(
-            userId: widget.state.userId,
-            targetUserId: targetId,
-          )
-        else
-          Future<bool>.value(false),
-        widget.state.backend.profileTrends(userId: targetId),
-        widget.state.backend.profileMedia(userId: targetId),
-      ]);
-      final friends = values[0] is List
-          ? (values[0] as List).whereType<Map>().toList()
-          : const <Map>[];
-      final blocked = values[1] is List
-          ? (values[1] as List).whereType<Map>().toList()
-          : const <Map>[];
-      friendStatus =
-          friends.any((row) => row['id']?.toString() == targetId);
-      blockedStatus =
-          blocked.any((row) => row['user_id']?.toString() == targetId);
-      if (values[2] is Map) {
-        stats = Map<String, dynamic>.from(values[2] as Map);
-      }
-      following = values[3] == true;
-      final trendRows = values[4] is List
-          ? (values[4] as List)
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(growable: false)
-          : const <Map<String, dynamic>>[];
-      trends = trendRows;
-      if (values[5] is Map) {
-        media = (values[5] as Map).map(
-          (key, value) => MapEntry(key.toString(), value?.toString()),
-        );
-      }
+    if (loadedUser == null) {
+      if (!mounted) return;
+      setState(() {
+        user = null;
+        loading = false;
+      });
+      return;
     }
+
+    final resolvedId = loadedUser['id']?.toString() ?? widget.userId;
+    final values = await Future.wait<Object?>([
+      widget.state.backend.socialStats(userId: resolvedId),
+      widget.state.backend.idLevelStatus(userId: resolvedId),
+      widget.state.backend.medals(userId: resolvedId),
+      widget.state.backend.cpState(userId: resolvedId),
+      widget.state.backend.vsState(userId: resolvedId),
+      if (resolvedId != widget.state.userId)
+        widget.state.backend.followStatus(
+          userId: widget.state.userId,
+          targetUserId: resolvedId,
+        )
+      else
+        Future<bool>.value(false),
+      if (resolvedId != widget.state.userId)
+        widget.state.backend.friends(userId: widget.state.userId)
+      else
+        Future<List<Map<String, dynamic>>>.value(
+          const <Map<String, dynamic>>[],
+        ),
+    ]);
+
+    final rawStats = values[0] is Map ? values[0] as Map : null;
+    final rawLevel = values[1] is Map ? values[1] as Map : null;
+    final rawMedals = values[2] is List ? values[2] as List : const [];
+    final rawCp = values[3] is Map ? values[3] as Map : null;
+    final rawVs = values[4] is Map ? values[4] as Map : null;
+    final following = values[5] == true;
+    final friends = values[6] is List ? values[6] as List : const [];
 
     if (!mounted) return;
     setState(() {
       user = loadedUser;
-      socialStats = stats;
-      loading = false;
-      isFriend = friendStatus;
+      socialStats = rawStats?['stats'] is Map
+          ? Map<String, dynamic>.from(rawStats!['stats'] as Map)
+          : const <String, dynamic>{};
+      idLevel = rawLevel?['level'] is Map
+          ? Map<String, dynamic>.from(rawLevel!['level'] as Map)
+          : const <String, dynamic>{};
+      medals = rawMedals
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+      cp = rawCp?['cp'] is Map
+          ? Map<String, dynamic>.from(rawCp!['cp'] as Map)
+          : null;
+      vs = rawVs?['vs'] is Map
+          ? Map<String, dynamic>.from(rawVs!['vs'] as Map)
+          : null;
       isFollowing = following;
-      isBlocked = blockedStatus;
+      isMutual = friends.whereType<Map>().any(
+            (row) => row['id']?.toString() == resolvedId,
+          );
+      loading = false;
     });
-    await PrivacyScreenProtection.setProtected(
-      _privacyScope,
-      user?['privacy_protection_enabled'] == true,
-    );
   }
 
-  ImageProvider<Object>? _publicMediaProvider(String? key) {
+  ImageProvider<Object>? _avatar(String? key) {
     final value = key?.trim() ?? '';
     if (value.isEmpty) return null;
     return NetworkImage(
@@ -1240,486 +1437,701 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
-  String _trendTime(dynamic raw) {
-    final value = int.tryParse(raw?.toString() ?? '') ?? 0;
-    if (value <= 0) return '';
-    final date = DateTime.fromMillisecondsSinceEpoch(value).toLocal();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(date.day)}/${two(date.month)}/${date.year}';
+  String _publicId(Map<String, dynamic> value) {
+    final custom = value['vip_custom_id']?.toString().trim() ?? '';
+    if (custom.isNotEmpty) return custom;
+    final stable = value['public_id']?.toString().trim() ?? '';
+    return stable.isNotEmpty ? stable : value['id']?.toString() ?? '';
   }
 
-  Future<void> _showTrends() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: TinniPalette.nearBlack,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .68,
-          child: trends.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No Trends yet.',
-                    style: TextStyle(color: TinniPalette.muted),
-                  ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
-                  children: [
-                    const ListTile(
-                      title: Text(
-                        'Trends',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    for (final row in trends)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: TinniPanel(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(row['text']?.toString() ?? ''),
-                              const SizedBox(height: 6),
-                              Text(
-                                _trendTime(row['created_at']),
-                                style: const TextStyle(
-                                  color: TinniPalette.muted,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    unawaited(PrivacyScreenProtection.setProtected(_privacyScope, false));
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final displayName = user?['display_name']?.toString() ?? '';
-    return Scaffold(
-        appBar: AppBar(
-          title: Text(user?['display_name']?.toString() ?? 'Profile'),
-          actions: [
-            if (!_isSelf)
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'block') _toggleBlock();
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem<String>(
-                    value: 'block',
-                    child: Text(isBlocked ? 'Unblock user' : 'Block user'),
-                  ),
-                ],
-              ),
-          ],
-        ),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : user == null
-                ? const Center(child: Text('Profile could not be loaded'))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
-                    child: Center(
-                      child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_publicMediaProvider(media['cover']) != null) ...[
-                          Container(
-                            width: 420,
-                            height: 180,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: TinniPalette.bronze),
-                              image: DecorationImage(
-                                image: _publicMediaProvider(media['cover'])!,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        Container(
-                          padding: EdgeInsets.all(
-                            user!['active_ring_id']?.toString().isNotEmpty == true
-                                ? 4
-                                : 0,
-                          ),
-                          decoration: user!['active_ring_id']
-                                      ?.toString()
-                                      .isNotEmpty ==
-                                  true
-                              ? const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: SweepGradient(
-                                    colors: <Color>[
-                                      Color(0xFFFFE47A),
-                                      Color(0xFFFF6FB7),
-                                      Color(0xFF8C6CFF),
-                                      Color(0xFFFFE47A),
-                                    ],
-                                  ),
-                                  boxShadow: <BoxShadow>[
-                                    BoxShadow(
-                                      color: Color(0x66FFB5F1),
-                                      blurRadius: 12,
-                                    ),
-                                  ],
-                                )
-                              : null,
-                          child: VipAnimatedFrame(
-                            size: 88,
-                            enabled: user!['active_frame_id']
-                                        ?.toString()
-                                        .isNotEmpty ==
-                                    true ||
-                                (int.tryParse(
-                                          user!['active_vip_level']
-                                                  ?.toString() ??
-                                              '',
-                                        ) ??
-                                        0) >=
-                                    7,
-                            styleId: user!['active_frame_id']?.toString(),
-                            child: CircleAvatar(
-                              radius: 40,
-                              backgroundImage: user!['avatar_key']
-                                          ?.toString()
-                                          .isNotEmpty ==
-                                      true
-                                  ? NetworkImage(
-                                      widget.state.backend.fileUrl(
-                                        user!['avatar_key'].toString(),
-                                      ),
-                                      headers:
-                                          widget.state.backend.fileHeaders,
-                                    )
-                                  : null,
-                              child: user!['avatar_key']
-                                          ?.toString()
-                                          .isNotEmpty ==
-                                      true
-                                  ? null
-                                  : Text(
-                                      displayName.isEmpty
-                                          ? 'U'
-                                          : displayName
-                                              .substring(0, 1)
-                                              .toUpperCase(),
-                                    ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(user!['display_name']?.toString() ?? 'User', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-                        Text('ID ${user!['public_id'] ?? user!['id']} • VIP ${user!['vip_level'] ?? 0}/18'),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 18,
-                          runSpacing: 8,
-                          children: [
-                            _PublicStat(
-                              label: 'Follow',
-                              value: '${socialStats['following_count'] ?? 0}',
-                            ),
-                            _PublicStat(
-                              label: 'Fans',
-                              value: '${socialStats['followers_count'] ?? 0}',
-                            ),
-                            _PublicStat(
-                              label: 'Charm',
-                              value:
-                                  '${socialStats['lifetime_received_coins'] ?? 0}',
-                            ),
-                            _PublicStat(
-                              label: 'Wealth',
-                              value:
-                                  '${(socialStats['wealth'] is Map ? (socialStats['wealth'] as Map)['level'] : 0) ?? 0}',
-                            ),
-                          ],
-                        ),
-                        if ((int.tryParse(user!['active_vip_level']?.toString() ?? user!['vip_level']?.toString() ?? '') ?? 0) >= 18)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 5),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.military_tech_rounded, size: 16, color: Color(0xFFFFD36A)),
-                              SizedBox(width: 4),
-                              Text('King of VIP', style: TextStyle(color: Color(0xFFFFD36A), fontWeight: FontWeight.w700)),
-                            ]),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: OutlinedButton.icon(
-                            onPressed: _showTrends,
-                            icon: const Icon(Icons.auto_awesome_rounded),
-                            label: Text('Trends (${trends.length})'),
-                          ),
-                        ),
-                        if ([
-                          media['life_1'],
-                          media['travel'],
-                          media['life_2'],
-                          media['life_3'],
-                        ].any((value) => value?.isNotEmpty == true)) ...[
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Photos',
-                            style: TextStyle(
-                              color: TinniPalette.gold,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 7),
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final entry in <(String, String)>[
-                                ('life_1', 'Life'),
-                                ('travel', 'Travel'),
-                                ('life_2', 'Life'),
-                                ('life_3', 'Life'),
-                              ])
-                                if (_publicMediaProvider(media[entry.$1]) != null)
-                                  Container(
-                                    width: 92,
-                                    height: 92,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: TinniPalette.bronze,
-                                      ),
-                                      image: DecorationImage(
-                                        image: _publicMediaProvider(
-                                          media[entry.$1],
-                                        )!,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                            ],
-                          ),
-                        ],
-                        if (!_isSelf) ...[
-                          Padding(
-                            padding: const EdgeInsets.only(top: 14),
-                            child: Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                FilledButton.icon(
-                                  onPressed: followBusy || isBlocked ? null : _toggleFollow,
-                                  icon: Icon(
-                                    isFollowing
-                                        ? Icons.person_remove_alt_1_rounded
-                                        : Icons.person_add_rounded,
-                                  ),
-                                  label: Text(
-                                    isFollowing ? 'Following' : 'Follow',
-                                  ),
-                                ),
-                                if (isFriend)
-                                  const Chip(
-                                    avatar: Icon(Icons.people_alt_rounded, size: 16),
-                                    label: Text('Friends'),
-                                  ),
-                                OutlinedButton.icon(
-                                  key: const Key('public-profile-message'),
-                                  onPressed: isBlocked ? null : _openConversation,
-                                  icon: const Icon(Icons.chat_bubble_rounded),
-                                  label: const Text('Message'),
-                                ),
-                                if (isFriend)
-                                  OutlinedButton.icon(
-                                    key: const Key('public-profile-call'),
-                                    onPressed:
-                                        !isBlocked && !startingCall ? _startCall : null,
-                                    icon: startingCall
-                                        ? const SizedBox.square(
-                                            dimension: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(Icons.call_rounded),
-                                    label: const Text('Call'),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        if (!_isSelf && widget.state.hasVipPrivilege('free_say_hi'))
-                          Padding(
-                            padding: const EdgeInsets.only(top: 14),
-                            child: FilledButton.icon(
-                              onPressed: widget.state.vipFreeSayHiRemaining > 0
-                                  ? () => _sayHi(context)
-                                  : null,
-                              icon: const Icon(Icons.waving_hand_rounded),
-                              label: Text('Free Say Hi (${widget.state.vipFreeSayHiRemaining} left)'),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-      );
-  }
-
-  Future<void> _openConversation() async {
-    final name = user?['display_name']?.toString().trim();
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => ConversationScreen(
-          state: widget.state,
-          otherUserId: _resolvedUserId,
-          otherName:
-              name == null || name.isEmpty ? 'User $_resolvedUserId' : name,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _startCall() async {
-    if (!isFriend || startingCall || !widget.state.backendConnected) return;
-    setState(() => startingCall = true);
-    final value = await widget.state.backend.startDirectCall(
-      userId: widget.state.userId,
-      receiverUserId: _resolvedUserId,
-    );
-    if (!mounted) return;
-    setState(() => startingCall = false);
-    final raw = value?['call'];
-    if (value?['ok'] != true || raw is! Map) {
-      final error = value?['error']?.toString();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            switch (error) {
-              'friends_required' =>
-                'Both users must be friends before calling.',
-              'user_busy' => 'This user is busy on another call.',
-              _ => 'Call could not be started.',
-            },
-          ),
-        ),
-      );
-      return;
+  String _partnerId(Map<String, dynamic>? relation) {
+    if (relation == null || relation['state']?.toString() != 'active') {
+      return '';
     }
-    final call = Map<String, dynamic>.from(raw);
-    final name = user?['display_name']?.toString().trim();
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => DirectCallScreen(
-          state: widget.state,
-          callId: call['id']?.toString() ?? '',
-          peerName:
-              name == null || name.isEmpty ? 'User ${widget.userId}' : name,
-          initialState: call['state']?.toString() ?? 'ringing',
-        ),
-      ),
-    );
+    final a = relation['user_a']?.toString() ?? '';
+    final b = relation['user_b']?.toString() ?? '';
+    return a == targetId ? b : a;
   }
 
-  Future<void> _toggleBlock() async {
-    if (blockBusy) return;
-    setState(() => blockBusy = true);
-    final next = !isBlocked;
-    final ok = await widget.state.backend.setUserBlocked(
-      userId: widget.state.userId,
-      targetUserId: _resolvedUserId,
-      blocked: next,
-    );
-    if (!mounted) return;
-    setState(() {
-      blockBusy = false;
-      if (ok) {
-        isBlocked = next;
-        if (next) {
-          isFriend = false;
-          isFollowing = false;
-        }
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok
-              ? (next ? 'User blocked' : 'User unblocked')
-              : 'Block setting could not be updated',
+  String _partnerName(Map<String, dynamic>? relation) {
+    if (relation == null) return '';
+    final a = relation['user_a']?.toString() ?? '';
+    return a == targetId
+        ? relation['user_b_name']?.toString() ?? ''
+        : relation['user_a_name']?.toString() ?? '';
+  }
+
+  String _partnerAvatar(Map<String, dynamic>? relation) {
+    if (relation == null) return '';
+    final a = relation['user_a']?.toString() ?? '';
+    return a == targetId
+        ? relation['user_b_avatar_key']?.toString() ?? ''
+        : relation['user_a_avatar_key']?.toString() ?? '';
+  }
+
+  void _openPartner(Map<String, dynamic>? relation) {
+    final id = _partnerId(relation);
+    if (id.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(
+          state: widget.state,
+          userId: id,
         ),
       ),
     );
   }
 
   Future<void> _toggleFollow() async {
-    if (followBusy) return;
+    if (isSelf || followBusy) return;
     setState(() => followBusy = true);
     final next = !isFollowing;
     final ok = await widget.state.backend.setUserFollow(
       userId: widget.state.userId,
-      targetUserId: _resolvedUserId,
+      targetUserId: targetId,
       follow: next,
     );
     if (!mounted) return;
-    setState(() {
-      followBusy = false;
-      if (ok) isFollowing = next;
-    });
     if (ok) {
       final friends = await widget.state.backend.friends(
         userId: widget.state.userId,
       );
-      if (mounted) {
-        setState(() {
-          isFriend =
-              friends.any((row) => row['id']?.toString() == _resolvedUserId);
-        });
-      }
-    }
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Follow could not be updated')),
+      final statsResult = await widget.state.backend.socialStats(
+        userId: targetId,
       );
+      final stats = statsResult?['stats'];
+      if (!mounted) return;
+      setState(() {
+        isFollowing = next;
+        isMutual = friends.any(
+          (row) => row['id']?.toString() == targetId,
+        );
+        if (stats is Map) {
+          socialStats = Map<String, dynamic>.from(stats);
+        }
+      });
     }
+    if (mounted) setState(() => followBusy = false);
   }
 
-  Future<void> _sayHi(BuildContext context) async {
-    final input = TextEditingController();
-    final text = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Free Say Hi'),
-        content: TextField(controller: input, maxLength: 300, maxLines: 3, decoration: const InputDecoration(hintText: 'Up to 30 words')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, input.text.trim()), child: const Text('Send')),
-        ],
+  void _openChat() {
+    if (isSelf || user == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ConversationScreen(
+          state: widget.state,
+          otherUserId: targetId,
+          otherName: user?['display_name']?.toString() ?? 'User',
+        ),
       ),
     );
-    input.dispose();
-    if (text == null || text.isEmpty || !mounted) return;
-    final ok = await widget.state.sendVipSayHi(receiverUserId: _resolvedUserId, message: text);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Free Say Hi sent' : widget.state.vipError ?? 'Could not send Say Hi')));
-    setState(() {});
+  }
+
+  Widget _avatarCircle({
+    required double radius,
+    required String avatarKey,
+    required VoidCallback? onTap,
+  }) {
+    final provider = _avatar(avatarKey);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: radius * 2,
+        height: radius * 2,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2.5),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: CircleAvatar(
+          radius: radius,
+          backgroundColor: const Color(0xFFE6E6E6),
+          backgroundImage: provider,
+          child: provider == null
+              ? Icon(
+                  Icons.person_rounded,
+                  size: radius,
+                  color: Colors.black38,
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _medalStrip() {
+    if (medals.isEmpty) return const SizedBox(height: 32);
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        shrinkWrap: true,
+        itemCount: medals.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, index) {
+          final medal = medals[index];
+          final name = medal['name']?.toString() ?? 'Medal';
+          return Tooltip(
+            message: name,
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFF221B38),
+              ),
+              child: const Icon(
+                Icons.workspace_premium_rounded,
+                color: Color(0xFFFFD66B),
+                size: 22,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _profileTab() {
+    final value = user!;
+    final country = value['country_name']?.toString().trim() ?? '';
+    final flag = value['flag_emoji']?.toString().trim() ?? '';
+    final bio = value['bio']?.toString().trim() ?? '';
+    final countryText =
+        country.isEmpty ? '-' : (flag.isEmpty ? country : '$flag $country');
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 110),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(
+              width: 82,
+              child: Text(
+                'Country',
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                countryText,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 26),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(
+              width: 82,
+              child: Text(
+                'Bio',
+                style: TextStyle(
+                  color: Colors.black45,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                bio.isEmpty ? '-' : bio,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  height: 1.35,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _relationCard({
+    required String title,
+    required Map<String, dynamic>? relation,
+    required bool couple,
+  }) {
+    final data = relation ?? const <String, dynamic>{};
+    final active = data['state']?.toString() == 'active';
+    final partnerId = active ? _partnerId(relation) : '';
+    final partnerName = active ? _partnerName(relation) : '';
+    final partnerAvatar = active ? _partnerAvatar(relation) : '';
+    final level = int.tryParse(data['level']?.toString() ?? '') ?? 0;
+    final progress = int.tryParse(
+          data[couple ? 'intimacy' : 'rivalry']?.toString() ?? '',
+        ) ??
+        0;
+    final next = int.tryParse(
+      data['next_level_threshold']?.toString() ?? '',
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(17),
+        gradient: LinearGradient(
+          colors: couple
+              ? const [Color(0xFFFF7AAE), Color(0xFFFFB7D4)]
+              : const [Color(0xFF5435A8), Color(0xFF8C73DB)],
+        ),
+      ),
+      child: active
+          ? Column(
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Lv.$level',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 13),
+                Row(
+                  children: [
+                    _avatarCircle(
+                      radius: 31,
+                      avatarKey: user?['avatar_key']?.toString() ?? '',
+                      onTap: null,
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Icon(
+                          couple
+                              ? Icons.favorite_rounded
+                              : Icons.flash_on_rounded,
+                          color: Colors.white,
+                          size: 35,
+                        ),
+                      ),
+                    ),
+                    _avatarCircle(
+                      radius: 31,
+                      avatarKey: partnerAvatar,
+                      onTap: partnerId.isEmpty
+                          ? null
+                          : () => _openPartner(relation),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        user?['display_name']?.toString() ?? 'User',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.left,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        partnerName.isEmpty ? 'User' : partnerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: next == null || next <= 0
+                      ? 1
+                      : (progress / next).clamp(0, 1).toDouble(),
+                  minHeight: 7,
+                  borderRadius: BorderRadius.circular(20),
+                  backgroundColor: const Color(0x55FFFFFF),
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                const SizedBox(height: 5),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    next == null ? '$progress' : '$progress / $next',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : SizedBox(
+              height: 95,
+              child: Center(
+                child: Text(
+                  'No $title',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _intimacyTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 110),
+      children: [
+        _relationCard(
+          title: 'Couple',
+          relation: cp,
+          couple: true,
+        ),
+        _relationCard(
+          title: 'VS',
+          relation: vs,
+          couple: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _hero() {
+    final value = user!;
+    final avatarKey = value['avatar_key']?.toString() ?? '';
+    final cpRelation = cp;
+    final cpActive =
+        cpRelation != null && cpRelation['state']?.toString() == 'active';
+    final cpPartnerAvatar =
+        cpActive ? _partnerAvatar(cpRelation) : '';
+    final followers =
+        int.tryParse(socialStats['followers_count']?.toString() ?? '') ?? 0;
+    final level = int.tryParse(idLevel['level']?.toString() ?? '') ?? 0;
+    final gender = value['gender']?.toString().trim().toLowerCase() ?? '';
+    return Container(
+      height: 310,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF10101A),
+            Color(0xFF37275C),
+            Color(0xFF8B5D82),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 4,
+              left: 4,
+              child: IconButton(
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 25,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    width: cpActive ? 138 : 88,
+                    height: 94,
+                    child: Stack(
+                      alignment: Alignment.bottomLeft,
+                      children: [
+                        if (cpActive)
+                          Positioned(
+                            left: 51,
+                            bottom: 0,
+                            child: _avatarCircle(
+                              radius: 39,
+                              avatarKey: cpPartnerAvatar,
+                              onTap: () => _openPartner(cpRelation),
+                            ),
+                          ),
+                        Positioned(
+                          left: 0,
+                          bottom: 0,
+                          child: _avatarCircle(
+                            radius: 43,
+                            avatarKey: avatarKey,
+                            onTap: null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          value['display_name']?.toString() ?? 'User',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'ID ${_publicId(value)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '$followers Followers',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 5,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xAA16A36A),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                'Lv.$level',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            if (gender == 'male' || gender == 'female')
+                              Container(
+                                width: 23,
+                                height: 23,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: gender == 'male'
+                                      ? const Color(0xFF4789E7)
+                                      : const Color(0xFFE868A7),
+                                ),
+                                child: Text(
+                                  gender == 'male' ? '♂' : '♀',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _medalStrip(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _followLabel {
+    if (isMutual) return 'Mutual Friend';
+    if (isFollowing) return 'Followed';
+    return 'Follow';
+  }
+
+  Widget _bottomActions() {
+    if (isSelf) return const SizedBox.shrink();
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 9, 18, 10),
+        color: Colors.white,
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: followBusy ? null : _toggleFollow,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF22BED8),
+                  side: const BorderSide(color: Color(0xFF22BED8)),
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+                child: followBusy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        _followLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _openChat,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF22BED8),
+                  side: const BorderSide(color: Color(0xFF22BED8)),
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+                child: const Text(
+                  'Chat',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(),
+        body: const Center(child: Text('Profile not found')),
+      );
+    }
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
+            _hero(),
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const TabBar(
+                      labelColor: Colors.black87,
+                      unselectedLabelColor: Colors.black45,
+                      indicatorColor: Colors.transparent,
+                      labelStyle: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      unselectedLabelStyle: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      tabs: [
+                        Tab(text: 'Profile'),
+                        Tab(text: 'Intimacy'),
+                      ],
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _profileTab(),
+                          _intimacyTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: _bottomActions(),
+      ),
+    );
   }
 }

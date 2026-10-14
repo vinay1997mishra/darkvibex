@@ -115,6 +115,7 @@ class BackendApi {
     String countryName = '',
     String flagEmoji = '',
     String gender = '',
+    String bio = '',
     String language = '',
   }) =>
       _json(
@@ -128,6 +129,7 @@ class BackendApi {
           if (countryName.trim().isNotEmpty) 'country_name': countryName.trim(),
           if (flagEmoji.trim().isNotEmpty) 'flag_emoji': flagEmoji.trim(),
           if (gender.trim().isNotEmpty) 'gender': gender.trim(),
+          'bio': bio.trim(),
           if (language.trim().isNotEmpty) 'language': language.trim(),
         },
         returnErrorBody: true,
@@ -163,8 +165,14 @@ class BackendApi {
   Future<Map<String, dynamic>?> googleAuthConfig() =>
       _json('GET', '/api/auth/config');
 
-  Future<Map<String, dynamic>?> userProfile({required String userId}) =>
-      _json('GET', '/api/users/${Uri.encodeComponent(userId)}');
+  Future<Map<String, dynamic>?> userProfile({
+    required String userId,
+    bool recordVisit = true,
+  }) =>
+      _json(
+        'GET',
+        '/api/users/${Uri.encodeComponent(userId)}${recordVisit ? '' : '?record_visit=0'}',
+      );
 
   Future<List<Map<String, dynamic>>> profileVisitors({required String userId}) async {
     final value = await _json('GET', '/api/users/${Uri.encodeComponent(userId)}/visitors');
