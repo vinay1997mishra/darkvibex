@@ -1344,6 +1344,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool isFollowing = false;
   bool isMutual = false;
   bool followBusy = false;
+  bool cpInviteBusy = false;
 
   String get targetId => user?['id']?.toString() ?? widget.userId;
   bool get isSelf => targetId == widget.state.userId;
@@ -1690,8 +1691,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         title: const Text('Versus'),
         content: const Text(
           'VS is a rivalry relationship between two users. '
-          'The two horned circles show both sides of the VS pair. '
-          'VS progress is raised by VS-category activity after the relation is active.',
+          'Both users appear inside the horned circles and VS activity raises the relation level.',
         ),
         actions: [
           TextButton(
@@ -1699,6 +1699,453 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             child: const Text('OK'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openCpBinding() async {
+    if (!isSelf || cpInviteBusy) return;
+    final rows = await widget.state.backend.friends(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+
+    final controller = TextEditingController();
+    var query = '';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) {
+          final q = query.trim().toLowerCase();
+          final filtered = rows.where((row) {
+            if (q.isEmpty) return true;
+            final id = row['id']?.toString().toLowerCase() ?? '';
+            final name = row['display_name']?.toString().toLowerCase() ?? '';
+            return id.contains(q) || name.contains(q);
+          }).toList(growable: false);
+
+          return FractionallySizedBox(
+            heightFactor: .76,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 18),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 18),
+                      child: Text(
+                        'Friends that can be bound to CP',
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: TextField(
+                        controller: controller,
+                        onChanged: (value) {
+                          setModalState(() => query = value);
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Enter ID',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFB6B8BE),
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: Color(0xFFAEB2BA),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FB),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.forum_rounded,
+                                    size: 76,
+                                    color: Color(0xFF77DDF5),
+                                  ),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Oh,There is nothing here~',
+                                    style: TextStyle(
+                                      color: Color(0xFFC8C8CC),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                2,
+                                16,
+                                24,
+                              ),
+                              itemCount: filtered.length,
+                              itemBuilder: (itemContext, index) {
+                                final friend = filtered[index];
+                                final avatarKey =
+                                    friend['avatar_key']?.toString() ?? '';
+                                final id = friend['id']?.toString() ?? '';
+                                final name = friend['display_name']
+                                        ?.toString()
+                                        .trim() ??
+                                    '';
+                                final image = _avatar(avatarKey);
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 7),
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 27,
+                                        backgroundColor:
+                                            const Color(0xFFF0F0F2),
+                                        backgroundImage: image,
+                                        child: image == null
+                                            ? const Icon(
+                                                Icons.person_rounded,
+                                                color: Colors.black38,
+                                              )
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              name.isEmpty ? 'User' : name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.black87,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              'ID:$id',
+                                              style: const TextStyle(
+                                                color: Color(0xFFB3B3B7),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        height: 43,
+                                        child: FilledButton(
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor:
+                                                const Color(0xFF24CCE8),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 23,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(22),
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            Navigator.pop(sheetContext);
+                                            await Future<void>.delayed(
+                                              const Duration(milliseconds: 120),
+                                            );
+                                            if (!mounted) return;
+                                            await _confirmCpInvite(friend);
+                                          },
+                                          child: const Text(
+                                            'Protect',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _confirmCpInvite(Map<String, dynamic> friend) async {
+    if (cpInviteBusy) return;
+    final id = friend['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+
+    final name = friend['display_name']?.toString().trim() ?? '';
+    final avatarKey = friend['avatar_key']?.toString() ?? '';
+    final image = _avatar(avatarKey);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFFFE7EF),
+                Colors.white,
+                Colors.white,
+              ],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Form Friend',
+                style: TextStyle(
+                  color: Color(0xFFE94B71),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Are you sure you want to invite ${name.isEmpty ? 'this user' : name} to be your Friend?',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 16,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 18),
+              CircleAvatar(
+                radius: 42,
+                backgroundColor: const Color(0xFFF1F1F3),
+                backgroundImage: image,
+                child: image == null
+                    ? const Icon(
+                        Icons.person_rounded,
+                        size: 42,
+                        color: Colors.black38,
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name.isEmpty ? 'User' : name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'ID:$id',
+                style: const TextStyle(
+                  color: Color(0xFFB5B5BA),
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFE8EF),
+                          foregroundColor: const Color(0xFFE84A6F),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, false),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF587D),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, true),
+                        child: const Text(
+                          'Invite',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => cpInviteBusy = true);
+    try {
+      final result = await widget.state.backend.cpRequest(
+        userId: widget.state.userId,
+        targetUserId: id,
+      );
+      if (!mounted) return;
+
+      if (result?['ok'] == true) {
+        final balance =
+            int.tryParse(result?['coin_balance']?.toString() ?? '');
+        if (balance != null) widget.state.setCoinBalance(balance);
+        await _showCpInviteSent();
+        await _load();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']
+                      ?.toString()
+                      .replaceAll('_', ' ') ??
+                  'CP invitation failed',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => cpInviteBusy = false);
+    }
+  }
+
+  Future<void> _showCpInviteSent() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(28, 30, 28, 22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(25),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'The invitation has been sent and\nis waiting to be received',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 20,
+                  height: 1.35,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF587D),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text(
+                    'Confirm',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1712,29 +2159,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         Text(
           title,
           style: const TextStyle(
-            color: Colors.black87,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
+            color: Color(0xFF202025),
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(width: 7),
+        const SizedBox(width: 6),
         InkWell(
           onTap: onHelp,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           child: Container(
-            width: 25,
-            height: 25,
+            width: 20,
+            height: 20,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: Color(0xFFF1F1F4),
+              color: Color(0xFFF2F2F4),
               shape: BoxShape.circle,
             ),
             child: const Text(
               '?',
               style: TextStyle(
-                color: Colors.black45,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
+                color: Color(0xFFB8B8BC),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -1759,17 +2206,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: showPlus ? const Color(0x33FFFFFF) : const Color(0xFF2A0D1B),
+          color: showPlus ? const Color(0x22FFFFFF) : const Color(0xFF29101B),
           border: Border.all(
-            color: horned ? const Color(0xFFFF3B72) : Colors.white,
-            width: horned ? 3 : 2.2,
+            color: horned ? const Color(0xFFFF3F73) : Colors.white,
+            width: horned ? 2.8 : 1.8,
           ),
           boxShadow: horned
               ? const [
                   BoxShadow(
-                    color: Color(0x88FF2F67),
-                    blurRadius: 12,
-                    spreadRadius: 1,
+                    color: Color(0x77FF2F67),
+                    blurRadius: 10,
+                    spreadRadius: .5,
                   ),
                 ]
               : null,
@@ -1784,50 +2231,39 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ? const Icon(
                 Icons.add_rounded,
                 color: Colors.white,
-                size: 34,
+                size: 35,
               )
             : provider == null
                 ? const Icon(
                     Icons.person_rounded,
                     color: Colors.white70,
-                    size: 32,
+                    size: 31,
                   )
                 : null,
       ),
     );
 
     if (!horned) return circle;
+
     return SizedBox(
-      width: size + 20,
-      height: size + 16,
+      width: size + 26,
+      height: size + 22,
       child: Stack(
         alignment: Alignment.bottomCenter,
         clipBehavior: Clip.none,
         children: [
-          circle,
           Positioned(
-            top: -1,
-            left: 13,
-            child: Transform.rotate(
-              angle: -0.42,
-              child: const Icon(
-                Icons.change_history_rounded,
-                color: Color(0xFFFF3B72),
-                size: 30,
-              ),
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CustomPaint(
+              size: Size(size + 26, 42),
+              painter: const _DevilHornPainter(),
             ),
           ),
           Positioned(
-            top: -1,
-            right: 13,
-            child: Transform.rotate(
-              angle: 0.42,
-              child: const Icon(
-                Icons.change_history_rounded,
-                color: Color(0xFFFF3B72),
-                size: 30,
-              ),
-            ),
+            bottom: 0,
+            child: circle,
           ),
         ],
       ),
@@ -1840,158 +2276,103 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final rivalId = active ? _partnerId(vs) : '';
     final rivalAvatar = active ? _partnerAvatar(vs) : '';
     final rivalName = active ? _partnerName(vs) : '';
-    final level = int.tryParse(data['level']?.toString() ?? '') ?? 0;
     final ownAvatar = user?['avatar_key']?.toString() ?? '';
 
-    return InkWell(
+    return Container(
       key: const Key('profile-intimacy-versus-card'),
-      onTap: isSelf ? () => _openRelationManager(couple: false) : null,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        height: 172,
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF24030D),
-              Color(0xFF6E0B2E),
-              Color(0xFF19030B),
-            ],
-          ),
-          border: Border.all(
-            color: const Color(0xFFFF2F67),
-            width: 1.4,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x44FF2F67),
-              blurRadius: 14,
-            ),
+      height: 154,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF22030B),
+            Color(0xFF6C0A2D),
+            Color(0xFF21030C),
           ],
         ),
-        child: Stack(
-          children: [
-            const Positioned(
-              left: 3,
-              right: 3,
-              bottom: 1,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(Icons.local_florist_rounded,
-                      color: Color(0xAAE9325F), size: 36),
-                  Icon(Icons.local_florist_rounded,
-                      color: Color(0xAAE9325F), size: 36),
-                ],
-              ),
-            ),
-            Row(
+        border: Border.all(
+          color: const Color(0xFFFF356C),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _roundRelationAvatar(
-                        avatarKey: ownAvatar,
-                        size: 86,
-                        horned: true,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        user?['display_name']?.toString() ?? 'User',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+                _roundRelationAvatar(
+                  avatarKey: ownAvatar,
+                  size: 76,
+                  horned: true,
                 ),
-                SizedBox(
-                  width: 76,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'VS',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 36,
-                          fontWeight: FontWeight.w900,
-                          fontStyle: FontStyle.italic,
-                          shadows: [
-                            Shadow(
-                              color: Color(0xFFFF2F67),
-                              blurRadius: 16,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (active)
-                        Container(
-                          margin: const EdgeInsets.only(top: 7),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0x55000000),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0x88FF6A91),
-                            ),
-                          ),
-                          child: Text(
-                            'Lv.$level',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _roundRelationAvatar(
-                        avatarKey: rivalAvatar,
-                        size: 86,
-                        horned: true,
-                        showPlus: !active,
-                        onTap: active && rivalId.isNotEmpty
-                            ? () => _openPartner(vs)
-                            : isSelf
-                                ? () => _openRelationManager(couple: false)
-                                : null,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        active && rivalName.isNotEmpty ? rivalName : 'None',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 1),
+                Text(
+                  user?['display_name']?.toString() ?? 'User',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(
+            width: 64,
+            child: Center(
+              child: Text(
+                'VS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  fontStyle: FontStyle.italic,
+                  shadows: [
+                    Shadow(
+                      color: Color(0xFFFF2F66),
+                      blurRadius: 14,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _roundRelationAvatar(
+                  avatarKey: rivalAvatar,
+                  size: 76,
+                  horned: true,
+                  showPlus: !active,
+                  onTap: active && rivalId.isNotEmpty
+                      ? () => _openPartner(vs)
+                      : isSelf
+                          ? () => _openRelationManager(couple: false)
+                          : null,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  active && rivalName.isNotEmpty ? rivalName : 'None',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2009,51 +2390,60 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 ),
               )
           : null,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(9),
       child: Container(
-        height: 58,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 45,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: const LinearGradient(
-            colors: [
-              Color(0xFFFFEDF4),
-              Color(0xFFFFD3E2),
-              Color(0xFFFFEEF5),
-            ],
+          borderRadius: BorderRadius.circular(9),
+          color: const Color(0xFFFFF2F7),
+          border: Border.all(
+            color: const Color(0xFFFFE1EB),
+            width: .8,
           ),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(
-              Icons.favorite_rounded,
-              color: Color(0xFFFF4E80),
-              size: 30,
+            Container(
+              width: 23,
+              height: 23,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFE5EE),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.favorite_rounded,
+                color: Color(0xFFFF4C74),
+                size: 15,
+              ),
             ),
-            SizedBox(width: 11),
-            Expanded(
+            const SizedBox(width: 10),
+            const Expanded(
               child: Text(
                 'Love Store',
                 style: TextStyle(
-                  color: Color(0xFFFF3B72),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFFF758F),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            DecoratedBox(
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 5,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.all(Radius.circular(22)),
+                borderRadius: BorderRadius.circular(18),
               ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Text(
-                  'Go',
-                  style: TextStyle(
-                    color: Color(0xFFFF3B72),
-                    fontWeight: FontWeight.w800,
-                  ),
+              child: const Text(
+                'Go',
+                style: TextStyle(
+                  color: Color(0xFFFF718B),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -2071,146 +2461,159 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final partnerName = active ? _partnerName(cp) : '';
     final ownAvatar = user?['avatar_key']?.toString() ?? '';
 
-    return InkWell(
+    return Container(
       key: const Key('profile-intimacy-couple-card'),
-      onTap: isSelf ? () => _openRelationManager(couple: true) : null,
-      borderRadius: BorderRadius.circular(17),
-      child: Container(
-        height: 164,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(17),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFF8FB4),
-              Color(0xFFFF6D9D),
-              Color(0xFFFFA9C6),
+      height: 148,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFD07A87),
+            Color(0xFFCC6F7E),
+            Color(0xFFD48692),
+          ],
+        ),
+        border: Border.all(
+          color: const Color(0xFFC9A12B),
+          width: 1.5,
+        ),
+      ),
+      child: Stack(
+        children: [
+          const Positioned(
+            left: 4,
+            top: 2,
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              color: Color(0xFFE8C85C),
+              size: 17,
+            ),
+          ),
+          const Positioned(
+            right: 4,
+            top: 2,
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              color: Color(0xFFE8C85C),
+              size: 17,
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFD8C6FF),
+                          width: 4,
+                        ),
+                      ),
+                      child: _roundRelationAvatar(
+                        avatarKey: ownAvatar,
+                        size: 66,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      user?['display_name']?.toString() ?? 'User',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFFFECEF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 88,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Positioned(
+                      left: 2,
+                      child: Icon(
+                        Icons.air_rounded,
+                        color: Color(0xFFEDE7EA),
+                        size: 35,
+                      ),
+                    ),
+                    const Positioned(
+                      right: 2,
+                      child: Icon(
+                        Icons.air_rounded,
+                        color: Color(0xFFEDE7EA),
+                        size: 35,
+                      ),
+                    ),
+                    Container(
+                      width: 49,
+                      height: 49,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x55F94C61),
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.favorite_rounded,
+                        color: Color(0xFFF24B5E),
+                        size: 47,
+                      ),
+                    ),
+                    const Icon(
+                      Icons.monitor_heart_rounded,
+                      color: Colors.white,
+                      size: 25,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _roundRelationAvatar(
+                      avatarKey: partnerAvatar,
+                      size: 72,
+                      showPlus: !active,
+                      onTap: active && partnerId.isNotEmpty
+                          ? () => _openPartner(cp)
+                          : isSelf
+                              ? _openCpBinding
+                              : null,
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      active && partnerName.isNotEmpty ? partnerName : 'None',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFFFECEF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          border: Border.all(
-            color: const Color(0xFFFFC64A),
-            width: 1.8,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33FF7AAE),
-              blurRadius: 12,
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFE4D8FF),
-                        width: 4,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x668B6CFF),
-                          blurRadius: 9,
-                        ),
-                      ],
-                    ),
-                    child: _roundRelationAvatar(
-                      avatarKey: ownAvatar,
-                      size: 72,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    user?['display_name']?.toString() ?? 'User',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              width: 82,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Icon(
-                    Icons.favorite_rounded,
-                    color: Colors.white,
-                    size: 54,
-                    shadows: [
-                      Shadow(
-                        color: Color(0xAAFF335F),
-                        blurRadius: 12,
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    left: 0,
-                    child: Transform.rotate(
-                      angle: -0.25,
-                      child: const Icon(
-                        Icons.air_rounded,
-                        color: Colors.white70,
-                        size: 34,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    child: Transform.rotate(
-                      angle: 0.25,
-                      child: const Icon(
-                        Icons.air_rounded,
-                        color: Colors.white70,
-                        size: 34,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _roundRelationAvatar(
-                    avatarKey: partnerAvatar,
-                    size: 78,
-                    showPlus: !active,
-                    onTap: active && partnerId.isNotEmpty
-                        ? () => _openPartner(cp)
-                        : isSelf
-                            ? () => _openRelationManager(couple: true)
-                            : null,
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    active && partnerName.isNotEmpty ? partnerName : 'None',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -2219,22 +2622,22 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     return ListView(
       key: const Key('profile-intimacy-scroll'),
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 110),
       children: [
         _intimacyHeading(
           'Versus',
           onHelp: _showVsInfo,
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 7),
         _versusCard(),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         _loveStoreStrip(),
-        const SizedBox(height: 18),
+        const SizedBox(height: 15),
         _intimacyHeading(
           'Couple',
           onHelp: _openCpRules,
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 7),
         _coupleCard(),
       ],
     );
@@ -2613,7 +3016,7 @@ class _CpRuleScreen extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: const Color(0xCCFFFFFF),
+          color: const Color(0xFFF9F3FD),
           borderRadius: BorderRadius.circular(15),
         ),
         child: child,
@@ -2676,9 +3079,9 @@ class _CpRuleScreen extends StatelessWidget {
       height: 1.5,
     );
     return Scaffold(
-      backgroundColor: const Color(0xFFF4E7FF),
+      backgroundColor: const Color(0xFFF4E8FE),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF4E7FF),
+        backgroundColor: const Color(0xFFF4E8FE),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -2752,4 +3155,64 @@ class _CpRuleScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class _DevilHornPainter extends CustomPainter {
+  const _DevilHornPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFFF3F73)
+      ..style = PaintingStyle.fill;
+
+    final left = Path()
+      ..moveTo(size.width * .31, size.height * .84)
+      ..cubicTo(
+        size.width * .12,
+        size.height * .76,
+        size.width * .10,
+        size.height * .30,
+        size.width * .23,
+        size.height * .06,
+      )
+      ..cubicTo(
+        size.width * .18,
+        size.height * .41,
+        size.width * .27,
+        size.height * .61,
+        size.width * .39,
+        size.height * .68,
+      )
+      ..close();
+
+    final right = Path()
+      ..moveTo(size.width * .69, size.height * .84)
+      ..cubicTo(
+        size.width * .88,
+        size.height * .76,
+        size.width * .90,
+        size.height * .30,
+        size.width * .77,
+        size.height * .06,
+      )
+      ..cubicTo(
+        size.width * .82,
+        size.height * .41,
+        size.width * .73,
+        size.height * .61,
+        size.width * .61,
+        size.height * .68,
+      )
+      ..close();
+
+    canvas.drawShadow(left, const Color(0xFFFF2F67), 7, false);
+    canvas.drawShadow(right, const Color(0xFFFF2F67), 7, false);
+    canvas.drawPath(left, paint);
+    canvas.drawPath(right, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DevilHornPainter oldDelegate) => false;
 }
