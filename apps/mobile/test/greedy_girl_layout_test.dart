@@ -55,10 +55,39 @@ void main() {
         closeTo(size.height * .56, .1),
       );
       expect(find.text('Greedy Girl'), findsOneWidget);
-      expect(find.text('21+'), findsOneWidget);
+      expect(find.text('21+'), findsNothing);
       expect(find.byKey(const Key('greedy-girl-tomato')), findsOneWidget);
       expect(find.byKey(const Key('greedy-girl-skewer')), findsOneWidget);
       expect(tester.takeException(), isNull);
+
+      screen.setState(() {
+        screen.game = <String, dynamic>{};
+        screen.loading = false;
+        screen.loadError = 'Greedy Girl server did not respond. Tap Retry.';
+      });
+      await tester.pump();
+      expect(find.textContaining('server did not respond'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      screen.setState(() {
+        screen.game = <String, dynamic>{
+          'round': <String, dynamic>{
+            'round_id': 9,
+            'phase': 'betting',
+            'round_end': DateTime.now().millisecondsSinceEpoch + 30000,
+            'betting_open': true,
+          },
+          'config': <String, dynamic>{
+            'bet_amounts': <int>[100, 1000, 10000, 50000, 100000],
+          },
+          'my_bets': <String, int>{},
+          'history': <Map<String, dynamic>>[],
+          'wallet_balance': 2500000,
+          'today_winnings': 0,
+        };
+        screen.loadError = null;
+      });
+      await tester.pump();
 
       await tester.tap(find.byTooltip('Rules'));
       await tester.pump();
