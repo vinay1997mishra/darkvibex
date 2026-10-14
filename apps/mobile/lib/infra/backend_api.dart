@@ -775,6 +775,41 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<bool> registerPushDevice({
+    required String userId,
+    required String token,
+    required bool enabled,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/push/device',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'token': token,
+        'platform': 'android',
+        'enabled': enabled,
+      },
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<bool> setMessagePushEnabled({
+    required String userId,
+    required bool enabled,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/push/preferences',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'message_enabled': enabled,
+      },
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> inboxRedEnvelopes({required String userId, required String otherUserId}) async {
     final value = await _json('GET', '/api/messages/red-envelopes?user_id=${Uri.encodeQueryComponent(userId)}&other_user_id=${Uri.encodeQueryComponent(otherUserId)}');
     final rows = value?['envelopes'];
