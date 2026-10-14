@@ -4707,16 +4707,6 @@ class _RoomScreenState extends State<RoomScreen> {
                 boxSize: 34,
               ),
             ),
-          if (roomMode == 'game')
-            IconButton(
-              onPressed: _openGames,
-              tooltip: 'Open Game Center',
-              icon: const TinniGlowIcon(
-                icon: Icons.sports_esports_rounded,
-                size: 18,
-                boxSize: 34,
-              ),
-            ),
           IconButton(
             onPressed: _shareRoomId,
             tooltip: 'Share room',
