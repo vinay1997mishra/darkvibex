@@ -1198,6 +1198,31 @@ class BackendApi {
         },
       );
 
+  Future<Map<String, dynamic>?> greedyGirlState() =>
+      _json(
+        'GET',
+        '/api/games/greedy-girl/state',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> greedyGirlBet({
+    required String userId,
+    required String foodKey,
+    required int amount,
+    required String requestId,
+  }) =>
+      _json(
+        'POST',
+        '/api/games/greedy-girl/bet',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'food_key': foodKey,
+          'amount': amount,
+          'request_id': requestId,
+        },
+      );
+
   Future<List<Map<String, dynamic>>> roomMembers({
     required String roomId,
   }) async {
