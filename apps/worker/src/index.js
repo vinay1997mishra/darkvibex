@@ -1352,12 +1352,29 @@ async function requireLudoRoomMember(db, roomId, userId) {
   const room = await db.prepare(
     "SELECT id,owner_user_id FROM rooms WHERE id=? LIMIT 1"
   ).bind(roomId).first();
-  if (!room) throw new Error("room_not_found");
-  const member = await db.prepare(
-    "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1"
+  if (room) {
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1"
+    ).bind(roomId, userId).first();
+    if (!member) throw new Error("room_membership_required");
+    return room;
+  }
+
+  await db.prepare(
+    "CREATE TABLE IF NOT EXISTS game_rooms (id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL, shared_score INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
+  ).run();
+  await db.prepare(
+    "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))"
+  ).run();
+  const gameRoom = await db.prepare(
+    "SELECT id,owner_user_id FROM game_rooms WHERE id=? LIMIT 1"
+  ).bind(roomId).first();
+  if (!gameRoom) throw new Error("room_not_found");
+  const gameMember = await db.prepare(
+    "SELECT 1 AS active FROM game_room_members WHERE room_id=? AND user_id=? LIMIT 1"
   ).bind(roomId, userId).first();
-  if (!member) throw new Error("room_membership_required");
-  return room;
+  if (!gameMember) throw new Error("room_membership_required");
+  return gameRoom;
 }
 
 async function loadLudoState(db, roomId) {
@@ -1497,11 +1514,19 @@ async function publicLudoState(db, roomId, userId, loadedValue = null) {
   const loaded = loadedValue ?? await loadLudoState(db, roomId);
   const rows = await db.prepare(
     `SELECT p.user_id,p.color,p.joined_at,u.display_name,u.avatar_key,
-            m.seat_index,m.mic_muted
+            COALESCE(
+              (SELECT m.seat_index FROM room_members m
+                WHERE m.room_id=p.room_id AND m.user_id=p.user_id LIMIT 1),
+              (SELECT gm.seat_index FROM game_room_members gm
+                WHERE gm.room_id=p.room_id AND gm.user_id=p.user_id LIMIT 1)
+            ) AS seat_index,
+            COALESCE(
+              (SELECT m.mic_muted FROM room_members m
+                WHERE m.room_id=p.room_id AND m.user_id=p.user_id LIMIT 1),
+              0
+            ) AS mic_muted
        FROM ludo_room_players p
        JOIN users u ON u.id=p.user_id
-       LEFT JOIN room_members m
-         ON m.room_id=p.room_id AND m.user_id=p.user_id
       WHERE p.room_id=?
       ORDER BY p.joined_at ASC`
   ).bind(roomId).all();
@@ -5910,7 +5935,7 @@ async function handleApi(request, env, url) {
     }
   }
 
-  const gameRoomMatch = url.pathname.match(/^\/api\/game-rooms\/([^/]+)(?:\/(join|tap))?$/);
+  const gameRoomMatch = url.pathname.match(/^\/api\/game-rooms\/([^/]+)(?:\/(join|leave|tap|messages))?$/);
   if (url.pathname === "/api/game-rooms" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
@@ -5973,6 +5998,85 @@ async function handleApi(request, env, url) {
     if (!joined) return json({ ok: false, error: "game_room_not_found" }, { status: 404 });
     await db.prepare("UPDATE game_rooms SET updated_at=? WHERE id=?").bind(now(),roomId).run();
     return json({ ok: true, seat_index: seat });
+  }
+
+  if (gameRoomMatch && gameRoomMatch[2] === "leave" && request.method === "POST") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await db.prepare(
+      "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))"
+    ).run();
+    await db.prepare(
+      "DELETE FROM game_room_members WHERE room_id=? AND user_id=?"
+    ).bind(roomId,userId).run();
+    await db.prepare(
+      "DELETE FROM ludo_room_players WHERE room_id=? AND user_id=?"
+    ).bind(roomId,userId).run();
+    return json({ ok:true });
+  }
+
+  if (gameRoomMatch && gameRoomMatch[2] === "messages") {
+    const roomId = decodeURIComponent(gameRoomMatch[1]);
+    await db.prepare(
+      "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))"
+    ).run();
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS game_room_messages (
+        id TEXT PRIMARY KEY,
+        room_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`
+    ).run();
+    await db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_game_room_messages_room_time ON game_room_messages(room_id,created_at DESC)"
+    ).run();
+
+    if (request.method === "GET") {
+      const userId = String(url.searchParams.get("user_id") ?? "").trim();
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM game_room_members WHERE room_id=? AND user_id=? LIMIT 1"
+      ).bind(roomId,userId).first();
+      if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
+      const rows = await db.prepare(
+        `SELECT m.id,m.user_id,m.text,m.created_at,
+                COALESCE(u.display_name,'User') AS display_name,
+                u.avatar_key
+           FROM game_room_messages m
+           LEFT JOIN users u ON u.id=m.user_id
+          WHERE m.room_id=?
+          ORDER BY m.created_at DESC
+          LIMIT 100`
+      ).bind(roomId).all();
+      return json({ ok:true,messages:[...(rows.results ?? [])].reverse() });
+    }
+
+    if (request.method === "POST") {
+      const body = await bodyJson(request);
+      const userId = String(body.user_id ?? "").trim();
+      const textValue = String(body.text ?? "").trim().slice(0,500);
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
+      if (!textValue) return json({ ok:false,error:"message_required" }, { status:400 });
+      const member = await db.prepare(
+        "SELECT 1 AS active FROM game_room_members WHERE room_id=? AND user_id=? LIMIT 1"
+      ).bind(roomId,userId).first();
+      if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
+      const messageId = id();
+      const createdAt = now();
+      await db.prepare(
+        "INSERT INTO game_room_messages(id,room_id,user_id,text,created_at) VALUES(?,?,?,?,?)"
+      ).bind(messageId,roomId,userId,textValue,createdAt).run();
+      return json({ ok:true,id:messageId,created_at:createdAt }, { status:201 });
+    }
+
+    return json({ ok:false,error:"method_not_allowed" }, { status:405 });
   }
 
   if (gameRoomMatch && gameRoomMatch[2] === "tap" && request.method === "POST") {
@@ -6973,6 +7077,14 @@ async function handleLiveKitToken(request, env) {
   let membership = await db.prepare(
     "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? LIMIT 1"
   ).bind(roomId, String(session.sub)).first();
+  if (!membership) {
+    await db.prepare(
+      "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))"
+    ).run();
+    membership = await db.prepare(
+      "SELECT 1 AS active FROM game_room_members WHERE room_id = ? AND user_id = ? LIMIT 1"
+    ).bind(roomId, String(session.sub)).first();
+  }
   if (!membership && roomId.startsWith("call-")) {
     const callId = roomId.slice(5);
     await expireDirectCalls(db);
