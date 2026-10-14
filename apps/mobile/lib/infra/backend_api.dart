@@ -928,6 +928,53 @@ class BackendApi {
   Future<Map<String, dynamic>?> tapGameRoom({required String roomId, required String userId}) =>
       _json('POST', '/api/game-rooms/${Uri.encodeComponent(roomId)}/tap', body: {'user_id': userId}, returnErrorBody: true);
 
+  Future<bool> leaveGameRoom({
+    required String roomId,
+    required String userId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/game-rooms/${Uri.encodeComponent(roomId)}/leave',
+      body: <String, dynamic>{'user_id': userId},
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> gameRoomMessages({
+    required String roomId,
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/game-rooms/${Uri.encodeComponent(roomId)}/messages?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['messages'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<bool> sendGameRoomMessage({
+    required String roomId,
+    required String userId,
+    required String text,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/game-rooms/${Uri.encodeComponent(roomId)}/messages',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'text': text,
+      },
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> friends({required String userId}) async {
     final value = await _json('GET', '/api/friends?user_id=${Uri.encodeQueryComponent(userId)}');
     final rows = value?['friends'];
