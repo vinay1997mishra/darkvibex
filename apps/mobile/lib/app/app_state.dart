@@ -42,6 +42,7 @@ class DirectMessage {
     required this.preview,
     this.unread = 0,
     this.avatarKey,
+    this.createdAt = 0,
   });
 
   final String id;
@@ -49,6 +50,7 @@ class DirectMessage {
   final String preview;
   final int unread;
   final String? avatarKey;
+  final int createdAt;
 }
 
 class AppState extends ChangeNotifier {
@@ -622,15 +624,21 @@ class AppState extends ChangeNotifier {
   Future<void> refreshInbox({bool notify = true}) async {
     if (!backendConnected) return;
     final remoteInbox = await backend.inbox(userId: userId);
+    final latestFirst = remoteInbox
+        .map((row) => DirectMessage(
+              id: row['id']?.toString() ?? '',
+              name: row['name']?.toString() ?? 'User',
+              preview: row['preview']?.toString() ?? '',
+              unread: int.tryParse(row['unread']?.toString() ?? '') ?? 0,
+              avatarKey: row['avatar_key']?.toString(),
+              createdAt:
+                  int.tryParse(row['created_at']?.toString() ?? '') ?? 0,
+            ))
+        .toList(growable: false)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     messages
       ..clear()
-      ..addAll(remoteInbox.map((row) => DirectMessage(
-            id: row['id']?.toString() ?? '',
-            name: row['name']?.toString() ?? 'User',
-            preview: row['preview']?.toString() ?? '',
-            unread: int.tryParse(row['unread']?.toString() ?? '') ?? 0,
-            avatarKey: row['avatar_key']?.toString(),
-          )));
+      ..addAll(latestFirst);
     if (notify) notifyListeners();
   }
 
