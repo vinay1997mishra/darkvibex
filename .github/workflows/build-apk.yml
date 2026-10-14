@@ -61,6 +61,7 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       FIREBASE_ANDROID_CONFIG_JSON: ${{ secrets.FIREBASE_ANDROID_CONFIG_JSON }}
+      # Firebase Android config is injected from the repository secret at build time.
       DVX_PUSH_CONFIGURED: "false"
     steps:
       - uses: actions/checkout@v4
