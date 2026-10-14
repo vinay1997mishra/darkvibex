@@ -1697,8 +1697,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Versus'),
         content: const Text(
-          'VS is a rivalry relationship between two users. '
-          'Both users appear inside the horned circles and VS activity raises the relation level.',
+          'VS is a rivalry relationship between two users. Only gifts sent directly '
+          'between the active VS pair count. Lv.1→2 needs 150M sent and 150M received, '
+          'Lv.2→3 needs 250M each, and every later level adds 100M. Both directions '
+          'must finish the target; after level-up both current-level counters reset to 0.',
         ),
         actions: [
           TextButton(
@@ -2982,6 +2984,35 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   ),
                 ),
                 Positioned(
+                  key: const Key('profile-intimacy-vs-level-badge'),
+                  left: w * .43,
+                  top: h * .70,
+                  width: w * .14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xAA1A020A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color(0x99FF4B79),
+                        width: .8,
+                      ),
+                    ),
+                    child: Text(
+                      'Lv.${data['level'] ?? 1}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
                   left: w * .64,
                   top: 0,
                   width: w * .19,
@@ -3216,6 +3247,32 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             : null,
                   ),
                 ),
+                if (active)
+                  Positioned(
+                    key: const Key('profile-intimacy-cp-level-badge'),
+                    left: w * .435,
+                    top: h * .63,
+                    width: w * .13,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xAAFFFFFF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'Lv.${data['level'] ?? 1}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFCB6076),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
                 namePatch(
                   text: user?['display_name']?.toString() ?? 'User',
                   left: w * .075,
@@ -4014,18 +4071,18 @@ class _CpRuleScreen extends StatelessWidget {
   const _CpRuleScreen();
 
   static const List<List<String>> _levels = [
-    ['LV1', '777', '1000'],
-    ['LV2', '3500', '5000'],
-    ['LV3', '7777', '10000'],
-    ['LV4', '20000', '20000'],
-    ['LV5', '50000', '50000'],
-    ['LV6', '77777', '70000'],
-    ['LV7', '200000', '80000'],
-    ['LV8', '400000', '90000'],
-    ['LV9', '777777', '100000'],
-    ['LV10', '1777777', '150000'],
-    ['LV11', '4000000', '200000'],
-    ['LV12', '7777777', 'unlimited'],
+    ['LV1 → LV2', '150M', '150M'],
+    ['LV2 → LV3', '250M', '250M'],
+    ['LV3 → LV4', '350M', '350M'],
+    ['LV4 → LV5', '450M', '450M'],
+    ['LV5 → LV6', '550M', '550M'],
+    ['LV6 → LV7', '650M', '650M'],
+    ['LV7 → LV8', '750M', '750M'],
+    ['LV8 → LV9', '850M', '850M'],
+    ['LV9 → LV10', '950M', '950M'],
+    ['LV10 → LV11', '1.05B', '1.05B'],
+    ['LV11 → LV12', '1.15B', '1.15B'],
+    ['LV12 → LV13', '1.25B', '1.25B'],
   ];
 
   static const List<List<String>> _privileges = [
@@ -4159,9 +4216,9 @@ class _CpRuleScreen extends StatelessWidget {
           _sectionTitle('What is CP?'),
           _ruleBox(
             const Text(
-              '1. Only when the guard value of either party exceeds 600 can a request to become a CP be initiated. CP can have special couple card animations, nests, and is a prerequisite for marriage;\n\n'
-              '2. Intimacy value: receive 3000 gold coin gifts +1 intimacy value;\n\n'
-              '3. Blessing value: receiving 3000 gold coin gifts +1 blessing value;',
+              '1. CP can be formed with an eligible mutual friend through the CP invitation flow. The CP invitation costs 2,222,222 coins.\n\n'
+              '2. My Heart is available as a 44,444-coin CP gift.\n\n'
+              '3. CP level progress only comes from gifts exchanged directly between the two active CP partners. Gifts from any third user add 0 CP level progress.',
               style: paragraph,
             ),
           ),
@@ -4183,15 +4240,22 @@ class _CpRuleScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Intimacy is a number that represents closeness. Giving each other gifts every day increases intimacy (3000 gold coin +1 intimacy). Daily mic increases intimacy level (1 minute = 1 intimacy) up to 180 per day. Daily gifts and paired products from Love Store can also increase intimacy.',
+                  'Every CP level has two separate counters: Sending and Receiving. Both counters must reach the current target before the CP level increases. Lv.1→2 requires 150M sent and 150M received; Lv.2→3 requires 250M each; every next level increases the target by 100M. After level-up, both counters start again from 0 and extra progress is not carried forward. Total intimacy remains available for relationship history and ranking.',
                   style: paragraph,
                 ),
                 const SizedBox(height: 14),
                 _table(
                   _levels,
-                  const ['level', 'Intimacy required', 'Daily intimacy cumulative upper limit'],
+                  const ['level', 'Sending target', 'Receiving target'],
                 ),
               ],
+            ),
+          ),
+          _sectionTitle('Relationship tools'),
+          _ruleBox(
+            const Text(
+              'Active CP includes Love Days, Ring Cabinet, Memories, CP Ranking, Heartbeat matching, and partner-confirmed disconnect. Disconnect requests time out after 24 hours if the partner does not respond.',
+              style: paragraph,
             ),
           ),
           _sectionTitle('What are the privileges of intimate relationships?'),
