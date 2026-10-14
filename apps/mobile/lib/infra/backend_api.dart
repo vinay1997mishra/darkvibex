@@ -1977,6 +1977,46 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  Future<Map<String, dynamic>?> vsDisconnectRequest({
+    required String userId,
+  }) =>
+      _json(
+        'POST',
+        '/api/vs/disconnect/request',
+        body: <String, dynamic>{'user_id': userId},
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> vsDisconnectRespond({
+    required String userId,
+    required bool accept,
+  }) =>
+      _json(
+        'POST',
+        '/api/vs/disconnect/respond',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'accept': accept,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> vsHeartbeat({
+    required String userId,
+    required String action,
+    String? choice,
+  }) =>
+      _json(
+        'POST',
+        '/api/vs/heartbeat',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'action': action,
+          if (choice != null) 'choice': choice,
+        },
+        returnErrorBody: true,
+      );
+
   Future<bool> vsDisconnect({
     required String userId,
   }) async {
@@ -2086,6 +2126,46 @@ class BackendApi {
         body: <String, dynamic>{
           'user_id': userId,
           'accept': accept,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> cpDisconnectRequest({
+    required String userId,
+  }) =>
+      _json(
+        'POST',
+        '/api/cp/disconnect/request',
+        body: <String, dynamic>{'user_id': userId},
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> cpDisconnectRespond({
+    required String userId,
+    required bool accept,
+  }) =>
+      _json(
+        'POST',
+        '/api/cp/disconnect/respond',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'accept': accept,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> cpHeartbeat({
+    required String userId,
+    required String action,
+    String? choice,
+  }) =>
+      _json(
+        'POST',
+        '/api/cp/heartbeat',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'action': action,
+          if (choice != null) 'choice': choice,
         },
         returnErrorBody: true,
       );
