@@ -1537,6 +1537,22 @@ async function secureDieRoll() {
   return Number(values[0] % 6) + 1;
 }
 
+async function ensureWalletLedgerSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS wallet_ledger (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    reference_id TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC)"
+  ).run();
+}
+
 const FRUIT_PARTY_ROUND_MS = 21000;
 const FRUIT_PARTY_RESULT_MS = 5000;
 const FRUIT_PARTY_CYCLE_MS = FRUIT_PARTY_ROUND_MS + FRUIT_PARTY_RESULT_MS;
@@ -1609,6 +1625,7 @@ function fruitPartyCycleEnd(roundId) {
 }
 
 async function ensureFruitPartySchema(db) {
+  await ensureWalletLedgerSchema(db);
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS fruit_party_bets (
       id TEXT PRIMARY KEY,
@@ -1957,6 +1974,7 @@ function greedyGirlCycleEnd(roundId) {
 }
 
 async function ensureGreedyGirlSchema(db) {
+  await ensureWalletLedgerSchema(db);
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS greedy_girl_bets (
       id TEXT PRIMARY KEY,
