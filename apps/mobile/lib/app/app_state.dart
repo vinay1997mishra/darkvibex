@@ -939,6 +939,7 @@ class AppState extends ChangeNotifier {
     countryName = nextCountryName;
     flagEmoji = nextFlagEmoji;
     gender = nextGender;
+    bio = nextBio;
     if (returnedUser is Map) {
       dateOfBirth =
           returnedUser['date_of_birth']?.toString() ?? dateOfBirth;
