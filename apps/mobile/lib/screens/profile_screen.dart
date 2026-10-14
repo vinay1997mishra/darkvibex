@@ -1445,28 +1445,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   String _partnerId(Map<String, dynamic>? relation) {
-    if (relation == null || relation?['state']?.toString() != 'active') {
+    if (relation == null || relation['state']?.toString() != 'active') {
       return '';
     }
-    final a = relation?['user_a']?.toString() ?? '';
-    final b = relation?['user_b']?.toString() ?? '';
+    final a = relation['user_a']?.toString() ?? '';
+    final b = relation['user_b']?.toString() ?? '';
     return a == targetId ? b : a;
   }
 
   String _partnerName(Map<String, dynamic>? relation) {
     if (relation == null) return '';
-    final a = relation?['user_a']?.toString() ?? '';
+    final a = relation['user_a']?.toString() ?? '';
     return a == targetId
-        ? relation?['user_b_name']?.toString() ?? ''
-        : relation?['user_a_name']?.toString() ?? '';
+        ? relation['user_b_name']?.toString() ?? ''
+        : relation['user_a_name']?.toString() ?? '';
   }
 
   String _partnerAvatar(Map<String, dynamic>? relation) {
     if (relation == null) return '';
-    final a = relation?['user_a']?.toString() ?? '';
+    final a = relation['user_a']?.toString() ?? '';
     return a == targetId
-        ? relation?['user_b_avatar_key']?.toString() ?? ''
-        : relation?['user_a_avatar_key']?.toString() ?? '';
+        ? relation['user_b_avatar_key']?.toString() ?? ''
+        : relation['user_a_avatar_key']?.toString() ?? '';
   }
 
   void _openPartner(Map<String, dynamic>? relation) {
@@ -1520,9 +1520,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(
           state: widget.state,
-          peerUserId: targetId,
-          peerName: user?['display_name']?.toString() ?? 'User',
-          peerAvatarKey: user?['avatar_key']?.toString(),
+          otherUserId: targetId,
+          otherName: user?['display_name']?.toString() ?? 'User',
         ),
       ),
     );
@@ -1669,17 +1668,18 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     required Map<String, dynamic>? relation,
     required bool couple,
   }) {
-    final active = relation?['state']?.toString() == 'active';
+    final data = relation ?? const <String, dynamic>{};
+    final active = data['state']?.toString() == 'active';
     final partnerId = active ? _partnerId(relation) : '';
     final partnerName = active ? _partnerName(relation) : '';
     final partnerAvatar = active ? _partnerAvatar(relation) : '';
-    final level = int.tryParse(relation?['level']?.toString() ?? '') ?? 0;
+    final level = int.tryParse(data['level']?.toString() ?? '') ?? 0;
     final progress = int.tryParse(
-          relation?[couple ? 'intimacy' : 'rivalry']?.toString() ?? '',
+          data[couple ? 'intimacy' : 'rivalry']?.toString() ?? '',
         ) ??
         0;
     final next = int.tryParse(
-      relation?['next_level_threshold']?.toString() ?? '',
+      data['next_level_threshold']?.toString() ?? '',
     );
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1833,7 +1833,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Widget _hero() {
     final value = user!;
     final avatarKey = value['avatar_key']?.toString() ?? '';
-    final cpActive = cp?['state']?.toString() == 'active';
+    final cpActive = cp != null && cp!['state']?.toString() == 'active';
     final cpPartnerAvatar = cpActive ? _partnerAvatar(cp) : '';
     final followers =
         int.tryParse(socialStats['followers_count']?.toString() ?? '') ?? 0;
