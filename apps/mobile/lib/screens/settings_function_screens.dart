@@ -49,6 +49,9 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
   Future<void> _set(String key, bool value, VoidCallback apply) async {
     apply();
     await (await SharedPreferences.getInstance()).setBool(key, value);
+    if (key == 'dvx.notifications.messages') {
+      await widget.state.setMessagePushNotificationsEnabled(value);
+    }
   }
 
   @override
