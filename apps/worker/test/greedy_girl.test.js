@@ -1,3 +1,4 @@
+// Helper placement is locked inside the game test slice.
 // Live parity: Greedy Girl must self-heal a missing wallet_ledger table.
 import test from 'node:test';
 import assert from 'node:assert/strict';
