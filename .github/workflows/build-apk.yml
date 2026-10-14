@@ -345,6 +345,14 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Mark direct APK pending
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context=darkvibex/direct-apk \
+            -f description="Preparing direct APK link"
+
       - name: Publish stable direct APK alias
         shell: bash
         run: |
@@ -362,3 +370,22 @@ jobs:
             "$RUNNER_TEMP/DarkVibeX-latest.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
+
+      - name: Mark direct APK success
+        if: success()
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context=darkvibex/direct-apk \
+            -f description="Direct APK is ready" \
+            -f target_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/darkvibex-latest/DarkVibeX-latest.apk"
+
+      - name: Mark direct APK failure
+        if: failure()
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=failure \
+            -f context=darkvibex/direct-apk \
+            -f description="Direct APK alias failed"
