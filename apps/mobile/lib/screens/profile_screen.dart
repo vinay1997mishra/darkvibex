@@ -1663,169 +1663,579 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
-  Widget _relationCard({
-    required String title,
-    required Map<String, dynamic>? relation,
-    required bool couple,
-  }) {
-    final data = relation ?? const <String, dynamic>{};
-    final active = data['state']?.toString() == 'active';
-    final partnerId = active ? _partnerId(relation) : '';
-    final partnerName = active ? _partnerName(relation) : '';
-    final partnerAvatar = active ? _partnerAvatar(relation) : '';
-    final level = int.tryParse(data['level']?.toString() ?? '') ?? 0;
-    final progress = int.tryParse(
-          data[couple ? 'intimacy' : 'rivalry']?.toString() ?? '',
-        ) ??
-        0;
-    final next = int.tryParse(
-      data['next_level_threshold']?.toString() ?? '',
-    );
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(17),
-        gradient: LinearGradient(
-          colors: couple
-              ? const [Color(0xFFFF7AAE), Color(0xFFFFB7D4)]
-              : const [Color(0xFF5435A8), Color(0xFF8C73DB)],
-        ),
+  Future<void> _openRelationManager({required bool couple}) async {
+    if (!isSelf) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => couple
+            ? CpScreen(state: widget.state)
+            : VsScreen(state: widget.state),
       ),
-      child: active
-          ? Column(
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _openCpRules() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const _CpRuleScreen(),
+      ),
+    );
+  }
+
+  Future<void> _showVsInfo() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Versus'),
+        content: const Text(
+          'VS is a rivalry relationship between two users. '
+          'The two horned circles show both sides of the VS pair. '
+          'VS progress is raised by VS-category activity after the relation is active.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _intimacyHeading(
+    String title, {
+    VoidCallback? onHelp,
+  }) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.black87,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(width: 7),
+        InkWell(
+          onTap: onHelp,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 25,
+            height: 25,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF1F1F4),
+              shape: BoxShape.circle,
+            ),
+            child: const Text(
+              '?',
+              style: TextStyle(
+                color: Colors.black45,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _roundRelationAvatar({
+    required String avatarKey,
+    required double size,
+    VoidCallback? onTap,
+    bool showPlus = false,
+    bool horned = false,
+  }) {
+    final provider = _avatar(avatarKey);
+    final circle = InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: showPlus ? const Color(0x33FFFFFF) : const Color(0xFF2A0D1B),
+          border: Border.all(
+            color: horned ? const Color(0xFFFF3B72) : Colors.white,
+            width: horned ? 3 : 2.2,
+          ),
+          boxShadow: horned
+              ? const [
+                  BoxShadow(
+                    color: Color(0x88FF2F67),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+          image: provider == null || showPlus
+              ? null
+              : DecorationImage(
+                  image: provider,
+                  fit: BoxFit.cover,
+                ),
+        ),
+        child: showPlus
+            ? const Icon(
+                Icons.add_rounded,
+                color: Colors.white,
+                size: 34,
+              )
+            : provider == null
+                ? const Icon(
+                    Icons.person_rounded,
+                    color: Colors.white70,
+                    size: 32,
+                  )
+                : null,
+      ),
+    );
+
+    if (!horned) return circle;
+    return SizedBox(
+      width: size + 20,
+      height: size + 16,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          circle,
+          Positioned(
+            top: -1,
+            left: 13,
+            child: Transform.rotate(
+              angle: -0.42,
+              child: const Icon(
+                Icons.change_history_rounded,
+                color: Color(0xFFFF3B72),
+                size: 30,
+              ),
+            ),
+          ),
+          Positioned(
+            top: -1,
+            right: 13,
+            child: Transform.rotate(
+              angle: 0.42,
+              child: const Icon(
+                Icons.change_history_rounded,
+                color: Color(0xFFFF3B72),
+                size: 30,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _versusCard() {
+    final data = vs ?? const <String, dynamic>{};
+    final active = data['state']?.toString() == 'active';
+    final rivalId = active ? _partnerId(vs) : '';
+    final rivalAvatar = active ? _partnerAvatar(vs) : '';
+    final rivalName = active ? _partnerName(vs) : '';
+    final level = int.tryParse(data['level']?.toString() ?? '') ?? 0;
+    final ownAvatar = user?['avatar_key']?.toString() ?? '';
+
+    return InkWell(
+      key: const Key('profile-intimacy-versus-card'),
+      onTap: isSelf ? () => _openRelationManager(couple: false) : null,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        height: 172,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF24030D),
+              Color(0xFF6E0B2E),
+              Color(0xFF19030B),
+            ],
+          ),
+          border: Border.all(
+            color: const Color(0xFFFF2F67),
+            width: 1.4,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x44FF2F67),
+              blurRadius: 14,
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            const Positioned(
+              left: 3,
+              right: 3,
+              bottom: 1,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Icon(Icons.local_florist_rounded,
+                      color: Color(0xAAE9325F), size: 36),
+                  Icon(Icons.local_florist_rounded,
+                      color: Color(0xAAE9325F), size: 36),
+                ],
+              ),
+            ),
+            Row(
               children: [
-                Row(
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _roundRelationAvatar(
+                        avatarKey: ownAvatar,
+                        size: 86,
+                        horned: true,
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      'Lv.$level',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 13),
-                Row(
-                  children: [
-                    _avatarCircle(
-                      radius: 31,
-                      avatarKey: user?['avatar_key']?.toString() ?? '',
-                      onTap: null,
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Icon(
-                          couple
-                              ? Icons.favorite_rounded
-                              : Icons.flash_on_rounded,
-                          color: Colors.white,
-                          size: 35,
-                        ),
-                      ),
-                    ),
-                    _avatarCircle(
-                      radius: 31,
-                      avatarKey: partnerAvatar,
-                      onTap: partnerId.isEmpty
-                          ? null
-                          : () => _openPartner(relation),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
+                      const SizedBox(height: 2),
+                      Text(
                         user?['display_name']?.toString() ?? 'User',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.left,
                         style: const TextStyle(
                           color: Colors.white,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        partnerName.isEmpty ? 'User' : partnerName,
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 76,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'VS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 36,
+                          fontWeight: FontWeight.w900,
+                          fontStyle: FontStyle.italic,
+                          shadows: [
+                            Shadow(
+                              color: Color(0xFFFF2F67),
+                              blurRadius: 16,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (active)
+                        Container(
+                          margin: const EdgeInsets.only(top: 7),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0x55000000),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0x88FF6A91),
+                            ),
+                          ),
+                          child: Text(
+                            'Lv.$level',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _roundRelationAvatar(
+                        avatarKey: rivalAvatar,
+                        size: 86,
+                        horned: true,
+                        showPlus: !active,
+                        onTap: active && rivalId.isNotEmpty
+                            ? () => _openPartner(vs)
+                            : isSelf
+                                ? () => _openRelationManager(couple: false)
+                                : null,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        active && rivalName.isNotEmpty ? rivalName : 'None',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.right,
                         style: const TextStyle(
                           color: Colors.white,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(
-                  value: next == null || next <= 0
-                      ? 1
-                      : (progress / next).clamp(0, 1).toDouble(),
-                  minHeight: 7,
-                  borderRadius: BorderRadius.circular(20),
-                  backgroundColor: const Color(0x55FFFFFF),
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-                const SizedBox(height: 5),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    next == null ? '$progress' : '$progress / $next',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                    ),
+                    ],
                   ),
                 ),
               ],
-            )
-          : SizedBox(
-              height: 95,
-              child: Center(
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _loveStoreStrip() {
+    return InkWell(
+      key: const Key('profile-intimacy-love-store'),
+      onTap: isSelf
+          ? () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => CosmeticsShopScreen(
+                    state: widget.state,
+                    initialKind: 'ring',
+                  ),
+                ),
+              )
+          : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFFFFEDF4),
+              Color(0xFFFFD3E2),
+              Color(0xFFFFEEF5),
+            ],
+          ),
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.favorite_rounded,
+              color: Color(0xFFFF4E80),
+              size: 30,
+            ),
+            SizedBox(width: 11),
+            Expanded(
+              child: Text(
+                'Love Store',
+                style: TextStyle(
+                  color: Color(0xFFFF3B72),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.all(Radius.circular(22)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Text(
-                  'No $title',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                  'Go',
+                  style: TextStyle(
+                    color: Color(0xFFFF3B72),
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _coupleCard() {
+    final data = cp ?? const <String, dynamic>{};
+    final active = data['state']?.toString() == 'active';
+    final partnerId = active ? _partnerId(cp) : '';
+    final partnerAvatar = active ? _partnerAvatar(cp) : '';
+    final partnerName = active ? _partnerName(cp) : '';
+    final ownAvatar = user?['avatar_key']?.toString() ?? '';
+
+    return InkWell(
+      key: const Key('profile-intimacy-couple-card'),
+      onTap: isSelf ? () => _openRelationManager(couple: true) : null,
+      borderRadius: BorderRadius.circular(17),
+      child: Container(
+        height: 164,
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(17),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFFF8FB4),
+              Color(0xFFFF6D9D),
+              Color(0xFFFFA9C6),
+            ],
+          ),
+          border: Border.all(
+            color: const Color(0xFFFFC64A),
+            width: 1.8,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33FF7AAE),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFFE4D8FF),
+                        width: 4,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x668B6CFF),
+                          blurRadius: 9,
+                        ),
+                      ],
+                    ),
+                    child: _roundRelationAvatar(
+                      avatarKey: ownAvatar,
+                      size: 72,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    user?['display_name']?.toString() ?? 'User',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 82,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    Icons.favorite_rounded,
+                    color: Colors.white,
+                    size: 54,
+                    shadows: [
+                      Shadow(
+                        color: Color(0xAAFF335F),
+                        blurRadius: 12,
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    left: 0,
+                    child: Transform.rotate(
+                      angle: -0.25,
+                      child: const Icon(
+                        Icons.air_rounded,
+                        color: Colors.white70,
+                        size: 34,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    child: Transform.rotate(
+                      angle: 0.25,
+                      child: const Icon(
+                        Icons.air_rounded,
+                        color: Colors.white70,
+                        size: 34,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _roundRelationAvatar(
+                    avatarKey: partnerAvatar,
+                    size: 78,
+                    showPlus: !active,
+                    onTap: active && partnerId.isNotEmpty
+                        ? () => _openPartner(cp)
+                        : isSelf
+                            ? () => _openRelationManager(couple: true)
+                            : null,
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    active && partnerName.isNotEmpty ? partnerName : 'None',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _intimacyTab() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 18, 14, 110),
+      key: const Key('profile-intimacy-scroll'),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
       children: [
-        _relationCard(
-          title: 'Couple',
-          relation: cp,
-          couple: true,
+        _intimacyHeading(
+          'Versus',
+          onHelp: _showVsInfo,
         ),
-        _relationCard(
-          title: 'VS',
-          relation: vs,
-          couple: false,
+        const SizedBox(height: 9),
+        _versusCard(),
+        const SizedBox(height: 14),
+        _loveStoreStrip(),
+        const SizedBox(height: 18),
+        _intimacyHeading(
+          'Couple',
+          onHelp: _openCpRules,
         ),
+        const SizedBox(height: 9),
+        _coupleCard(),
       ],
     );
   }
@@ -2131,6 +2541,214 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ],
         ),
         bottomNavigationBar: _bottomActions(),
+      ),
+    );
+  }
+}
+
+
+class _CpRuleScreen extends StatelessWidget {
+  const _CpRuleScreen();
+
+  static const List<List<String>> _levels = [
+    ['LV1', '777', '1000'],
+    ['LV2', '3500', '5000'],
+    ['LV3', '7777', '10000'],
+    ['LV4', '20000', '20000'],
+    ['LV5', '50000', '50000'],
+    ['LV6', '77777', '70000'],
+    ['LV7', '200000', '80000'],
+    ['LV8', '400000', '90000'],
+    ['LV9', '777777', '100000'],
+    ['LV10', '1777777', '150000'],
+    ['LV11', '4000000', '200000'],
+    ['LV12', '7777777', 'unlimited'],
+  ];
+
+  static const List<List<String>> _privileges = [
+    ['LV1', 'Lv1 star cover background', 'Online remind'],
+    ['LV2', 'Lv2 star cover background', 'On Mic moving effect'],
+    ['LV3', 'Lv3 star cover background', 'On Mic moving effect'],
+    ['LV4', 'Lv4 star cover background', 'On Mic moving effect'],
+    ['LV5', 'Lv5 star cover background', 'On Mic moving effect'],
+    ['LV6', 'Lv6 star cover background', 'On Mic moving effect'],
+    ['LV7', 'Lv7 star cover background', 'On Mic moving effect'],
+    ['LV8', 'Lv8 star cover background', 'On Mic moving effect'],
+    ['LV9', 'Lv9 star cover background', 'On Mic moving effect'],
+    ['LV10', 'Lv10 star cover background', 'On Mic moving effect'],
+    ['LV11', 'Lv11 star cover background', 'On Mic moving effect'],
+    ['LV12', 'Lv12 star cover background', 'On Mic moving effect'],
+    ['Marry', 'Marry Cover background', 'Online remind & On mic effect'],
+  ];
+
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 4,
+              height: 23,
+              margin: const EdgeInsets.only(top: 2, right: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6536),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _ruleBox(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: const Color(0xCCFFFFFF),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: child,
+      );
+
+  Widget _table(List<List<String>> rows, List<String> headers) {
+    return Table(
+      border: TableBorder.all(color: const Color(0xFFEDE7F2), width: .8),
+      columnWidths: const {
+        0: FlexColumnWidth(.75),
+        1: FlexColumnWidth(1.55),
+        2: FlexColumnWidth(2.45),
+      },
+      children: [
+        TableRow(
+          decoration: const BoxDecoration(color: Color(0xFFF2E2FF)),
+          children: [
+            for (final header in headers)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                child: Text(
+                  header,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        for (final row in rows)
+          TableRow(
+            children: [
+              for (final cell in row)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                  child: Text(
+                    cell,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const paragraph = TextStyle(
+      color: Colors.black54,
+      fontSize: 15,
+      height: 1.5,
+    );
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4E7FF),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF4E7FF),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'CP Rule',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 30),
+        children: [
+          _sectionTitle('What is CP?'),
+          _ruleBox(
+            const Text(
+              '1. Only when the guard value of either party exceeds 600 can a request to become a CP be initiated. CP can have special couple card animations, nests, and is a prerequisite for marriage;\n\n'
+              '2. Intimacy value: receive 3000 gold coin gifts +1 intimacy value;\n\n'
+              '3. Blessing value: receiving 3000 gold coin gifts +1 blessing value;',
+              style: paragraph,
+            ),
+          ),
+          _sectionTitle('What is marriage?'),
+          _ruleBox(
+            const Text(
+              '1. After becoming CP LV 1, you can purchase a ring to initiate a marriage proposal;\n\n'
+              '2. After a successful proposal, friends can be invited to participate, and the wedding room mode can be enabled in the room of the proposing party or on the wedding day. Gifts received in the wedding room on the day have a 1.1 time bonus to blessing value and intimacy value;\n\n'
+              '3. Love House: after getting married, you can upload themes in Love House, send and collect wedding rings to each other.\n\n'
+              '4. Divorce: after divorce, the CP relationship will also be terminated and the CP and marriage procedures need to be completed again. After restoring CP and getting married, intimacy value and blessing value can be restored.',
+              style: paragraph,
+            ),
+          ),
+          _sectionTitle(
+            'What is intimacy level and how to maintain and improve intimacy level?',
+          ),
+          _ruleBox(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Intimacy is a number that represents closeness. Giving each other gifts every day increases intimacy (3000 gold coin +1 intimacy). Daily mic increases intimacy level (1 minute = 1 intimacy) up to 180 per day. Daily gifts and paired products from Love Store can also increase intimacy.',
+                  style: paragraph,
+                ),
+                const SizedBox(height: 14),
+                _table(
+                  _levels,
+                  const ['level', 'Intimacy required', 'Daily intimacy cumulative upper limit'],
+                ),
+              ],
+            ),
+          ),
+          _sectionTitle('What are the privileges of intimate relationships?'),
+          _ruleBox(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Close friends with different levels of intimacy have different privileges, as follows:',
+                  style: paragraph,
+                ),
+                const SizedBox(height: 14),
+                _table(
+                  _privileges,
+                  const ['level', 'Background', 'Effects'],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
