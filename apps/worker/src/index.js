@@ -6611,8 +6611,11 @@ async function handleApi(request, env, url) {
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     let cpProgress = null;
     let vsProgress = null;
-    const giftCategory = String(gift.category ?? "").toLowerCase();
-    if (giftCategory === "cp" && giftId !== "cp-invite") {
+    // DarkVibeX relation levels are partner-only, not gift-category-only.
+    // Any real gift sent directly between the active CP pair can advance CP,
+    // and any real gift sent directly between the active VS pair can advance VS.
+    // Third-party gifts never match the relationship pair and therefore add 0.
+    if (giftId !== "cp-invite") {
       cpProgress = await recordCpGiftProgress(
         db,
         sender,
@@ -6620,8 +6623,6 @@ async function handleApi(request, env, url) {
         cost,
         eventId,
       );
-    }
-    if (giftCategory === "vs") {
       vsProgress = await recordVsGiftProgress(
         db,
         sender,
