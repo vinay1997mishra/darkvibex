@@ -75,6 +75,7 @@ class AppState extends ChangeNotifier {
   String countryName = '';
   String flagEmoji = '';
   String gender = '';
+  String bio = '';
   int ageChangeCount = 0;
   int countryChangeCount = 0;
   int genderChangeCount = 0;
