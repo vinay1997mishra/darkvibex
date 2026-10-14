@@ -1,5 +1,6 @@
 import 'package:darkvibex/core/role_policy.dart';
 import 'package:darkvibex/core/seat_policy.dart';
+import 'package:darkvibex/room/seat_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -20,5 +21,16 @@ void main() {
     expect(normalizeSeatCount(1), 8);
     expect(normalizeSeatCount(12), 12);
     expect(normalizeSeatCount(100), 42);
+  });
+
+  test('36 to 42 seats use compact six-row layout', () {
+    expect(rowsForSeatCount(36), 6);
+    expect(rowsForSeatCount(42), 6);
+
+    final layout = SeatLayoutSpec.forCount(42);
+    expect(layout.rows, 6);
+    expect(layout.columns, 7);
+    expect(layout.rowLengths, <int>[7, 7, 7, 7, 7, 7]);
+    expect(layout.seatDiameter(352), inInclusiveRange(28, 36));
   });
 }
