@@ -6649,6 +6649,7 @@ async function handleApi(request, env, url) {
     const amount = Number(body.amount ?? 0);
     const requestId = String(body.request_id ?? "").trim();
     const compactResponse = body.compact_response === true;
+    // Compact response is opt-in so older APKs keep the full Greedy Girl state contract.
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     if (!FRUIT_PARTY_BY_KEY.has(fruitKey) ||
