@@ -1,5 +1,7 @@
 name: DarkVibeX Worker Deploy
 
+# Greedy Girl live smoke is required before a Worker deploy is accepted.
+
 on:
   workflow_dispatch:
   push:
