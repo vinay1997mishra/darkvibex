@@ -7131,7 +7131,8 @@ async function handleLiveKitToken(request, env) {
   });
 }
 
-// Game Room keeps its 15-seat layout while reusing voice/chat/game services.\nexport default {
+// Game Room keeps its 15-seat layout while reusing voice/chat/game services.
+export default {
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(expireInboxEnvelopes(requireDb(env)));
   },
