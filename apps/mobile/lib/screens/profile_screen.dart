@@ -2822,7 +2822,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     onTap: active && rivalId.isNotEmpty
                         ? () => _openPartner(vs)
                         : isSelf
-                            ? () => _openRelationManager(couple: false)
+                            ? _openVsBinding
                             : null,
                   ),
                 ),
