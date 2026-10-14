@@ -1514,33 +1514,195 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!mounted || gifts.isEmpty) return;
     final gift = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
-      showDragHandle: true,
+      isScrollControlled: true,
       backgroundColor: TinniPalette.nearBlack,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(18),
-              child: Text(
-                'Choose a gift',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-              ),
-            ),
-            ...gifts.map(
-              (item) => ListTile(
-                leading: Text(
-                  item['emoji']?.toString() ?? '🎁',
-                  style: const TextStyle(fontSize: 30),
-                ),
-                title: Text(item['name']?.toString() ?? 'Gift'),
-                subtitle: Text('${item['coin_cost'] ?? 0} coins'),
-                onTap: () => Navigator.pop(sheetContext, item),
-              ),
-            ),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (sheetContext) {
+        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .58;
+        return SafeArea(
+          top: false,
+          child: SizedBox(
+            height: sheetHeight,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.card_giftcard_rounded,
+                        color: TinniPalette.brightGold,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Gifts',
+                          style: TextStyle(
+                            color: TinniPalette.cream,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${gifts.length} gifts',
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: Colors.white12),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: .72,
+                    ),
+                    itemCount: gifts.length,
+                    itemBuilder: (context, index) {
+                      final item = gifts[index];
+                      final cost = int.tryParse(
+                            item['coin_cost']?.toString() ?? '',
+                          ) ??
+                          0;
+                      final vipLevel = int.tryParse(
+                            item['vip_level']?.toString() ?? '',
+                          ) ??
+                          0;
+                      final emoji = item['emoji']?.toString() ?? '🎁';
+                      final name = item['name']?.toString() ?? 'Gift';
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => Navigator.pop(sheetContext, item),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(5, 7, 5, 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0xFF2A1D59),
+                                Color(0xFF15102E),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: vipLevel > 0
+                                  ? TinniPalette.brightGold
+                                  : Colors.white12,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Container(
+                                      width: 52,
+                                      height: 52,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Color(0x1FFFFFFF),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        emoji,
+                                        style: const TextStyle(fontSize: 34),
+                                      ),
+                                    ),
+                                    if (vipLevel > 0)
+                                      Positioned(
+                                        right: 0,
+                                        top: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: TinniPalette.brightGold,
+                                            borderRadius:
+                                                BorderRadius.circular(7),
+                                          ),
+                                          child: Text(
+                                            'V$vipLevel',
+                                            style: const TextStyle(
+                                              color: Colors.black,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: TinniPalette.cream,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.monetization_on_rounded,
+                                    size: 12,
+                                    color: TinniPalette.brightGold,
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(
+                                      _compactRoomCoins(cost),
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
     if (!mounted || gift == null) return;
     await _sendGiftByDefinition(gift, receiverId);
