@@ -1833,8 +1833,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Widget _hero() {
     final value = user!;
     final avatarKey = value['avatar_key']?.toString() ?? '';
-    final cpActive = cp != null && cp!['state']?.toString() == 'active';
-    final cpPartnerAvatar = cpActive ? _partnerAvatar(cp) : '';
+    final cpRelation = cp;
+    final cpActive =
+        cpRelation != null && cpRelation['state']?.toString() == 'active';
+    final cpPartnerAvatar =
+        cpActive ? _partnerAvatar(cpRelation) : '';
     final followers =
         int.tryParse(socialStats['followers_count']?.toString() ?? '') ?? 0;
     final level = int.tryParse(idLevel['level']?.toString() ?? '') ?? 0;
@@ -1887,7 +1890,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             child: _avatarCircle(
                               radius: 39,
                               avatarKey: cpPartnerAvatar,
-                              onTap: () => _openPartner(cp),
+                              onTap: () => _openPartner(cpRelation),
                             ),
                           ),
                         Positioned(
