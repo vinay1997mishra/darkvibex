@@ -2080,303 +2080,400 @@ class _RoomScreenState extends State<RoomScreen> {
 
           return Align(
             alignment: Alignment.bottomCenter,
-            child: Container(
-              key: Key('room-seat-profile-card-$userId'),
-              width: double.infinity,
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(sheetContext).height * .72,
-              ),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF7F7F7),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(22),
-                ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          IconButton(
-                            tooltip: 'More',
-                            onPressed: () {
-                              Navigator.pop(sheetContext);
-                              Future<void>.delayed(
-                                Duration.zero,
-                                openModeration,
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.more_horiz_rounded,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            tooltip: 'Mention in room',
-                            onPressed: () {
-                              final mention = '@$name ';
-                              final current = roomChatController.text;
-                              roomChatController.text = mention + current;
-                              roomChatController.selection =
-                                  TextSelection.collapsed(
-                                offset: roomChatController.text.length,
-                              );
-                              Navigator.pop(sheetContext);
-                            },
-                            icon: const Icon(
-                              Icons.alternate_email_rounded,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
+            child: Padding(
+              padding: const EdgeInsets.only(top: 50),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    key: Key('room-seat-profile-card-$userId'),
+                    width: double.infinity,
+                    constraints: BoxConstraints(
+                      maxHeight:
+                          MediaQuery.sizeOf(sheetContext).height * .62,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(24),
                       ),
-                      SizedBox(
-                        height: 92,
-                        child: Center(
-                          child: SizedBox(
-                            width: cpPartnerId.isEmpty ? 78 : 126,
-                            height: 82,
-                            child: Stack(
-                              alignment: Alignment.centerLeft,
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 62, 16, 16),
+                        child: Column(
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 5,
                               children: [
-                                if (cpPartnerId.isNotEmpty)
-                                  Positioned(
-                                    left: 52,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        Navigator.pop(sheetContext);
-                                        Future<void>.delayed(
-                                          Duration.zero,
-                                          () => openFullProfile(cpPartnerId),
-                                        );
-                                      },
-                                      child: CircleAvatar(
-                                        radius: 35,
-                                        backgroundColor:
-                                            const Color(0xFFE8E8E8),
-                                        backgroundImage:
-                                            avatarProvider(cpPartnerAvatar),
-                                        child: cpPartnerAvatar.isEmpty
-                                            ? const Icon(
-                                                Icons.favorite_rounded,
-                                                color: Color(0xFFE868A7),
-                                              )
-                                            : null,
+                                if (gender == 'male' || gender == 'female')
+                                  Icon(
+                                    gender == 'male'
+                                        ? Icons.male_rounded
+                                        : Icons.female_rounded,
+                                    size: 20,
+                                    color: gender == 'male'
+                                        ? const Color(0xFF4789E7)
+                                        : const Color(0xFFE868A7),
+                                  ),
+                                Text(
+                                  'ID $shownId',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const Text(
+                                  '|',
+                                  style: TextStyle(color: Colors.black26),
+                                ),
+                                Text(
+                                  '$followersCount followers',
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (country.isNotEmpty) ...[
+                                  const Text(
+                                    '|',
+                                    style: TextStyle(color: Colors.black26),
+                                  ),
+                                  Text(
+                                    flag.isEmpty ? country : '$flag $country',
+                                    style: const TextStyle(
+                                      color: Colors.black54,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2E8E55),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFFF1D15F),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Text(
+                                'LV.$level',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            if (medals.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                height: 42,
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: medals.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 8),
+                                  itemBuilder: (_, index) => Tooltip(
+                                    message: medals[index]['name']
+                                            ?.toString() ??
+                                        'Medal',
+                                    child: const CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: Color(0xFF2D2341),
+                                      child: Icon(
+                                        Icons.workspace_premium_rounded,
+                                        color: Color(0xFFFFD66B),
+                                        size: 25,
                                       ),
                                     ),
                                   ),
-                                GestureDetector(
-                                  key: Key('room-seat-profile-dp-$userId'),
-                                  onTap: () {
-                                    Navigator.pop(sheetContext);
-                                    Future<void>.delayed(
-                                      Duration.zero,
-                                      () => openFullProfile(userId),
-                                    );
-                                  },
-                                  child: CircleAvatar(
-                                    radius: 39,
-                                    backgroundColor:
-                                        const Color(0xFFE8E8E8),
-                                    backgroundImage: avatarProvider(avatar),
-                                    child: avatar.isEmpty
-                                        ? Text(
-                                            name.isEmpty
-                                                ? '?'
-                                                : name
-                                                    .substring(0, 1)
-                                                    .toUpperCase(),
-                                            style: const TextStyle(
-                                              color: Color(0xFF6B3E8D),
-                                              fontSize: 26,
-                                              fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                            if (bio.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                bio,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  height: 1.3,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(sheetContext);
+                                      Navigator.of(context).push<void>(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              ConversationScreen(
+                                            state: widget.state,
+                                            peerUserId: userId,
+                                            peerName: name,
+                                            peerAvatarKey: avatar.isEmpty
+                                                ? null
+                                                : avatar,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                    ),
+                                    label: const Text('Chat'),
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize:
+                                          const Size.fromHeight(48),
+                                      foregroundColor: Colors.black87,
+                                      side: const BorderSide(
+                                        color: Color(0xFFD7D7D7),
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(24),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(24),
+                                    onTap: () {
+                                      Navigator.pop(sheetContext);
+                                      unawaited(
+                                        _sendGiftToSeatUser(userId),
+                                      );
+                                    },
+                                    child: Container(
+                                      height: 48,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        borderRadius:
+                                            BorderRadius.circular(24),
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFF26D5E8),
+                                            Color(0xFFB977F4),
+                                          ],
+                                        ),
+                                      ),
+                                      child: const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.card_giftcard_rounded,
+                                            color: Colors.white,
+                                          ),
+                                          SizedBox(width: 7),
+                                          Text(
+                                            'Give Gifts',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
                                             ),
-                                          )
-                                        : null,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                      if (cpPartnerId.isNotEmpty &&
-                          cpPartnerName.trim().isNotEmpty)
-                        Text(
-                          cpPartnerName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: 8,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'More',
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            Future<void>.delayed(
+                              Duration.zero,
+                              openModeration,
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.more_horiz_rounded,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Mention in room',
+                          onPressed: () {
+                            final mention = '@$name ';
+                            final current = roomChatController.text;
+                            roomChatController.text = mention + current;
+                            roomChatController.selection =
+                                TextSelection.collapsed(
+                              offset: roomChatController.text.length,
+                            );
+                            Navigator.pop(sheetContext);
+                          },
+                          icon: const Icon(
+                            Icons.alternate_email_rounded,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: 13,
+                    right: 16,
+                    child: SizedBox(
+                      height: 38,
+                      child: OutlinedButton(
+                        onPressed: toggleFollow,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black87,
+                          side: const BorderSide(
+                            color: Color(0xFFD6D6D6),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 15,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: Text(
+                          followLabel,
                           style: const TextStyle(
-                            color: Colors.black45,
-                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
                           ),
                         ),
-                      const SizedBox(height: 3),
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                        ),
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        'ID $shownId',
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 7,
-                        children: [
-                          _roomMiniInfoChip(
-                            '$followersCount Followers',
-                            Icons.people_alt_rounded,
-                          ),
-                          _roomMiniInfoChip(
-                            'Lv.$level',
-                            Icons.bolt_rounded,
-                          ),
-                          if (gender == 'male' || gender == 'female')
-                            _roomMiniInfoChip(
-                              gender == 'male' ? 'Male' : 'Female',
-                              gender == 'male'
-                                  ? Icons.male_rounded
-                                  : Icons.female_rounded,
-                            ),
-                          if (country.isNotEmpty)
-                            _roomMiniInfoChip(
-                              flag.isEmpty ? country : '$flag $country',
-                              Icons.public_rounded,
-                            ),
-                        ],
-                      ),
-                      if (medals.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 36,
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            scrollDirection: Axis.horizontal,
-                            itemCount: medals.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 6),
-                            itemBuilder: (_, index) => Tooltip(
-                              message:
-                                  medals[index]['name']?.toString() ?? 'Medal',
-                              child: const CircleAvatar(
-                                radius: 17,
-                                backgroundColor: Color(0xFF2D2341),
-                                child: Icon(
-                                  Icons.workspace_premium_rounded,
-                                  color: Color(0xFFFFD66B),
-                                  size: 21,
+                    ),
+                  ),
+                  Positioned(
+                    top: -48,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: SizedBox(
+                        width: cpPartnerId.isEmpty ? 92 : 136,
+                        height: 96,
+                        child: Stack(
+                          alignment: Alignment.bottomLeft,
+                          children: [
+                            if (cpPartnerId.isNotEmpty)
+                              Positioned(
+                                left: 66,
+                                bottom: 2,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    Navigator.pop(sheetContext);
+                                    Future<void>.delayed(
+                                      Duration.zero,
+                                      () =>
+                                          openFullProfile(cpPartnerId),
+                                    );
+                                  },
+                                  child: CircleAvatar(
+                                    radius: 30,
+                                    backgroundColor:
+                                        const Color(0xFFE8E8E8),
+                                    backgroundImage:
+                                        avatarProvider(cpPartnerAvatar),
+                                    child: cpPartnerAvatar.isEmpty
+                                        ? const Icon(
+                                            Icons.favorite_rounded,
+                                            color: Color(0xFFE868A7),
+                                          )
+                                        : null,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (bio.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          bio,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.black54,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: 160,
-                        height: 38,
-                        child: OutlinedButton(
-                          onPressed: toggleFollow,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFFF14A8B),
-                            side: const BorderSide(
-                              color: Color(0xFFF14A8B),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          child: Text(
-                            followLabel,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
+                            GestureDetector(
+                              key: Key('room-seat-profile-dp-$userId'),
+                              onTap: () {
                                 Navigator.pop(sheetContext);
-                                Navigator.of(context).push<void>(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => ConversationScreen(
-                                      state: widget.state,
-                                      peerUserId: userId,
-                                      peerName: name,
-                                      peerAvatarKey:
-                                          avatar.isEmpty ? null : avatar,
-                                    ),
-                                  ),
+                                Future<void>.delayed(
+                                  Duration.zero,
+                                  () => openFullProfile(userId),
                                 );
                               },
-                              icon: const Icon(Icons.chat_bubble_rounded),
-                              label: const Text('Chat'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(44),
-                                foregroundColor: const Color(0xFFF14A8B),
-                                side: const BorderSide(
-                                  color: Color(0xFFF14A8B),
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFFD6A846),
+                                    width: 2.5,
+                                  ),
+                                  color: Colors.white,
+                                ),
+                                child: CircleAvatar(
+                                  radius: 42,
+                                  backgroundColor:
+                                      const Color(0xFFE8E8E8),
+                                  backgroundImage:
+                                      avatarProvider(avatar),
+                                  child: avatar.isEmpty
+                                      ? Text(
+                                          name.isEmpty
+                                              ? '?'
+                                              : name
+                                                  .substring(0, 1)
+                                                  .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Color(0xFF6B3E8D),
+                                            fontSize: 27,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        )
+                                      : null,
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(sheetContext);
-                                unawaited(_sendGiftToSeatUser(userId));
-                              },
-                              icon: const Icon(Icons.card_giftcard_rounded),
-                              label: const Text('Give Gifts'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(44),
-                                foregroundColor: const Color(0xFFF14A8B),
-                                side: const BorderSide(
-                                  color: Color(0xFFF14A8B),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           );
