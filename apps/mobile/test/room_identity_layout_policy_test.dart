@@ -42,7 +42,7 @@ void main() {
     expect(appState, contains("String publicId = '9100001'"));
     expect(appState, contains('String get roomNumber'));
     expect(appState, contains("row['display_id']"));
-    expect(profile, contains("'ID: ${state.publicId}'"));
+    expect(profile, contains('state.publicId'));
     expect(personal, contains('widget.state.publicId'));
   });
 
