@@ -340,7 +340,8 @@ jobs:
 
 
   direct-apk-alias:
-    if: github.event_name == 'push'
+    needs: android
+    if: github.event_name == 'push' && needs.android.result == 'success'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
