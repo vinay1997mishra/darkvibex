@@ -880,6 +880,7 @@ class AppState extends ChangeNotifier {
     String? countryNameValue,
     String? flagEmojiValue,
     String? genderValue,
+    String? bioValue,
     String? languageValue,
     Uint8List? avatarBytes,
     String avatarExtension = 'jpg',
@@ -893,6 +894,7 @@ class AppState extends ChangeNotifier {
     final nextCountryName = (countryNameValue ?? countryName).trim();
     final nextFlagEmoji = (flagEmojiValue ?? flagEmoji).trim();
     final nextGender = (genderValue ?? gender).trim().toLowerCase();
+    final nextBio = (bioValue ?? bio).trim();
     final requestedLanguage =
         (languageValue ?? languagePreference.value).trim();
     final nextLanguage = darkVibeXIsSupportedLanguage(requestedLanguage)
@@ -907,6 +909,7 @@ class AppState extends ChangeNotifier {
       countryName: nextCountryName,
       flagEmoji: nextFlagEmoji,
       gender: nextGender,
+      bio: nextBio,
       language: nextLanguage,
     );
     if (profile?['ok'] != true) {
