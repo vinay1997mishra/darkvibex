@@ -477,7 +477,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'UID: ${state.customVipId?.isNotEmpty == true ? state.customVipId : state.userId}',
+                          'ID: ${state.publicId}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
