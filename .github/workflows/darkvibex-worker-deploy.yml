@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy]') || contains(github.event.head_commit.message, '[apk]')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
