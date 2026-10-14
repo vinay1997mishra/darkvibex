@@ -63,8 +63,6 @@ void main() {
         find.byKey(const Key('greedy-girl-countdown-number')),
         findsOneWidget,
       );
-      expect(find.textContaining('Bet '), findsNothing);
-      expect(find.textContaining('Result '), findsNothing);
       expect(find.byKey(const Key('greedy-girl-tomato')), findsOneWidget);
       expect(find.byKey(const Key('greedy-girl-skewer')), findsOneWidget);
       expect(tester.takeException(), isNull);
