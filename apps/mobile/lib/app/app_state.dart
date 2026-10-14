@@ -621,6 +621,16 @@ class AppState extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  Future<bool> setMessagePushNotificationsEnabled(bool enabled) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final ok = await backend.setMessagePushEnabled(
+      userId: userId,
+      enabled: enabled,
+    );
+    notifyListeners();
+    return ok;
+  }
+
   Future<void> signOut() async {
     if (authProvider == 'google') {
       try {
