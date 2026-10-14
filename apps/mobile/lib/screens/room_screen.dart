@@ -2280,7 +2280,7 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _shareRoomId() async {
-    await Clipboard.setData(ClipboardData(text: widget.room.id));
+    await Clipboard.setData(ClipboardData(text: widget.room.roomNumber));
     final result = widget.state.backendConnected
         ? await widget.state.backend.shareRoomForIdLevel(
             userId: widget.state.userId,
@@ -4093,9 +4093,9 @@ class _RoomScreenState extends State<RoomScreen> {
             ListTile(
               leading: const Icon(Icons.copy_rounded),
               title: const Text('Copy room ID'),
-              subtitle: Text(widget.room.id),
+              subtitle: Text(widget.room.roomNumber),
               onTap: () async {
-                await Clipboard.setData(ClipboardData(text: widget.room.id));
+                await Clipboard.setData(ClipboardData(text: widget.room.roomNumber));
                 if (!mounted) return;
                 Navigator.pop(sheetContext);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -4165,26 +4165,6 @@ class _RoomScreenState extends State<RoomScreen> {
                   _toggleRoomFollow();
                 },
               ),
-            ListTile(
-              key: const Key('room-share-menu'),
-              leading: const Icon(Icons.share_rounded),
-              title: const Text('Share room'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                Future<void>.delayed(
-                  const Duration(milliseconds: 180),
-                  _shareRoom,
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.exit_to_app_rounded),
-              title: const Text('Leave room'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _leaveRoom();
-              },
-            ),
           ],
         )),
       ),
@@ -4196,7 +4176,7 @@ class _RoomScreenState extends State<RoomScreen> {
       MaterialPageRoute<void>(
         builder: (_) => SharingScreen(
           title: roomName,
-          roomId: widget.room.id,
+          roomId: widget.room.roomNumber,
           onShared: (platform) async {
             if (!widget.state.backendConnected) return;
             try {
@@ -4685,12 +4665,7 @@ class _RoomScreenState extends State<RoomScreen> {
     return Scaffold(
       backgroundColor: _roomThemeColor,
       appBar: AppBar(
-        leading: IconButton(
-          key: const Key('room-minimize-button'),
-          tooltip: 'Minimize room',
-          onPressed: _minimizeRoom,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded),
-        ),
+        automaticallyImplyLeading: false,
         title: Row(
           children: [
             InkWell(
@@ -4712,7 +4687,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 children: [
                   Text(roomName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
-                    'ID ${widget.room.id} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
+                    'ID ${widget.room.roomNumber} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -4909,6 +4884,7 @@ class _RoomScreenState extends State<RoomScreen> {
             flex: 1,
             child: LayoutBuilder(
               builder: (context, constraints) {
+                final compactSeats = roomSeatCount >= 36;
                 final diameter =
                     spec.seatDiameter(constraints.maxWidth - 8);
 
@@ -4933,7 +4909,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           member['mic_muted']?.toString() == '0');
 
                   return SizedBox(
-                    width: diameter + 12,
+                    width: diameter + (compactSeats ? 6 : 12),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
                       onTap: () => unawaited(_tapSeat(seat)),
@@ -5017,7 +4993,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                         : TinniPalette.cream,
                                   ),
                           ),
-                          const SizedBox(height: 3),
+                          SizedBox(height: compactSeats ? 1 : 3),
                           Text(
                             mine
                                 ? (widget.state.vipAnonymousEverywhere
@@ -5029,7 +5005,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: diameter < 48 ? 9 : 11,
+                              fontSize: compactSeats ? 8 : (diameter < 48 ? 9 : 11),
                               color: TinniPalette.cream,
                             ),
                           ),
@@ -5047,7 +5023,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 }
 
                 return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+                  padding: EdgeInsets.fromLTRB(4, compactSeats ? 2 : 8, 4, compactSeats ? 2 : 10),
                   child: Column(
                     children: [
                       for (var row = 0; row < spec.rows; row++)
@@ -5056,7 +5032,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             final range = spec.rangeForRow(row);
                             return Padding(
                               padding: EdgeInsets.only(
-                                bottom: diameter < 48 ? 6 : 10,
+                                bottom: compactSeats ? 2 : (diameter < 48 ? 6 : 10),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -5065,8 +5041,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                       seat < range.$2;
                                       seat++)
                                     Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 2,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: compactSeats ? 1 : 2,
                                       ),
                                       child: seatTile(seat),
                                     ),
@@ -5106,15 +5082,9 @@ class _RoomScreenState extends State<RoomScreen> {
                                 color: const Color(0xFF2A1F12),
                                 child: Padding(
                                   padding: const EdgeInsets.all(10),
-                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Row(children: [
-                                      const Icon(Icons.campaign_rounded, size: 18, color: Color(0xFFFFD36A)),
-                                      const SizedBox(width: 6),
-                                      const Expanded(child: Text('Official Announcement', style: TextStyle(fontWeight: FontWeight.w800))),
-                                      TextButton(onPressed: _showRoomRules, child: const Text('Terms')),
-                                    ]),
-                                    const Text('Be respectful. No harassment, explicit or unlawful content, scams, or sharing private information. Room chat and voice are visible to participants.'),
-                                  ]),
+                                  child: const Text(
+                                    'Be respectful. No harassment, explicit or unlawful content, scams, or sharing private information. Room chat and voice are visible to participants.',
+                                  ),
                                 ),
                               ),
                               if (roomNoticesEnabled && (roomAnnouncement != null || roomWelcomeImageKey?.isNotEmpty == true))
