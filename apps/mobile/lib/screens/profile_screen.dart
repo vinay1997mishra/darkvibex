@@ -1025,8 +1025,10 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
         title: Text(title),
       ),
       body: loading
@@ -1108,7 +1110,7 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
                               child: Text(
                                 'Mutual Friend',
                                 style: TextStyle(
-                                  color: Color(0xFFF14A8B),
+                                  color: Colors.black45,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -1122,7 +1124,7 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
                                 child: const Text(
                                   'Followed',
                                   style: TextStyle(
-                                    color: Color(0xFFF14A8B),
+                                    color: Colors.black45,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -1222,8 +1224,10 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: true,
         title: const Text('Visitors'),
       ),
       body: loading
@@ -2017,8 +2021,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               child: OutlinedButton(
                 onPressed: followBusy ? null : _toggleFollow,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFF14A8B),
-                  side: const BorderSide(color: Color(0xFFF14A8B)),
+                  foregroundColor: const Color(0xFF22BED8),
+                  side: const BorderSide(color: Color(0xFF22BED8)),
                   minimumSize: const Size.fromHeight(46),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),
@@ -2040,8 +2044,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               child: OutlinedButton(
                 onPressed: _openChat,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFF14A8B),
-                  side: const BorderSide(color: Color(0xFFF14A8B)),
+                  foregroundColor: const Color(0xFF22BED8),
+                  side: const BorderSide(color: Color(0xFF22BED8)),
                   minimumSize: const Size.fromHeight(46),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),
@@ -2082,25 +2086,43 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         body: Column(
           children: [
             _hero(),
-            const Material(
-              color: Colors.white,
-              child: TabBar(
-                labelColor: Color(0xFFF14A8B),
-                unselectedLabelColor: Colors.black54,
-                indicatorColor: Color(0xFFF14A8B),
-                indicatorWeight: 2.5,
-                tabs: [
-                  Tab(text: 'Profile'),
-                  Tab(text: 'Intimacy'),
-                ],
-              ),
-            ),
             Expanded(
-              child: TabBarView(
-                children: [
-                  _profileTab(),
-                  _intimacyTab(),
-                ],
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const TabBar(
+                      labelColor: Colors.black87,
+                      unselectedLabelColor: Colors.black45,
+                      indicatorColor: Colors.transparent,
+                      labelStyle: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      unselectedLabelStyle: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      tabs: [
+                        Tab(text: 'Profile'),
+                        Tab(text: 'Intimacy'),
+                      ],
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _profileTab(),
+                          _intimacyTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
