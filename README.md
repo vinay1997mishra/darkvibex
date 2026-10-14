@@ -1,5 +1,7 @@
 # DarkVibeX
 
+- Room identity/UI update: stable 7-digit Profile ID = Room ID, compact 36–42 seats, cleaned room DP menu and notice labels.
+
 DarkVibeX is a clean-room social voice-room app base derived from the proven Tinni Star architecture, with a new app identity and no Agency, BD, or Host business hierarchy.
 
 ## Core direction
