@@ -550,6 +550,7 @@ class AppState extends ChangeNotifier {
     countryName = user['country_name']?.toString().trim() ?? '';
     flagEmoji = user['flag_emoji']?.toString().trim() ?? '';
     gender = user['gender']?.toString().trim().toLowerCase() ?? '';
+    bio = user['bio']?.toString().trim() ?? '';
     ageChangeCount =
         int.tryParse(user['age_change_count']?.toString() ?? '') ?? 0;
     countryChangeCount =
@@ -677,6 +678,7 @@ class AppState extends ChangeNotifier {
     countryName = '';
     flagEmoji = '';
     gender = '';
+    bio = '';
     ageChangeCount = 0;
     countryChangeCount = 0;
     genderChangeCount = 0;
