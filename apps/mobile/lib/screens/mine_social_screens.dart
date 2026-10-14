@@ -2176,6 +2176,7 @@ class CpRankingScreen extends StatefulWidget {
 
 class _CpRankingScreenState extends State<CpRankingScreen> {
   bool loading = true;
+  int tab = 0;
   List<Map<String, dynamic>> rows = const [];
 
   @override
@@ -2193,42 +2194,151 @@ class _CpRankingScreenState extends State<CpRankingScreen> {
     });
   }
 
+  Widget _tabs() => Row(
+        children: [
+          Expanded(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    tab == 0 ? TinniPalette.gold : TinniPalette.panel2,
+                foregroundColor:
+                    tab == 0 ? Colors.black : TinniPalette.cream,
+              ),
+              onPressed: () => setState(() => tab = 0),
+              child: const Text('CP Ranking'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    tab == 1 ? TinniPalette.gold : TinniPalette.panel2,
+                foregroundColor:
+                    tab == 1 ? Colors.black : TinniPalette.cream,
+              ),
+              onPressed: () => setState(() => tab = 1),
+              child: const Text('CP Square'),
+            ),
+          ),
+        ],
+      );
+
+  Widget _rankingList() => ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+        itemCount: rows.length,
+        itemBuilder: (context, index) {
+          final row = rows[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TinniPanel(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: TinniPalette.gold,
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(color: Colors.black),
+                  ),
+                ),
+                title: Text(
+                  '${row['user_a_name'] ?? row['user_a']} ❤️ '
+                  '${row['user_b_name'] ?? row['user_b']}',
+                ),
+                subtitle: Text(
+                  'Lv.${row['level'] ?? 1} • '
+                  'Intimacy ${row['intimacy'] ?? 0}',
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+  Widget _square() => ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+        itemCount: rows.length,
+        itemBuilder: (context, index) {
+          final row = rows[index];
+          final a = row['user_a_name'] ?? row['user_a'] ?? 'User';
+          final b = row['user_b_name'] ?? row['user_b'] ?? 'User';
+          final createdAt =
+              int.tryParse(row['activated_at']?.toString() ?? '') ??
+                  int.tryParse(row['created_at']?.toString() ?? '') ??
+                  0;
+          final loveDays = createdAt <= 0
+              ? 0
+              : (DateTime.now()
+                          .difference(
+                            DateTime.fromMillisecondsSinceEpoch(createdAt),
+                          )
+                          .inDays +
+                      1)
+                  .clamp(1, 999999);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: TinniPanel(
+              child: Column(
+                children: [
+                  const TinniGlowIcon(
+                    icon: Icons.favorite_rounded,
+                    size: 24,
+                    boxSize: 46,
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    '$a  ❤️  $b',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: TinniPalette.gold,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'CP Lv.${row['level'] ?? 1} • Love Days $loveDays',
+                    style: const TextStyle(
+                      color: TinniPalette.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Total intimacy ${row['intimacy'] ?? 0}',
+                    style: const TextStyle(
+                      color: TinniPalette.cream,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: TinniPalette.black,
-        appBar: AppBar(title: const Text('CP Ranking')),
+        appBar: AppBar(title: const Text('CP')),
         body: TinniBackground(
           child: loading
               ? const Center(child: CircularProgressIndicator())
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(12),
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) {
-                      final row = rows[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: TinniPanel(
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: TinniPalette.gold,
-                              child: Text(
-                                '${index + 1}',
-                                style: const TextStyle(color: Colors.black),
-                              ),
-                            ),
-                            title: Text(
-                              '${row['user_a_name'] ?? row['user_a']} ❤️ ${row['user_b_name'] ?? row['user_b']}',
-                            ),
-                            subtitle: Text(
-                              'Intimacy ${row['intimacy'] ?? 0} • Lv.${row['level'] ?? 1}',
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                        child: _tabs(),
+                      ),
+                      const SizedBox(height: 2),
+                      Expanded(
+                        child: tab == 0 ? _rankingList() : _square(),
+                      ),
+                    ],
                   ),
                 ),
         ),
