@@ -174,34 +174,55 @@ jobs:
         run: |
           set -euo pipefail
           ndk_version="28.2.13676358"
+          ndk_folder="android-ndk-r28c"
+          ndk_zip_url="https://dl.google.com/android/repository/android-ndk-r28c-linux.zip"
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$sdkmanager" ]; then
-            echo "sdkmanager not found at $sdkmanager"
-            exit 1
-          fi
-          if [ -f "$sdk_root/ndk/$ndk_version/source.properties" ]; then
+          target="$sdk_root/ndk/$ndk_version"
+
+          if [ -f "$target/source.properties" ]; then
             echo "NDK $ndk_version already installed."
             exit 0
           fi
-          for attempt in 1 2 3; do
-            echo "Installing NDK $ndk_version (attempt $attempt/3)"
-            rm -rf "$sdk_root/ndk/$ndk_version"
-            rm -rf "$sdk_root/.temp"/* 2>/dev/null || true
+
+          # First use the Android SDK manager. If its cached archive is corrupt,
+          # fall back to a validated direct Google download instead of failing the APK.
+          if [ -x "$sdkmanager" ]; then
+            rm -rf "$target" "$sdk_root/.temp"/* 2>/dev/null || true
             rm -rf "${HOME}/.android/cache" 2>/dev/null || true
             mkdir -p "${HOME}/.android"
             yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
-            if "$sdkmanager" --install "ndk;$ndk_version"; then
-              test -f "$sdk_root/ndk/$ndk_version/source.properties"
-              echo "NDK $ndk_version installed successfully."
+            if "$sdkmanager" --install "ndk;$ndk_version" &&
+               [ -f "$target/source.properties" ]; then
+              echo "NDK $ndk_version installed with sdkmanager."
               exit 0
             fi
-            rm -rf "$sdk_root/ndk/$ndk_version"
-            rm -rf "$sdk_root/.temp"/* 2>/dev/null || true
-            rm -rf "${HOME}/.android/cache" 2>/dev/null || true
-            sleep $((attempt * 5))
+          fi
+
+          echo "sdkmanager NDK install failed; using validated direct download."
+          mkdir -p "$sdk_root/ndk"
+          archive="$RUNNER_TEMP/android-ndk-r28c-linux.zip"
+          extract_dir="$RUNNER_TEMP/android-ndk-r28c-extract"
+          for attempt in 1 2 3; do
+            echo "Direct NDK download attempt $attempt/3"
+            rm -f "$archive"
+            rm -rf "$extract_dir" "$target"
+            mkdir -p "$extract_dir"
+            if curl --fail --location --retry 5 --retry-delay 2 --retry-all-errors \
+                --output "$archive" "$ndk_zip_url" &&
+               unzip -tq "$archive" >/dev/null; then
+              unzip -q "$archive" -d "$extract_dir"
+              if [ -f "$extract_dir/$ndk_folder/source.properties" ]; then
+                mv "$extract_dir/$ndk_folder" "$target"
+                test -f "$target/source.properties"
+                echo "NDK $ndk_version installed from validated direct archive."
+                exit 0
+              fi
+            fi
+            sleep $((attempt * 4))
           done
-          echo "NDK installation failed after retries."
+
+          echo "NDK installation failed from both sdkmanager and direct download."
           exit 1
 
       - name: Prepare release signing
