@@ -8,9 +8,14 @@ import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
-  const MessagesScreen({super.key, required this.state});
+  const MessagesScreen({
+    super.key,
+    required this.state,
+    this.standalone = false,
+  });
 
   final AppState state;
+  final bool standalone;
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
@@ -31,15 +36,38 @@ class _MessagesScreenState extends State<MessagesScreen> {
     _loadFeeds();
     callPollTimer = Timer.periodic(
       const Duration(seconds: 5),
-      (_) => _checkIncomingCall(),
+      (_) {
+        unawaited(_checkIncomingCall());
+        unawaited(_refreshInbox());
+      },
     );
     unawaited(_checkIncomingCall());
+    unawaited(_refreshInbox());
   }
 
   @override
   void dispose() {
     callPollTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _refreshInbox() async {
+    if (!state.backendConnected || !state.isAuthenticated) return;
+    await state.refreshInbox();
+  }
+
+  Future<void> _openConversation(DirectMessage item) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ConversationScreen(
+          state: state,
+          otherUserId: item.id,
+          otherName: item.name,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _refreshInbox();
   }
 
   Future<void> _checkIncomingCall() async {
@@ -167,22 +195,136 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: state,
-      builder: (context, _) => TinniBackground(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            await Future.wait<void>([
-              state.refreshInbox(),
-              _loadFeeds(),
-            ]);
-          },
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-            children: [
+  Widget _systemFeedPanel() => TinniPanel(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: TinniPalette.gold,
+                child: Icon(
+                  Icons.verified_rounded,
+                  color: Colors.black,
+                ),
+              ),
+              title: const Text(
+                'DarkVibeX Official',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                loadingFeeds
+                    ? 'Loading…'
+                    : _preview(
+                        official,
+                        'Official notices and app information',
+                      ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: loadingFeeds ? null : _openOfficial,
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFF321C0A),
+                child: Icon(
+                  Icons.notifications_active_rounded,
+                  color: TinniPalette.gold,
+                ),
+              ),
+              title: const Text(
+                'Activity',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                loadingFeeds
+                    ? 'Loading…'
+                    : _preview(
+                        activity,
+                        'Gifts, visitors and wallet activity',
+                      ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: activity.isNotEmpty
+                  ? Badge(label: Text(activity.length.clamp(1, 99).toString()))
+                  : const Icon(Icons.chevron_right_rounded),
+              onTap: loadingFeeds ? null : _openActivity,
+            ),
+          ],
+        ),
+      );
+
+  Widget _conversationTile(DirectMessage item) => Padding(
+        padding: const EdgeInsets.only(bottom: 9),
+        child: TinniPanel(
+          padding: EdgeInsets.zero,
+          child: ListTile(
+            key: Key('message-thread-${item.id}'),
+            leading: CircleAvatar(
+              backgroundColor: TinniPalette.panel2,
+              backgroundImage: item.avatarKey == null
+                  ? null
+                  : NetworkImage(
+                      state.backend.fileUrl(item.avatarKey!),
+                      headers: state.backend.fileHeaders,
+                    ),
+              child: item.avatarKey == null
+                  ? Text(
+                      item.name.isEmpty ? '?' : item.name.substring(0, 1),
+                    )
+                  : null,
+            ),
+            title: Text(
+              item.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: item.unread > 0 ? FontWeight.w900 : FontWeight.w700,
+                color: item.unread > 0 ? TinniPalette.cream : null,
+              ),
+            ),
+            subtitle: Text(
+              item.preview,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: item.unread > 0 ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+            trailing: item.unread > 0
+                ? Badge(
+                    label: Text(
+                      item.unread > 99 ? '99+' : item.unread.toString(),
+                    ),
+                  )
+                : const Icon(Icons.chevron_right_rounded),
+            onTap: () => _openConversation(item),
+          ),
+        ),
+      );
+
+  Widget _messageList({required bool standalone}) {
+    final conversations = List<DirectMessage>.of(state.messages)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return TinniBackground(
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await Future.wait<void>([
+            state.refreshInbox(),
+            _loadFeeds(),
+          ]);
+        },
+        child: ListView(
+          key: Key(standalone
+              ? 'room-standalone-message-list'
+              : 'embedded-message-list'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+          children: [
+            if (!standalone) ...[
               const Row(
                 children: [
                   Expanded(
@@ -203,68 +345,35 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              TinniPanel(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: TinniPalette.gold,
-                        child: Icon(
-                          Icons.verified_rounded,
-                          color: Colors.black,
-                        ),
-                      ),
-                      title: const Text(
-                        'DarkVibeX Official',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      subtitle: Text(
-                        loadingFeeds
-                            ? 'Loading…'
-                            : _preview(
-                                official,
-                                'Official notices and app information',
-                              ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: loadingFeeds ? null : _openOfficial,
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Color(0xFF321C0A),
-                        child: Icon(
-                          Icons.notifications_active_rounded,
-                          color: TinniPalette.gold,
-                        ),
-                      ),
-                      title: const Text(
-                        'Activity',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      subtitle: Text(
-                        loadingFeeds
-                            ? 'Loading…'
-                            : _preview(
-                                activity,
-                                'Gifts, visitors and wallet activity',
-                              ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: activity.isNotEmpty
-                          ? Badge(label: Text(activity.length.clamp(1, 99).toString()))
-                          : const Icon(Icons.chevron_right_rounded),
-                      onTap: loadingFeeds ? null : _openActivity,
-                    ),
-                  ],
+            ],
+            if (standalone) ...[
+              const Text(
+                'Chats',
+                key: Key('room-inbox-chats-title'),
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
+              const SizedBox(height: 8),
+              if (conversations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: Text(
+                      'No conversations yet',
+                      style: TextStyle(color: TinniPalette.muted),
+                    ),
+                  ),
+                ),
+              for (final item in conversations) _conversationTile(item),
+              const SizedBox(height: 4),
+              _systemFeedPanel(),
+            ] else ...[
+              _systemFeedPanel(),
               const SizedBox(height: 12),
-              if (state.messages.isEmpty)
+              if (conversations.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(top: 36),
                   child: Center(
@@ -274,58 +383,38 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     ),
                   ),
                 ),
-              for (final item in state.messages)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: TinniPanel(
-                    padding: EdgeInsets.zero,
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: TinniPalette.panel2,
-                        backgroundImage: item.avatarKey == null
-                            ? null
-                            : NetworkImage(
-                                state.backend.fileUrl(item.avatarKey!),
-                                headers: state.backend.fileHeaders,
-                              ),
-                        child: item.avatarKey == null
-                            ? Text(
-                                item.name.isEmpty
-                                    ? '?'
-                                    : item.name.substring(0, 1),
-                              )
-                            : null,
-                      ),
-                      title: Text(
-                        item.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: Text(
-                        item.preview,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: item.unread > 0
-                          ? Badge(label: Text(item.unread.toString()))
-                          : const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => ConversationScreen(
-                            state: state,
-                            otherUserId: item.id,
-                            otherName: item.name,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              for (final item in conversations) _conversationTile(item),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.standalone) {
+      return AnimatedBuilder(
+        animation: state,
+        builder: (context, _) => _messageList(standalone: false),
+      );
+    }
+
+    return Scaffold(
+      key: const Key('room-standalone-messages'),
+      backgroundColor: TinniPalette.black,
+      appBar: AppBar(
+        title: const Text(
+          'Messages',
+          style: TextStyle(
+            color: TinniPalette.gold,
+            fontWeight: FontWeight.w900,
           ),
         ),
+      ),
+      body: AnimatedBuilder(
+        animation: state,
+        builder: (context, _) => _messageList(standalone: true),
       ),
     );
   }
