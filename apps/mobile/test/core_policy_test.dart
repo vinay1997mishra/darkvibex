@@ -23,14 +23,15 @@ void main() {
     expect(normalizeSeatCount(100), 42);
   });
 
-  test('36 to 42 seats use compact six-row layout', () {
+  test('Tinni Star high-capacity seat layout stays 6 across by 7 rows', () {
     expect(rowsForSeatCount(36), 6);
-    expect(rowsForSeatCount(42), 6);
+    expect(rowsForSeatCount(37), 7);
+    expect(rowsForSeatCount(42), 7);
 
     final layout = SeatLayoutSpec.forCount(42);
-    expect(layout.rows, 6);
-    expect(layout.columns, 7);
-    expect(layout.rowLengths, <int>[7, 7, 7, 7, 7, 7]);
-    expect(layout.seatDiameter(352), inInclusiveRange(28, 36));
+    expect(layout.rows, 7);
+    expect(layout.columns, 6);
+    expect(layout.rowLengths, <int>[6, 6, 6, 6, 6, 6, 6]);
+    expect(layout.seatDiameter(352), greaterThan(40));
   });
 }
