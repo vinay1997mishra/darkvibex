@@ -59,6 +59,7 @@ function defaultPermissions(role) {
   if (role === "admin") {
     return [
       "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
+      "treasury.read",
       "support.read", "support.write",
       "rooms.read", "rooms.write", "catalog.read", "catalog.write",
       "settings.read", "settings.write", "announcements.read", "announcements.write",
@@ -237,6 +238,23 @@ async function ensureOwnerSchema(db) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_treasury (
+      id TEXT PRIMARY KEY,
+      balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_treasury_ledger (
+      id TEXT PRIMARY KEY,
+      amount INTEGER NOT NULL,
+      balance_after INTEGER NOT NULL CHECK (balance_after >= 0),
+      kind TEXT NOT NULL,
+      target_user_id TEXT,
+      actor_id TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_treasury_ledger_time ON owner_treasury_ledger(created_at DESC)"),
+    db.prepare("INSERT OR IGNORE INTO owner_treasury (id, balance, updated_at) VALUES ('main', 0, ?)").bind(now()),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_catalog_kind ON owner_catalog(kind, sort_order, updated_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_audit_time ON owner_audit(created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_announcements_time ON owner_announcements(updated_at DESC)"),
@@ -338,6 +356,7 @@ async function handleOverview(db, actor) {
     listRooms(db),
     db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all(),
   ]);
+  const treasury = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
   return json({
     ok: true,
     actor: { id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions },
@@ -345,6 +364,7 @@ async function handleOverview(db, actor) {
       users: Number(users?.value ?? 0), rooms: Number(rooms?.value ?? 0), online: Number(online?.value ?? 0),
       coins: Number(coins?.value ?? 0), diamonds: Number(diamonds?.value ?? 0), banned: Number(banned?.value ?? 0),
       gifts: Number(gifts?.value ?? 0), bets: Number(bets?.value ?? 0),
+      treasury: Number(treasury?.balance ?? 0),
     },
     rooms: roomRows.slice(0, 30),
     audit: auditRows.results ?? [],
@@ -671,6 +691,66 @@ async function handleStaff(request, db, actor, parts) {
   return null;
 }
 
+async function handleTreasury(request, db, actor) {
+  if (request.method === "GET") {
+    requirePermission(actor, "treasury.read");
+    const row = await db.prepare("SELECT balance, updated_at FROM owner_treasury WHERE id = 'main'").first();
+    const ledger = await db.prepare(
+      "SELECT id, amount, balance_after, kind, target_user_id, actor_id, note, created_at FROM owner_treasury_ledger ORDER BY created_at DESC LIMIT 100"
+    ).all();
+    return json({ ok: true, treasury: { balance: Number(row?.balance ?? 0), updated_at: row?.updated_at ?? null }, ledger: ledger.results ?? [] });
+  }
+  if (request.method !== "POST") return null;
+
+  requirePermission(actor, "treasury.write");
+  const body = await bodyJson(request);
+  const action = String(body.action ?? "").trim().toLowerCase();
+  const amount = clampInt(body.amount ?? 0, 1, 900000000000000, 0);
+  if (!amount) return json({ ok: false, error: "amount_required" }, { status: 400 });
+  const ts = now();
+  const note = String(body.note ?? "").trim().slice(0, 200);
+
+  const current = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
+  const balance = Number(current?.balance ?? 0);
+
+  if (action === "add" || action === "deduct") {
+    if (actor.type !== "owner") return json({ ok: false, error: "owner_only" }, { status: 403 });
+    const delta = action === "add" ? amount : -amount;
+    const next = balance + delta;
+    if (!Number.isSafeInteger(next) || next < 0) return json({ ok: false, error: "invalid_treasury_balance" }, { status: 400 });
+    await db.batch([
+      db.prepare("UPDATE owner_treasury SET balance = ?, updated_at = ? WHERE id = 'main'").bind(next, ts),
+      db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)")
+        .bind(id(), delta, next, action === "add" ? "owner_topup" : "owner_deduct", actor.id, note, ts),
+    ]);
+    await audit(db, actor, action === "add" ? "treasury_add" : "treasury_deduct", "treasury", "main", `amount=${amount}`);
+    return json({ ok: true, balance: next });
+  }
+
+  if (action === "send") {
+    const userId = String(body.user_id ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const user = await db.prepare("SELECT id, coins FROM users WHERE id = ?").bind(userId).first();
+    if (!user) return json({ ok: false, error: "user_not_found" }, { status: 404 });
+    if (balance < amount) return json({ ok: false, error: "insufficient_treasury_balance" }, { status: 409 });
+    const nextTreasury = balance - amount;
+    const nextUser = Number(user.coins ?? 0) + amount;
+    if (!Number.isSafeInteger(nextUser)) return json({ ok: false, error: "invalid_user_balance" }, { status: 400 });
+    await db.batch([
+      db.prepare("UPDATE owner_treasury SET balance = ?, updated_at = ? WHERE id = 'main'").bind(nextTreasury, ts),
+      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(nextUser, ts, userId),
+      db.prepare("INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_treasury',?,?,?,?)")
+        .bind(id(), userId, amount, nextUser, actor.id, ts),
+      db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, 'send_to_user', ?, ?, ?, ?)")
+        .bind(id(), -amount, nextTreasury, userId, actor.id, note, ts),
+    ]);
+    await audit(db, actor, "treasury_send", "user", userId, `amount=${amount}`);
+    return json({ ok: true, balance: nextTreasury, user_balance: nextUser });
+  }
+
+  return json({ ok: false, error: "invalid_treasury_action" }, { status: 400 });
+}
+
 async function handleAudit(request, db, actor, url) {
   if (request.method !== "GET") return null;
   requirePermission(actor, "audit.read");
@@ -758,6 +838,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
     else if (parts[2] === "catalog") response = await handleCatalog(request, db, actor, url, parts);
     else if (parts[2] === "announcements") response = await handleAnnouncements(request, db, actor, parts);
+    else if (parts[2] === "treasury") response = await handleTreasury(request, db, actor);
     else if (parts[2] === "staff") response = await handleStaff(request, db, actor, parts);
     else if (parts[2] === "audit") response = await handleAudit(request, db, actor, url);
     if (response) return response;
