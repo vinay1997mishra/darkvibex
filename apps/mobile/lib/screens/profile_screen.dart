@@ -2930,12 +2930,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               intimacyCards['unlocked_count']?.toString() ?? '',
             ) ??
             3)
-        .clamp(3, 20);
+        .clamp(3, 20)
+        .toInt();
     final total = (int.tryParse(
               intimacyCards['total_slots']?.toString() ?? '',
             ) ??
             20)
-        .clamp(3, 20);
+        .clamp(3, 20)
+        .toInt();
     final bindings = _intimacyCardBindings();
     final visibleCount = unlocked + (unlocked < total ? 1 : 0);
 
