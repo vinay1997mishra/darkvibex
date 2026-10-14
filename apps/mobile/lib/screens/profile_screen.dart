@@ -1340,11 +1340,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   List<Map<String, dynamic>> medals = const <Map<String, dynamic>>[];
   Map<String, dynamic>? cp;
   Map<String, dynamic>? vs;
+  Map<String, dynamic> intimacyCards = const <String, dynamic>{};
   bool loading = true;
   bool isFollowing = false;
   bool isMutual = false;
   bool followBusy = false;
   bool cpInviteBusy = false;
+  bool intimacyCardBusy = false;
 
   String get targetId => user?['id']?.toString() ?? widget.userId;
   bool get isSelf => targetId == widget.state.userId;
@@ -1392,6 +1394,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         Future<List<Map<String, dynamic>>>.value(
           const <Map<String, dynamic>>[],
         ),
+      widget.state.backend.intimacyCards(userId: resolvedId),
     ]);
 
     final rawStats = values[0] is Map ? values[0] as Map : null;
@@ -1401,6 +1404,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final rawVs = values[4] is Map ? values[4] as Map : null;
     final following = values[5] == true;
     final friends = values[6] is List ? values[6] as List : const [];
+    final rawIntimacyCards = values[7] is Map ? values[7] as Map : null;
 
     if (!mounted) return;
     setState(() {
@@ -1425,6 +1429,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       isMutual = friends.whereType<Map>().any(
             (row) => row['id']?.toString() == resolvedId,
           );
+      intimacyCards = rawIntimacyCards == null
+          ? const <String, dynamic>{}
+          : Map<String, dynamic>.from(rawIntimacyCards);
       loading = false;
     });
   }
@@ -2621,6 +2628,433 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  Map<int, Map<String, dynamic>> _intimacyCardBindings() {
+    final raw = intimacyCards['cards'];
+    if (raw is! List) return <int, Map<String, dynamic>>{};
+    final result = <int, Map<String, dynamic>>{};
+    for (final row in raw.whereType<Map>()) {
+      final slot = int.tryParse(row['slot_index']?.toString() ?? '');
+      if (slot != null) result[slot] = Map<String, dynamic>.from(row);
+    }
+    return result;
+  }
+
+  String _relationLabel(String raw) {
+    if (raw == 'brother_sister') return 'Brother/Sister';
+    if (raw == 'enemy') return 'Enemy';
+    return 'Friend';
+  }
+
+  Future<String?> _chooseIntimacyRelation() {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Choose relationship',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            for (final item in const <MapEntry<String, String>>[
+              MapEntry('friend', 'Friend'),
+              MapEntry('brother_sister', 'Brother/Sister'),
+              MapEntry('enemy', 'Enemy'),
+            ])
+              ListTile(
+                leading: const Icon(
+                  Icons.favorite_rounded,
+                  color: Color(0xFFFF8EAE),
+                ),
+                title: Text(item.value),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(sheetContext, item.key),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _bindIntimacyFriendCard(int slotIndex) async {
+    if (!isSelf || intimacyCardBusy) return;
+    final rows = await widget.state.backend.friends(
+      userId: widget.state.userId,
+    );
+    if (!mounted) return;
+    final controller = TextEditingController();
+    var query = '';
+
+    final friend = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final q = query.trim().toLowerCase();
+          final filtered = rows.where((item) {
+            if (q.isEmpty) return true;
+            final id = item['id']?.toString().toLowerCase() ?? '';
+            final name = item['display_name']?.toString().toLowerCase() ?? '';
+            return id.contains(q) || name.contains(q);
+          }).toList(growable: false);
+
+          return FractionallySizedBox(
+            heightFactor: .72,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 18),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 18),
+                      child: Text(
+                        'Friends that can be bound',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 13),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: TextField(
+                        controller: controller,
+                        onChanged: (value) =>
+                            setSheetState(() => query = value),
+                        decoration: InputDecoration(
+                          hintText: 'Enter ID',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FB),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No more',
+                                style: TextStyle(color: Colors.black26),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
+                              itemCount: filtered.length,
+                              itemBuilder: (itemContext, index) {
+                                final item = filtered[index];
+                                final avatarKey =
+                                    item['avatar_key']?.toString() ?? '';
+                                final image = _avatar(avatarKey);
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    radius: 27,
+                                    backgroundImage: image,
+                                    child: image == null
+                                        ? const Icon(Icons.person_rounded)
+                                        : null,
+                                  ),
+                                  title: Text(
+                                    item['display_name']?.toString() ?? 'User',
+                                  ),
+                                  subtitle: Text(
+                                    'ID:' + (item['id']?.toString() ?? ''),
+                                  ),
+                                  trailing: FilledButton(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor:
+                                          const Color(0xFF24CCE8),
+                                    ),
+                                    onPressed: () => Navigator.pop(
+                                      sheetContext,
+                                      Map<String, dynamic>.from(item),
+                                    ),
+                                    child: const Text('Add'),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    controller.dispose();
+    if (friend == null || !mounted) return;
+
+    final relationType = slotIndex == 1
+        ? 'brother_sister'
+        : await _chooseIntimacyRelation();
+    if (relationType == null || !mounted) return;
+
+    setState(() => intimacyCardBusy = true);
+    try {
+      final result = await widget.state.backend.bindIntimacyCard(
+        userId: widget.state.userId,
+        slotIndex: slotIndex,
+        targetUserId: friend['id']?.toString() ?? '',
+        relationType: relationType,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        setState(() => intimacyCards = Map<String, dynamic>.from(result!));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'Card could not be bound.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => intimacyCardBusy = false);
+    }
+  }
+
+  Future<void> _unlockNextIntimacyCard() async {
+    if (!isSelf || intimacyCardBusy) return;
+    final cost = int.tryParse(
+          intimacyCards['next_unlock_cost']?.toString() ?? '',
+        ) ??
+        100000;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF0F5),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Unlock position',
+                style: TextStyle(
+                  color: Color(0xFFFF668A),
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Make sure to spend ' +
+                    cost.toString() +
+                    ' gold to unlock friend locations',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () =>
+                          Navigator.pop(dialogContext, false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF5E82),
+                      ),
+                      onPressed: () =>
+                          Navigator.pop(dialogContext, true),
+                      child: const Text('Confirm'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => intimacyCardBusy = true);
+    try {
+      final result = await widget.state.backend.unlockIntimacyCard(
+        userId: widget.state.userId,
+      );
+      if (!mounted) return;
+      if (result?['ok'] == true) {
+        final balance =
+            int.tryParse(result?['coin_balance']?.toString() ?? '');
+        if (balance != null) widget.state.setCoinBalance(balance);
+        setState(() => intimacyCards = Map<String, dynamic>.from(result!));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString().replaceAll('_', ' ') ??
+                  'Position could not be unlocked.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => intimacyCardBusy = false);
+    }
+  }
+
+  Widget _intimacyFriendCards() {
+    final unlocked = (int.tryParse(
+              intimacyCards['unlocked_count']?.toString() ?? '',
+            ) ??
+            3)
+        .clamp(3, 20);
+    final total = (int.tryParse(
+              intimacyCards['total_slots']?.toString() ?? '',
+            ) ??
+            20)
+        .clamp(3, 20);
+    final bindings = _intimacyCardBindings();
+    final visibleCount = unlocked + (unlocked < total ? 1 : 0);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 10.0;
+        final cardWidth = (constraints.maxWidth - gap * 2) / 3;
+        final cardHeight = cardWidth * (274 / 158);
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: 12,
+          children: List<Widget>.generate(visibleCount, (index) {
+            final slotIndex = index + 1;
+            final isLock = slotIndex > unlocked;
+
+            if (isLock) {
+              return GestureDetector(
+                key: const Key('intimacy-card-unlock'),
+                behavior: HitTestBehavior.opaque,
+                onTap: isSelf ? _unlockNextIntimacyCard : null,
+                child: SizedBox(
+                  width: cardWidth,
+                  height: cardHeight,
+                  child: Image.asset(
+                    'assets/images/friend_lock_card_ref.webp',
+                    fit: BoxFit.fill,
+                  ),
+                ),
+              );
+            }
+
+            final bound = bindings[slotIndex];
+            final relation = slotIndex == 1
+                ? 'Brother/Sister'
+                : bound == null
+                    ? 'Add'
+                    : _relationLabel(
+                        bound['relation_type']?.toString() ?? 'friend',
+                      );
+            final image =
+                _avatar(bound?['avatar_key']?.toString() ?? '');
+            final targetId =
+                bound?['target_user_id']?.toString() ?? '';
+
+            return GestureDetector(
+              key: Key('intimacy-card-' + slotIndex.toString()),
+              behavior: HitTestBehavior.opaque,
+              onTap: bound == null
+                  ? isSelf
+                      ? () => _bindIntimacyFriendCard(slotIndex)
+                      : null
+                  : targetId.isEmpty
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => PublicProfileScreen(
+                                state: widget.state,
+                                userId: targetId,
+                              ),
+                            ),
+                          ),
+              child: SizedBox(
+                width: cardWidth,
+                height: cardHeight,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      'assets/images/friend_add_card_ref.webp',
+                      fit: BoxFit.fill,
+                    ),
+                    if (bound != null)
+                      Align(
+                        alignment: const Alignment(0, -0.22),
+                        child: CircleAvatar(
+                          radius: cardWidth * .22,
+                          backgroundColor: const Color(0xFFFFE8EF),
+                          backgroundImage: image,
+                          child: image == null
+                              ? const Icon(
+                                  Icons.person_rounded,
+                                  color: Color(0xFFFF91AF),
+                                )
+                              : null,
+                        ),
+                      ),
+                    if (slotIndex == 1 || bound != null)
+                      Positioned(
+                        left: cardWidth * .06,
+                        right: cardWidth * .06,
+                        top: cardHeight * .57,
+                        height: cardHeight * .18,
+                        child: Container(
+                          alignment: Alignment.center,
+                          color: Colors.white.withOpacity(.96),
+                          child: Text(
+                            relation,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: const Color(0xFF55555A),
+                              fontSize: cardWidth * .10,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
   Widget _intimacyTab() {
     return ListView(
       key: const Key('profile-intimacy-scroll'),
@@ -2642,6 +3076,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
         const SizedBox(height: 7),
         _coupleCard(),
+        const SizedBox(height: 18),
+        _intimacyHeading('Friend'),
+        const SizedBox(height: 9),
+        _intimacyFriendCards(),
       ],
     );
   }
