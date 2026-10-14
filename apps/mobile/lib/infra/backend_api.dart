@@ -115,6 +115,7 @@ class BackendApi {
     String countryName = '',
     String flagEmoji = '',
     String gender = '',
+    String bio = '',
     String language = '',
   }) =>
       _json(
@@ -128,6 +129,7 @@ class BackendApi {
           if (countryName.trim().isNotEmpty) 'country_name': countryName.trim(),
           if (flagEmoji.trim().isNotEmpty) 'flag_emoji': flagEmoji.trim(),
           if (gender.trim().isNotEmpty) 'gender': gender.trim(),
+          'bio': bio.trim(),
           if (language.trim().isNotEmpty) 'language': language.trim(),
         },
         returnErrorBody: true,
