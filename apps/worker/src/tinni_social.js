@@ -97,6 +97,8 @@ export async function ensureTinniSocialSchema(db) {
       state TEXT NOT NULL DEFAULT 'pending',
       intimacy INTEGER NOT NULL DEFAULT 0,
       level INTEGER NOT NULL DEFAULT 1,
+      cycle_a_to_b INTEGER NOT NULL DEFAULT 0,
+      cycle_b_to_a INTEGER NOT NULL DEFAULT 0,
       requested_by TEXT,
       ring_id TEXT,
       created_at INTEGER NOT NULL,
@@ -123,6 +125,8 @@ export async function ensureTinniSocialSchema(db) {
       state TEXT NOT NULL DEFAULT 'pending',
       rivalry INTEGER NOT NULL DEFAULT 0,
       level INTEGER NOT NULL DEFAULT 1,
+      cycle_a_to_b INTEGER NOT NULL DEFAULT 0,
+      cycle_b_to_a INTEGER NOT NULL DEFAULT 0,
       requested_by TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
@@ -154,6 +158,18 @@ export async function ensureTinniSocialSchema(db) {
   for (const sql of statements) await db.prepare(sql).run();
   try {
     await db.prepare("ALTER TABLE cp_relationships ADD COLUMN ring_id TEXT").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE cp_relationships ADD COLUMN cycle_a_to_b INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE cp_relationships ADD COLUMN cycle_b_to_a INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE vs_relationships ADD COLUMN cycle_a_to_b INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
+  try {
+    await db.prepare("ALTER TABLE vs_relationships ADD COLUMN cycle_b_to_a INTEGER NOT NULL DEFAULT 0").run();
   } catch (_) {}
   await db.prepare(
     "INSERT OR IGNORE INTO official_notices(id,title,body,created_at) VALUES(?,?,?,?)"
@@ -722,43 +738,30 @@ export async function familyWalletTransfers(db, userId, limitValue = 100) {
   return rows.results ?? [];
 }
 
-async function cpThresholds(db) {
-  let configured = null;
-  let legacy = null;
-  try {
-    const row = await db.prepare(
-      "SELECT value_json FROM owner_settings WHERE key='cp_coin_thresholds' LIMIT 1"
-    ).first();
-    if (row?.value_json) configured = JSON.parse(String(row.value_json));
-  } catch (_) {}
-  if (!Array.isArray(configured)) {
-    try {
-      const row = await db.prepare(
-        "SELECT value_json FROM owner_settings WHERE key='cp_level_thresholds' LIMIT 1"
-      ).first();
-      if (row?.value_json) legacy = JSON.parse(String(row.value_json));
-    } catch (_) {}
+function relationLevelTarget(levelValue) {
+  const level = Math.max(1, Math.floor(Number(levelValue ?? 1)));
+  const target = 150000000 + ((level - 1) * 100000000);
+  if (!Number.isSafeInteger(target) || target <= 0) {
+    throw new Error("relationship_level_target_limit");
   }
-  const source = Array.isArray(configured)
-      ? configured
-      : Array.isArray(legacy)
-          ? legacy.map((value) => Number(value) * 100)
-          : [20000000];
-  return [...new Set(
-    source
-      .map((value) => Number(value))
-      .filter((value) => Number.isSafeInteger(value) && value > 0),
-  )].sort((a,b) => a-b);
+  return target;
 }
 
-function cpLevelFor(intimacyValue, thresholds) {
-  const intimacy = Math.max(0, Math.floor(Number(intimacyValue ?? 0)));
-  let level = 1;
-  for (const threshold of thresholds) {
-    if (intimacy >= threshold) level += 1;
-    else break;
-  }
-  return level;
+function relationDirectionalProgress(row, userId) {
+  const aToB = Math.max(0, Math.floor(Number(row.cycle_a_to_b ?? 0)));
+  const bToA = Math.max(0, Math.floor(Number(row.cycle_b_to_a ?? 0)));
+  const viewerIsA = String(row.user_a) === String(userId);
+  return {
+    a_to_b: aToB,
+    b_to_a: bToA,
+    sending: viewerIsA ? aToB : bToA,
+    receiving: viewerIsA ? bToA : aToB,
+  };
+}
+
+function relationCanLevelUp(level, aToB, bToA) {
+  const target = relationLevelTarget(level);
+  return aToB >= target && bToA >= target;
 }
 
 async function cpBlockingFlow(db, userId) {
@@ -784,17 +787,25 @@ export async function cpState(db, userId) {
       LIMIT 1`
   ).bind(userId,userId).first();
   if (!row) return null;
-  const thresholds = await cpThresholds(db);
   const intimacy = Math.max(0, Number(row.intimacy ?? 0));
-  const level = cpLevelFor(intimacy, thresholds);
+  const level = Math.max(1, Math.floor(Number(row.level ?? 1)));
+  const target = relationLevelTarget(level);
+  const cycle = relationDirectionalProgress(row, userId);
   return {
     ...row,
     intimacy,
     level,
-    previous_level_threshold:
-      level > 1 ? Number(thresholds[level - 2] ?? 0) : 0,
-    next_level_threshold:
-      level - 1 < thresholds.length ? Number(thresholds[level - 1]) : null,
+    pair_a_to_b: cycle.a_to_b,
+    pair_b_to_a: cycle.b_to_a,
+    level_sending: cycle.sending,
+    level_receiving: cycle.receiving,
+    next_level_target: target,
+    next_level_sending_required: target,
+    next_level_receiving_required: target,
+    level_sending_remaining: Math.max(0, target - cycle.sending),
+    level_receiving_remaining: Math.max(0, target - cycle.receiving),
+    previous_level_threshold: 0,
+    next_level_threshold: target,
   };
 }
 
@@ -824,10 +835,10 @@ export async function cpRequest(db, userId, targetIdValue) {
   try {
     await db.prepare(
       `INSERT INTO cp_relationships(
-        user_a,user_b,state,intimacy,level,requested_by,created_at,updated_at
-      ) VALUES(?,?,'pending',0,1,?,?,?)
+        user_a,user_b,state,intimacy,level,cycle_a_to_b,cycle_b_to_a,requested_by,created_at,updated_at
+      ) VALUES(?,?,'pending',0,1,0,0,?,?,?)
       ON CONFLICT(user_a,user_b) DO UPDATE SET
-        state='pending',intimacy=0,level=1,requested_by=excluded.requested_by,
+        state='pending',intimacy=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,requested_by=excluded.requested_by,
         created_at=excluded.created_at,updated_at=excluded.updated_at`
     ).bind(a,b,userId,createdAt,createdAt).run();
     const wallet = await db.prepare(
@@ -910,30 +921,61 @@ export async function recordCpGiftProgress(
   eventId,
 ) {
   await ensureTinniSocialSchema(db);
+
+  if (eventId) {
+    const existing = await db.prepare(
+      "SELECT 1 AS recorded FROM cp_gift_progress WHERE event_id=? LIMIT 1"
+    ).bind(eventId).first();
+    if (existing) {
+      return { progress:0, duplicate:true, cp:await cpState(db,senderUserId) };
+    }
+  }
+
   const relation = await cpState(db,senderUserId);
   if (!relation || relation.state !== "active") {
     return { progress:0, cp:relation };
   }
-  const pairMatches =
-    (String(relation.user_a) === String(senderUserId) &&
-     String(relation.user_b) === String(receiverUserId)) ||
-    (String(relation.user_b) === String(senderUserId) &&
-     String(relation.user_a) === String(receiverUserId));
+
+  const sender = String(senderUserId);
+  const receiver = String(receiverUserId);
+  const a = String(relation.user_a);
+  const b = String(relation.user_b);
+  const aToB = sender === a && receiver === b;
+  const bToA = sender === b && receiver === a;
   const progress = Math.max(0, Math.floor(Number(coinValue ?? 0)));
-  if (!pairMatches || !Number.isSafeInteger(progress) || progress <= 0) {
+
+  if ((!aToB && !bToA) || !Number.isSafeInteger(progress) || progress <= 0) {
     return { progress:0, cp:relation };
   }
-  const thresholds = await cpThresholds(db);
-  const levelBefore = cpLevelFor(relation.intimacy,thresholds);
-  const intimacy = Number(relation.intimacy ?? 0) + progress;
+
+  const levelBefore = Math.max(1, Math.floor(Number(relation.level ?? 1)));
+  let nextAToB = Math.max(0, Math.floor(Number(relation.pair_a_to_b ?? relation.cycle_a_to_b ?? 0)));
+  let nextBToA = Math.max(0, Math.floor(Number(relation.pair_b_to_a ?? relation.cycle_b_to_a ?? 0)));
+  if (aToB) nextAToB += progress;
+  if (bToA) nextBToA += progress;
+  if (!Number.isSafeInteger(nextAToB) || !Number.isSafeInteger(nextBToA)) {
+    throw new Error("cp_progress_limit");
+  }
+
+  let levelAfter = levelBefore;
+  if (relationCanLevelUp(levelBefore,nextAToB,nextBToA)) {
+    levelAfter += 1;
+    nextAToB = 0;
+    nextBToA = 0;
+  }
+
+  const intimacy = Math.max(0, Math.floor(Number(relation.intimacy ?? 0))) + progress;
   if (!Number.isSafeInteger(intimacy)) throw new Error("cp_progress_limit");
-  const levelAfter = cpLevelFor(intimacy,thresholds);
   const updatedAt=ts();
+
   await db.prepare(
-    "UPDATE cp_relationships SET intimacy=?,level=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+    `UPDATE cp_relationships
+        SET intimacy=?,level=?,cycle_a_to_b=?,cycle_b_to_a=?,updated_at=?
+      WHERE user_a=? AND user_b=? AND state='active'`
   ).bind(
-    intimacy,levelAfter,updatedAt,relation.user_a,relation.user_b
+    intimacy,levelAfter,nextAToB,nextBToA,updatedAt,relation.user_a,relation.user_b
   ).run();
+
   if (eventId) {
     await db.prepare(
       `INSERT OR IGNORE INTO cp_gift_progress(
@@ -953,10 +995,12 @@ export async function recordCpGiftProgress(
       updatedAt,
     ).run();
   }
+
   return {
     progress,
     level_before:levelBefore,
     level_after:levelAfter,
+    level_up:levelAfter > levelBefore,
     intimacy,
     cp:await cpState(db,senderUserId),
   };
@@ -974,53 +1018,20 @@ export async function cpRanking(db, limitValue=100) {
       WHERE c.state='active'
       ORDER BY c.intimacy DESC,c.updated_at ASC LIMIT ?`
   ).bind(limit).all();
-  const thresholds = await cpThresholds(db);
-  return (rows.results ?? []).map((row,index) => ({
-    ...row,
-    rank:index+1,
-    level:cpLevelFor(row.intimacy,thresholds),
-  }));
+  return (rows.results ?? [])
+    .sort((a,b) =>
+      Number(b.level ?? 1) - Number(a.level ?? 1) ||
+      Number(b.intimacy ?? 0) - Number(a.intimacy ?? 0) ||
+      Number(a.updated_at ?? 0) - Number(b.updated_at ?? 0)
+    )
+    .map((row,index) => ({
+      ...row,
+      rank:index+1,
+      level:Math.max(1,Math.floor(Number(row.level ?? 1))),
+      next_level_target:relationLevelTarget(row.level ?? 1),
+    }));
 }
 
-
-async function vsThresholds(db) {
-  let configured = null;
-  let legacy = null;
-  try {
-    const row = await db.prepare(
-      "SELECT value_json FROM owner_settings WHERE key='vs_coin_thresholds' LIMIT 1"
-    ).first();
-    if (row?.value_json) configured = JSON.parse(String(row.value_json));
-  } catch (_) {}
-  if (!Array.isArray(configured)) {
-    try {
-      const row = await db.prepare(
-        "SELECT value_json FROM owner_settings WHERE key='enemy_level_thresholds' LIMIT 1"
-      ).first();
-      if (row?.value_json) legacy = JSON.parse(String(row.value_json));
-    } catch (_) {}
-  }
-  const source = Array.isArray(configured)
-      ? configured
-      : Array.isArray(legacy)
-          ? legacy.map((value) => Number(value) * 100)
-          : [20000000];
-  return [...new Set(
-    source
-      .map((value) => Number(value))
-      .filter((value) => Number.isSafeInteger(value) && value > 0),
-  )].sort((a,b) => a-b);
-}
-
-function vsLevelFor(rivalryValue, thresholds) {
-  const rivalry = Math.max(0, Math.floor(Number(rivalryValue ?? 0)));
-  let level = 1;
-  for (const threshold of thresholds) {
-    if (rivalry >= threshold) level += 1;
-    else break;
-  }
-  return level;
-}
 
 async function vsBlockingFlow(db, userId) {
   if (!userId) return false;
@@ -1054,17 +1065,25 @@ export async function vsState(db, userId) {
       LIMIT 1`
   ).bind(userId,userId).first();
   if (!row) return null;
-  const thresholds = await vsThresholds(db);
   const rivalry = Math.max(0, Number(row.rivalry ?? 0));
-  const level = vsLevelFor(rivalry, thresholds);
+  const level = Math.max(1, Math.floor(Number(row.level ?? 1)));
+  const target = relationLevelTarget(level);
+  const cycle = relationDirectionalProgress(row, userId);
   return {
     ...row,
     rivalry,
     level,
-    previous_level_threshold:
-      level > 1 ? Number(thresholds[level - 2] ?? 0) : 0,
-    next_level_threshold:
-      level - 1 < thresholds.length ? Number(thresholds[level - 1]) : null,
+    pair_a_to_b: cycle.a_to_b,
+    pair_b_to_a: cycle.b_to_a,
+    level_sending: cycle.sending,
+    level_receiving: cycle.receiving,
+    next_level_target: target,
+    next_level_sending_required: target,
+    next_level_receiving_required: target,
+    level_sending_remaining: Math.max(0, target - cycle.sending),
+    level_receiving_remaining: Math.max(0, target - cycle.receiving),
+    previous_level_threshold: 0,
+    next_level_threshold: target,
   };
 }
 
@@ -1084,10 +1103,10 @@ export async function vsRequest(db, userId, targetIdValue) {
   const [a,b] = pair(userId,targetId);
   const createdAt=ts();
   await db.prepare(
-    `INSERT INTO vs_relationships(user_a,user_b,state,rivalry,level,requested_by,created_at,updated_at)
-     VALUES(?,?,'pending',0,1,?,?,?)
+    `INSERT INTO vs_relationships(user_a,user_b,state,rivalry,level,cycle_a_to_b,cycle_b_to_a,requested_by,created_at,updated_at)
+     VALUES(?,?,'pending',0,1,0,0,?,?,?)
      ON CONFLICT(user_a,user_b) DO UPDATE SET
-       state='pending',rivalry=0,level=1,requested_by=excluded.requested_by,
+       state='pending',rivalry=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,requested_by=excluded.requested_by,
        created_at=excluded.created_at,updated_at=excluded.updated_at`
   ).bind(a,b,userId,createdAt,createdAt).run();
   return vsState(db,userId);
@@ -1129,30 +1148,61 @@ export async function recordVsGiftProgress(
   eventId,
 ) {
   await ensureTinniSocialSchema(db);
+
+  if (eventId) {
+    const existing = await db.prepare(
+      "SELECT 1 AS recorded FROM vs_gift_progress WHERE event_id=? LIMIT 1"
+    ).bind(eventId).first();
+    if (existing) {
+      return { progress:0, duplicate:true, vs:await vsState(db,senderUserId) };
+    }
+  }
+
   const relation = await vsState(db,senderUserId);
   if (!relation || relation.state !== "active") {
     return { progress:0, vs:relation };
   }
-  const pairMatches =
-    (String(relation.user_a) === String(senderUserId) &&
-     String(relation.user_b) === String(receiverUserId)) ||
-    (String(relation.user_b) === String(senderUserId) &&
-     String(relation.user_a) === String(receiverUserId));
+
+  const sender = String(senderUserId);
+  const receiver = String(receiverUserId);
+  const a = String(relation.user_a);
+  const b = String(relation.user_b);
+  const aToB = sender === a && receiver === b;
+  const bToA = sender === b && receiver === a;
   const progress = Math.max(0, Math.floor(Number(coinValue ?? 0)));
-  if (!pairMatches || !Number.isSafeInteger(progress) || progress <= 0) {
+
+  if ((!aToB && !bToA) || !Number.isSafeInteger(progress) || progress <= 0) {
     return { progress:0, vs:relation };
   }
-  const thresholds = await vsThresholds(db);
-  const levelBefore = vsLevelFor(relation.rivalry, thresholds);
-  const rivalry = Number(relation.rivalry ?? 0) + progress;
+
+  const levelBefore = Math.max(1, Math.floor(Number(relation.level ?? 1)));
+  let nextAToB = Math.max(0, Math.floor(Number(relation.pair_a_to_b ?? relation.cycle_a_to_b ?? 0)));
+  let nextBToA = Math.max(0, Math.floor(Number(relation.pair_b_to_a ?? relation.cycle_b_to_a ?? 0)));
+  if (aToB) nextAToB += progress;
+  if (bToA) nextBToA += progress;
+  if (!Number.isSafeInteger(nextAToB) || !Number.isSafeInteger(nextBToA)) {
+    throw new Error("vs_progress_limit");
+  }
+
+  let levelAfter = levelBefore;
+  if (relationCanLevelUp(levelBefore,nextAToB,nextBToA)) {
+    levelAfter += 1;
+    nextAToB = 0;
+    nextBToA = 0;
+  }
+
+  const rivalry = Math.max(0, Math.floor(Number(relation.rivalry ?? 0))) + progress;
   if (!Number.isSafeInteger(rivalry)) throw new Error("vs_progress_limit");
-  const levelAfter = vsLevelFor(rivalry, thresholds);
-  const updatedAt = ts();
+  const updatedAt=ts();
+
   await db.prepare(
-    "UPDATE vs_relationships SET rivalry=?,level=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
+    `UPDATE vs_relationships
+        SET rivalry=?,level=?,cycle_a_to_b=?,cycle_b_to_a=?,updated_at=?
+      WHERE user_a=? AND user_b=? AND state='active'`
   ).bind(
-    rivalry,levelAfter,updatedAt,relation.user_a,relation.user_b
+    rivalry,levelAfter,nextAToB,nextBToA,updatedAt,relation.user_a,relation.user_b
   ).run();
+
   if (eventId) {
     await db.prepare(
       `INSERT OR IGNORE INTO vs_gift_progress(
@@ -1172,10 +1222,12 @@ export async function recordVsGiftProgress(
       updatedAt,
     ).run();
   }
+
   return {
     progress,
     level_before:levelBefore,
     level_after:levelAfter,
+    level_up:levelAfter > levelBefore,
     rivalry,
     vs:await vsState(db,senderUserId),
   };
@@ -1193,12 +1245,18 @@ export async function vsRanking(db, limitValue=100) {
       WHERE v.state='active'
       ORDER BY v.rivalry DESC,v.updated_at ASC LIMIT ?`
   ).bind(limit).all();
-  const thresholds = await vsThresholds(db);
-  return (rows.results ?? []).map((row,index) => ({
-    ...row,
-    rank:index+1,
-    level:vsLevelFor(row.rivalry,thresholds),
-  }));
+  return (rows.results ?? [])
+    .sort((a,b) =>
+      Number(b.level ?? 1) - Number(a.level ?? 1) ||
+      Number(b.rivalry ?? 0) - Number(a.rivalry ?? 0) ||
+      Number(a.updated_at ?? 0) - Number(b.updated_at ?? 0)
+    )
+    .map((row,index) => ({
+      ...row,
+      rank:index+1,
+      level:Math.max(1,Math.floor(Number(row.level ?? 1))),
+      next_level_target:relationLevelTarget(row.level ?? 1),
+    }));
 }
 
 
