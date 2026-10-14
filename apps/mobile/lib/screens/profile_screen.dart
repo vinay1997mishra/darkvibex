@@ -2502,7 +2502,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               height: h * .13,
               child: Container(
                 alignment: Alignment.center,
-                color: const Color(0xFFD17D89).withValues(alpha: .96),
+                color: const Color(0xFFD17D89).withOpacity(.96),
                 child: Text(
                   text,
                   maxLines: 1,
