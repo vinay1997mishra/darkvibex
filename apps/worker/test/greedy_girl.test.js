@@ -1,3 +1,4 @@
+// Live parity: Greedy Girl must self-heal a missing wallet_ledger table.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
