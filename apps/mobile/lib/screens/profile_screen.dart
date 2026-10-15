@@ -15,6 +15,7 @@ import 'personal_profile_screen.dart';
 import 'room_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
+import '../widgets/cosmetic_store_previews.dart';
 import '../ui/intimacy_vs_art_b64.dart';
 import '../ui/intimacy_cp_art_b64.dart';
 
@@ -3710,6 +3711,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       versus: false,
                     ),
                   ),
+                  if (active &&
+                      data['ring_id']?.toString().isNotEmpty == true)
+                    Positioned(
+                      key: const Key('profile-intimacy-cp-ring'),
+                      left: w * .5 - w * .07,
+                      top: h * .30,
+                      width: w * .14,
+                      height: w * .14,
+                      child: JewelryRingPreview(
+                        styleId: data['ring_id'].toString(),
+                        size: w * .14,
+                      ),
+                    ),
                   Positioned(
                     left: w * .055,
                     bottom: h * .055,
