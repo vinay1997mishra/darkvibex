@@ -956,6 +956,25 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  Future<Map<String, dynamic>?> weeklySignInStatus({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/rewards/weekly-signin?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> claimWeeklySignIn({
+    required String userId,
+  }) =>
+      _json(
+        'POST',
+        '/api/rewards/weekly-signin',
+        body: <String, dynamic>{'user_id': userId},
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> wallet({
     required String userId,
   }) =>
