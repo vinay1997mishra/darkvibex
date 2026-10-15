@@ -28,13 +28,19 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
   }
 
   assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "frame").length, 16);
-  const freeFrames = COSMETIC_CATALOG.filter(
-    (item) => item.kind === "frame" && item.price_coins === 0,
+  assert.ok(
+    COSMETIC_CATALOG.every((item) => item.price_coins === 0),
+    "all current cosmetics should stay free until the owner sets prices",
   );
-  assert.equal(freeFrames.length, 12);
-  for (const frame of freeFrames) {
+  const permanentFreeFrames = COSMETIC_CATALOG.filter(
+    (item) =>
+      item.kind === "frame" &&
+      item.price_coins === 0 &&
+      item.duration_days === 0,
+  );
+  assert.equal(permanentFreeFrames.length, 12);
+  for (const frame of permanentFreeFrames) {
     assert.equal(frame.min_vip_level, 0);
-    assert.equal(frame.duration_days, 0);
   }
   assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "vehicle").length, 4);
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_card"));
