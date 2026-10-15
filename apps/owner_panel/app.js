@@ -299,10 +299,7 @@ function authHeaders(){return {authorization:"Bearer "+state.token,"content-type
 async function api(path, options={}){
   const res=await fetch(path,{...options,headers:{...authHeaders(),...(options.headers||{})}});
   const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
-  if(!res.ok) const uploadError=data.error==="gift_video_max_11mb"
-      ?"Gift video can be maximum 11 MB. Choose a smaller MP4 file."
-      :data.error;
-    throw new Error(uploadError||("HTTP "+res.status));
+  if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
   return data;
 }
 async function apiBlob(path){
@@ -955,7 +952,14 @@ async function uploadGiftVideo(){
   const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
   if(!res.ok||!data.ok){
     $("#giftVideoStatus").textContent="";
-    throw new Error(data.error||("HTTP "+res.status));
+    const message=data.error==="gift_video_max_11mb"
+      ?"Gift video can be maximum 11 MB. Choose a smaller MP4 file."
+      :data.error==="gift_video_mp4_required"
+        ?"Only MP4 gift video is supported."
+        :data.error==="gift_video_invalid"
+          ?"This MP4 file is invalid. Choose another video."
+          :data.error;
+    throw new Error(message||("HTTP "+res.status));
   }
   $("#giftVideoKey").value=String(data.key||"");
   $("#giftVideoStatus").textContent="Video saved in R2";
