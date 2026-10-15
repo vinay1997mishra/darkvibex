@@ -1661,6 +1661,13 @@ async function handleAnnouncements(request, db, actor, parts) {
     const message = String(body.body ?? "").trim().slice(0, 2000);
     if (!title || !message) return json({ ok: false, error: "title_and_body_required" }, { status: 400 });
     const ts = now();
+    const startsAt=body.starts_at==null||body.starts_at===""?null:Number(body.starts_at);
+    const endsAt=body.ends_at==null||body.ends_at===""?null:Number(body.ends_at);
+    if(startsAt!=null&&!Number.isFinite(startsAt))return json({ok:false,error:"invalid_announcement_start"},{status:400});
+    if(endsAt!=null&&!Number.isFinite(endsAt))return json({ok:false,error:"invalid_announcement_end"},{status:400});
+    if(startsAt!=null&&endsAt!=null&&endsAt<=startsAt){
+      return json({ok:false,error:"announcement_end_must_be_after_start"},{status:400});
+    }
     await db.prepare(
       `INSERT INTO owner_announcements (id,title,body,enabled,starts_at,ends_at,country,created_at,updated_at)
        VALUES (?,?,?,?,?,?,?,?,?)
@@ -1668,8 +1675,7 @@ async function handleAnnouncements(request, db, actor, parts) {
          starts_at=excluded.starts_at, ends_at=excluded.ends_at, country=excluded.country, updated_at=excluded.updated_at`
     ).bind(
       announcementId, title, message, body.enabled === false ? 0 : 1,
-      body.starts_at == null ? null : Number(body.starts_at), body.ends_at == null ? null : Number(body.ends_at),
-      "", ts, ts,
+      startsAt, endsAt, "", ts, ts,
     ).run();
     await audit(db, actor, "announcement_upsert", "announcement", announcementId, title);
     return json({ ok: true, id: announcementId });
