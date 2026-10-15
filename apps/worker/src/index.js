@@ -742,7 +742,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   const ts = now();
   await db.prepare(
     `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, created_at, updated_at)
-     VALUES (?, ?, 'user', 2500000, 120, 0, ?, ?)
+     VALUES (?, ?, 'user', 500000, 120, 0, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        display_name = CASE WHEN excluded.display_name <> '' THEN excluded.display_name ELSE users.display_name END,
        updated_at = excluded.updated_at`
