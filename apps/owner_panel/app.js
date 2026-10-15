@@ -48,6 +48,7 @@ async function api(path, options={}){
 function esc(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));}
 function num(v){return Number(v||0).toLocaleString();}
 function time(v){if(!v)return "—";return new Date(Number(v)).toLocaleString();}
+function duration(v){const ms=Math.max(0,Number(v||0));const total=Math.floor(ms/1000);const h=Math.floor(total/3600);const m=Math.floor((total%3600)/60);const sec=total%60;return h>0?`${h}h ${m}m`:m>0?`${m}m ${sec}s`:`${sec}s`;}
 function can(p){return (!!state.actor&&(state.actor.permissions||[]).includes("*"))||(state.actor?.permissions||[]).includes(p);}
 function empty(text){return `<div class="empty">${esc(text)}</div>`;}
 function toast(message,good=true){const el=$("#toast");el.textContent=message;el.className="toast "+(good?"good":"bad");el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600);}
@@ -90,6 +91,22 @@ async function openUser(id){
   $("#editStatus").value=u.status||"active";
   $("#editNote").value=u.moderation_note||"";
   $("#walletBalance").textContent=`Current balance: ${num(u.coins)} coins · ${num(u.diamonds)} diamonds`;
+  const inv=u.investigation||{};
+  const invCards=[
+    ["Room",inv.room_id?(String(inv.room_id)+(inv.room_name?" · "+String(inv.room_name):"")):"Offline"],
+    ["Current room time",inv.room_id?duration(inv.online_duration_ms):"—"],
+    ["Sent gifts",num(inv.sent_gift_coins||0)+" coins · "+num(inv.sent_gift_count||0)+" gifts"],
+    ["Received gifts",num(inv.received_gift_coins||0)+" coins · "+num(inv.received_gift_count||0)+" gifts"],
+    ["Purchases",num(inv.purchase_coins||0)+" coins · "+num(inv.purchase_count||0)+" records"],
+    ["Wallet dollar value","$"+Number(inv.wallet_usd||0).toFixed(2)+" @ "+num(inv.coin_rate_coins_per_usd||5000000)+" coins/$"],
+    ["Game bets",num(inv.game_wagered||0)+" wagered · "+num(inv.game_bet_count||0)+" bets"],
+    ["Game payout",num(inv.game_payout||0)+" · house result "+num(inv.game_house_result||0)],
+    ["Diamonds",num(inv.diamonds||u.diamonds||0)],
+  ];
+  $("#userInvestigation").innerHTML=invCards.map(([label,value])=>`<div class="module-card"><b>${esc(label)}</b><span>${esc(value)}</span></div>`).join("");
+  const recentGames=(inv.recent_games||[]).map(x=>`<div class="item-card"><div class="item-title">Game · ${esc(x.game_id)}</div><div class="item-meta">Stake ${num(x.stake)} · payout ${num(x.payout)} · ${esc(x.result)} · ${time(x.created_at)}</div></div>`);
+  const recentGifts=(inv.recent_gifts||[]).map(x=>`<div class="item-card"><div class="item-title">Gift · ${esc(x.direction)} · ${esc(x.gift_id)}</div><div class="item-meta">${num(x.coin_cost)} coins · ${time(x.created_at)}</div></div>`);
+  $("#userInvestigationActivity").innerHTML=[...recentGames,...recentGifts].slice(0,16).join("")||empty("No recent game/gift activity");
   renderLedger(u.wallet_ledger||[]);
   const roleType=(u.role==="coin_seller"||u.role==="merchant")?u.role:"";
   $("#roleWalletType").value=roleType;
