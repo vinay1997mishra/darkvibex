@@ -92,6 +92,14 @@
             <div class="form-grid compact"><label>Coin change<input id="coinDelta" type="number" placeholder="e.g. 50000 or -50000" /></label><label>Diamond change<input id="diamondDelta" type="number" placeholder="e.g. 100 or -100" /></label></div>
             <button id="applyWallet" class="primary">Apply adjustment</button>
             <div id="walletLedger" class="stack compact-stack"></div>
+            <hr />
+            <h3>Dedicated Role Wallet</h3>
+            <p class="muted" id="roleWalletBalance">Use only for Coin Seller or Merchant wallet balance. This does not change the normal user wallet.</p>
+            <div class="form-grid compact">
+              <label>Wallet type<select id="roleWalletType"><option value="">Select wallet</option><option value="coin_seller">Coin Seller wallet</option><option value="merchant">Merchant wallet</option></select></label>
+              <label>Role coin change<input id="roleCoinDelta" type="number" placeholder="e.g. 5000000 or -5000000" /></label>
+            </div>
+            <button id="applyRoleWallet" class="primary">Apply role-wallet adjustment</button>
           </article>
         </section>
 
