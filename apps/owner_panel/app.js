@@ -116,7 +116,7 @@ async function loadEconomy(){
 }
 function renderCoinRate(rate,updatedAt){
   const perMillion=rate>0?(1000000/rate):0;
-  $("#coinRateSummary").textContent=`Current rate: $1 = ${num(rate)} coins · 1,000,000 coins ≈ ${perMillion.toFixed(4)}${updatedAt?" · Updated "+time(updatedAt):""}`;
+  $("#coinRateSummary").textContent=`Current rate: $1 = ${num(rate)} coins · 1,000,000 coins ≈ $${perMillion.toFixed(4)}${updatedAt?" · Updated "+time(updatedAt):""}`;
 }
 async function searchEconomyUsers(){
   if(!can("users.read"))return toast("Users read permission required",false);
@@ -125,7 +125,7 @@ async function searchEconomyUsers(){
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=30");
   const rows=d.users||[];
   $("#economyUserResults").innerHTML=rows.length?rows.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||"Unnamed user")}</div><div class="item-meta">Public ID ${esc(u.public_id||"—")} · Internal ${esc(u.id)} · ${esc(u.role)}</div></div><button class="secondary mini" data-economy-user="${esc(u.id)}">Select</button></div></div>`).join(""):empty("No matching users");
-  $("[data-economy-user]").forEach(b=>b.onclick=()=>selectEconomyUser(b.dataset.economyUser).catch(e=>toast(e.message,false)));
+  $$("[data-economy-user]").forEach(b=>b.onclick=()=>selectEconomyUser(b.dataset.economyUser).catch(e=>toast(e.message,false)));
 }
 async function selectEconomyUser(id){
   const d=await api("/api/owner/users/"+encodeURIComponent(id));
