@@ -358,9 +358,30 @@
               <label>Name<input id="giftName" /></label>
               <label>Coin price<input id="giftPrice" type="number" min="0" value="0" /></label>
               <label>Minimum VIP<input id="giftVip" type="number" min="0" max="18" value="0" /></label>
-              <label>Emoji<input id="giftEmoji" placeholder="Optional" /></label>
-              <label>Category<input id="giftCategory" placeholder="normal / exclusive / custom" /></label>
-              <label>Asset / DP key<input id="giftAsset" placeholder="R2 / CDN / asset key" /></label>
+              <label>Emoji<input id="giftEmoji" placeholder="Optional fallback" /></label>
+              <label>Section
+                <select id="giftCategory">
+                  <option value="normal">Normal</option>
+                  <option value="cp">CP</option>
+                  <option value="vs">VS</option>
+                  <option value="luxury">Luxury</option>
+                  <option value="backpack">Backpack</option>
+                  <option value="exclusive">Exclusive</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+              <label>Image / DP key<input id="giftAsset" placeholder="Optional R2 image key" /></label>
+              <label>Gift video (MP4, max 20 MB)
+                <input id="giftVideoFile" type="file" accept="video/mp4" />
+              </label>
+              <label class="span-2">Gift video R2 key
+                <input id="giftVideoKey" readonly placeholder="Upload an MP4 to use the video itself as the gift DP" />
+              </label>
+              <div class="action-row span-2">
+                <button id="uploadGiftVideo" class="secondary" type="button">Upload Video to R2</button>
+                <button id="removeGiftVideo" class="secondary" type="button">Remove Video</button>
+                <span id="giftVideoStatus" class="muted"></span>
+              </div>
               <label>Sort order<input id="giftOrder" type="number" value="0" /></label>
               <label>Start timestamp (ms)<input id="giftStart" type="number" /></label>
               <label>End timestamp (ms)<input id="giftEnd" type="number" /></label>
