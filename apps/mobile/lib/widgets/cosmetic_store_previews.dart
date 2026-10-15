@@ -1,24 +1,47 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class JewelryRingPreview extends StatelessWidget {
   const JewelryRingPreview({
     super.key,
     required this.styleId,
     this.size = 108,
+    this.imageProvider,
   });
 
   final String styleId;
   final double size;
+  final ImageProvider<Object>? imageProvider;
+
+  String? get _builtinAsset => switch (styleId) {
+        'ring-heart' => 'assets/images/ring_heart.svg',
+        'ring-crystal' => 'assets/images/ring_crystal.svg',
+        'ring-royal' => 'assets/images/ring_royal.svg',
+        _ => null,
+      };
 
   @override
   Widget build(BuildContext context) {
+    final asset = _builtinAsset;
     return SizedBox.square(
       dimension: size,
-      child: CustomPaint(
-        painter: _JewelryRingPainter(styleId),
-      ),
+      child: imageProvider != null
+          ? Image(
+              image: imageProvider!,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
+            )
+          : asset != null
+              ? SvgPicture.asset(
+                  asset,
+                  fit: BoxFit.contain,
+                )
+              : CustomPaint(
+                  painter: _JewelryRingPainter(styleId),
+                ),
     );
   }
 }
