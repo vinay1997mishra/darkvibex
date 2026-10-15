@@ -2831,10 +2831,25 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/config" && request.method === "GET") {
-    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "maintenance"];
+    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "feature.red_pocket", "feature.friends_call", "feature.visitors", "maintenance"];
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  const featurePath=url.pathname;
+  const guardedFeature =
+    featurePath.startsWith("/api/gifts/") ? ["feature.gifts","gifts_disabled"] :
+    (featurePath.startsWith("/api/games/") || featurePath.startsWith("/api/game-rooms")) ? ["feature.games","games_disabled"] :
+    featurePath.startsWith("/api/messages/") ? ["feature.messages","messages_disabled"] :
+    (featurePath.includes("/lucky-pouch") || featurePath.includes("/red-envelope")) ? ["feature.red_pocket","red_pocket_disabled"] :
+    featurePath.startsWith("/api/calls/") ? ["feature.friends_call","friends_call_disabled"] :
+    (/^\/api\/users\/[^/]+\/visitors$/.test(featurePath) ? ["feature.visitors","visitors_disabled"] : null);
+  if(guardedFeature){
+    const setting=await ownerSetting(db,guardedFeature[0],{enabled:true});
+    if(setting.enabled===false){
+      return json({ok:false,error:guardedFeature[1]},{status:403});
+    }
   }
 
   if (url.pathname === "/api/push/device" && request.method === "POST") {
@@ -4425,7 +4440,8 @@ async function handleApi(request, env, url) {
         user.vip_custom_id=null;
       }
     }
-    if (user && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
+    const visitorsFeature=await ownerSetting(db,"feature.visitors",{enabled:true});
+    if (user && visitorsFeature.enabled!==false && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
       const targetVip = await getVipStatus(db, viewedUserId);
       if (targetVip.active && targetVip.level >= 18 && targetVip.preferences.anonymous_everywhere === true) {
         user.display_name = "Anonymous";
@@ -5287,28 +5303,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/rooms" && request.method === "POST") {
-    let roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
-    if (roomCreation.enabled === false) {
-      await db.prepare(
-        "CREATE TABLE IF NOT EXISTS app_migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)"
-      ).run();
-      const repairId = "20261013_room_creation_repair";
-      const alreadyRepaired = await db.prepare(
-        "SELECT 1 AS applied FROM app_migrations WHERE id = ? LIMIT 1"
-      ).bind(repairId).first();
-      if (!alreadyRepaired) {
-        const repairTs = now();
-        await db.batch([
-          db.prepare(
-            "UPDATE owner_settings SET value_json = ?, updated_at = ? WHERE key = ?"
-          ).bind(JSON.stringify({ enabled: true }), repairTs, "feature.room_creation"),
-          db.prepare(
-            "INSERT OR IGNORE INTO app_migrations (id, applied_at) VALUES (?, ?)"
-          ).bind(repairId, repairTs),
-        ]);
-        roomCreation = { enabled: true };
-      }
-    }
+    const roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
     if (roomCreation.enabled === false) return json({ ok: false, error: "room_creation_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
