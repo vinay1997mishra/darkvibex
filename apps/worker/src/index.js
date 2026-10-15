@@ -215,6 +215,19 @@ async function requireSession(request, env, expectedUserId) {
   if (!actor || (expectedUserId != null && actor !== String(expectedUserId))) {
     return json({ ok: false, error: "forbidden" }, { status: 403 });
   }
+  const deviceKey=String(request.headers.get("x-device-id") ?? "").trim().slice(0,500);
+  if(deviceKey){
+    try{
+      const db=requireDb(env);
+      await ensureOwnerControlSchema(db);
+      await db.prepare(
+        `INSERT INTO owner_user_devices(device_key,user_id,last_seen_at) VALUES(?,?,?)
+         ON CONFLICT(device_key) DO UPDATE SET user_id=excluded.user_id,last_seen_at=excluded.last_seen_at`
+      ).bind(deviceKey,actor,now()).run();
+    }catch(error){
+      console.error("DarkVibeX device identity mapping failed",String(error?.message ?? error));
+    }
+  }
   return null;
 }
 
@@ -258,6 +271,12 @@ async function ensureOwnerControlSchema(db) {
       note TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_devices (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_devices_user ON owner_user_devices(user_id,last_seen_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_notifications (
       id TEXT PRIMARY KEY,
       kind TEXT NOT NULL DEFAULT 'platform',
