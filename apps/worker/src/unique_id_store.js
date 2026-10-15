@@ -69,13 +69,14 @@ async function idOwnedByAnotherUser(db, requested, userId, ts=Date.now()) {
   }catch(error){
     if(!String(error?.message ?? error).includes("no such table")) throw error;
   }
-  const active=await db.prepare(
-    "SELECT user_id,custom_id_expires_at FROM user_vip WHERE custom_id=? AND user_id<>? LIMIT 1"
+  const customOwner=await db.prepare(
+    "SELECT user_id FROM user_vip WHERE custom_id=? AND user_id<>? LIMIT 1"
   ).bind(requested,userId).first();
-  if(active){
-    const expiry=active.custom_id_expires_at==null?null:Number(active.custom_id_expires_at);
-    if(expiry==null || expiry===0 || expiry>ts) return true;
-  }
+  if(customOwner) return true;
+  const purchaseOwner=await db.prepare(
+    "SELECT buyer_user_id FROM unique_id_purchases WHERE public_id=? AND buyer_user_id<>? LIMIT 1"
+  ).bind(requested,userId).first();
+  if(purchaseOwner) return true;
   return false;
 }
 
