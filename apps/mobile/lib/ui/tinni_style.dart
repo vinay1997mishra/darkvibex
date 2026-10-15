@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 abstract final class TinniPalette {
-  static const black = Color(0xFF030201);
-  static const nearBlack = Color(0xFF090603);
-  static const panel = Color(0xFF0D0A05);
-  static const panel2 = Color(0xFF151006);
+  static const black = Color(0xFF030518);
+  static const nearBlack = Color(0xE60A0D24);
+  static const panel = Color(0xE6121230);
+  static const panel2 = Color(0xE61A123A);
   static const gold = Color(0xFFD09A0A);
   static const brightGold = Color(0xFFFFC928);
   static const deepGold = Color(0xFF8C6500);
@@ -26,9 +26,9 @@ ThemeData buildTinniStyleTheme() {
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: scheme,
-    scaffoldBackgroundColor: TinniPalette.black,
+    scaffoldBackgroundColor: Colors.transparent,
     appBarTheme: const AppBarTheme(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Color(0xB3080B20),
       foregroundColor: TinniPalette.cream,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
@@ -152,12 +152,15 @@ class TinniPanel extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xE60A0804), Color(0xD9060503)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xE6161740), Color(0xD90A0D28)],
         ),
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: TinniPalette.bronze),
         boxShadow: const [
-          BoxShadow(color: Color(0x443D2A00), blurRadius: 10),
+          BoxShadow(color: Color(0x442F36FF), blurRadius: 10),
+          BoxShadow(color: Color(0x332A0B54), blurRadius: 16),
         ],
       ),
       child: child,
@@ -171,25 +174,49 @@ class TinniPanel extends StatelessWidget {
   }
 }
 
+class DarkVibeXGlobalBackground extends StatelessWidget {
+  const DarkVibeXGlobalBackground({
+    super.key,
+    required this.child,
+  });
+
+  static const assetPath = 'assets/images/darkvibex_global_bg.webp';
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(
+          color: TinniPalette.black,
+          image: DecorationImage(
+            image: AssetImage(assetPath),
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            filterQuality: FilterQuality.medium,
+          ),
+        ),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0x2601061A),
+                Color(0x120A0B28),
+                Color(0x42020518),
+              ],
+              stops: [0, .48, 1],
+            ),
+          ),
+          child: child,
+        ),
+      );
+}
+
 class TinniBackground extends StatelessWidget {
   const TinniBackground({super.key, required this.child});
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF050402),
-              Color(0xFF090603),
-              Color(0xFF020201),
-              Color(0xFF000000),
-            ],
-            stops: [0, .24, .58, 1],
-          ),
-        ),
-        child: child,
-      );
+  Widget build(BuildContext context) => child;
 }
