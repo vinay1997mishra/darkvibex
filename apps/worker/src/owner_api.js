@@ -93,6 +93,7 @@ async function ensureOwnerSchema(db) {
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      public_id TEXT,
       display_name TEXT NOT NULL DEFAULT '',
       avatar_key TEXT,
       role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','room_owner','room_admin','moderator','coin_seller','merchant','platform_owner')),
@@ -180,6 +181,14 @@ async function ensureOwnerSchema(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_gifts_receiver_time ON gift_events(receiver_user_id, created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_game_bets_user_time ON game_bets(user_id, created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_public_id_history (
+      user_id TEXT NOT NULL,
+      public_id TEXT NOT NULL,
+      changed_at INTEGER NOT NULL,
+      changed_by TEXT NOT NULL,
+      PRIMARY KEY (user_id, public_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_old_public_id ON owner_public_id_history(public_id)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_controls (
       user_id TEXT PRIMARY KEY,
       status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','banned')),
@@ -265,6 +274,12 @@ async function ensureOwnerSchema(db) {
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.room_creation', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('maintenance', '{\"enabled\":false,\"message\":\"\"}', ?)").bind(now()),
   ]);
+  const userInfo = await db.prepare("PRAGMA table_info(users)").all();
+  const userColumns = new Set((userInfo.results ?? []).map((row) => String(row.name ?? "")));
+  if (!userColumns.has("public_id")) {
+    await db.prepare("ALTER TABLE users ADD COLUMN public_id TEXT").run();
+  }
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_users_public_id ON users(public_id) WHERE public_id IS NOT NULL AND public_id <> ''").run();
   schemaReady = true;
 }
 
@@ -298,7 +313,7 @@ async function audit(db, actor, action, targetType, targetId, summary = "") {
 
 async function getUserDetails(db, userId) {
   const user = await db.prepare(
-    `SELECT u.id, u.display_name, u.role, u.coins, u.diamonds, u.vip_level, u.avatar_key, u.created_at, u.updated_at,
+    `SELECT u.id, u.public_id, u.display_name, u.role, u.coins, u.diamonds, u.vip_level, u.avatar_key, u.created_at, u.updated_at,
             COALESCE(c.status, 'active') AS status, c.muted_until, c.banned_until, COALESCE(c.note, '') AS moderation_note
        FROM users u
        LEFT JOIN owner_user_controls c ON c.user_id = u.id
@@ -319,10 +334,14 @@ async function getUserDetails(db, userId) {
       role_wallets[user.role] = await roleWalletDetail(db,userId,user.role,25,now());
     } catch (_) {}
   }
+  const oldIds = await db.prepare(
+    "SELECT public_id, changed_at, changed_by FROM owner_public_id_history WHERE user_id = ? ORDER BY changed_at DESC LIMIT 25"
+  ).bind(userId).all();
   return {
     ...user,
     wallet_ledger: ledger.results ?? [],
     role_wallets,
+    old_public_ids: oldIds.results ?? [],
     current_room: room ?? null,
   };
 }
@@ -378,12 +397,13 @@ async function handleUsers(request, db, actor, url, parts) {
     const limit = clampInt(url.searchParams.get("limit"), 1, 200, 100);
     const pattern = `%${query}%`;
     const rows = await db.prepare(
-      `SELECT u.id, u.display_name, u.role, u.coins, u.diamonds, u.vip_level, u.updated_at,
+      `SELECT u.id, u.public_id, u.display_name, u.role, u.coins, u.diamonds, u.vip_level, u.updated_at,
               COALESCE(c.status,'active') AS status, c.muted_until, c.banned_until
          FROM users u LEFT JOIN owner_user_controls c ON c.user_id = u.id
-        WHERE (? = '' OR u.id LIKE ? OR u.display_name LIKE ?)
+        WHERE (? = '' OR u.id LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR u.display_name LIKE ?
+          OR EXISTS (SELECT 1 FROM owner_public_id_history h WHERE h.user_id = u.id AND h.public_id LIKE ?))
         ORDER BY u.updated_at DESC LIMIT ?`
-    ).bind(query, pattern, pattern, limit).all();
+    ).bind(query, pattern, pattern, pattern, pattern, limit).all();
     return json({ ok: true, users: rows.results ?? [] });
   }
 
@@ -420,6 +440,33 @@ async function handleUsers(request, db, actor, url, parts) {
     }
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
     return json({ ok: true, user: await getUserDetails(db, userId) });
+  }
+
+  if (parts[4] === "public-id" && request.method === "POST") {
+    requirePermission(actor, "users.write");
+    const body = await bodyJson(request);
+    const requested = String(body.public_id ?? "").trim();
+    if (!/^[1-9]\d{6}$/.test(requested)) {
+      return json({ ok: false, error: "public_id_must_be_7_digits" }, { status: 400 });
+    }
+    const current = await db.prepare("SELECT public_id FROM users WHERE id = ?").bind(userId).first();
+    if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
+    const taken = await db.prepare("SELECT id FROM users WHERE public_id = ? AND id <> ? LIMIT 1").bind(requested, userId).first();
+    if (taken) return json({ ok: false, error: "public_id_already_used" }, { status: 409 });
+    const previous = String(current.public_id ?? "").trim();
+    const ts = now();
+    const statements = [
+      db.prepare("UPDATE users SET public_id = ?, updated_at = ? WHERE id = ?").bind(requested, ts, userId),
+    ];
+    if (previous && previous !== requested) {
+      statements.push(
+        db.prepare("INSERT OR IGNORE INTO owner_public_id_history (user_id, public_id, changed_at, changed_by) VALUES (?, ?, ?, ?)")
+          .bind(userId, previous, ts, actor.id)
+      );
+    }
+    await db.batch(statements);
+    await audit(db, actor, "public_id_change", "user", userId, `old=${previous || "-"}; new=${requested}`);
+    return json({ ok: true, public_id: requested, old_public_id: previous || null });
   }
 
   if (parts[4] === "wallet" && request.method === "POST") {
