@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<defs>
+  <linearGradient id="plat" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffffff"/><stop offset=".2" stop-color="#bfe7ff"/>
+    <stop offset=".43" stop-color="#6b86b6"/><stop offset=".62" stop-color="#f7fdff"/>
+    <stop offset=".82" stop-color="#98b4d9"/><stop offset="1" stop-color="#4f6588"/>
+  </linearGradient>
+  <radialGradient id="blue" cx=".32" cy=".22" r=".82">
+    <stop offset="0" stop-color="#ffffff"/><stop offset=".12" stop-color="#dff8ff"/>
+    <stop offset=".35" stop-color="#6fd7ff"/><stop offset=".62" stop-color="#2d7cff"/>
+    <stop offset=".84" stop-color="#2146c8"/><stop offset="1" stop-color="#111b72"/>
+  </radialGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<ellipse cx="128" cy="164" rx="73" ry="38" fill="none" stroke="#58baff" stroke-opacity=".25" stroke-width="18" filter="url(#glow)"/>
+<ellipse cx="128" cy="164" rx="73" ry="38" fill="none" stroke="url(#plat)" stroke-width="16"/>
+<ellipse cx="128" cy="164" rx="62" ry="28" fill="none" stroke="#eaf8ff" stroke-opacity=".7" stroke-width="3"/>
+<polygon points="128,48 174,83 158,128 128,153 98,128 82,83" fill="url(#blue)" stroke="#e9fbff" stroke-width="3" filter="url(#glow)"/>
+<path d="M128 48 L128 153 M82 83 H174 M98 128 H158 M82 83 L128 112 L174 83 M98 128 L128 112 L158 128 M104 61 L128 83 L152 61" fill="none" stroke="#d8f7ff" stroke-opacity=".62" stroke-width="1.8"/>
+<path d="M101 69 Q122 48 145 60" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity=".9"/>
+<g fill="#fff">
+ <circle cx="77" cy="141" r="4.7"/><circle cx="89" cy="135" r="4.2"/><circle cx="100" cy="130" r="3.8"/>
+ <circle cx="156" cy="130" r="3.8"/><circle cx="167" cy="135" r="4.2"/><circle cx="179" cy="141" r="4.7"/>
+</g>
+<g stroke="#dff9ff" stroke-linecap="round">
+ <path d="M48 70h20M58 60v20" stroke-width="3"/><path d="M194 62h16M202 54v16" stroke-width="2.7"/>
+ <path d="M204 123h13M210.5 116.5v13" stroke-width="2.2"/>
+</g>
+</svg>
