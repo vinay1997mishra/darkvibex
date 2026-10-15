@@ -44,10 +44,17 @@
       <section id="loginCard" class="login-wrap">
         <div class="login-card">
           <p class="eyebrow">DARKVIBEX CONTROL</p>
-          <h1>Owner Panel</h1>
-          <p class="muted">Use the private owner or staff access token. The token stays only in this browser session and is never displayed after login.</p>
-          <label>Access token<input id="token" type="password" autocomplete="off" placeholder="Enter private access token" /></label>
-          <button id="connect" class="primary full">Unlock panel</button>
+          <h1>Owner / Staff Panel</h1>
+          <p class="muted">Staff members sign in with the Gmail ID and panel password created by the Main Owner. Do not use your real Gmail/Google account password here.</p>
+          <label>Gmail ID<input id="loginEmail" type="email" autocomplete="username" placeholder="staffname@gmail.com" /></label>
+          <label>Panel password<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter panel password" /></label>
+          <button id="connect" class="primary full">Login to panel</button>
+          <details id="ownerRecovery" style="margin-top:14px">
+            <summary class="muted">Main Owner recovery access</summary>
+            <p class="muted">Use the private Owner access key only when owner Gmail login has not been configured yet.</p>
+            <label>Owner access key<input id="token" type="password" autocomplete="off" placeholder="Private owner key" /></label>
+            <button id="connectToken" class="secondary full" type="button">Unlock as Main Owner</button>
+          </details>
           <p id="loginStatus" class="status-line"></p>
         </div>
       </section>
@@ -497,8 +504,14 @@
 
         <section class="view" data-view-panel="staff">
           <article class="panel">
-            <div class="panel-head"><div><h2>Staff access</h2><p>Create protected panel access for trusted team members. Generated access tokens are shown only once.</p></div></div>
-            <div class="form-grid"><label>Staff name<input id="staffName" /></label><label>Role / label<select id="staffRole"><option value="super_admin">Super admin</option><option value="admin">Admin</option><option value="manager" selected>Manager</option><option value="moderator">Moderator</option></select></label></div>
+            <div class="panel-head"><div><h2>Staff access</h2><p>Main Owner creates each staff panel with its Gmail ID, panel password and exact function permissions.</p></div></div>
+            <div class="form-grid">
+              <label>Staff name<input id="staffName" /></label>
+              <label>Role / label<select id="staffRole"><option value="super_admin">Super admin</option><option value="admin">Admin</option><option value="manager" selected>Manager</option><option value="moderator">Moderator</option></select></label>
+              <label id="staffEmailLabel">Staff Gmail ID<input id="staffEmail" type="email" autocomplete="off" placeholder="staffname@gmail.com" /></label>
+              <label id="staffPasswordLabel">Panel password<input id="staffPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Minimum 8 characters" /></label>
+            </div>
+            <p id="staffCredentialHelp" class="muted">This is an app-panel password set by the Main Owner, not the user's real Gmail password. Only the Main Owner can create or change staff login credentials. Staff cannot change their own password.</p>
             <p class="muted">Role is only a label. It does not grant any permission automatically.</p>
             <div class="permission-wrap">
               <div class="panel-head"><div><h3>Exact Permissions — Function by Function</h3><p>Every function is independent. Unchecked means no access and the function will not appear in that staff panel.</p></div><button id="clearPermissions" class="secondary mini" type="button">Clear</button></div>
