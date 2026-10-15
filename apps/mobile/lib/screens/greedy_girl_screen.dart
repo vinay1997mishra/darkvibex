@@ -418,7 +418,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     final seconds = (remainingMs / 1000).ceil();
 
     return Material(
-      color: const Color(0xFF160B2B),
+      color: Colors.transparent,
       child: SafeArea(
         top: false,
         child: Column(
