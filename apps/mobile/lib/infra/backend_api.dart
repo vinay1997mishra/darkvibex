@@ -335,6 +335,16 @@ class BackendApi {
         '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-number',
       );
 
+  Future<List<Map<String, dynamic>>> activeBanners() async {
+    final value = await _json('GET', '/api/banners');
+    final rows = value?['banners'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
   Future<Map<String, dynamic>?> roomThemes({
     required String roomId,
   }) =>
