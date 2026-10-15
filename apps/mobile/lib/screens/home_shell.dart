@@ -277,6 +277,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
   void initState() {
     super.initState();
     _loadFollowedRooms();
+    _loadBanners();
   }
 
   Future<void> _loadFollowedRooms() async {
@@ -305,6 +306,34 @@ class _RoomsHomeState extends State<_RoomsHome> {
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
   List<RoomSummary> followedRooms = const <RoomSummary>[];
+  List<Map<String, dynamic>> ownerBanners = const <Map<String, dynamic>>[];
+
+  Future<void> _loadBanners() async {
+    if (!state.backendConnected) return;
+    final rows = await state.backend.activeBanners();
+    if (!mounted) return;
+    setState(() => ownerBanners = rows);
+  }
+
+  void _openOwnerBanner(Map<String, dynamic> banner) {
+    final link = banner['link']?.toString().trim() ?? '';
+    final roomId = link.startsWith('room:') ? link.substring(5).trim() : '';
+    if (roomId.isNotEmpty) {
+      for (final room in state.rooms) {
+        if (room.id == roomId || room.roomNumber == roomId) {
+          _openRoom(room);
+          return;
+        }
+      }
+    }
+    if (link == 'rankings' || link == 'ranking') {
+      _openRankings(context);
+      return;
+    }
+    if (link == 'discover') {
+      widget.onSelect(1);
+    }
+  }
 
   List<RoomSummary> get visibleFollowedRooms {
     final allowed = state.rooms.map((room) => room.id).toSet();
@@ -425,6 +454,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   height: 142,
                   child: PageView(
                     children: [
+                      for (final banner in ownerBanners)
+                        _OwnerBannerCard(
+                          state: state,
+                          banner: banner,
+                          onTap: () => _openOwnerBanner(banner),
+                        ),
                       _PromoCard(
                         title: 'ROYAL PARTY',
                         subtitle: 'Live rooms, rankings and royal rewards',
@@ -1206,6 +1241,87 @@ class _TopRoomCard extends StatelessWidget {
           ],
         ),
       );
+}
+
+class _OwnerBannerCard extends StatelessWidget {
+  const _OwnerBannerCard({
+    required this.state,
+    required this.banner,
+    required this.onTap,
+  });
+
+  final AppState state;
+  final Map<String, dynamic> banner;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = banner['name']?.toString().trim() ?? 'DarkVibeX';
+    final asset = banner['asset_key']?.toString().trim() ?? '';
+    final link = banner['link']?.toString().trim() ?? '';
+    final imageUrl = asset.isEmpty
+        ? ''
+        : (asset.startsWith('http://') || asset.startsWith('https://')
+            ? asset
+            : state.backend.fileUrl(asset));
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: TinniPanel(
+        onTap: onTap,
+        padding: EdgeInsets.zero,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (imageUrl.isNotEmpty)
+                Image.network(
+                  imageUrl,
+                  headers: asset.startsWith('http') ? null : state.backend.fileHeaders,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0xDD090909), Color(0x66090909)],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: TinniPalette.gold,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (link.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      const Text(
+                        'Tap to open',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _PromoCard extends StatelessWidget {
