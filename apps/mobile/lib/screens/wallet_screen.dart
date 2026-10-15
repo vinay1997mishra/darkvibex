@@ -28,7 +28,7 @@ class WalletScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text(
             'Wallet',
