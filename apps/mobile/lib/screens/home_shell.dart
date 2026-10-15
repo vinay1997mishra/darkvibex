@@ -198,11 +198,17 @@ class _MiniActiveRoomBubbleState extends State<_MiniActiveRoomBubble> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final defaultPosition = Offset(
-          (constraints.maxWidth - _bubbleExtent - 8).clamp(4.0, double.infinity),
-          (constraints.maxHeight * .42).clamp(
-            4.0,
-            (constraints.maxHeight - _bubbleExtent).clamp(4.0, double.infinity),
-          ),
+          (constraints.maxWidth - _bubbleExtent - 8)
+              .clamp(4.0, double.infinity)
+              .toDouble(),
+          (constraints.maxHeight * .42)
+              .clamp(
+                4.0,
+                (constraints.maxHeight - _bubbleExtent)
+                    .clamp(4.0, double.infinity)
+                    .toDouble(),
+              )
+              .toDouble(),
         );
         final bubblePosition =
             _clampPosition(position ?? defaultPosition, constraints);
