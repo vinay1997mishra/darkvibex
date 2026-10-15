@@ -350,16 +350,16 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
   Widget build(BuildContext context) {
     const gold = Color(0xFFFFDE4D);
     return Scaffold(
-      backgroundColor: const Color(0xFF5216C8),
+      backgroundColor: Colors.transparent,
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: <Color>[
-              Color(0xFF32106F),
-              Color(0xFF681DE1),
-              Color(0xFF5012C6),
+              Color(0x6632106F),
+              Color(0x80681DE1),
+              Color(0x665012C6),
             ],
           ),
         ),
