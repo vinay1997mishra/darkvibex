@@ -6974,8 +6974,26 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/unique-ids/catalog" && request.method === "GET") {
     const authError=await requireSession(request,env);
     if(authError) return authError;
+    const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
+    const userId=String(session.sub);
     await ensureUniqueIdStoreSchema(db);
-    return json({ok:true,unique_ids:await uniqueIdCatalog(db,now())});
+    const items=await uniqueIdCatalog(db,now());
+    const priced=[];
+    for(const item of items){
+      const pricing=await ownerUserPricing(
+        db,userId,"unique_id",String(item.public_id ?? ""),
+        Number(item.price_coins ?? 0),Number(item.duration_days ?? 0),
+      );
+      priced.push({
+        ...item,
+        price_coins:pricing.price_coins,
+        duration_days:pricing.duration_days,
+        permanent:Number(pricing.duration_days ?? 0)===0,
+        owner_price_override:pricing.overridden,
+        owner_free:pricing.free,
+      });
+    }
+    return json({ok:true,unique_ids:priced});
   }
 
   if (url.pathname === "/api/unique-ids/purchase" && request.method === "POST") {
@@ -6988,10 +7006,20 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db,userId);
     await ensureWalletAllowed(db,userId);
     try{
-      const result=await purchaseUniqueId(db,userId,publicId,now());
+      const catalog=(await uniqueIdCatalog(db,now())).find(item=>String(item.public_id)===publicId);
+      if(!catalog) return json({ok:false,error:"unique_id_not_available"},{status:404});
+      const pricing=await ownerUserPricing(
+        db,userId,"unique_id",publicId,
+        Number(catalog.price_coins ?? 0),Number(catalog.duration_days ?? 0),
+      );
+      const result=await purchaseUniqueId(db,userId,publicId,now(),pricing);
       return json({
         ok:true,
         ...result,
+        price_coins:pricing.price_coins,
+        duration_days:pricing.duration_days,
+        free:pricing.free,
+        owner_price_override:pricing.overridden,
         vip:await getVipStatus(db,userId,now()),
       });
     }catch(error){
