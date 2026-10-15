@@ -33,7 +33,7 @@ class _WeeklySignInDialog extends StatelessWidget {
         builder: (context, _) {
           return LayoutBuilder(
             builder: (context, constraints) {
-              final width = constraints.maxWidth.clamp(280.0, 520.0);
+              final width = constraints.maxWidth.clamp(280.0, 520.0).toDouble();
               final height = width * (450 / 360);
 
               return SizedBox(
@@ -118,20 +118,6 @@ class _WeeklySignInDialog extends StatelessWidget {
                           ),
                         ),
                       ),
-
-                    if (state.weeklySignInLoading)
-                      Positioned(
-                        left: width * .47,
-                        top: height * .785,
-                        width: width * .06,
-                        height: width * .06,
-                        child: const IgnorePointer(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFFFFE28A),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -143,7 +129,7 @@ class _WeeklySignInDialog extends StatelessWidget {
   }
 
   List<Offset> _claimedMarkers(int claimedThrough) {
-    final claimed = claimedThrough.clamp(0, 7);
+    final claimed = claimedThrough.clamp(0, 7).toInt();
     if (claimed < 2) return const <Offset>[];
 
     const positions = <Offset>[
