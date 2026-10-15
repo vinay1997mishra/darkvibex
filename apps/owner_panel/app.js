@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const $ = (s) => [...document.querySelectorAll(s)];
+const $$ = (s) => [...document.querySelectorAll(s)];
 const initialLoginMode = new URLSearchParams(window.location.search).get("staff")==="1" ? "staff" : "owner";
 const state = {
   token: sessionStorage.getItem("dvxOwnerToken") || "",
