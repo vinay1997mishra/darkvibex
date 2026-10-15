@@ -434,12 +434,29 @@ async function getUserDetails(db, userId) {
   const oldIds = await db.prepare(
     "SELECT public_id, changed_at, changed_by FROM owner_public_id_history WHERE user_id = ? ORDER BY changed_at DESC LIMIT 25"
   ).bind(userId).all();
+  const overrides = await db.prepare(
+    "SELECT invisible_id,locked_room_bypass,wallet_frozen,updated_at FROM owner_user_overrides WHERE user_id=?"
+  ).bind(userId).first();
+  const devices = await db.prepare(
+    `SELECT p.token,p.device_key,p.platform,p.enabled,p.updated_at,
+            COALESCE(b.banned,0) AS banned,COALESCE(b.note,'') AS ban_note
+       FROM push_devices p
+       LEFT JOIN owner_device_bans b
+         ON b.device_key=CASE WHEN p.device_key<>'' THEN p.device_key ELSE p.token END
+      WHERE p.user_id=? ORDER BY p.updated_at DESC LIMIT 20`
+  ).bind(userId).all();
+  const tags = await db.prepare(
+    "SELECT tag_id,name,color,kind,designation,background_color,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC"
+  ).bind(userId).all();
   return {
     ...user,
     wallet_ledger: ledger.results ?? [],
     role_wallets,
     old_public_ids: oldIds.results ?? [],
     current_room: room ?? null,
+    owner_overrides: overrides ?? {invisible_id:0,locked_room_bypass:0,wallet_frozen:0},
+    devices: devices.results ?? [],
+    tags: tags.results ?? [],
   };
 }
 
@@ -662,6 +679,43 @@ async function handleUsers(request, db, actor, url, parts) {
     return json({ ok: true, user: await getUserDetails(db, userId) });
   }
 
+  if (parts[4] === "owner-overrides" && request.method === "POST") {
+    requirePermission(actor, "users.override");
+    const body = await bodyJson(request);
+    const invisible = body.invisible_id === true ? 1 : 0;
+    const bypass = body.locked_room_bypass === true ? 1 : 0;
+    const frozen = body.wallet_frozen === true ? 1 : 0;
+    const exists = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
+    if (!exists) return json({ok:false,error:"not_found"},{status:404});
+    await db.prepare(
+      `INSERT INTO owner_user_overrides(user_id,invisible_id,locked_room_bypass,wallet_frozen,updated_at)
+       VALUES(?,?,?,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET invisible_id=excluded.invisible_id,
+         locked_room_bypass=excluded.locked_room_bypass,wallet_frozen=excluded.wallet_frozen,updated_at=excluded.updated_at`
+    ).bind(userId,invisible,bypass,frozen,now()).run();
+    await audit(db,actor,"user_owner_overrides","user",userId,`invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}`);
+    return json({ok:true,user:await getUserDetails(db,userId)});
+  }
+
+  if (parts[4] === "device-ban" && request.method === "POST") {
+    requirePermission(actor, "users.device");
+    const body = await bodyJson(request);
+    const deviceKey = String(body.device_key ?? body.token ?? "").trim().slice(0,500);
+    if (!deviceKey) return json({ok:false,error:"device_key_required"},{status:400});
+    const banned = body.banned === false ? 0 : 1;
+    const note = String(body.note ?? "").trim().slice(0,300);
+    await db.prepare(
+      `INSERT INTO owner_device_bans(device_key,user_id,banned,note,updated_at) VALUES(?,?,?,?,?)
+       ON CONFLICT(device_key) DO UPDATE SET user_id=excluded.user_id,banned=excluded.banned,note=excluded.note,updated_at=excluded.updated_at`
+    ).bind(deviceKey,userId,banned,note,now()).run();
+    if (banned) {
+      await db.prepare("UPDATE push_devices SET enabled=0 WHERE user_id=? AND (device_key=? OR token=?)")
+        .bind(userId,deviceKey,deviceKey).run();
+    }
+    await audit(db,actor,banned?"device_ban":"device_unban","user",userId,deviceKey.slice(0,80));
+    return json({ok:true,user:await getUserDetails(db,userId)});
+  }
+
   return null;
 }
 
@@ -692,6 +746,73 @@ async function handleRooms(request, db, actor, url, parts) {
     await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
     return json({ ok: true });
+  }
+
+  if (parts[4] === "live" && request.method === "GET") {
+    requirePermission(actor,"rooms.live");
+    const room = await db.prepare(
+      `SELECT r.*,COALESCE(u.display_name,'') AS owner_name,ri.image_key,
+              COALESCE(rs.theme_id,'dark') AS theme_id,COALESCE(rs.announcement,'') AS announcement,
+              COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
+              COALESCE(rs.room_mode,'voice') AS room_mode,COALESCE(rs.lock_password_code,'') AS lock_code
+         FROM rooms r LEFT JOIN users u ON u.id=r.owner_user_id
+         LEFT JOIN room_images ri ON ri.room_id=r.id
+         LEFT JOIN room_settings rs ON rs.room_id=r.id WHERE r.id=?`
+    ).bind(roomId).first();
+    if(!room) return json({ok:false,error:"not_found"},{status:404});
+    const members=await db.prepare(
+      `SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,m.updated_at,
+              u.public_id,u.display_name,u.avatar_key,u.vip_level
+         FROM room_members m LEFT JOIN users u ON u.id=m.user_id
+        WHERE m.room_id=? ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END,m.seat_index,m.joined_at`
+    ).bind(roomId).all();
+    return json({ok:true,room,members:members.results ?? []});
+  }
+
+  if (parts[4] === "media" && request.method === "POST") {
+    requirePermission(actor,"rooms.media");
+    const body=await bodyJson(request);
+    const room=await db.prepare("SELECT owner_user_id FROM rooms WHERE id=?").bind(roomId).first();
+    if(!room) return json({ok:false,error:"not_found"},{status:404});
+    const ts=now();
+    if(Object.prototype.hasOwnProperty.call(body,"image_key")){
+      const imageKey=String(body.image_key ?? "").trim().slice(0,500);
+      if(imageKey){
+        await db.prepare(
+          "INSERT INTO room_images(room_id,image_key,updated_at) VALUES(?,?,?) ON CONFLICT(room_id) DO UPDATE SET image_key=excluded.image_key,updated_at=excluded.updated_at"
+        ).bind(roomId,imageKey,ts).run();
+      }else{
+        await db.prepare("DELETE FROM room_images WHERE room_id=?").bind(roomId).run();
+      }
+    }
+    if(Object.prototype.hasOwnProperty.call(body,"background_key")){
+      const backgroundKey=String(body.background_key ?? "").trim().slice(0,500);
+      await db.prepare("INSERT OR IGNORE INTO room_settings(room_id,updated_at) VALUES(?,?)").bind(roomId,ts).run();
+      if(backgroundKey){
+        const themeId="owner-theme-"+roomId;
+        await db.prepare(
+          `INSERT INTO room_custom_themes(id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at)
+           VALUES(?,?,?,?,?,0,?,NULL)
+           ON CONFLICT(id) DO UPDATE SET asset_key=excluded.asset_key,created_at=excluded.created_at,expires_at=NULL`
+        ).bind(themeId,roomId,room.owner_user_id,"Owner Background",backgroundKey,ts).run();
+        await db.prepare("UPDATE room_settings SET theme_id=?,updated_at=? WHERE room_id=?").bind(themeId,ts,roomId).run();
+      }else{
+        await db.prepare("UPDATE room_settings SET theme_id='dark',updated_at=? WHERE room_id=?").bind(ts,roomId).run();
+        await db.prepare("DELETE FROM room_custom_themes WHERE id=?").bind("owner-theme-"+roomId).run();
+      }
+    }
+    await audit(db,actor,"room_media_update","room",roomId,"DP/background override");
+    return json({ok:true});
+  }
+
+  if (parts[4] === "theme" && request.method === "POST") {
+    requirePermission(actor,"rooms.theme");
+    const body=await bodyJson(request);
+    const themeId=String(body.theme_id ?? "dark").trim().slice(0,120);
+    await db.prepare("INSERT OR IGNORE INTO room_settings(room_id,updated_at) VALUES(?,?)").bind(roomId,now()).run();
+    await db.prepare("UPDATE room_settings SET theme_id=?,updated_at=? WHERE room_id=?").bind(themeId,now(),roomId).run();
+    await audit(db,actor,"room_theme_override","room",roomId,themeId);
+    return json({ok:true,theme_id:themeId});
   }
   return null;
 }
