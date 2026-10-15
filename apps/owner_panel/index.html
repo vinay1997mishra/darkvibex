@@ -87,6 +87,14 @@
             </div>
             <div class="action-row"><button id="saveUserProfile" class="primary">Save profile</button><button id="saveModeration" class="secondary">Save moderation</button></div>
             <hr />
+            <h3>Public 7-digit ID</h3>
+            <p class="muted">Profile ID and room ID use the same public 7-digit identity. Old IDs remain searchable from the Owner Panel.</p>
+            <div class="form-grid compact">
+              <label>Current / new public ID<input id="editPublicId" inputmode="numeric" maxlength="7" placeholder="7-digit ID" /></label>
+              <div><span class="muted">Previous IDs</span><div id="oldPublicIds" class="stack compact-stack"></div></div>
+            </div>
+            <button id="savePublicId" class="primary">Change Public ID</button>
+            <hr />
             <h3>Wallet adjustment</h3>
             <p class="muted" id="walletBalance"></p>
             <div class="form-grid compact"><label>Coin change<input id="coinDelta" type="number" placeholder="e.g. 50000 or -50000" /></label><label>Diamond change<input id="diamondDelta" type="number" placeholder="e.g. 100 or -100" /></label></div>
