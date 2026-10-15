@@ -100,6 +100,7 @@ async function openUser(id){
   const o=u.owner_overrides||{};
   $("#userInvisibleId").checked=Number(o.invisible_id||0)===1;
   $("#userLockedBypass").checked=Number(o.locked_room_bypass||0)===1;
+  $("#userWalletBanned").checked=Number(o.wallet_banned||0)===1;
   $("#userWalletFrozen").checked=Number(o.wallet_frozen||0)===1;
 
   const devices=u.devices||[];
@@ -123,9 +124,10 @@ async function loadRooms(){
   if(!can("rooms.read"))return;
   const q=$("#roomSearch").value.trim();
   const d=await api("/api/owner/rooms?q="+encodeURIComponent(q));
-  $("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.locked)?"banned":"active"}">${Number(r.locked)?"Locked":"Open"}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-live="${esc(r.id)}">Investigate</button><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?"Unlock":"Lock"}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
-  $$("[data-room-live]").forEach(b=>b.onclick=()=>openRoomInvestigation(b.dataset.roomLive).catch(e=>toast(e.message,false)));
-  $$("[data-room-lock]").forEach(b=>b.onclick=async()=>{await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomLock),{method:"POST",body:JSON.stringify({locked:!Number(b.dataset.locked)})});toast("Room lock updated");loadRooms();});
+  $("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.banned)?"banned":(Number(r.locked)?"banned":"active")}">${Number(r.banned)?"BANNED":(Number(r.locked)?"Locked":"Open")}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-live="${esc(r.id)}">Investigate</button><button class="${Number(r.banned)?"secondary":"danger"} mini" data-room-ban="${esc(r.id)}" data-banned="${Number(r.banned)}">${Number(r.banned)?"Unban":"Ban"}</button><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?"Unlock":"Lock"}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
+  $("[data-room-live]").forEach(b=>b.onclick=()=>openRoomInvestigation(b.dataset.roomLive).catch(e=>toast(e.message,false)));
+  $("[data-room-ban]").forEach(b=>b.onclick=async()=>{const isBanned=Number(b.dataset.banned)===1;if(!isBanned&&!confirm("Ban this room and remove all current members?"))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomBan)+"/ban",{method:"POST",body:JSON.stringify({banned:!isBanned})});toast(isBanned?"Room unbanned":"Room banned");await loadRooms();});
+  $("[data-room-lock]").forEach(b=>b.onclick=async()=>{await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomLock),{method:"POST",body:JSON.stringify({locked:!Number(b.dataset.locked)})});toast("Room lock updated");loadRooms();});
   $$("[data-room-edit]").forEach(b=>b.onclick=async()=>{const name=prompt("Room name",b.dataset.name);if(name===null)return;const seats=prompt("Seat count (8–42)",b.dataset.seats);if(seats===null)return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomEdit),{method:"POST",body:JSON.stringify({name,seat_count:Number(seats)})});toast("Room updated");loadRooms();});
   $$("[data-room-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this room? This deletes the room and its current room records."))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomDelete),{method:"DELETE"});toast("Room removed");loadRooms();});
 }
@@ -382,6 +384,7 @@ async function saveUserOverrides(){
     body:JSON.stringify({
       invisible_id:$("#userInvisibleId").checked,
       locked_room_bypass:$("#userLockedBypass").checked,
+      wallet_banned:$("#userWalletBanned").checked,
       wallet_frozen:$("#userWalletFrozen").checked,
     }),
   });
