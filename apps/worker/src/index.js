@@ -1183,7 +1183,7 @@ async function listRooms(db, viewerUserId) {
   if (!viewerCountry) return [];
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
-            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS display_id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
             COALESCE(io.invisible_id,0) AS owner_invisible_id,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
@@ -3602,7 +3602,7 @@ async function handleApi(request, env, url) {
     if (!viewerCountry) return json({ ok:true,rooms:[] });
     const rows = await db.prepare(
       `SELECT r.id,r.name,
-              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS display_id,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
               COALESCE(io.invisible_id,0) AS owner_invisible_id,
               COALESCE(u.display_name,'Owner') AS owner_name,
               r.owner_user_id,
@@ -5547,7 +5547,7 @@ async function handleApi(request, env, url) {
                            AND json_extract(v.preferences_json, '$.invisible_entry') = 1
                      THEN 1 ELSE 0 END AS invisible_entry,
                 CASE WHEN COALESCE(io.invisible_id,0)=1
-                     THEN ''
+                     THEN 'Hidden'
                      ELSE COALESCE(NULLIF(u.public_id,''), m.user_id)
                 END AS public_id,
                 COALESCE(io.invisible_id,0) AS owner_invisible_id,
@@ -6747,7 +6747,7 @@ async function handleApi(request, env, url) {
     const vip = await getVipStatus(db, userId, now());
     const friends = await db.prepare(
       `SELECT u.id,
-              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS public_id,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
               u.display_name,u.avatar_key,u.vip_level,
               MAX(a.created_at,b.created_at) AS created_at
          FROM user_follows a
