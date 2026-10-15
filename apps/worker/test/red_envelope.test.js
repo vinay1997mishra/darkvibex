@@ -76,7 +76,7 @@ test("VIP6 inbox envelope is single-claim, recipient-bound, and ledger-backed", 
     method: "POST", userId: "intruder", body: { user_id: "intruder" },
   });
   assert.equal(wrongRecipient.status, 409);
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='intruder'").get().coins, 2500000);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='intruder'").get().coins, 500000);
 
   const claimed = await request(`/api/messages/red-envelope/${created.body.envelope_id}/claim`, {
     method: "POST", userId: "receiver", body: { user_id: "receiver" },
@@ -87,7 +87,7 @@ test("VIP6 inbox envelope is single-claim, recipient-bound, and ledger-backed", 
     method: "POST", userId: "receiver", body: { user_id: "receiver" },
   });
   assert.equal(duplicate.body.duplicate, true);
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, 2501234);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, 501234);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='red_envelope_claim'").get().n, 1);
   sqlite.close();
 });
@@ -104,16 +104,16 @@ test("expired unclaimed envelope is refunded exactly once and cannot be claimed"
   await worker.scheduled({}, env, { waitUntil: (promise) => scheduled.push(promise) });
   await Promise.all(scheduled);
   const balance = sqlite.prepare("SELECT coins FROM users WHERE id='sender'").get().coins;
-  assert.equal(balance, 2500000);
+  assert.equal(balance, 500000);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='red_envelope_refund'").get().n, 1);
   await worker.scheduled({}, env, { waitUntil: (promise) => scheduled.push(promise) });
   await Promise.all(scheduled.splice(0));
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='sender'").get().coins, 2500000);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='sender'").get().coins, 500000);
   const claim = await request(`/api/messages/red-envelope/${created.body.envelope_id}/claim`, {
     method: "POST", userId: "receiver", body: { user_id: "receiver" },
   });
   assert.equal(claim.status, 409);
-  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, 2500000);
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, 500000);
   sqlite.close();
 });
 
