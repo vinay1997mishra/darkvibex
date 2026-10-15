@@ -899,9 +899,33 @@ async function saveCatalog(){const payload={kind:$("#catalogKind").value,id:$("#
 
 async function deleteCatalog(id){if(!confirm('Delete this content item?'))return;const kind=$("#catalogKind").value;await api(`/api/owner/catalog/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,{method:'DELETE'});toast('Content item deleted');loadCatalog();}
 
-async function loadSettings(){if(!can("settings.view"))return;const d=await api('/api/owner/settings');state.settings=new Map((d.settings||[]).map(s=>[s.key,s.value]));$("#featureSettings").innerHTML=Object.entries(featureLabels).map(([key,label])=>{const enabled=state.settings.get(key)?.enabled!==false;return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?'On':'Off'}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?'checked':''}></label>`}).join('');$$('[data-setting-toggle]').forEach(i=>i.onchange=()=>saveFeature(i.dataset.settingToggle,i.checked));const m=state.settings.get('maintenance')||{};$("#maintenanceEnabled").checked=!!m.enabled;$("#maintenanceMessage").value=m.message||"";}
-async function saveFeature(key,enabled){await api('/api/owner/settings/'+encodeURIComponent(key),{method:'POST',body:JSON.stringify({value:{enabled}})});toast(featureLabels[key]+' '+(enabled?'enabled':'disabled'));}
-async function saveMaintenance(){await api('/api/owner/settings/maintenance',{method:'POST',body:JSON.stringify({value:{enabled:$("#maintenanceEnabled").checked,message:$("#maintenanceMessage").value.trim()}})});toast('Maintenance setting saved');}
+async function loadSettings(){
+  if(!canAny(viewPermissionMap.settings))return;
+  const d=await api("/api/owner/settings");
+  state.settings=new Map((d.settings||[]).map(row=>[row.key,row.value]));
+  const mayViewAll=can("settings.view");
+  $("#featureSettings").innerHTML=Object.entries(featureLabels).filter(([key])=>mayViewAll||can("settings."+key)).map(([key,label])=>{
+    const enabled=state.settings.get(key)?.enabled!==false;
+    const editable=can("settings."+key);
+    return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?"On":"Off"}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?"checked":""} ${editable?"":"disabled"}></label>`;
+  }).join("")||empty("No settings functions selected");
+  $("[data-setting-toggle]").forEach(input=>input.onchange=()=>saveFeature(input.dataset.settingToggle,input.checked));
+  const maintenance=state.settings.get("maintenance")||{};
+  $("#maintenanceEnabled").checked=!!maintenance.enabled;
+  $("#maintenanceMessage").value=maintenance.message||"";
+  applyActionPermissions();
+}
+async function saveFeature(key,enabled){
+  const permission="settings."+String(key||"");
+  if(!can(permission))return toast("This setting permission is not selected",false);
+  await api("/api/owner/settings/"+encodeURIComponent(key),{method:"POST",body:JSON.stringify({value:{enabled}})});
+  toast(featureLabels[key]+" "+(enabled?"enabled":"disabled"));
+}
+async function saveMaintenance(){
+  if(!can("settings.maintenance"))return toast("Maintenance permission required",false);
+  await api("/api/owner/settings/maintenance",{method:"POST",body:JSON.stringify({value:{enabled:$("#maintenanceEnabled").checked,message:$("#maintenanceMessage").value.trim()}})});
+  toast("Maintenance setting saved");
+}
 
 function localInputValue(ts){if(!ts)return "";const d=new Date(Number(ts));const pad=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function clearAnnouncementForm(){$("#announcementId").value="";$("#announcementTitle").value="";$("#announcementBody").value="";$("#announcementEnabled").checked=true;$("#announcementStart").value="";$("#announcementEnd").value="";}
@@ -1227,7 +1251,7 @@ function updatePricingFreeState(){
   if(gift)$("#pricingFree").checked=false;
 }
 async function loadPricingOverrides(){
-  if(!can("policies.view"))return;
+  if(!can("pricing.view"))return;
   const user=$("#pricingUserId").value.trim();
   const kind=$("#pricingKind").value.trim();
   const query=new URLSearchParams();
