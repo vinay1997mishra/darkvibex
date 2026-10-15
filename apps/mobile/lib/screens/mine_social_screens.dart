@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../widgets/cosmetic_store_previews.dart';
 import 'family_wallet_screen.dart';
 import 'gifts_screen.dart';
 
@@ -1441,10 +1442,9 @@ class _CpScreenState extends State<CpScreen> {
             else
               for (final ring in rings)
                 ListTile(
-                  leading: const TinniGlowIcon(
-                    icon: Icons.diamond_rounded,
-                    size: 20,
-                    boxSize: 40,
+                  leading: JewelryRingPreview(
+                    styleId: ring['id']?.toString() ?? '',
+                    size: 48,
                   ),
                   title: Text(
                     ring['name']?.toString() ??
@@ -1858,24 +1858,19 @@ class _CpScreenState extends State<CpScreen> {
                                       ?.toString()
                                       .isNotEmpty ==
                                   true) ...[
-                                const SizedBox(height: 8),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.diamond_rounded,
-                                      color: TinniPalette.gold,
-                                      size: 17,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      cp!['ring_id'].toString(),
-                                      style: const TextStyle(
-                                        color: TinniPalette.gold,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(height: 10),
+                                JewelryRingPreview(
+                                  styleId: cp!['ring_id'].toString(),
+                                  size: 78,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  ringDisplayName(cp!['ring_id']?.toString()),
+                                  style: const TextStyle(
+                                    color: TinniPalette.gold,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ],
                             ],
