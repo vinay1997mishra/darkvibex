@@ -25,20 +25,274 @@ const state = {
   auditRows: [],
   ownerMessageConversations: [],
   ownerMessageThreadOtherId: null,
+  staffEditingId: null,
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
-  ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
-  ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["economy.read","Economy: view coin rate / ID tools"],["economy.write","Economy: change coin rate"],
-  ["messaging.read","Messages/Tags: view"],["messaging.write","Official messages: send"],["tags.write","Tags/V Official: manage"],
-  ["users.device","Users: device ban"],["users.override","Users: invisible/bypass/freeze"],["wallet.freeze","Wallet security freeze"],
-  ["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],["rooms.live","Rooms: live users/seats"],["rooms.media","Rooms: DP/background"],["rooms.theme","Rooms: theme override"],
-  ["roles.read","Roles/Posts: view"],["roles.write","Roles/Posts: manage"],["banners.read","Banners: view"],["banners.write","Banners: manage"],
-  ["games.read","Games: view/stats"],["games.write","Games: manage"],["policies.read","Policies: view"],["policies.write","Policies: manage"],
-  ["catalog.read","VIP/Gifts/Assets: view"],["catalog.write","VIP/Gifts/Assets: edit"],["settings.read","Master switches: view"],["settings.write","Master switches: edit"],
-  ["announcements.read","Announcements: view"],["announcements.write","Announcements: publish"],["support.read","VIP support: view"],["support.write","VIP support: reply/close"],
-  ["staff.read","Custom panels: view"],["staff.write","Custom panels: manage"],["audit.read","Audit log"]
+  ["dashboard.view","Dashboard · view"],
+
+  ["users.search","Users · search/list"],
+  ["users.detail","Users · open Full ID View"],
+  ["users.name.edit","Users · change display name"],
+  ["users.role.edit","Users · change role"],
+  ["users.vip.edit","Users · change VIP level"],
+  ["users.public_id.change","Users · change 7-digit Public ID"],
+  ["users.moderation","Users · ban/suspend/moderation"],
+  ["users.wallet.adjust","Users · normal wallet coin/diamond adjustment"],
+  ["users.role_wallet.adjust","Users · Coin Seller/Merchant wallet balance"],
+  ["users.role_wallet.ban","Users · Coin Seller/Merchant wallet ban/unban"],
+  ["users.override.invisible","Users · Invisible ID"],
+  ["users.override.lock_bypass","Users · locked-room bypass"],
+  ["users.wallet.ban","Users · normal wallet ban/unban"],
+  ["users.wallet.freeze","Users · wallet security freeze"],
+  ["users.device.ban","Users · device ban/unban"],
+
+  ["treasury.view","Treasury · view balance/ledger"],
+  ["treasury.send","Treasury · send coins to user"],
+  ["economy.view","Economy · view coin rate"],
+  ["economy.coin_rate.edit","Economy · change coin rate"],
+
+  ["messaging.view","Official messaging · open page"],
+  ["messaging.send.selected","Official messaging · send to selected users"],
+  ["messaging.send.all","Official messaging · send to all users"],
+  ["tags.view","Tags / V Official · view"],
+  ["tags.apply","Tags / V Official · apply"],
+  ["tags.remove","Tags / V Official · remove"],
+
+  ["rooms.view","Rooms · search/list"],
+  ["rooms.edit","Rooms · edit name/seats"],
+  ["rooms.lock","Rooms · lock/unlock"],
+  ["rooms.delete","Rooms · remove room"],
+  ["rooms.ban","Rooms · ban/unban room"],
+  ["rooms.live","Rooms · live users/seats investigation"],
+  ["rooms.media","Rooms · DP/background override"],
+  ["rooms.theme","Rooms · per-room theme override"],
+  ["themes.global.view","Room Themes · view global themes"],
+  ["themes.global.save","Room Themes · add/edit global theme"],
+  ["themes.global.remove","Room Themes · remove global theme"],
+
+  ["roles.view","Roles/Posts · view"],
+  ["roles.save","Roles/Posts · add/edit"],
+  ["roles.delete","Roles/Posts · delete"],
+  ["banners.view","Banners · view"],
+  ["banners.save","Banners · add/edit"],
+  ["banners.delete","Banners · delete"],
+  ["games.view","Games · view/stats/investigation"],
+  ["games.configure","Games · enable/disable/bet limits"],
+
+  ["policies.view","Policies · view"],
+  ["policies.save","Policies · add/edit"],
+  ["policies.delete","Policies · delete"],
+  ["pricing.view","Per-user pricing · view"],
+  ["pricing.save","Per-user pricing · add/edit"],
+  ["pricing.delete","Per-user pricing · delete"],
+
+  ["vip.view","VIP Manager · view VIP1–VIP18 rules"],
+  ["vip.save","VIP Manager · edit rule"],
+  ["vip.reset","VIP Manager · reset rule"],
+  ["gifts.view","Gifts · view"],
+  ["gifts.save","Gifts · add/edit"],
+  ["gifts.remove","Gifts · remove"],
+  ["assets.view","Entries/Frames/Assets · view"],
+  ["assets.save","Entries/Frames/Assets · add/edit"],
+  ["assets.remove","Entries/Frames/Assets · remove"],
+  ["store.view","App Store · view"],
+  ["store.save","App Store · add/edit"],
+  ["store.remove","App Store · remove"],
+  ["catalog.view","Advanced Catalog · view"],
+  ["catalog.save","Advanced Catalog · add/edit"],
+  ["catalog.remove","Advanced Catalog · delete"],
+
+  ["settings.view","Master Switches · view"],
+  ["settings.feature.voice","Master Switch · Voice rooms"],
+  ["settings.feature.gifts","Master Switch · Gifts"],
+  ["settings.feature.games","Master Switch · Games"],
+  ["settings.feature.messages","Master Switch · Messages"],
+  ["settings.feature.room_creation","Master Switch · Room creation"],
+  ["settings.feature.aladdin_lamp","Master Switch · Aladdin's Lamp"],
+  ["settings.feature.red_pocket","Master Switch · Red Pocket / LP"],
+  ["settings.feature.friends_call","Master Switch · Friends call"],
+  ["settings.feature.visitors","Master Switch · Profile visitors"],
+  ["settings.maintenance","Maintenance · enable/message"],
+
+  ["announcements.view","Announcements · view"],
+  ["announcements.save","Announcements · add/edit"],
+  ["announcements.delete","Announcements · delete"],
+
+  ["support.view","VIP Support · view tickets/threads"],
+  ["support.reply","VIP Support · reply"],
+  ["support.close","VIP Support · close ticket"],
+
+  ["staff.view","Custom Staff Panels · view"],
+  ["staff.create","Custom Staff Panels · create"],
+  ["staff.permissions.edit","Custom Staff Panels · edit name/role/permissions"],
+  ["staff.toggle","Custom Staff Panels · enable/disable"],
+  ["staff.delete","Custom Staff Panels · delete"],
+
+  ["audit.view","Audit · view own panel audit"],
+  ["audit.export","Audit · export CSV"]
+];
+
+const frontendPermissionAliases = {
+  "dashboard.view":["dashboard"],
+  "users.search":["users.read"],"users.detail":["users.read"],
+  "users.name.edit":["users.write"],"users.role.edit":["users.write"],"users.vip.edit":["users.write"],"users.public_id.change":["users.write"],
+  "users.moderation":["users.moderate","users.write"],
+  "users.wallet.adjust":["wallet.write"],"users.role_wallet.adjust":["wallet.write"],"users.role_wallet.ban":["wallet.write"],
+  "users.override.invisible":["users.override"],"users.override.lock_bypass":["users.override"],
+  "users.wallet.ban":["users.override"],"users.wallet.freeze":["users.override","wallet.freeze"],"users.device.ban":["users.device"],
+  "treasury.view":["treasury.read"],"treasury.send":["treasury.write"],
+  "economy.view":["economy.read"],"economy.coin_rate.edit":["economy.write"],
+  "messaging.view":["messaging.read"],"messaging.send.selected":["messaging.write"],"messaging.send.all":["messaging.write"],
+  "tags.view":["messaging.read"],"tags.apply":["tags.write"],"tags.remove":["tags.write"],
+  "rooms.view":["rooms.read"],"rooms.edit":["rooms.write"],"rooms.lock":["rooms.write"],"rooms.delete":["rooms.write"],"rooms.ban":["rooms.write"],
+  "rooms.live":["rooms.live"],"rooms.media":["rooms.media"],"rooms.theme":["rooms.theme"],
+  "themes.global.view":["catalog.read"],"themes.global.save":["catalog.write"],"themes.global.remove":["catalog.write"],
+  "roles.view":["roles.read"],"roles.save":["roles.write"],"roles.delete":["roles.write"],
+  "banners.view":["banners.read"],"banners.save":["banners.write"],"banners.delete":["banners.write"],
+  "games.view":["games.read"],"games.configure":["games.write"],
+  "policies.view":["policies.read"],"policies.save":["policies.write"],"policies.delete":["policies.write"],
+  "pricing.view":["policies.read"],"pricing.save":["policies.write"],"pricing.delete":["policies.write"],
+  "vip.view":["catalog.read"],"vip.save":["catalog.write"],"vip.reset":["catalog.write"],
+  "gifts.view":["catalog.read"],"gifts.save":["catalog.write"],"gifts.remove":["catalog.write"],
+  "assets.view":["catalog.read"],"assets.save":["catalog.write"],"assets.remove":["catalog.write"],
+  "store.view":["catalog.read"],"store.save":["catalog.write"],"store.remove":["catalog.write"],
+  "catalog.view":["catalog.read"],"catalog.save":["catalog.write"],"catalog.remove":["catalog.write"],
+  "settings.view":["settings.read"],
+  "settings.feature.voice":["settings.write"],"settings.feature.gifts":["settings.write"],"settings.feature.games":["settings.write"],
+  "settings.feature.messages":["settings.write"],"settings.feature.room_creation":["settings.write"],"settings.feature.aladdin_lamp":["settings.write"],
+  "settings.feature.red_pocket":["settings.write"],"settings.feature.friends_call":["settings.write"],"settings.feature.visitors":["settings.write"],
+  "settings.maintenance":["settings.write"],
+  "announcements.view":["announcements.read"],"announcements.save":["announcements.write"],"announcements.delete":["announcements.write"],
+  "support.view":["support.read"],"support.reply":["support.write"],"support.close":["support.write"],
+  "staff.view":["staff.read"],"staff.create":["staff.write"],"staff.permissions.edit":["staff.write"],"staff.toggle":["staff.write"],"staff.delete":["staff.write"],
+  "audit.view":["audit.read"],"audit.export":["audit.read"]
+};
+
+const viewPermissionMap = {
+  overview:["dashboard.view"],
+  users:["users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change","users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban","users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban"],
+  notifications:[],
+  messaging:["messaging.view","messaging.send.selected","messaging.send.all","tags.view","tags.apply","tags.remove"],
+  rooms:["rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme","themes.global.view","themes.global.save","themes.global.remove"],
+  roles:["roles.view","roles.save","roles.delete"],
+  banners:["banners.view","banners.save","banners.delete"],
+  games:["games.view","games.configure"],
+  policies:["policies.view","policies.save","policies.delete","pricing.view","pricing.save","pricing.delete"],
+  wallets:["treasury.view","treasury.send"],
+  economy:["economy.view","economy.coin_rate.edit","users.search","users.detail","users.public_id.change"],
+  vip:["vip.view","vip.save","vip.reset"],
+  gifts:["gifts.view","gifts.save","gifts.remove"],
+  assets:["assets.view","assets.save","assets.remove"],
+  store:["store.view","store.save","store.remove"],
+  catalog:["catalog.view","catalog.save","catalog.remove"],
+  settings:["settings.view","settings.feature.voice","settings.feature.gifts","settings.feature.games","settings.feature.messages","settings.feature.room_creation","settings.feature.aladdin_lamp","settings.feature.red_pocket","settings.feature.friends_call","settings.feature.visitors","settings.maintenance"],
+  announcements:["announcements.view","announcements.save","announcements.delete"],
+  staff:["staff.view","staff.create","staff.permissions.edit","staff.toggle","staff.delete"],
+  support:["support.view","support.reply","support.close"],
+  audit:["audit.view","audit.export"]
+};
+
+const selectorPermissionRules = [
+  ["#userSearch",["users.search"],"self"],["#searchUsers",["users.search"],"self"],
+  ["#editUserName",["users.name.edit"],"label"],["#editUserRole",["users.role.edit"],"label"],["#editVip",["users.vip.edit"],"label"],
+  ["#saveUserProfile",["users.name.edit","users.role.edit","users.vip.edit"],"self"],
+  ["#editStatus",["users.moderation"],"label"],["#editNote",["users.moderation"],"label"],["#saveModeration",["users.moderation"],"self"],
+  ["#editPublicId",["users.public_id.change"],"label"],["#savePublicId",["users.public_id.change"],"self"],
+  ["#coinDelta",["users.wallet.adjust"],"label"],["#diamondDelta",["users.wallet.adjust"],"label"],["#applyWallet",["users.wallet.adjust"],"self"],
+  ["#roleWalletType",["users.role_wallet.adjust","users.role_wallet.ban"],"label"],["#roleCoinDelta",["users.role_wallet.adjust"],"label"],
+  ["#roleWalletBanned",["users.role_wallet.ban"],"label"],["#applyRoleWallet",["users.role_wallet.adjust","users.role_wallet.ban"],"self"],
+  ["#userInvisibleId",["users.override.invisible"],"label"],["#userLockedBypass",["users.override.lock_bypass"],"label"],
+  ["#userWalletBanned",["users.wallet.ban"],"label"],["#userWalletFrozen",["users.wallet.freeze"],"label"],
+  ["#saveUserOverrides",["users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze"],"self"],
+
+  ["#roomSearch",["rooms.view"],"self"],["#searchRooms",["rooms.view"],"self"],
+  ["#ownerRoomDpKey",["rooms.media"],"label"],["#ownerRoomBackgroundKey",["rooms.media"],"label"],["#saveOwnerRoomMedia",["rooms.media"],"self"],
+  ["#ownerRoomThemeId",["rooms.theme"],"label"],["#saveOwnerRoomTheme",["rooms.theme"],"self"],
+  ["#reloadGlobalThemes",["themes.global.view"],"self"],
+  ["#globalThemeId",["themes.global.save"],"label"],["#globalThemeName",["themes.global.save"],"label"],["#globalThemeAsset",["themes.global.save"],"label"],
+  ["#globalThemeStart",["themes.global.save"],"label"],["#globalThemeEnd",["themes.global.save"],"label"],["#globalThemePermanent",["themes.global.save"],"label"],
+  ["#globalThemeEnabled",["themes.global.save"],"label"],["#saveGlobalTheme",["themes.global.save"],"self"],
+
+  ["#messageUserSearch",["users.search"],"self"],["#searchMessageUsers",["users.search"],"self"],
+  ["#officialMessageBody",["messaging.send.selected","messaging.send.all"],"label"],["#sendOfficialSelected",["messaging.send.selected"],"self"],["#sendOfficialAll",["messaging.send.all"],"self"],
+  ["#ownerTagName",["tags.apply"],"label"],["#ownerTagColor",["tags.apply"],"label"],["#ownerTagDesignation",["tags.apply"],"label"],["#ownerTagKind",["tags.apply"],"label"],["#applyOwnerTag",["tags.apply"],"self"],
+
+  ["#rolePostKind",["roles.view","roles.save","roles.delete"],"label"],["#rolePostId",["roles.save"],"label"],["#rolePostName",["roles.save"],"label"],
+  ["#rolePostOrder",["roles.save"],"label"],["#rolePostEnabled",["roles.save"],"label"],["#rolePostDetails",["roles.save"],"label"],["#saveRolePost",["roles.save"],"self"],["#reloadRolesPosts",["roles.view"],"self"],
+
+  ["#bannerId",["banners.save"],"label"],["#bannerName",["banners.save"],"label"],["#bannerAsset",["banners.save"],"label"],["#bannerLink",["banners.save"],"label"],
+  ["#bannerStart",["banners.save"],"label"],["#bannerEnd",["banners.save"],"label"],["#bannerEnabled",["banners.save"],"label"],["#saveBanner",["banners.save"],"self"],["#reloadBanners",["banners.view"],"self"],
+
+  ["#gameConfigId",["games.configure"],"label"],["#gameConfigName",["games.configure"],"label"],["#gameMinBet",["games.configure"],"label"],["#gameMaxBet",["games.configure"],"label"],
+  ["#gameEnabled",["games.configure"],"label"],["#saveGameConfig",["games.configure"],"self"],["#reloadGames",["games.view"],"self"],["#gameInvestigationUser",["games.view"],"label"],["#loadGameInvestigation",["games.view"],"self"],
+
+  ["#policyKey",["policies.save"],"label"],["#policyValue",["policies.save"],"label"],["#savePolicy",["policies.save"],"self"],["#reloadPolicies",["policies.view"],"self"],
+  ["#pricingUserId",["pricing.view","pricing.save"],"label"],["#pricingKind",["pricing.view","pricing.save"],"label"],["#pricingItemId",["pricing.save"],"label"],
+  ["#pricingPrice",["pricing.save"],"label"],["#pricingDuration",["pricing.save"],"label"],["#pricingFree",["pricing.save"],"label"],["#savePricingOverride",["pricing.save"],"self"],
+  ["#clearPricingOverride",["pricing.save"],"self"],["#reloadPricingOverrides",["pricing.view"],"self"],
+
+  ["#treasuryAmount",["treasury.send"],"label"],["#treasuryUserId",["treasury.send"],"label"],["#treasuryNote",["treasury.send"],"label"],["#treasurySend",["treasury.send"],"self"],["#reloadTreasury",["treasury.view"],"self"],
+
+  ["#economyUserSearch",["users.search"],"self"],["#searchEconomyUsers",["users.search"],"self"],["#economyPublicId",["users.public_id.change"],"label"],["#saveEconomyPublicId",["users.public_id.change"],"self"],
+  ["#coinRateCoinsPerUsd",["economy.coin_rate.edit"],"label"],["#saveCoinRate",["economy.coin_rate.edit"],"self"],
+
+  ["#reloadVipRules",["vip.view"],"self"],["#vipRuleLevel",["vip.save"],"label"],["#vipRuleName",["vip.save"],"label"],["#vipRuleUpgradeExp",["vip.save"],"label"],
+  ["#vipRuleMaintainExp",["vip.save"],"label"],["#vipRuleValidityDays",["vip.save"],"label"],["#vipRuleEntryId",["vip.save"],"label"],["#vipRuleFrameId",["vip.save"],"label"],
+  ["#vipRuleEnabled",["vip.save"],"label"],["#saveVipRule",["vip.save"],"self"],["#resetVipRule",["vip.reset"],"self"],
+
+  ["#reloadGifts",["gifts.view"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
+  ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
+  ["#giftEnd",["gifts.save"],"label"],["#giftEnabled",["gifts.save"],"label"],["#giftDescription",["gifts.save"],"label"],["#saveGift",["gifts.save"],"self"],["#clearGift",["gifts.save"],"self"],
+
+  ["#reloadAssets",["assets.view"],"self"],["#assetKind",["assets.view","assets.save","assets.remove"],"label"],["#assetId",["assets.save"],"label"],["#assetName",["assets.save"],"label"],
+  ["#assetPrice",["assets.save"],"label"],["#assetVip",["assets.save"],"label"],["#assetDuration",["assets.save"],"label"],["#assetTier",["assets.save"],"label"],["#assetOrder",["assets.save"],"label"],
+  ["#assetFileKey",["assets.save"],"label"],["#assetStart",["assets.save"],"label"],["#assetEnd",["assets.save"],"label"],["#assetEnabled",["assets.save"],"label"],["#assetDescription",["assets.save"],"label"],
+  ["#saveAsset",["assets.save"],"self"],["#clearAsset",["assets.save"],"self"],
+
+  ["#reloadStore",["store.view"],"self"],["#storeKind",["store.view","store.save","store.remove"],"label"],["#storeId",["store.save"],"label"],["#storeName",["store.save"],"label"],
+  ["#storePrice",["store.save"],"label"],["#storeVip",["store.save"],"label"],["#storeDuration",["store.save"],"label"],["#storeTier",["store.save"],"label"],["#storeOrder",["store.save"],"label"],
+  ["#storeAsset",["store.save"],"label"],["#storeEmoji",["store.save"],"label"],["#storeCategory",["store.save"],"label"],["#storeEnabled",["store.save"],"label"],["#storeDescription",["store.save"],"label"],
+  ["#saveStoreItem",["store.save"],"self"],["#clearStoreItem",["store.save"],"self"],
+
+  ["#catalogKind",["catalog.view","catalog.save","catalog.remove"],"label"],["#catalogId",["catalog.save"],"label"],["#catalogName",["catalog.save"],"label"],["#catalogPrice",["catalog.save"],"label"],
+  ["#catalogOrder",["catalog.save"],"label"],["#catalogAsset",["catalog.save"],"label"],["#catalogLevel",["catalog.save"],"label"],["#catalogEnabled",["catalog.save"],"label"],["#catalogDescription",["catalog.save"],"label"],
+  ["#saveCatalog",["catalog.save"],"self"],["#clearCatalog",["catalog.save"],"self"],["#reloadCatalog",["catalog.view"],"self"],
+
+  ["#maintenanceEnabled",["settings.maintenance"],"label"],["#maintenanceMessage",["settings.maintenance"],"label"],["#saveMaintenance",["settings.maintenance"],"self"],
+
+  ["#announcementTitle",["announcements.save"],"label"],["#announcementEnabled",["announcements.save"],"label"],["#announcementStart",["announcements.save"],"label"],
+  ["#announcementEnd",["announcements.save"],"label"],["#announcementBody",["announcements.save"],"label"],["#saveAnnouncement",["announcements.save"],"self"],["#clearAnnouncement",["announcements.save"],"self"],
+
+  ["#supportStatus",["support.view"],"label"],["#supportReply",["support.reply"],"label"],["#sendSupportReply",["support.reply"],"self"],["#closeSupportTicket",["support.close"],"self"],
+
+  ["#staffName",["staff.create","staff.permissions.edit"],"label"],["#staffRole",["staff.create","staff.permissions.edit"],"label"],["#clearPermissions",["staff.create","staff.permissions.edit"],"self"],
+  ["#createStaff",["staff.create","staff.permissions.edit"],"self"],["#cancelStaffEdit",["staff.permissions.edit"],"self"],
+
+  ["#reloadAudit",["audit.view"],"self"],["#exportAudit",["audit.export"],"self"]
+];
+
+const dynamicPermissionRules = [
+  ["[data-user-open]",["users.detail"]],
+  ["[data-device-key]",["users.device.ban"]],
+  ["[data-room-live]",["rooms.live"]],["[data-room-ban]",["rooms.ban"]],["[data-room-lock]",["rooms.lock"]],["[data-room-edit]",["rooms.edit"]],["[data-room-delete]",["rooms.delete"]],
+  ["[data-global-theme-edit]",["themes.global.save"]],["[data-global-theme-remove]",["themes.global.remove"]],
+  ["[data-tag-user]",["tags.remove"]],
+  ["[data-role-post-edit]",["roles.save"]],["[data-role-post-delete]",["roles.delete"]],
+  ["[data-banner-edit]",["banners.save"]],["[data-banner-delete]",["banners.delete"]],
+  ["[data-game-edit]",["games.configure"]],
+  ["[data-policy-edit]",["policies.save"]],["[data-policy-delete]",["policies.delete"]],
+  ["[data-pricing-edit-user]",["pricing.save"]],["[data-pricing-delete-user]",["pricing.delete"]],
+  ["[data-economy-user]",["users.detail"]],
+  ["[data-vip-rule-edit]",["vip.save"]],
+  ["[data-gift-edit]",["gifts.save"]],["[data-gift-remove]",["gifts.remove"]],
+  ["[data-asset-edit]",["assets.save"]],["[data-asset-remove]",["assets.remove"]],
+  ["[data-store-edit]",["store.save"]],["[data-store-remove]",["store.remove"]],
+  ["[data-catalog-edit]",["catalog.save"]],["[data-catalog-delete]",["catalog.remove"]],
+  ["[data-ann-edit]",["announcements.save"]],["[data-ann-delete]",["announcements.delete"]],
+  ["[data-staff-edit]",["staff.permissions.edit"]],["[data-staff-toggle]",["staff.toggle"]],["[data-staff-delete]",["staff.delete"]],
+  ["[data-ticket-open]",["support.view"]]
 ];
 
 function authHeaders(){return {authorization:"Bearer "+state.token,"content-type":"application/json"};}
@@ -60,14 +314,46 @@ function esc(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&l
 function num(v){return Number(v||0).toLocaleString();}
 function time(v){if(!v)return "—";return new Date(Number(v)).toLocaleString();}
 function duration(v){const ms=Math.max(0,Number(v||0));const total=Math.floor(ms/1000);const h=Math.floor(total/3600);const m=Math.floor((total%3600)/60);const sec=total%60;return h>0?`${h}h ${m}m`:m>0?`${m}m ${sec}s`:`${sec}s`;}
-function can(p){return (!!state.actor&&(state.actor.permissions||[]).includes("*"))||(state.actor?.permissions||[]).includes(p);}
+function can(p){
+  if(!state.actor)return false;
+  const permissions=state.actor.permissions||[];
+  if(state.actor.type==="owner"||permissions.includes("*"))return true;
+  if(permissions.includes(p))return true;
+  return (frontendPermissionAliases[p]||[]).some(alias=>permissions.includes(alias));
+}
+function canAny(list){return (list||[]).some(can);}
 function empty(text){return `<div class="empty">${esc(text)}</div>`;}
 function toast(message,good=true){const el=$("#toast");el.textContent=message;el.className="toast "+(good?"good":"bad");el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600);}
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
+
+function permissionTarget(element,mode){
+  if(mode==="label")return element.closest("label")||element;
+  return element;
+}
+function setPermissionVisibility(selector,permissions,mode="self"){
+  document.querySelectorAll(selector).forEach(element=>{
+    permissionTarget(element,mode).hidden=!canAny(permissions);
+  });
+}
+function applyActionPermissions(){
+  selectorPermissionRules.forEach(([selector,permissions,mode])=>setPermissionVisibility(selector,permissions,mode));
+  dynamicPermissionRules.forEach(([selector,permissions])=>setPermissionVisibility(selector,permissions,"self"));
+  document.querySelectorAll("[data-setting-toggle]").forEach(element=>{
+    const key=String(element.dataset.settingToggle||"");
+    element.closest("label").hidden=!can("settings."+key);
+  });
+  if($("#clearAudit"))$("#clearAudit").hidden=state.actor?.type!=="owner";
+  if($("#ownerPrivateMessages"))$("#ownerPrivateMessages").hidden=state.actor?.type!=="owner";
+}
 function applyPermissions(){
-  const map={overview:"dashboard",users:"users.read",notifications:"notifications.read",messaging:"messaging.read",rooms:"rooms.read",roles:"roles.read",banners:"banners.read",games:"games.read",policies:"policies.read",wallets:"treasury.read",economy:"economy.read",vip:"catalog.read",gifts:"catalog.read",assets:"catalog.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
-  $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=(btn.dataset.view==="notifications"&&state.actor?.type!=="owner")||(!!p&&!can(p));});
+  $(".nav-btn").forEach(btn=>{
+    const view=btn.dataset.view;
+    const ownerOnly=view==="notifications";
+    const allowed=ownerOnly ? state.actor?.type==="owner" : canAny(viewPermissionMap[view]||[]);
+    btn.hidden=!allowed;
+  });
+  applyActionPermissions();
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
 async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
