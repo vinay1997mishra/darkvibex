@@ -13,6 +13,10 @@ const state = {
   storeItems: [],
   messageSelected: new Map(),
   selectedRoomId: null,
+  rolesPosts: [],
+  banners: [],
+  games: [],
+  policies: [],
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",store:"App Store",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
@@ -69,7 +73,43 @@ async function loadOverview(){
 }
 
 async function loadUsers(){if(!can("users.read"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$$('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
-async function openUser(id){const d=await api("/api/owner/users/"+encodeURIComponent(id));const u=d.user;state.selectedUser=u;$("#userEditor").hidden=false;$("#userEditorTitle").textContent=u.display_name||"Manage user";$("#userMeta").textContent=`ID ${u.id} · Updated ${time(u.updated_at)}`;$("#editUserName").value=u.display_name||"";$("#editUserRole").value=u.role||"user";$("#editVip").value=u.vip_level||0;$("#editStatus").value=u.status||"active";$("#editNote").value=u.moderation_note||"";$("#walletBalance").textContent=`Current balance: ${num(u.coins)} coins · ${num(u.diamonds)} diamonds`;renderLedger(u.wallet_ledger||[]);const roleType=(u.role==="coin_seller"||u.role==="merchant")?u.role:"";$("#roleWalletType").value=roleType;const rw=roleType?u.role_wallets?.[roleType]:null;$("#roleWalletBalance").textContent=rw?`${roleType.replaceAll('_',' ')} balance: ${num(rw.balance_coins)} coins`:"Select Coin Seller or Merchant wallet to manage a dedicated role balance.";$("#roleCoinDelta").value="";$("#editPublicId").value=u.public_id||"";$("#oldPublicIds").innerHTML=(u.old_public_ids||[]).length?(u.old_public_ids||[]).map(x=>`<div class="item-card"><div class="item-meta"><b>${esc(x.public_id)}</b> · ${time(x.changed_at)}</div></div>`).join(""):empty("No previous public IDs");$("#userEditor").scrollIntoView({behavior:"smooth",block:"start"});}
+async function openUser(id){
+  const d=await api("/api/owner/users/"+encodeURIComponent(id));
+  const u=d.user;
+  state.selectedUser=u;
+  $("#userEditor").hidden=false;
+  $("#userEditorTitle").textContent=u.display_name||"Manage user";
+  $("#userMeta").textContent=`ID ${u.id} · Updated ${time(u.updated_at)}`;
+  $("#editUserName").value=u.display_name||"";
+  $("#editUserRole").value=u.role||"user";
+  $("#editVip").value=u.vip_level||0;
+  $("#editStatus").value=u.status||"active";
+  $("#editNote").value=u.moderation_note||"";
+  $("#walletBalance").textContent=`Current balance: ${num(u.coins)} coins · ${num(u.diamonds)} diamonds`;
+  renderLedger(u.wallet_ledger||[]);
+  const roleType=(u.role==="coin_seller"||u.role==="merchant")?u.role:"";
+  $("#roleWalletType").value=roleType;
+  const rw=roleType?u.role_wallets?.[roleType]:null;
+  $("#roleWalletBalance").textContent=rw?`${roleType.replaceAll("_"," ")} balance: ${num(rw.balance_coins)} coins`:"Select Coin Seller or Merchant wallet to manage a dedicated role balance.";
+  $("#roleCoinDelta").value="";
+  $("#editPublicId").value=u.public_id||"";
+  $("#oldPublicIds").innerHTML=(u.old_public_ids||[]).length?(u.old_public_ids||[]).map(x=>`<div class="item-card"><div class="item-meta"><b>${esc(x.public_id)}</b> · ${time(x.changed_at)}</div></div>`).join(""):empty("No previous public IDs");
+
+  const o=u.owner_overrides||{};
+  $("#userInvisibleId").checked=Number(o.invisible_id||0)===1;
+  $("#userLockedBypass").checked=Number(o.locked_room_bypass||0)===1;
+  $("#userWalletFrozen").checked=Number(o.wallet_frozen||0)===1;
+
+  const devices=u.devices||[];
+  $("#userDevices").innerHTML=devices.length?devices.map(device=>{
+    const key=String(device.device_key||device.token||"");
+    const banned=Number(device.banned||0)===1;
+    const label=key.length>42?key.slice(0,20)+"…"+key.slice(-12):key;
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(device.platform||"device")} <span class="pill ${banned?"banned":"active"}">${banned?"Banned":"Allowed"}</span></div><div class="item-meta">${esc(label)} · ${time(device.updated_at)}${device.ban_note?" · "+esc(device.ban_note):""}</div></div><button class="${banned?"secondary":"danger"} mini" data-device-key="${esc(key)}" data-device-banned="${banned?1:0}">${banned?"Unban":"Ban"}</button></div></div>`;
+  }).join(""):empty("No registered device yet");
+  $$("[data-device-key]").forEach(b=>b.onclick=()=>toggleDeviceBan(b.dataset.deviceKey,Number(b.dataset.deviceBanned)===1).catch(e=>toast(e.message,false)));
+  $("#userEditor").scrollIntoView({behavior:"smooth",block:"start"});
+}
 function renderLedger(rows){$("#walletLedger").innerHTML=rows.length?`<div class="small-table">${rows.map(r=>`<div class="ledger-row"><span>${time(r.created_at)}</span><span>${esc(r.kind.replaceAll('_',' '))}</span><b>${Number(r.amount)>0?'+':''}${num(r.amount)} → ${num(r.balance_after)}</b></div>`).join("")}</div>`:empty("No coin ledger entries");}
 async function saveUserProfile(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/profile`,{method:"POST",body:JSON.stringify({display_name:$("#editUserName").value,role:$("#editUserRole").value,vip_level:Number($("#editVip").value||0)})});toast("User profile saved");await openUser(state.selectedUser.id);await loadUsers();}
 async function saveModeration(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
@@ -77,10 +117,42 @@ async function savePublicId(){if(!state.selectedUser)return;const publicId=$("#e
 async function applyWallet(){if(!state.selectedUser)return;const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
 async function applyRoleWallet(){if(!state.selectedUser)return;const walletType=$("#roleWalletType").value;const delta=Number($("#roleCoinDelta").value||0);if(!walletType)return toast("Select Coin Seller or Merchant wallet",false);if(!delta)return toast("Enter a role-wallet coin change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({role_wallet_type:walletType,role_coin_delta:delta})});toast("Role wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
 
-async function loadRooms(){if(!can("rooms.read"))return;const q=$("#roomSearch").value.trim();const d=await api("/api/owner/rooms?q="+encodeURIComponent(q));$("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.locked)?'banned':'active'}">${Number(r.locked)?'Locked':'Open'}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?'Unlock':'Lock'}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
-  $$('[data-room-lock]').forEach(b=>b.onclick=async()=>{await api('/api/owner/rooms/'+encodeURIComponent(b.dataset.roomLock),{method:'POST',body:JSON.stringify({locked:!Number(b.dataset.locked)})});toast('Room lock updated');loadRooms();});
-  $$('[data-room-edit]').forEach(b=>b.onclick=async()=>{const name=prompt('Room name',b.dataset.name);if(name===null)return;const seats=prompt('Seat count (8–42)',b.dataset.seats);if(seats===null)return;await api('/api/owner/rooms/'+encodeURIComponent(b.dataset.roomEdit),{method:'POST',body:JSON.stringify({name,seat_count:Number(seats)})});toast('Room updated');loadRooms();});
-  $$('[data-room-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Remove this room? This deletes the room and its current room records.'))return;await api('/api/owner/rooms/'+encodeURIComponent(b.dataset.roomDelete),{method:'DELETE'});toast('Room removed');loadRooms();});
+async function loadRooms(){
+  if(!can("rooms.read"))return;
+  const q=$("#roomSearch").value.trim();
+  const d=await api("/api/owner/rooms?q="+encodeURIComponent(q));
+  $("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.locked)?"banned":"active"}">${Number(r.locked)?"Locked":"Open"}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-live="${esc(r.id)}">Investigate</button><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?"Unlock":"Lock"}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
+  $$("[data-room-live]").forEach(b=>b.onclick=()=>openRoomInvestigation(b.dataset.roomLive).catch(e=>toast(e.message,false)));
+  $$("[data-room-lock]").forEach(b=>b.onclick=async()=>{await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomLock),{method:"POST",body:JSON.stringify({locked:!Number(b.dataset.locked)})});toast("Room lock updated");loadRooms();});
+  $$("[data-room-edit]").forEach(b=>b.onclick=async()=>{const name=prompt("Room name",b.dataset.name);if(name===null)return;const seats=prompt("Seat count (8–42)",b.dataset.seats);if(seats===null)return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomEdit),{method:"POST",body:JSON.stringify({name,seat_count:Number(seats)})});toast("Room updated");loadRooms();});
+  $$("[data-room-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this room? This deletes the room and its current room records."))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomDelete),{method:"DELETE"});toast("Room removed");loadRooms();});
+}
+async function openRoomInvestigation(roomId){
+  if(!can("rooms.live"))return toast("Room live permission required",false);
+  const d=await api("/api/owner/rooms/"+encodeURIComponent(roomId)+"/live");
+  state.selectedRoomId=roomId;
+  const room=d.room||{};
+  $("#roomInvestigation").hidden=false;
+  $("#roomInvestigationTitle").textContent=room.name||("Room "+roomId);
+  $("#roomInvestigationMeta").textContent=`Room ID ${roomId} · Owner ${room.owner_name||room.owner_user_id||"—"} · ${Number(room.locked)?"Locked":"Open"}${room.lock_code?" · Lock code "+room.lock_code:""}`;
+  $("#ownerRoomDpKey").value=room.image_key||"";
+  $("#ownerRoomBackgroundKey").value=room.background_key||"";
+  $("#ownerRoomThemeId").value=room.theme_id||"dark";
+  const members=d.members||[];
+  $("#roomLiveMembers").innerHTML=members.length?members.map(m=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(m.display_name||"User")} · ID ${esc(m.public_id||m.user_id)}</div><div class="item-meta">${m.seat_index==null?"Off-seat":"Seat "+(Number(m.seat_index)+1)} · Mic ${Number(m.mic_muted)?"muted":"open"} · VIP ${num(m.vip_level||0)} · joined ${time(m.joined_at)}</div></div></div></div>`).join(""):empty("No users in room");
+  $("#roomInvestigation").scrollIntoView({behavior:"smooth",block:"start"});
+}
+async function saveOwnerRoomMedia(){
+  if(!state.selectedRoomId)return toast("Open a room first",false);
+  await api("/api/owner/rooms/"+encodeURIComponent(state.selectedRoomId)+"/media",{method:"POST",body:JSON.stringify({image_key:$("#ownerRoomDpKey").value.trim(),background_key:$("#ownerRoomBackgroundKey").value.trim()})});
+  toast("Room DP / background updated");
+  await openRoomInvestigation(state.selectedRoomId);
+}
+async function saveOwnerRoomTheme(){
+  if(!state.selectedRoomId)return toast("Open a room first",false);
+  await api("/api/owner/rooms/"+encodeURIComponent(state.selectedRoomId)+"/theme",{method:"POST",body:JSON.stringify({theme_id:$("#ownerRoomThemeId").value.trim()||"dark"})});
+  toast("Room theme updated");
+  await openRoomInvestigation(state.selectedRoomId);
 }
 
 async function loadWallets(){
