@@ -63,17 +63,33 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
   }
 
   String get invitationCode =>
-      data?['invitation_code']?.toString() ?? state.userId;
+      data?['invitation_code']?.toString() ?? state.publicId;
+
+  String get inviteLink =>
+      data?['invite_link']?.toString().trim().isNotEmpty == true
+          ? data!['invite_link'].toString()
+          : '';
 
   String get shareText =>
-      'Join me on DarkVibeX. My invitation code is $invitationCode.\n'
-      'Invite commission is calculated only on coins received from a Coin Seller.';
+      'Join me on DarkVibeX: $inviteLink\n'
+      'Invitation code: $invitationCode\n'
+      'If you install from this link, the invitation binds automatically after signup. '
+      'Coin Seller and Merchant transfers to the normal wallet count for commission.';
 
   Future<void> _copyCode() async {
     await Clipboard.setData(ClipboardData(text: invitationCode));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Invitation code copied.')),
+    );
+  }
+
+  Future<void> _copyLink() async {
+    if (inviteLink.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: inviteLink));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Invite link copied.')),
     );
   }
 
@@ -107,8 +123,11 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
       return;
     }
     final error = result?['error']?.toString() ?? 'Unable to join invitation code.';
+    final message = error == 'cannot_invite_self'
+        ? 'You cannot use your own invitation code.'
+        : error.replaceAll('_', ' ');
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error.replaceAll('_', ' '))),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -341,6 +360,37 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                             ),
                           ],
                         ),
+                        if (inviteLink.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Your invite link',
+                            style: TextStyle(
+                              color: Color(0xFFFFD7B0),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SelectableText(
+                                  inviteLink,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: _copyLink,
+                                tooltip: 'Copy invite link',
+                                icon: const Icon(Icons.link_rounded),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 10),
                         const Text(
                           'Coin Seller and Merchant transfers both count only when coins are transferred into the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.',
