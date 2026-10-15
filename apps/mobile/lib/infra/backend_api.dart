@@ -2273,4 +2273,28 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> inviteSummary({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/invite/summary?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> bindInvitationCode({
+    required String userId,
+    required String invitationCode,
+  }) =>
+      _json(
+        'POST',
+        '/api/invite/bind',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'invitation_code': invitationCode,
+        },
+        returnErrorBody: true,
+      );
+
+
 }
