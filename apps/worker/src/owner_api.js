@@ -872,6 +872,242 @@ async function handleSettings(request, db, actor, parts) {
 }
 
 
+
+async function handleNotifications(request, db, actor, parts) {
+  if(parts.length===3 && request.method==="GET"){
+    requirePermission(actor,"notifications.read");
+    const rows=await db.prepare(
+      "SELECT id,kind,title,body,user_id,read_at,created_at FROM owner_notifications ORDER BY created_at DESC LIMIT 300"
+    ).all();
+    return json({ok:true,notifications:rows.results ?? []});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"notifications.write");
+    const body=await bodyJson(request);
+    const title=String(body.title ?? "Owner notification").trim().slice(0,160);
+    const message=String(body.body ?? "").trim().slice(0,2000);
+    if(!message) return json({ok:false,error:"body_required"},{status:400});
+    const notificationId=id();
+    await db.prepare(
+      "INSERT INTO owner_notifications(id,kind,title,body,user_id,read_at,created_at) VALUES(?,?,?,?,?,NULL,?)"
+    ).bind(notificationId,String(body.kind ?? "platform").slice(0,40),title,message,String(body.user_id ?? "").trim()||null,now()).run();
+    await audit(db,actor,"notification_create","notification",notificationId,title);
+    return json({ok:true,id:notificationId});
+  }
+  const notificationId=decodeURIComponent(parts[3] ?? "");
+  if(notificationId && parts[4]==="read" && request.method==="POST"){
+    requirePermission(actor,"notifications.write");
+    await db.prepare("UPDATE owner_notifications SET read_at=? WHERE id=?").bind(now(),notificationId).run();
+    return json({ok:true});
+  }
+  if(notificationId && request.method==="DELETE"){
+    requirePermission(actor,"notifications.write");
+    await db.prepare("DELETE FROM owner_notifications WHERE id=?").bind(notificationId).run();
+    await audit(db,actor,"notification_delete","notification",notificationId,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleMessaging(request, db, actor, url, parts) {
+  if(parts[2]==="messages" && request.method==="POST"){
+    requirePermission(actor,"messaging.write");
+    const body=await bodyJson(request);
+    const message=String(body.text ?? "").trim().slice(0,2000);
+    if(!message) return json({ok:false,error:"message_required"},{status:400});
+    let recipients=[];
+    if(body.all_users===true){
+      const rows=await db.prepare("SELECT id FROM users WHERE id<>'darkvibex_official' ORDER BY created_at ASC LIMIT 10000").all();
+      recipients=(rows.results ?? []).map(r=>String(r.id));
+    }else{
+      recipients=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
+    }
+    const ts=now();
+    for(const userId of recipients){
+      await db.prepare(
+        "INSERT INTO direct_messages(id,sender_user_id,receiver_user_id,text,created_at,read_at) VALUES(?,?,?,?,?,NULL)"
+      ).bind(id(),"darkvibex_official",userId,message,ts).run();
+    }
+    await audit(db,actor,"official_message","users",body.all_users===true?"all":String(recipients.length),message.slice(0,120));
+    return json({ok:true,sent:recipients.length});
+  }
+  if(parts[2]==="tags" && request.method==="POST"){
+    requirePermission(actor,"tags.write");
+    const body=await bodyJson(request);
+    const userIds=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
+    const name=String(body.name ?? "").trim().slice(0,60);
+    if(!name||userIds.length===0) return json({ok:false,error:"name_and_users_required"},{status:400});
+    const kind=String(body.kind ?? "custom").trim().slice(0,40);
+    const designation=String(body.designation ?? "").trim().slice(0,80);
+    const color=String(body.color ?? "#FFD54F").trim().slice(0,20);
+    const background=String(body.background_color ?? color).trim().slice(0,20);
+    const rawId=kind==="v_official" ? "v-official-"+designation : name;
+    const tagId=String(body.tag_id ?? rawId.toLowerCase().replace(/[^a-z0-9]+/g,"-")).slice(0,100);
+    const ts=now();
+    for(const userId of userIds){
+      await db.prepare(
+        `INSERT INTO owner_user_tags(user_id,tag_id,name,color,kind,designation,background_color,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(user_id,tag_id) DO UPDATE SET name=excluded.name,color=excluded.color,kind=excluded.kind,
+           designation=excluded.designation,background_color=excluded.background_color,updated_at=excluded.updated_at`
+      ).bind(userId,tagId,name,color,kind,designation,background,ts,ts).run();
+    }
+    await audit(db,actor,"tag_apply","users",String(userIds.length),name);
+    return json({ok:true,tagged:userIds.length,name,tag_id:tagId});
+  }
+  if(parts[2]==="tags" && request.method==="GET"){
+    requirePermission(actor,"messaging.read");
+    const kind=String(url.searchParams.get("kind") ?? "").trim();
+    const rows=await db.prepare(
+      `SELECT t.user_id,t.tag_id,t.name,t.color,t.kind,t.designation,t.background_color,t.updated_at,
+              u.public_id,u.display_name,u.avatar_key
+         FROM owner_user_tags t LEFT JOIN users u ON u.id=t.user_id
+        WHERE (?='' OR t.kind=?) ORDER BY t.designation,t.updated_at DESC LIMIT 1000`
+    ).bind(kind,kind).all();
+    return json({ok:true,tags:rows.results ?? []});
+  }
+  const userId=decodeURIComponent(parts[3] ?? "");
+  const tagId=decodeURIComponent(parts[4] ?? "");
+  if(parts[2]==="tags" && userId && tagId && request.method==="DELETE"){
+    requirePermission(actor,"tags.write");
+    await db.prepare("DELETE FROM owner_user_tags WHERE user_id=? AND tag_id=?").bind(userId,tagId).run();
+    await audit(db,actor,"tag_remove","user",userId,tagId);
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleRolesPosts(request, db, actor, url, parts) {
+  requirePermission(actor, request.method==="GET" ? "roles.read" : "roles.write");
+  const kind=String(url.searchParams.get("kind") ?? "role").trim()==="post"?"post":"role";
+  if(parts.length===3 && request.method==="GET"){
+    const rows=await db.prepare(
+      "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind=? ORDER BY sort_order,updated_at DESC"
+    ).bind(kind).all();
+    return json({ok:true,kind,items:(rows.results ?? []).map(parseStoreRow)});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    const body=await bodyJson(request);
+    const itemId=String(body.id ?? id()).trim().slice(0,100);
+    const name=String(body.name ?? "").trim().slice(0,100);
+    if(!name) return json({ok:false,error:"name_required"},{status:400});
+    const data=body.data&&typeof body.data==="object"&&!Array.isArray(body.data)?body.data:{};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES(?,?,?,?,?,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,sort_order=excluded.sort_order,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(kind,itemId,name,body.enabled===false?0:1,clampInt(body.sort_order ?? 0,-100000,100000,0),JSON.stringify(data),now()).run();
+    await audit(db,actor,"role_post_upsert",kind,itemId,name);
+    return json({ok:true,id:itemId});
+  }
+  const itemId=decodeURIComponent(parts[3] ?? "");
+  if(itemId && request.method==="DELETE"){
+    await db.prepare("DELETE FROM owner_catalog WHERE kind=? AND id=?").bind(kind,itemId).run();
+    await audit(db,actor,"role_post_delete",kind,itemId,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleBanners(request, db, actor, parts) {
+  requirePermission(actor, request.method==="GET" ? "banners.read" : "banners.write");
+  if(parts.length===3 && request.method==="GET"){
+    const rows=await db.prepare(
+      "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='banner' ORDER BY sort_order,updated_at DESC"
+    ).all();
+    return json({ok:true,banners:(rows.results ?? []).map(parseStoreRow)});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    const body=await bodyJson(request);
+    const bannerId=String(body.id ?? id()).trim().slice(0,100);
+    const name=String(body.name ?? "Banner").trim().slice(0,100);
+    const data={asset_key:String(body.asset_key ?? "").trim().slice(0,500),link:String(body.link ?? "").trim().slice(0,500),
+      starts_at:Number(body.starts_at ?? 0)||null,ends_at:Number(body.ends_at ?? 0)||null};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES('banner',?,?,?, ?,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,sort_order=excluded.sort_order,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(bannerId,name,body.enabled===false?0:1,clampInt(body.sort_order ?? 0,-100000,100000,0),JSON.stringify(data),now()).run();
+    await audit(db,actor,"banner_upsert","banner",bannerId,name);
+    return json({ok:true,id:bannerId});
+  }
+  const bannerId=decodeURIComponent(parts[3] ?? "");
+  if(bannerId && request.method==="DELETE"){
+    await db.prepare("DELETE FROM owner_catalog WHERE kind='banner' AND id=?").bind(bannerId).run();
+    await audit(db,actor,"banner_delete","banner",bannerId,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleGamesOwner(request, db, actor) {
+  if(request.method==="GET"){
+    requirePermission(actor,"games.read");
+    const [catalog,bets]=await Promise.all([
+      db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='game_config' ORDER BY sort_order,updated_at DESC").all(),
+      db.prepare(
+        `SELECT game_id,COUNT(*) AS bets,COALESCE(SUM(stake),0) AS wagered,COALESCE(SUM(payout),0) AS payout,
+                COALESCE(SUM(stake-payout),0) AS house_result
+           FROM game_bets GROUP BY game_id ORDER BY wagered DESC LIMIT 100`
+      ).all()
+    ]);
+    return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? []});
+  }
+  if(request.method==="POST"){
+    requirePermission(actor,"games.write");
+    const body=await bodyJson(request);
+    const gameId=String(body.id ?? "").trim().slice(0,100);
+    if(!gameId) return json({ok:false,error:"game_id_required"},{status:400});
+    const existing=await db.prepare("SELECT name,json_data FROM owner_catalog WHERE kind='game_config' AND id=?").bind(gameId).first();
+    const oldData=safeParse(existing?.json_data,{});
+    const data={...oldData,...(body.data&&typeof body.data==="object"?body.data:{}),
+      min_bet:clampInt(body.min_bet ?? oldData.min_bet ?? 1,1,900000000000000,1),
+      max_bet:clampInt(body.max_bet ?? oldData.max_bet ?? 1000000,1,900000000000000,1000000)};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES('game_config',?,?,?,0,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(gameId,String(body.name ?? existing?.name ?? gameId).slice(0,100),body.enabled===false?0:1,JSON.stringify(data),now()).run();
+    await audit(db,actor,"game_config_update","game",gameId,`enabled=${body.enabled!==false}`);
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handlePoliciesOwner(request, db, actor, parts) {
+  if(request.method==="GET"){
+    requirePermission(actor,"policies.read");
+    const rows=await db.prepare(
+      "SELECT key,value_json,updated_at FROM owner_settings WHERE key LIKE 'policy.%' OR key LIKE 'economy.%' ORDER BY key"
+    ).all();
+    return json({ok:true,policies:(rows.results ?? []).map(r=>({key:r.key,value:safeParse(r.value_json,{}),updated_at:r.updated_at}))});
+  }
+  if(request.method==="POST"){
+    requirePermission(actor,"policies.write");
+    const body=await bodyJson(request);
+    const key=String(body.key ?? "").trim().slice(0,100);
+    if(!key || /agency|\bbd\b|host|guardian|verification/i.test(key)){
+      return json({ok:false,error:"invalid_or_excluded_policy"},{status:400});
+    }
+    const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
+    const value=body.value&&typeof body.value==="object"&&!Array.isArray(body.value)?body.value:{value:body.value};
+    await db.prepare(
+      "INSERT INTO owner_settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at"
+    ).bind(fullKey,JSON.stringify(value),now()).run();
+    await audit(db,actor,"policy_update","policy",fullKey,JSON.stringify(value).slice(0,160));
+    return json({ok:true,key:fullKey,value});
+  }
+  const key=decodeURIComponent(parts[3] ?? "");
+  if(key && request.method==="DELETE"){
+    requirePermission(actor,"policies.write");
+    const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
+    await db.prepare("DELETE FROM owner_settings WHERE key=?").bind(fullKey).run();
+    await audit(db,actor,"policy_delete","policy",fullKey,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
 function baseStoreItems(kind) {
   const k=String(kind ?? "").trim();
   if (k==="gift") {
