@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -380,12 +381,23 @@ class _RoomsHome extends StatefulWidget {
 class _RoomsHomeState extends State<_RoomsHome> {
   AppState get state => widget.state;
   bool popular = true;
+  Timer? roomListRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadFollowedRooms();
     _loadBanners();
+    roomListRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !state.backendConnected) return;
+      unawaited(state.refreshRooms());
+    });
+  }
+
+  @override
+  void dispose() {
+    roomListRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadFollowedRooms() async {
@@ -546,7 +558,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
       MaterialPageRoute(
         builder: (_) => RoomScreen(state: state, room: room),
       ),
-    ).then((_) => _loadFollowedRooms());
+    ).then((_) async {
+      await state.refreshRooms();
+      await _loadFollowedRooms();
+    });
   }
 
   Widget _buildPartyPage(BuildContext context) {
