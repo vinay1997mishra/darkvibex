@@ -9,12 +9,13 @@ const state = {
   catalog: [],
   selectedTicket: null,
   treasury: null,
+  economyUser: null,
 };
-const viewTitles = {overview:"Dashboard",users:"Users",rooms:"Rooms",wallets:"Wallets / Treasury",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
+const viewTitles = {overview:"Dashboard",users:"Users",rooms:"Rooms",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
   ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
-  ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],
+  ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["economy.read","Economy: view coin rate / ID tools"],["economy.write","Economy: change coin rate"],["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],
   ["catalog.read","VIP/Gifts/Assets: view"],["catalog.write","VIP/Gifts/Assets: edit"],["settings.read","Master switches: view"],["settings.write","Master switches: edit"],
   ["announcements.read","Announcements: view"],["announcements.write","Announcements: publish"],["support.read","VIP support: view"],["support.write","VIP support: reply/close"],
   ["staff.read","Custom panels: view"],["staff.write","Custom panels: manage"],["audit.read","Audit log"]
@@ -36,11 +37,11 @@ function toast(message,good=true){const el=$("#toast");el.textContent=message;el
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
 function applyPermissions(){
-  const map={overview:"dashboard",users:"users.read",rooms:"rooms.read",wallets:"treasury.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
+  const map={overview:"dashboard",users:"users.read",rooms:"rooms.read",wallets:"treasury.read",economy:"economy.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
   $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=!!p&&!can(p);});
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
-async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="rooms")return loadRooms();if(name==="wallets")return loadWallets();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
+async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="rooms")return loadRooms();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
 async function connect(){
   state.token=$("#token").value.trim()||state.token;if(!state.token)return;
@@ -99,6 +100,62 @@ async function treasuryAction(action){
   await loadOverview();
 }
 
+
+async function loadEconomy(){
+  if(!can("economy.read"))return;
+  const d=await api("/api/owner/economy");
+  const rate=Number(d.coins_per_usd||5000000);
+  $("#coinRateCoinsPerUsd").value=String(rate);
+  renderCoinRate(rate,d.updated_at);
+  $("#saveCoinRate").disabled=!can("economy.write");
+  if(!can("users.read")){
+    $("#economyUserSearch").disabled=true;
+    $("#searchEconomyUsers").disabled=true;
+    $("#economyUserResults").innerHTML=empty("Users read permission is required for Unique ID lookup.");
+  }
+}
+function renderCoinRate(rate,updatedAt){
+  const perMillion=rate>0?(1000000/rate):0;
+  $("#coinRateSummary").textContent=`Current rate: $1 = ${num(rate)} coins · 1,000,000 coins ≈ ${perMillion.toFixed(4)}${updatedAt?" · Updated "+time(updatedAt):""}`;
+}
+async function searchEconomyUsers(){
+  if(!can("users.read"))return toast("Users read permission required",false);
+  const q=$("#economyUserSearch").value.trim();
+  if(!q)return toast("Enter a user name or ID",false);
+  const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=30");
+  const rows=d.users||[];
+  $("#economyUserResults").innerHTML=rows.length?rows.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||"Unnamed user")}</div><div class="item-meta">Public ID ${esc(u.public_id||"—")} · Internal ${esc(u.id)} · ${esc(u.role)}</div></div><button class="secondary mini" data-economy-user="${esc(u.id)}">Select</button></div></div>`).join(""):empty("No matching users");
+  $("[data-economy-user]").forEach(b=>b.onclick=()=>selectEconomyUser(b.dataset.economyUser).catch(e=>toast(e.message,false)));
+}
+async function selectEconomyUser(id){
+  const d=await api("/api/owner/users/"+encodeURIComponent(id));
+  state.economyUser=d.user;
+  $("#economySelectedUser").hidden=false;
+  $("#economySelectedUserName").textContent=d.user.display_name||"Selected user";
+  const old=(d.user.old_public_ids||[]).map(x=>x.public_id).join(", ");
+  $("#economySelectedUserMeta").textContent=`Internal ID ${d.user.id} · Current public ID ${d.user.public_id||"—"}${old?" · Old IDs: "+old:""}`;
+  $("#economyPublicId").value=d.user.public_id||"";
+  $("#saveEconomyPublicId").disabled=!can("users.write");
+}
+async function saveEconomyPublicId(){
+  if(!state.economyUser)return toast("Select a user first",false);
+  if(!can("users.write"))return toast("Users write permission required",false);
+  const publicId=$("#economyPublicId").value.trim();
+  if(!/^[1-9]\d{6}$/.test(publicId))return toast("Unique ID must be exactly 7 digits and cannot start with 0",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.economyUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});
+  toast("Unique ID changed");
+  await selectEconomyUser(state.economyUser.id);
+  await searchEconomyUsers();
+}
+async function saveCoinRate(){
+  if(!can("economy.write"))return toast("Economy write permission required",false);
+  const rate=Number($("#coinRateCoinsPerUsd").value);
+  if(!Number.isSafeInteger(rate)||rate<1)return toast("Enter a valid whole-number coin rate",false);
+  const d=await api("/api/owner/economy",{method:"POST",body:JSON.stringify({coins_per_usd:rate})});
+  renderCoinRate(Number(d.coins_per_usd),d.updated_at);
+  toast("Coin price updated");
+}
+
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
 async function loadCatalog(){if(!can("catalog.read"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
@@ -150,6 +207,7 @@ $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,f
 $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
 $("#closeUser").onclick=()=>{$("#userEditor").hidden=true;state.selectedUser=null;};$("#saveUserProfile").onclick=()=>saveUserProfile().catch(e=>toast(e.message,false));$("#saveModeration").onclick=()=>saveModeration().catch(e=>toast(e.message,false));$("#savePublicId").onclick=()=>savePublicId().catch(e=>toast(e.message,false));$("#applyWallet").onclick=()=>applyWallet().catch(e=>toast(e.message,false));$("#applyRoleWallet").onclick=()=>applyRoleWallet().catch(e=>toast(e.message,false));$("#roleWalletType").onchange=()=>{$("#roleWalletBalance").textContent="Selected "+($("#roleWalletType").value||"role")+" wallet. Enter a coin change and apply.";};
 $("#searchRooms").onclick=()=>loadRooms().catch(e=>toast(e.message,false));$("#roomSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadRooms().catch(x=>toast(x.message,false));});
+$("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));
 $("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};
