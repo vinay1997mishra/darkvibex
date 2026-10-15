@@ -320,6 +320,16 @@ async function ensureOwnerSchema(db) {
       PRIMARY KEY(user_id,tag_id)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_tags_kind ON owner_user_tags(kind,designation,updated_at DESC)"),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
+      BEFORE UPDATE OF coins ON users
+      WHEN NEW.coins < OLD.coins
+       AND EXISTS(
+         SELECT 1 FROM owner_user_overrides o
+          WHERE o.user_id=OLD.id AND o.wallet_frozen=1
+       )
+      BEGIN
+        SELECT RAISE(ABORT,'wallet_frozen');
+      END`),
     db.prepare(`CREATE TABLE IF NOT EXISTS room_images (
       room_id TEXT PRIMARY KEY,
       image_key TEXT NOT NULL,
