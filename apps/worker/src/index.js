@@ -4457,17 +4457,30 @@ async function handleApi(request, env, url) {
     }
     let currentRoom = null;
     if (user) {
+      await ensureImageTables(db);
+      await ensureRoomSettingsTable(db);
       currentRoom = await db.prepare(
         `SELECT r.id AS room_id,
+                r.id AS display_id,
                 r.name AS room_name,
                 r.owner_user_id,
+                COALESCE(owner.display_name,'Owner') AS owner_name,
+                r.seat_count,
                 r.locked,
                 r.country_code,
+                ri.image_key AS avatar_key,
+                COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
+                COALESCE(rs.room_mode,'voice') AS room_mode,
                 m.seat_index,
                 m.joined_at,
-                m.updated_at
+                m.updated_at,
+                (SELECT COUNT(*) FROM room_members active
+                  WHERE active.room_id=r.id) AS online
            FROM room_members m
            JOIN rooms r ON r.id=m.room_id
+           LEFT JOIN users owner ON owner.id=r.owner_user_id
+           LEFT JOIN room_images ri ON ri.room_id=r.id
+           LEFT JOIN room_settings rs ON rs.room_id=r.id
           WHERE m.user_id=?
           ORDER BY m.updated_at DESC,m.joined_at DESC
           LIMIT 1`
