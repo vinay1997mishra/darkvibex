@@ -1,5 +1,8 @@
 const COINS_PER_USD = 6_000_000;
 
+// Invite rewards are coin commission only. Do not attach entry vehicles,
+// frames, cosmetics, gifts, or other prize inventory to this reward flow.
+
 // Direct-invite reward levels copied from the visible levels in the reference
 // flow. The last visible level is 5%; higher levels can be added without
 // changing stored invite/reward data.
