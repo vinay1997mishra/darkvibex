@@ -31,3 +31,11 @@ test("panel password is separate from Gmail account password", () => {
   assert.match(panelHtml, /not the user's real Gmail password/);
   assert.doesNotMatch(ownerApi, /google.*password/i);
 });
+
+
+test("staff panel creation is capped at exactly 20", () => {
+  assert.match(ownerApi, /SELECT COUNT\(\*\) AS value FROM owner_staff/);
+  assert.match(ownerApi, /staffCount >= 20/);
+  assert.match(ownerApi, /staff_panel_limit_20_reached/);
+  assert.match(panelApp, /Maximum 20 staff panels can be created\./);
+});
