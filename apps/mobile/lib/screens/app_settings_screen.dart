@@ -32,7 +32,7 @@ class AppSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) => ValueListenableBuilder<String>(
         valueListenable: state.languagePreference,
         builder: (context, language, _) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: Text(darkVibeXText(language, 'setting'))),
         body: TinniBackground(
           child: ListView(
