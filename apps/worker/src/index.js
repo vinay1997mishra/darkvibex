@@ -262,6 +262,13 @@ async function ensureOwnerControlSchema(db) {
       invisible_id INTEGER NOT NULL DEFAULT 0,
       locked_room_bypass INTEGER NOT NULL DEFAULT 0,
       wallet_frozen INTEGER NOT NULL DEFAULT 0,
+      wallet_banned INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_room_controls (
+      room_id TEXT PRIMARY KEY,
+      banned INTEGER NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_device_bans (
@@ -286,6 +293,16 @@ async function ensureOwnerControlSchema(db) {
       read_at INTEGER,
       created_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_ban_guard
+      BEFORE UPDATE OF coins, diamonds ON users
+      WHEN (NEW.coins <> OLD.coins OR NEW.diamonds <> OLD.diamonds)
+       AND EXISTS(
+         SELECT 1 FROM owner_user_overrides o
+          WHERE o.user_id=OLD.id AND o.wallet_banned=1
+       )
+      BEGIN
+        SELECT RAISE(ABORT,'wallet_banned');
+      END`),
     db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
       BEFORE UPDATE OF coins ON users
       WHEN NEW.coins < OLD.coins
@@ -309,6 +326,9 @@ async function ensureOwnerControlSchema(db) {
       PRIMARY KEY(user_id,tag_id)
     )`),
   ]);
+  try {
+    await db.prepare("ALTER TABLE owner_user_overrides ADD COLUMN wallet_banned INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
 }
 
 async function ensureDeviceAllowed(db, deviceKey) {
@@ -321,20 +341,22 @@ async function ensureDeviceAllowed(db, deviceKey) {
 
 async function ensureWalletAllowed(db, userId) {
   await ensureOwnerControlSchema(db);
-  const row=await db.prepare("SELECT wallet_frozen FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first();
+  const row=await db.prepare("SELECT wallet_frozen,wallet_banned FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first();
+  if(Number(row?.wallet_banned ?? 0)===1) throw new Error("wallet_banned");
   if(Number(row?.wallet_frozen ?? 0)===1) throw new Error("wallet_frozen");
 }
 
 async function ownerIdentityMeta(db,userId) {
   await ensureOwnerControlSchema(db);
   const [override,tags]=await Promise.all([
-    db.prepare("SELECT invisible_id,locked_room_bypass,wallet_frozen FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first(),
+    db.prepare("SELECT invisible_id,locked_room_bypass,wallet_frozen,wallet_banned FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first(),
     db.prepare("SELECT tag_id,name,color,kind,designation,background_color,created_at,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC").bind(userId).all(),
   ]);
   return {
     invisible_id:Number(override?.invisible_id ?? 0)===1,
     locked_room_bypass:Number(override?.locked_room_bypass ?? 0)===1,
     wallet_frozen:Number(override?.wallet_frozen ?? 0)===1,
+    wallet_banned:Number(override?.wallet_banned ?? 0)===1,
     tags:tags.results ?? [],
   };
 }
@@ -1215,10 +1237,11 @@ async function listRooms(db, viewerUserId) {
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
        LEFT JOIN owner_user_overrides io ON io.user_id = u.id
+       LEFT JOIN owner_room_controls rc ON rc.room_id = r.id
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
-      WHERE r.country_code = ?
+      WHERE r.country_code = ? AND COALESCE(rc.banned,0)=0
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).bind(now(), viewerCountry).all();
@@ -3637,9 +3660,10 @@ async function handleApi(request, env, url) {
          JOIN rooms r ON r.id=rf.room_id
          LEFT JOIN users u ON u.id=r.owner_user_id
          LEFT JOIN owner_user_overrides io ON io.user_id=u.id
+         LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
          LEFT JOIN room_images ri ON ri.room_id=r.id
          LEFT JOIN room_settings s ON s.room_id=r.id
-        WHERE rf.user_id=? AND r.country_code=?
+        WHERE rf.user_id=? AND r.country_code=? AND COALESCE(rc.banned,0)=0
         ORDER BY rf.updated_at DESC LIMIT 100`
     ).bind(userId,viewerCountry).all();
     const followedRooms = rows.results ?? [];
@@ -5293,12 +5317,18 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
-      `SELECT r.owner_user_id,r.locked,r.country_code,COALESCE(s.lock_password_hash,'') AS lock_password_hash
+      `SELECT r.owner_user_id,r.locked,r.country_code,
+              COALESCE(rc.banned,0) AS owner_room_banned,
+              COALESCE(s.lock_password_hash,'') AS lock_password_hash
          FROM rooms r
          LEFT JOIN room_settings s ON s.room_id=r.id
+         LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
         WHERE r.id=?`
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (Number(roomAccess.owner_room_banned ?? 0)===1) {
+      return json({ok:false,error:"room_banned"},{status:403});
+    }
     const userCountryRow = await db.prepare(
       "SELECT country_code FROM users WHERE id=? LIMIT 1"
     ).bind(userId).first();
