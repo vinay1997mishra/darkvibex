@@ -1,12 +1,12 @@
 import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 
 export const BASE_UNIQUE_ID_CATALOG = [
-  { public_id: "1111", price_coins: 500000, duration_days: 30 },
-  { public_id: "2222", price_coins: 750000, duration_days: 30 },
-  { public_id: "7777", price_coins: 1500000, duration_days: 30 },
-  { public_id: "8888", price_coins: 2000000, duration_days: 30 },
-  { public_id: "9999", price_coins: 2500000, duration_days: 30 },
-  { public_id: "131313", price_coins: 5000000, duration_days: 0 },
+  { public_id: "1111", price_coins: 0, duration_days: 30 },
+  { public_id: "2222", price_coins: 0, duration_days: 30 },
+  { public_id: "7777", price_coins: 0, duration_days: 30 },
+  { public_id: "8888", price_coins: 0, duration_days: 30 },
+  { public_id: "9999", price_coins: 0, duration_days: 30 },
+  { public_id: "131313", price_coins: 0, duration_days: 0 },
 ];
 
 export async function ensureUniqueIdStoreSchema(db) {
@@ -99,7 +99,7 @@ export async function uniqueIdCatalog(db, ts=Date.now()) {
   for(const row of await ownerUniqueIdOverrides(db)){
     const publicId=String(row.id ?? "").trim();
     if(!/^\d{4,8}$/.test(publicId)) continue;
-    const existing=map.get(publicId) ?? {public_id:publicId,price_coins:0,duration_days:0,enabled:true};
+    const existing=map.get(publicId) ?? {public_id:publicId,price_coins: 0,duration_days:0,enabled:true};
     map.set(publicId,{
       ...existing,
       public_id:publicId,
