@@ -3381,11 +3381,11 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Color get _roomThemeColor => switch (roomThemeId) {
-    'midnight' => const Color(0xFF111B32),
-    'rose' => const Color(0xFF32192B),
-    'forest' => const Color(0xFF14281F),
-    'gold' => const Color(0xFF171006),
-    _ => TinniPalette.black,
+    'midnight' => const Color(0xA6111B32),
+    'rose' => const Color(0xA632192B),
+    'forest' => const Color(0xA614281F),
+    'gold' => const Color(0xA6171006),
+    _ => Colors.transparent,
   };
 
   Future<void> _showRoomMusic() async {
