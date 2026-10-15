@@ -707,6 +707,13 @@ async function handleUsers(request, db, actor, url, parts) {
           referenceId:"owner:"+actor.id,
           ts,
         });
+        if(Object.prototype.hasOwnProperty.call(body,"role_wallet_banned")){
+          const nextStatus=body.role_wallet_banned===true?"banned":"active";
+          await db.prepare(
+            "UPDATE role_wallets SET status=?,updated_at=? WHERE user_id=? AND wallet_type=?"
+          ).bind(nextStatus,ts,userId,walletType).run();
+          roleWallet={...roleWallet,status:nextStatus,banned:nextStatus==="banned"};
+        }
       }catch(error){
         return json({ok:false,error:String(error?.message ?? error)},{status:400});
       }
@@ -714,7 +721,7 @@ async function handleUsers(request, db, actor, url, parts) {
 
     await audit(
       db,actor,"wallet_adjustment","user",userId,
-      `coins=${coinDelta}; diamonds=${diamondDelta}; role=${walletType || "-"}`
+      `coins=${coinDelta}; diamonds=${diamondDelta}; role=${walletType || "-"}; role_banned=${body.role_wallet_banned===true}`
     );
     return json({
       ok:true,
