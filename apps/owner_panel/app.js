@@ -345,6 +345,10 @@ function applyActionPermissions(){
   });
   if($("#clearAudit"))$("#clearAudit").hidden=state.actor?.type!=="owner";
   if($("#ownerPrivateMessages"))$("#ownerPrivateMessages").hidden=state.actor?.type!=="owner";
+  const ownerCredentials=state.actor?.type==="owner";
+  if($("#staffEmailLabel"))$("#staffEmailLabel").hidden=!ownerCredentials;
+  if($("#staffPasswordLabel"))$("#staffPasswordLabel").hidden=!ownerCredentials;
+  if($("#staffCredentialHelp"))$("#staffCredentialHelp").hidden=!ownerCredentials;
 }
 function applyPermissions(){
   $$(".nav-btn").forEach(btn=>{
@@ -358,12 +362,64 @@ function applyPermissions(){
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
 async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
-async function connect(){
-  state.token=$("#token").value.trim()||state.token;if(!state.token)return;
+async function connectWithToken(token){
+  state.token=String(token||"").trim();
+  if(!state.token)return;
   $("#loginStatus").textContent="Checking protected access…";
   try{
-    const session=await api("/api/owner/session");state.actor=session.actor;sessionStorage.setItem("dvxOwnerToken",state.token);showApp(true);actorCard();applyPermissions();$("#loginStatus").textContent="";const first=$$(".nav-btn").find(b=>!b.hidden);if(!first)throw new Error("no_panel_permissions");setView(first.dataset.view);
-  }catch(e){state.token="";state.actor=null;sessionStorage.removeItem("dvxOwnerToken");showApp(false);$("#loginStatus").textContent=e.message;}
+    const session=await api("/api/owner/session");
+    state.actor=session.actor;
+    sessionStorage.setItem("dvxOwnerToken",state.token);
+    showApp(true);
+    actorCard();
+    applyPermissions();
+    $("#loginStatus").textContent="";
+    const first=$$(".nav-btn").find(b=>!b.hidden);
+    if(!first)throw new Error("no_panel_permissions");
+    setView(first.dataset.view);
+  }catch(e){
+    state.token="";
+    state.actor=null;
+    sessionStorage.removeItem("dvxOwnerToken");
+    showApp(false);
+    $("#loginStatus").textContent=e.message==="unauthorized"?"Login expired or invalid. Sign in again.":e.message;
+  }
+}
+
+async function connect(){
+  const email=$("#loginEmail").value.trim().toLowerCase();
+  const password=$("#loginPassword").value;
+  if(!email||!password){
+    $("#loginStatus").textContent="Enter the staff Gmail ID and panel password.";
+    return;
+  }
+  $("#loginStatus").textContent="Signing in…";
+  try{
+    const res=await fetch("/api/owner/login",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({email,password})
+    });
+    const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
+    if(!res.ok||!data.ok)throw new Error(data.error||("HTTP "+res.status));
+    $("#loginPassword").value="";
+    await connectWithToken(data.token);
+  }catch(e){
+    $("#loginPassword").value="";
+    const message=e.message==="invalid_email_or_password"
+      ?"Gmail ID or panel password is incorrect."
+      :e.message;
+    $("#loginStatus").textContent=message;
+  }
+}
+
+async function connectOwnerToken(){
+  const token=$("#token").value.trim();
+  if(!token){
+    $("#loginStatus").textContent="Enter the private Main Owner access key.";
+    return;
+  }
+  await connectWithToken(token);
 }
 
 async function loadOverview(){
@@ -966,9 +1022,13 @@ function cancelStaffEdit(){
   state.staffEditingId=null;
   $("#staffName").value="";
   $("#staffRole").value="manager";
+  $("#staffEmail").value="";
+  $("#staffPassword").value="";
+  $("#staffPassword").placeholder="Minimum 8 characters";
   renderStaffPermissionEditor([]);
   $("#createStaff").textContent="Create Custom Panel Access";
   $("#cancelStaffEdit").hidden=true;
+  $("#newStaffToken").hidden=true;
   applyActionPermissions();
 }
 async function loadStaff(){
@@ -984,13 +1044,15 @@ async function loadStaff(){
   }
   const d=await api("/api/owner/staff");
   const rows=d.staff||[];
+  const owner=state.actor?.type==="owner";
   $("#staffList").innerHTML=rows.length?rows.map(item=>{
     const permissions=item.permissions||[];
     const actions=[];
     if(can("staff.permissions.edit"))actions.push(`<button class="secondary mini" data-staff-edit="${esc(item.id)}">Edit Functions</button>`);
     if(can("staff.toggle"))actions.push(`<button class="secondary mini" data-staff-toggle="${esc(item.id)}" data-enabled="${Number(item.enabled)}">${Number(item.enabled)?"Disable":"Enable"}</button>`);
     if(can("staff.delete"))actions.push(`<button class="danger mini" data-staff-delete="${esc(item.id)}">Delete</button>`);
-    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.display_name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.role.replaceAll("_"," "))} · last used ${time(item.last_used_at)}<br>${permissions.length?esc(permissions.join(", ")):"No functions selected"}</div></div><div class="item-actions">${actions.join("")}</div></div></div>`;
+    const gmail=owner&&item.email?` · ${esc(item.email)}`:"";
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.display_name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.role.replaceAll("_"," "))}${gmail} · last used ${time(item.last_used_at)}<br>${permissions.length?esc(permissions.join(", ")):"No functions selected"}</div></div><div class="item-actions">${actions.join("")}</div></div></div>`;
   }).join(""):empty("No custom panels created");
 
   $$("[data-staff-edit]").forEach(b=>b.onclick=()=>{
@@ -1000,8 +1062,13 @@ async function loadStaff(){
     state.staffEditingId=item.id;
     $("#staffName").value=item.display_name||"";
     $("#staffRole").value=item.role||"manager";
+    $("#staffEmail").value=owner?(item.email||""):"";
+    $("#staffPassword").value="";
+    $("#staffPassword").placeholder=owner
+      ?"Leave blank to keep current password"
+      :"Password can only be changed by Main Owner";
     renderStaffPermissionEditor(item.permissions||[]);
-    $("#createStaff").textContent="Save Staff Panel";
+    $("#createStaff").textContent=owner?"Save Staff Panel / Credentials":"Save Staff Panel Functions";
     $("#cancelStaffEdit").hidden=false;
     $("#staffName").scrollIntoView({behavior:"smooth",block:"center"});
     applyActionPermissions();
@@ -1027,23 +1094,54 @@ async function createStaff(){
   const editing=Boolean(state.staffEditingId);
   if(editing&&!can("staff.permissions.edit"))return toast("Staff permission-edit access required",false);
   if(!editing&&!can("staff.create"))return toast("Staff create permission required",false);
+  if(!editing&&state.actor?.type!=="owner"){
+    return toast("Only the Main Owner can create staff Gmail/password access.",false);
+  }
+
   const name=$("#staffName").value.trim();
   if(!name)return toast("Enter staff name",false);
   const permissions=$$("#staffPermissions input:checked").map(x=>x.value);
   const payload={display_name:name,role:$("#staffRole").value,permissions};
+
+  if(state.actor?.type==="owner"){
+    const email=$("#staffEmail").value.trim().toLowerCase();
+    const password=$("#staffPassword").value;
+    if(!editing){
+      if(!email.endsWith("@gmail.com")&&!email.endsWith("@googlemail.com")){
+        return toast("Enter a valid Gmail ID",false);
+      }
+      if(password.length<8||password.length>128){
+        return toast("Panel password must be 8 to 128 characters",false);
+      }
+    }
+    if(email)payload.email=email;
+    if(password)payload.password=password;
+  }
+
   if(editing){
-    await api("/api/owner/staff/"+encodeURIComponent(state.staffEditingId),{method:"POST",body:JSON.stringify(payload)});
-    toast("Staff panel functions updated");
+    await api("/api/owner/staff/"+encodeURIComponent(state.staffEditingId),{
+      method:"POST",
+      body:JSON.stringify(payload)
+    });
+    toast(state.actor?.type==="owner"&&payload.password
+      ?"Staff panel and password updated"
+      :"Staff panel functions updated");
     cancelStaffEdit();
     await loadStaff();
     return;
   }
+
   const d=await api("/api/owner/staff",{method:"POST",body:JSON.stringify(payload)});
   const box=$("#newStaffToken");
   box.hidden=false;
-  box.innerHTML=`<b>One-time access token</b><br>${esc(d.token)}<br><small>Save it securely now. It cannot be viewed again from this panel.</small>`;
-  toast(permissions.length?"Custom panel created with selected functions":"Custom panel created with zero functions");
-  cancelStaffEdit();
+  box.innerHTML=`<b>Staff login ready</b><br>Gmail: ${esc(d.staff?.email||payload.email)}<br><small>The staff member logs in with this Gmail ID and the panel password you set. Their real Gmail password is never used.</small>`;
+  $("#staffPassword").value="";
+  toast(permissions.length?"Custom staff panel created":"Custom staff panel created with zero functions");
+  state.staffEditingId=null;
+  $("#staffName").value="";
+  $("#staffEmail").value="";
+  $("#staffRole").value="manager";
+  renderStaffPermissionEditor([]);
   await loadStaff();
 }
 
@@ -1360,8 +1458,19 @@ async function clearAudit(){
   await api("/api/owner/audit",{method:"DELETE"});toast("All audit records deleted");await loadAudit();
 }
 
-$("#connect").onclick=connect;$("#token").addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
-$("#logout").onclick=()=>{state.token='';state.actor=null;sessionStorage.removeItem('dvxOwnerToken');showApp(false);$("#token").value='';};
+$("#connect").onclick=()=>connect().catch(e=>$("#loginStatus").textContent=e.message);
+$("#connectToken").onclick=()=>connectOwnerToken().catch(e=>$("#loginStatus").textContent=e.message);
+$("#loginEmail").addEventListener("keydown",e=>{if(e.key==="Enter")$("#loginPassword").focus();});
+$("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter")connect().catch(x=>$("#loginStatus").textContent=x.message);});
+$("#token").addEventListener("keydown",e=>{if(e.key==="Enter")connectOwnerToken().catch(x=>$("#loginStatus").textContent=x.message);});
+$("#logout").onclick=()=>{
+  state.token="";
+  state.actor=null;
+  sessionStorage.removeItem("dvxOwnerToken");
+  showApp(false);
+  $("#token").value="";
+  $("#loginPassword").value="";
+};
 $$('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
@@ -1395,4 +1504,4 @@ $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));
 
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
 permissionObserver.observe(document.body,{childList:true,subtree:true});
-if(state.token){connect();}else{showApp(false);}
+if(state.token){connectWithToken(state.token);}else{showApp(false);}
