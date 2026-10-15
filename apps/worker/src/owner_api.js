@@ -59,32 +59,165 @@ function clampInt(value, min, max, fallback = min) {
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 }
 
-function defaultPermissions(role) {
-  if (role === "super_admin") return ["*"];
-  if (role === "admin") {
-    return [
-      "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
-      "treasury.read", "economy.read",
-      "support.read", "support.write",
-      "messaging.read", "messaging.write", "tags.write",
-      "users.device", "users.override", "wallet.freeze",
-      "rooms.read", "rooms.write", "rooms.live", "rooms.media", "rooms.theme",
-      "roles.read", "roles.write", "banners.read", "banners.write",
-      "games.read", "games.write", "policies.read", "policies.write",
-      "catalog.read", "catalog.write",
-      "settings.read", "settings.write", "announcements.read", "announcements.write",
-      "staff.read", "audit.read",
-    ];
+const STAFF_ASSIGNABLE_PERMISSIONS = new Set([
+  "dashboard.view",
+  "users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change",
+  "users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban",
+  "users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban",
+  "treasury.view","treasury.send",
+  "economy.view","economy.coin_rate.edit",
+  "messaging.view","messaging.send.selected","messaging.send.all",
+  "tags.view","tags.apply","tags.remove",
+  "rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme",
+  "themes.global.view","themes.global.save","themes.global.remove",
+  "roles.view","roles.save","roles.delete",
+  "banners.view","banners.save","banners.delete",
+  "games.view","games.configure",
+  "policies.view","policies.save","policies.delete",
+  "pricing.view","pricing.save","pricing.delete",
+  "vip.view","vip.save","vip.reset",
+  "gifts.view","gifts.save","gifts.remove",
+  "assets.view","assets.save","assets.remove",
+  "store.view","store.save","store.remove",
+  "catalog.view","catalog.save","catalog.remove",
+  "settings.view","settings.feature.voice","settings.feature.gifts","settings.feature.games",
+  "settings.feature.messages","settings.feature.room_creation","settings.feature.aladdin_lamp",
+  "settings.feature.red_pocket","settings.feature.friends_call","settings.feature.visitors","settings.maintenance",
+  "announcements.view","announcements.save","announcements.delete",
+  "support.view","support.reply","support.close",
+  "staff.view","staff.create","staff.permissions.edit","staff.toggle","staff.delete",
+  "audit.view","audit.export"
+]);
+
+const PERMISSION_ALIASES = {
+  "dashboard.view":["dashboard"],
+  "users.search":["users.read"],
+  "users.detail":["users.read"],
+  "users.name.edit":["users.write"],
+  "users.role.edit":["users.write"],
+  "users.vip.edit":["users.write"],
+  "users.public_id.change":["users.write"],
+  "users.moderation":["users.moderate","users.write"],
+  "users.wallet.adjust":["wallet.write"],
+  "users.role_wallet.adjust":["wallet.write"],
+  "users.role_wallet.ban":["wallet.write"],
+  "users.override.invisible":["users.override"],
+  "users.override.lock_bypass":["users.override"],
+  "users.wallet.ban":["users.override"],
+  "users.wallet.freeze":["users.override","wallet.freeze"],
+  "users.device.ban":["users.device"],
+  "treasury.view":["treasury.read"],
+  "treasury.send":["treasury.write"],
+  "economy.view":["economy.read"],
+  "economy.coin_rate.edit":["economy.write"],
+  "messaging.view":["messaging.read"],
+  "messaging.send.selected":["messaging.write"],
+  "messaging.send.all":["messaging.write"],
+  "tags.view":["messaging.read"],
+  "tags.apply":["tags.write"],
+  "tags.remove":["tags.write"],
+  "rooms.view":["rooms.read"],
+  "rooms.edit":["rooms.write"],
+  "rooms.lock":["rooms.write"],
+  "rooms.delete":["rooms.write"],
+  "rooms.ban":["rooms.write"],
+  "rooms.live":["rooms.live"],
+  "rooms.media":["rooms.media"],
+  "rooms.theme":["rooms.theme"],
+  "themes.global.view":["catalog.read"],
+  "themes.global.save":["catalog.write"],
+  "themes.global.remove":["catalog.write"],
+  "roles.view":["roles.read"],
+  "roles.save":["roles.write"],
+  "roles.delete":["roles.write"],
+  "banners.view":["banners.read"],
+  "banners.save":["banners.write"],
+  "banners.delete":["banners.write"],
+  "games.view":["games.read"],
+  "games.configure":["games.write"],
+  "policies.view":["policies.read"],
+  "policies.save":["policies.write"],
+  "policies.delete":["policies.write"],
+  "pricing.view":["policies.read"],
+  "pricing.save":["policies.write"],
+  "pricing.delete":["policies.write"],
+  "vip.view":["catalog.read"],
+  "vip.save":["catalog.write"],
+  "vip.reset":["catalog.write"],
+  "gifts.view":["catalog.read"],
+  "gifts.save":["catalog.write"],
+  "gifts.remove":["catalog.write"],
+  "assets.view":["catalog.read"],
+  "assets.save":["catalog.write"],
+  "assets.remove":["catalog.write"],
+  "store.view":["catalog.read"],
+  "store.save":["catalog.write"],
+  "store.remove":["catalog.write"],
+  "catalog.view":["catalog.read"],
+  "catalog.save":["catalog.write"],
+  "catalog.remove":["catalog.write"],
+  "settings.view":["settings.read"],
+  "settings.feature.voice":["settings.write"],
+  "settings.feature.gifts":["settings.write"],
+  "settings.feature.games":["settings.write"],
+  "settings.feature.messages":["settings.write"],
+  "settings.feature.room_creation":["settings.write"],
+  "settings.feature.aladdin_lamp":["settings.write"],
+  "settings.feature.red_pocket":["settings.write"],
+  "settings.feature.friends_call":["settings.write"],
+  "settings.feature.visitors":["settings.write"],
+  "settings.maintenance":["settings.write"],
+  "announcements.view":["announcements.read"],
+  "announcements.save":["announcements.write"],
+  "announcements.delete":["announcements.write"],
+  "support.view":["support.read"],
+  "support.reply":["support.write"],
+  "support.close":["support.write"],
+  "staff.view":["staff.read"],
+  "staff.create":["staff.write"],
+  "staff.permissions.edit":["staff.write"],
+  "staff.toggle":["staff.write"],
+  "staff.delete":["staff.write"],
+  "audit.view":["audit.read"],
+  "audit.export":["audit.read"]
+};
+
+function permissionAliases(permission){
+  return PERMISSION_ALIASES[permission] ?? [];
+}
+
+function can(actor, permission) {
+  if (!actor) return false;
+  if (actor.type === "owner" || actor.permissions.includes("*")) return true;
+  if (actor.permissions.includes(permission)) return true;
+  return permissionAliases(permission).some((legacy) => actor.permissions.includes(legacy));
+}
+
+function requirePermission(actor, permission) {
+  if (!can(actor, permission)) {
+    const error = new Error("forbidden");
+    error.status = 403;
+    throw error;
   }
-  if (role === "manager") {
-    return [
-      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "rooms.live",
-      "messaging.read", "roles.read", "banners.read", "games.read", "policies.read",
-      "catalog.read", "catalog.write", "settings.read", "announcements.read", "announcements.write",
-      "audit.read",
-    ];
+}
+
+function sanitizeStaffPermissions(actor, input) {
+  const requested = Array.isArray(input) ? [...new Set(input.map(String))] : [];
+  const invalid = requested.filter((permission) => !STAFF_ASSIGNABLE_PERMISSIONS.has(permission));
+  if (invalid.length) {
+    const error = new Error("invalid_staff_permission");
+    error.status = 400;
+    throw error;
   }
-  return ["dashboard", "users.read", "users.moderate", "rooms.read", "rooms.write", "audit.read"];
+  if (actor.type !== "owner") {
+    const elevated = requested.filter((permission) => !can(actor, permission));
+    if (elevated.length) {
+      const error = new Error("cannot_grant_unowned_permission");
+      error.status = 403;
+      throw error;
+    }
+  }
+  return requested;
 }
 
 async function ownerVipRule(db,level){
@@ -105,18 +238,6 @@ async function ownerVipRule(db,level){
     };
   }catch(error){
     if(String(error?.message ?? error).includes("no such table"))return {...base,enabled:true,name:"VIP "+level};
-    throw error;
-  }
-}
-
-function can(actor, permission) {
-  return actor.permissions.includes("*") || actor.permissions.includes(permission);
-}
-
-function requirePermission(actor, permission) {
-  if (!can(actor, permission)) {
-    const error = new Error("forbidden");
-    error.status = 403;
     throw error;
   }
 }
@@ -505,7 +626,7 @@ async function authenticate(request, env, db) {
   if (!staff) return null;
 
   const explicit = safeParse(staff.permissions_json, []);
-  const permissions = Array.isArray(explicit) && explicit.length ? explicit.map(String) : defaultPermissions(staff.role);
+  const permissions = Array.isArray(explicit) ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*") : [];
   await db.prepare("UPDATE owner_staff SET last_used_at = ?, updated_at = ? WHERE id = ?")
     .bind(now(), now(), staff.id).run();
   return { type: "staff", id: staff.id, name: staff.display_name, role: staff.role, permissions };
@@ -1902,7 +2023,7 @@ async function handleStaff(request, db, actor, parts) {
     const raw = crypto.getRandomValues(new Uint8Array(24));
     const token = "dvx_" + [...raw].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const tokenHash = await sha256Hex(token);
-    const permissions = Array.isArray(body.permissions) ? body.permissions.map(String) : defaultPermissions(role);
+    const permissions = sanitizeStaffPermissions(actor, body.permissions);
     const ts = now();
     await db.prepare(
       "INSERT INTO owner_staff (id,display_name,role,token_hash,permissions_json,enabled,created_at,updated_at,last_used_at) VALUES (?,?,?,?,?,1,?,?,NULL)"
@@ -1920,7 +2041,9 @@ async function handleStaff(request, db, actor, parts) {
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const displayName = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 80) || current.display_name;
     const role = body.role == null ? current.role : (["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : current.role);
-    const permissions = Array.isArray(body.permissions) ? body.permissions.map(String) : safeParse(current.permissions_json, defaultPermissions(role));
+    const permissions = Array.isArray(body.permissions)
+      ? sanitizeStaffPermissions(actor, body.permissions)
+      : safeParse(current.permissions_json, []).map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission));
     const enabled = body.enabled == null ? Number(current.enabled) : (body.enabled === true ? 1 : 0);
     await db.prepare("UPDATE owner_staff SET display_name=?,role=?,permissions_json=?,enabled=?,updated_at=? WHERE id=?")
       .bind(displayName, role, JSON.stringify(permissions), enabled, now(), staffId).run();
