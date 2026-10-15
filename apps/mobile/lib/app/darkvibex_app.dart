@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../background/message_push_service.dart';
 import '../core/app_identity.dart';
+import '../infra/invite_referral_service.dart';
 import '../screens/home_shell.dart';
 import '../screens/login_screen.dart';
 import '../ui/tinni_style.dart';
@@ -19,11 +20,14 @@ class DarkVibeXApp extends StatefulWidget {
 class _DarkVibeXAppState extends State<DarkVibeXApp> {
   final AppState state = AppState();
   final MessagePushService messagePush = MessagePushService();
+  late final InviteReferralService inviteReferral;
 
   @override
   void initState() {
     super.initState();
     state.addListener(_syncMessagePush);
+    inviteReferral = InviteReferralService(state);
+    unawaited(inviteReferral.initialize());
     unawaited(state.initialize().whenComplete(_syncMessagePush));
   }
 
@@ -34,6 +38,7 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
   @override
   void dispose() {
     state.removeListener(_syncMessagePush);
+    inviteReferral.dispose();
     state.dispose();
     super.dispose();
   }
