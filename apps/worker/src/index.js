@@ -3843,12 +3843,10 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
+      await cpHeartbeat(db,userId,body.action,body.choice);
       return json({
         ok:true,
-        cp:(await (async () => {
-          await cpHeartbeat(db,userId,body.action,body.choice);
-          return cpStateWithRing(db,userId);
-        })()),
+        cp:await cpStateWithRing(db,userId),
       });
     } catch (error) {
       return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
