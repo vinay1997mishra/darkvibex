@@ -11,7 +11,9 @@ test("Owner Panel uploads MP4 gift media into R2", () => {
   assert.match(ownerApi, /handleGiftMediaUpload/);
   assert.match(ownerApi, /env\.FILES\.put/);
   assert.match(ownerApi, /video\/mp4/);
-  assert.match(ownerApi, /20 \* 1024 \* 1024/);
+  assert.match(ownerApi, /11 \* 1024 \* 1024/);
+  assert.match(ownerApi, /gift_video_max_11mb/);
+  assert.match(panelApp, /maximum 11 MB/);
   assert.match(ownerApi, /custom-gifts\/owner-panel/);
   assert.match(panelHtml, /id="giftVideoFile"/);
   assert.match(panelHtml, /Upload Video to R2/);
