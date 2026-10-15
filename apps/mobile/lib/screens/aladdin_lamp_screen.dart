@@ -36,7 +36,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
     super.initState();
     unawaited(_load());
     progressRefreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(minutes: 1),
       (_) => unawaited(_load()),
     );
   }
