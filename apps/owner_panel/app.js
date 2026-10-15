@@ -685,11 +685,28 @@ async function saveBanner(){
 
 async function loadGames(){
   if(!can("games.read"))return;
-  const d=await api("/api/owner/games");
+  const userQuery=$("#gameInvestigationUser").value.trim();
+  const d=await api("/api/owner/games"+(userQuery?"?user_id="+encodeURIComponent(userQuery):""));
   state.games=d.games||[];
   $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No game overrides configured");
   $("#gameStats").innerHTML=(d.stats||[]).length?(d.stats||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · wagered ${num(x.wagered)} · payout ${num(x.payout)} · house result ${num(x.house_result)}</div></div>`).join(""):empty("No game-bet statistics yet");
-  $$("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
+  $("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
+  if(!userQuery){
+    $("#gameUserStats").innerHTML=empty("Enter a user ID to investigate betting history");
+  }else if(d.user_error==="user_not_found"){
+    $("#gameUserStats").innerHTML=empty("User not found");
+  }else{
+    const inv=d.user_investigation;
+    if(!inv){
+      $("#gameUserStats").innerHTML=empty("No investigation data");
+    }else{
+      const u=inv.user||{};
+      const summary=`<div class="item-card"><div class="item-title">${esc(u.display_name||"User")} · ID ${esc(u.public_id||u.id||"—")}</div><div class="item-meta">${num(inv.bet_count)} bets · wagered ${num(inv.wagered)} · payout ${num(inv.payout)} · house result ${num(inv.house_result)}</div></div>`;
+      const perGame=(inv.by_game||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · ${num(x.wagered)} wagered · ${num(x.payout)} payout · house result ${num(x.house_result)}</div></div>`).join("");
+      const recent=(inv.recent||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)} · ${time(x.created_at)}</div><div class="item-meta">Stake ${num(x.stake)} · result ${esc(x.result)} · payout ${num(x.payout)}</div></div>`).join("");
+      $("#gameUserStats").innerHTML=summary+(perGame?`<h3>By Game</h3>${perGame}`:"")+(recent?`<h3>Recent Bets</h3>${recent}`:"");
+    }
+  }
 }
 async function saveGameConfig(){
   if(!can("games.write"))return toast("Games write permission required",false);
@@ -864,7 +881,7 @@ $("#reloadGlobalThemes").onclick=()=>loadGlobalThemes().catch(e=>toast(e.message
 
 $("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
 $("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));
-$("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));
+$("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));$("#loadGameInvestigation").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#gameInvestigationUser").addEventListener("keydown",e=>{if(e.key==="Enter")loadGames().catch(x=>toast(x.message,false));});
 $("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));$("#reloadPricingOverrides").onclick=()=>loadPricingOverrides().catch(e=>toast(e.message,false));$("#savePricingOverride").onclick=()=>savePricingOverride().catch(e=>toast(e.message,false));$("#clearPricingOverride").onclick=clearPricingOverride;$("#pricingKind").onchange=()=>{updatePricingFreeState();loadPricingOverrides().catch(e=>toast(e.message,false));};
 
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
