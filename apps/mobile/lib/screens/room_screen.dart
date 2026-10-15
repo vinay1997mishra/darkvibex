@@ -3301,6 +3301,7 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!mounted) return;
     final displayRoom = RoomSummary(
       id: widget.room.id,
+      displayId: widget.room.displayId,
       name: roomName,
       ownerName: widget.room.ownerName,
       ownerUserId: widget.room.ownerUserId,
@@ -3310,26 +3311,49 @@ class _RoomScreenState extends State<RoomScreen> {
       partyMode: roomPartyMode,
       roomMode: roomMode,
     );
+    final roomRoute = ModalRoute.of(context);
+    widget.state.showMinimizedRoom(
+      room: displayRoom,
+      onResume: () {
+        if (!mounted) return;
+        final navigator = Navigator.of(context);
+        if (roomRoute != null) {
+          navigator.popUntil((route) => route == roomRoute);
+        }
+        widget.state.clearMinimizedRoom(roomId: widget.room.id);
+      },
+      onClose: () async {
+        await _cleanupMinimizedRoom();
+        if (!mounted) {
+          widget.state.clearMinimizedRoom(roomId: widget.room.id);
+          return;
+        }
+        final navigator = Navigator.of(context);
+        if (roomRoute != null) {
+          navigator.popUntil((route) => route == roomRoute);
+        }
+        widget.state.clearMinimizedRoom(roomId: widget.room.id);
+        if (navigator.canPop()) {
+          navigator.pop();
+        }
+      },
+    );
+
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => HomeShell(
-          state: widget.state,
-          minimizedRoom: displayRoom,
-          onResumeRoom: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-          },
-          onCloseMinimizedRoom: _cleanupMinimizedRoom,
-        ),
+        builder: (_) => HomeShell(state: widget.state),
       ),
     );
+    if (mounted) {
+      widget.state.clearMinimizedRoom(roomId: widget.room.id);
+    }
   }
 
   Future<void> _leaveRoom() async {
     // Exit always tears down the local room first-class resources. The server
     // membership request is retried, but a transient network error must never
     // leave mic/RTC/foreground-service work running after the user exits.
+    widget.state.clearMinimizedRoom(roomId: widget.room.id);
     await _leaveServerMembership();
     await _disconnectRoomRuntime();
     if (mounted) Navigator.of(context).pop();
