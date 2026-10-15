@@ -510,12 +510,12 @@ async function loadAnnouncements(){
     const windowText=(a.starts_at||a.ends_at)?` · ${a.starts_at?time(a.starts_at):"now"} → ${a.ends_at?time(a.ends_at):"no end"}`:"";
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(a.title)} <span class="pill ${Number(a.enabled)?"active":"banned"}">${Number(a.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(a.body)}${windowText}</div></div><div class="item-actions"><button class="secondary mini" data-ann-edit="${esc(a.id)}">Edit</button><button class="danger mini" data-ann-delete="${esc(a.id)}">Delete</button></div></div></div>`;
   }).join(""):empty("No announcements");
-  $("[data-ann-edit]").forEach(b=>b.onclick=()=>{
+  $$("[data-ann-edit]").forEach(b=>b.onclick=()=>{
     const a=rows.find(x=>x.id===b.dataset.annEdit);if(!a)return;
     $("#announcementId").value=a.id||"";$("#announcementTitle").value=a.title||"";$("#announcementBody").value=a.body||"";
     $("#announcementEnabled").checked=Number(a.enabled)!==0;$("#announcementStart").value=localInputValue(a.starts_at);$("#announcementEnd").value=localInputValue(a.ends_at);
   });
-  $("[data-ann-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this announcement?"))return;await api("/api/owner/announcements/"+encodeURIComponent(b.dataset.annDelete),{method:"DELETE"});toast("Announcement deleted");await loadAnnouncements();});
+  $$("[data-ann-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this announcement?"))return;await api("/api/owner/announcements/"+encodeURIComponent(b.dataset.annDelete),{method:"DELETE"});toast("Announcement deleted");await loadAnnouncements();});
 }
 async function saveAnnouncement(){
   const startRaw=$("#announcementStart").value,endRaw=$("#announcementEnd").value;
@@ -690,7 +690,7 @@ async function loadGames(){
   state.games=d.games||[];
   $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No game overrides configured");
   $("#gameStats").innerHTML=(d.stats||[]).length?(d.stats||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · wagered ${num(x.wagered)} · payout ${num(x.payout)} · house result ${num(x.house_result)}</div></div>`).join(""):empty("No game-bet statistics yet");
-  $("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
+  $$("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
   if(!userQuery){
     $("#gameUserStats").innerHTML=empty("Enter a user ID to investigate betting history");
   }else if(d.user_error==="user_not_found"){
