@@ -67,3 +67,27 @@ test("roles posts banners games and allowed policies have dedicated APIs and UI 
   assert.match(panelApp, /async function sendOfficialMessage/);
   assert.match(panelApp, /async function applyOwnerTag/);
 });
+
+
+test("owner panel JS references only existing HTML element IDs", () => {
+  const ids = new Set([...panelHtml.matchAll(/\\bid="([^"]+)"/g)].map((match) => match[1]));
+  const refs = [...panelApp.matchAll(/\\$\\("#([A-Za-z][A-Za-z0-9_-]*)"\\)/g)].map((match) => match[1]);
+  const missing = [...new Set(refs.filter((id) => !ids.has(id)))];
+  assert.deepEqual(missing, []);
+});
+
+test("game controls and scheduled global themes affect app-facing routes", () => {
+  assert.match(worker, /async function ownerGameConfig/);
+  assert.match(worker, /amount < gameConfig\.min_bet/);
+  assert.match(worker, /ownerGameConfig\(db,"ludo"/);
+  assert.match(worker, /owner_global:true/);
+  assert.match(worker, /kind='theme' AND enabled=1/);
+  assert.match(panelApp, /async function saveGlobalTheme/);
+});
+
+test("owner tags and invisible ID reach the user profile response", () => {
+  assert.match(worker, /user\.owner_tags=ownerIdentity\.tags/);
+  assert.match(worker, /user\.tags=ownerIdentity\.tags/);
+  assert.match(worker, /user\.invisible_id=ownerIdentity\.invisible_id/);
+  assert.match(worker, /user\.public_id=null/);
+});
