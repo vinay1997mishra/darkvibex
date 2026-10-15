@@ -293,7 +293,7 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
     final spectator = myColor == null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF111426),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         toolbarHeight: 40,
         title: const Text(
