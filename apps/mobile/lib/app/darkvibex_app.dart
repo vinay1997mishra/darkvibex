@@ -53,23 +53,25 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
         animation: state,
         builder: (context, _) {
           final room = state.minimizedRoom;
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: child ?? const SizedBox.shrink(),
-              ),
-              if (room != null)
+          return DarkVibeXGlobalBackground(
+            child: Stack(
+              children: [
                 Positioned.fill(
-                  child: SafeArea(
-                    child: MinimizedRoomBubble(
-                      state: state,
-                      room: room,
-                      onResume: state.minimizedRoomResume,
-                      onClose: state.minimizedRoomClose,
+                  child: child ?? const SizedBox.shrink(),
+                ),
+                if (room != null)
+                  Positioned.fill(
+                    child: SafeArea(
+                      child: MinimizedRoomBubble(
+                        state: state,
+                        room: room,
+                        onResume: state.minimizedRoomResume,
+                        onClose: state.minimizedRoomClose,
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           );
         },
       ),
