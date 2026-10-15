@@ -194,13 +194,38 @@
             <div class="form-grid">
               <label>Theme ID<input id="globalThemeId" placeholder="e.g. festival-night" /></label>
               <label>Name<input id="globalThemeName" /></label>
-              <label>Asset key<input id="globalThemeAsset" placeholder="R2 / CDN asset key" /></label>
+              <label class="span-2">Theme image
+                <input id="globalThemeFile" type="file" accept="image/jpeg,image/png,image/webp" />
+              </label>
+              <label>Output width (px)<input id="globalThemeWidth" type="number" min="320" max="2160" value="1080" /></label>
+              <label>Output height (px)<input id="globalThemeHeight" type="number" min="320" max="3840" value="1920" /></label>
+              <label>Crop zoom
+                <input id="globalThemeZoom" type="range" min="1" max="3" step="0.01" value="1" />
+              </label>
+              <label>Horizontal crop
+                <input id="globalThemeCropX" type="range" min="0" max="100" step="1" value="50" />
+              </label>
+              <label>Vertical crop
+                <input id="globalThemeCropY" type="range" min="0" max="100" step="1" value="50" />
+              </label>
+              <div class="span-2 theme-crop-wrap">
+                <canvas id="globalThemeCropCanvas" width="270" height="480" aria-label="Theme crop preview"></canvas>
+                <div class="action-row">
+                  <button id="resetGlobalThemeCrop" class="secondary" type="button">Reset Crop</button>
+                  <button id="uploadGlobalThemeImage" class="secondary" type="button">Crop & Upload to R2</button>
+                  <span id="globalThemeUploadStatus" class="muted"></span>
+                </div>
+              </div>
+              <label class="span-2">Asset key<input id="globalThemeAsset" readonly placeholder="Cropped theme image R2 key" /></label>
               <label>Start timestamp (ms)<input id="globalThemeStart" type="number" /></label>
               <label>End timestamp (ms)<input id="globalThemeEnd" type="number" /></label>
               <label class="check"><input id="globalThemePermanent" type="checkbox" /> Permanent</label>
               <label class="check"><input id="globalThemeEnabled" type="checkbox" checked /> Enabled</label>
             </div>
-            <button id="saveGlobalTheme" class="primary">Save Global Theme</button>
+            <div class="action-row">
+              <button id="saveGlobalTheme" class="primary">Save Global Theme</button>
+              <button id="clearGlobalTheme" class="secondary" type="button">Clear</button>
+            </div>
             <div id="globalThemeList" class="stack"></div>
           </article>
         </section>
