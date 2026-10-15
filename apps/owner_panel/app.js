@@ -243,7 +243,7 @@ const selectorPermissionRules = [
   ["#vipRuleEnabled",["vip.save"],"label"],["#saveVipRule",["vip.save"],"self"],["#resetVipRule",["vip.reset"],"self"],
 
   ["#reloadGifts",["gifts.view"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
-  ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
+  ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftVideoFile",["gifts.save"],"label"],["#giftVideoKey",["gifts.save"],"label"],["#uploadGiftVideo",["gifts.save"],"self"],["#removeGiftVideo",["gifts.save"],"self"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
   ["#giftEnd",["gifts.save"],"label"],["#giftEnabled",["gifts.save"],"label"],["#giftDescription",["gifts.save"],"label"],["#saveGift",["gifts.save"],"self"],["#clearGift",["gifts.save"],"self"],
 
   ["#reloadAssets",["assets.view"],"self"],["#assetKind",["assets.view","assets.save","assets.remove"],"label"],["#assetId",["assets.save"],"label"],["#assetName",["assets.save"],"label"],
@@ -927,8 +927,36 @@ async function resetVipRule(){
 
 function clearGiftForm(){
   $("#giftId").value="";$("#giftName").value="";$("#giftPrice").value=0;$("#giftVip").value=0;
-  $("#giftEmoji").value="";$("#giftCategory").value="";$("#giftAsset").value="";$("#giftOrder").value=0;
+  $("#giftEmoji").value="";$("#giftCategory").value="normal";$("#giftAsset").value="";$("#giftVideoKey").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
+}
+
+async function uploadGiftVideo(){
+  if(!can("gifts.save"))return toast("Gift save permission required",false);
+  const giftId=$("#giftId").value.trim();
+  const file=$("#giftVideoFile").files?.[0];
+  if(!giftId)return toast("Enter Gift ID before uploading video",false);
+  if(!file)return toast("Choose an MP4 gift video first",false);
+  if(file.type!=="video/mp4"&&!/\.mp4$/i.test(file.name))return toast("Only MP4 gift video is supported",false);
+  if(file.size<=0||file.size>20*1024*1024)return toast("Gift video must be 20 MB or smaller",false);
+  $("#giftVideoStatus").textContent="Uploading to R2…";
+  const res=await fetch("/api/owner/gift-media",{
+    method:"PUT",
+    headers:{
+      authorization:"Bearer "+state.token,
+      "content-type":"video/mp4",
+      "x-gift-id":giftId
+    },
+    body:file
+  });
+  const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
+  if(!res.ok||!data.ok){
+    $("#giftVideoStatus").textContent="";
+    throw new Error(data.error||("HTTP "+res.status));
+  }
+  $("#giftVideoKey").value=String(data.key||"");
+  $("#giftVideoStatus").textContent="Video saved in R2";
+  toast("Gift video uploaded to R2");
 }
 async function loadGifts(){
   if(!can("gifts.view"))return;
@@ -937,7 +965,7 @@ async function loadGifts(){
   $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
     const data=item.data||{},enabled=Number(item.enabled)!==0;
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
-    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No gifts");
   $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
   $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
@@ -945,8 +973,8 @@ async function loadGifts(){
 function editGift(id){
   const item=state.giftItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
   $("#giftId").value=item.id||"";$("#giftName").value=item.name||"";$("#giftPrice").value=Number(item.price_coins||0);
-  $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=d.category||"";
-  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftOrder").value=Number(item.sort_order||0);
+  $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=d.category||"normal";
+  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftVideoKey").value=d.video_key||"";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent=d.video_key?"R2 video attached":"";$("#giftOrder").value=Number(item.sort_order||0);
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
 async function saveGift(){
@@ -957,7 +985,7 @@ async function saveGift(){
   if(starts&&ends&&ends<=starts)return toast("Gift end time must be after start time",false);
   await api("/api/owner/store",{method:"POST",body:JSON.stringify({
     kind:"gift",id,name,price_coins:Number($("#giftPrice").value||0),sort_order:Number($("#giftOrder").value||0),enabled:$("#giftEnabled").checked,
-    data:{min_vip_level:Number($("#giftVip").value||0),vip_level:Number($("#giftVip").value||0),emoji:$("#giftEmoji").value.trim(),category:$("#giftCategory").value.trim(),asset_key:$("#giftAsset").value.trim(),asset:$("#giftAsset").value.trim(),description:$("#giftDescription").value.trim(),starts_at:starts,ends_at:ends}
+    data:{min_vip_level:Number($("#giftVip").value||0),vip_level:Number($("#giftVip").value||0),emoji:$("#giftEmoji").value.trim(),category:$("#giftCategory").value.trim(),asset_key:$("#giftAsset").value.trim(),asset:$("#giftAsset").value.trim(),video_key:$("#giftVideoKey").value.trim(),description:$("#giftDescription").value.trim(),starts_at:starts,ends_at:ends}
   })});
   toast("Gift saved to live catalog");clearGiftForm();await loadGifts();
 }
@@ -1555,7 +1583,9 @@ $("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false))
 
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
 $("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value));if(rule)fillVipRuleForm(rule);};$("#reloadVipRules").onclick=()=>loadVipRules().catch(e=>toast(e.message,false));$("#saveVipRule").onclick=()=>saveVipRule().catch(e=>toast(e.message,false));$("#resetVipRule").onclick=()=>resetVipRule().catch(e=>toast(e.message,false));
-$("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
+$("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));
+$("#uploadGiftVideo").onclick=()=>uploadGiftVideo().catch(e=>{ $("#giftVideoStatus").textContent=""; toast(e.message,false); });
+$("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
 $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
