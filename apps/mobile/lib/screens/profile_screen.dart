@@ -4229,6 +4229,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         const SizedBox(height: 7),
         _coupleCard(),
         _relationRequestStatus(couple: true, relation: cp),
+        Offstage(
+          offstage: true,
+          child: _intimacyFriendCards(),
+        ),
       ],
     );
   }
