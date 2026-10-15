@@ -393,7 +393,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ],
                         const SizedBox(height: 10),
                         const Text(
-                          'Coin Seller and Merchant transfers both count only when coins are transferred into the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.',
+                          "Coin Seller and Merchant transfers both count only when coins are transferred into the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.",
                           style: TextStyle(
                             color: Color(0xFFFFD7B0),
                             fontSize: 11,
