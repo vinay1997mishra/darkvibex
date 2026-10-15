@@ -14,11 +14,20 @@
       <nav id="nav">
         <button class="nav-btn active" data-view="overview">Dashboard</button>
         <button class="nav-btn" data-view="users">Users</button>
+        <button class="nav-btn" data-view="notifications">Notifications</button>
+        <button class="nav-btn" data-view="messaging">Messages & Tags</button>
         <button class="nav-btn" data-view="rooms">Rooms</button>
+        <button class="nav-btn" data-view="roles">Roles / Posts</button>
+        <button class="nav-btn" data-view="banners">Banners</button>
+        <button class="nav-btn" data-view="games">Games</button>
+        <button class="nav-btn" data-view="policies">Policies</button>
         <button class="nav-btn" data-view="wallets">Wallets / Treasury</button>
         <button class="nav-btn" data-view="economy">Unique ID / Coin Rate</button>
+        <button class="nav-btn" data-view="vip">VIP Manager</button>
+        <button class="nav-btn" data-view="gifts">Gifts</button>
+        <button class="nav-btn" data-view="assets">Entries / Frames</button>
         <button class="nav-btn" data-view="store">App Store</button>
-        <button class="nav-btn" data-view="catalog">VIP / Gifts / Assets</button>
+        <button class="nav-btn" data-view="catalog">Advanced Catalog</button>
         <button class="nav-btn" data-view="settings">Master Switches</button>
         <button class="nav-btn" data-view="announcements">Announcements</button>
         <button class="nav-btn" data-view="support">VIP Support</button>
@@ -80,6 +89,10 @@
           </article>
           <article id="userEditor" class="panel" hidden>
             <div class="panel-head"><div><h2 id="userEditorTitle">Manage user</h2><p id="userMeta" class="muted"></p></div><button id="closeUser" class="secondary">Close</button></div>
+            <h3>Live User Investigation</h3>
+            <div id="userInvestigation" class="module-grid"></div>
+            <div id="userInvestigationActivity" class="stack compact-stack"></div>
+            <hr />
             <div class="form-grid">
               <label>Display name<input id="editUserName" /></label>
               <label>Role<select id="editUserRole"><option value="user">User</option><option value="room_owner">Room owner</option><option value="room_admin">Room admin</option><option value="moderator">Moderator</option><option value="coin_seller">Coin seller</option><option value="merchant">Merchant</option><option value="platform_owner">Platform owner</option></select></label>
@@ -108,16 +121,125 @@
             <div class="form-grid compact">
               <label>Wallet type<select id="roleWalletType"><option value="">Select wallet</option><option value="coin_seller">Coin Seller wallet</option><option value="merchant">Merchant wallet</option></select></label>
               <label>Role coin change<input id="roleCoinDelta" type="number" placeholder="e.g. 5000000 or -5000000" /></label>
+              <label class="check"><input id="roleWalletBanned" type="checkbox" /> Ban selected role wallet</label>
             </div>
-            <button id="applyRoleWallet" class="primary">Apply role-wallet adjustment</button>
+            <button id="applyRoleWallet" class="primary">Apply role-wallet adjustment / status</button>
+            <hr />
+            <h3>Owner Overrides</h3>
+            <div class="form-grid compact">
+              <label class="check"><input id="userInvisibleId" type="checkbox" /> Invisible ID</label>
+              <label class="check"><input id="userLockedBypass" type="checkbox" /> Locked-room bypass</label>
+              <label class="check"><input id="userWalletBanned" type="checkbox" /> Normal wallet ban</label>
+              <label class="check"><input id="userWalletFrozen" type="checkbox" /> Wallet security freeze</label>
+            </div>
+            <button id="saveUserOverrides" class="primary">Save Owner Overrides</button>
+            <hr />
+            <h3>Registered Devices</h3>
+            <p class="muted">Ban/unban a registered installation. Banned device keys are rejected by the API.</p>
+            <div id="userDevices" class="stack compact-stack"></div>
           </article>
         </section>
 
         <section class="view" data-view-panel="rooms">
           <article class="panel">
-            <div class="panel-head"><div><h2>Room control</h2><p>Rename rooms, change seats, lock or remove a room.</p></div></div>
+            <div class="panel-head"><div><h2>Room Control & Investigation</h2><p>Rename, seats, lock, DP/background, themes and live users/seats.</p></div></div>
             <div class="search-row"><input id="roomSearch" placeholder="Room ID, name or owner" /><button id="searchRooms" class="primary">Search</button></div>
             <div id="roomList" class="stack"></div>
+          </article>
+          <article id="roomInvestigation" class="panel" hidden>
+            <div class="panel-head"><div><h2 id="roomInvestigationTitle">Room Investigation</h2><p id="roomInvestigationMeta" class="muted"></p></div><button id="closeRoomInvestigation" class="secondary">Close</button></div>
+            <div class="form-grid">
+              <label>Room DP asset key<input id="ownerRoomDpKey" placeholder="Asset / R2 key" /></label>
+              <label>Room background asset key<input id="ownerRoomBackgroundKey" placeholder="Asset / R2 key" /></label>
+              <label>Theme ID<input id="ownerRoomThemeId" placeholder="dark / custom theme ID" /></label>
+            </div>
+            <div class="action-row"><button id="saveOwnerRoomMedia" class="primary">Save DP / Background</button><button id="saveOwnerRoomTheme" class="secondary">Apply Theme</button></div>
+            <h3>Live Users / Seats</h3>
+            <div id="roomLiveMembers" class="stack"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Global Room Theme Manager</h2><p>Owner themes are free to users and can be permanent or scheduled by start/end timestamp.</p></div><button id="reloadGlobalThemes" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>Theme ID<input id="globalThemeId" placeholder="e.g. festival-night" /></label>
+              <label>Name<input id="globalThemeName" /></label>
+              <label>Asset key<input id="globalThemeAsset" placeholder="R2 / CDN asset key" /></label>
+              <label>Start timestamp (ms)<input id="globalThemeStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="globalThemeEnd" type="number" /></label>
+              <label class="check"><input id="globalThemePermanent" type="checkbox" /> Permanent</label>
+              <label class="check"><input id="globalThemeEnabled" type="checkbox" checked /> Enabled</label>
+            </div>
+            <button id="saveGlobalTheme" class="primary">Save Global Theme</button>
+            <div id="globalThemeList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="notifications">
+          <article class="panel"><div class="panel-head"><div><h2>Owner Notifications</h2><p>User complaints/feedback and owner alerts.</p></div><button id="reloadNotifications" class="secondary">Refresh</button></div><div id="notificationList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="messaging">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Official Messages & Tags</h2><p>Search users, select IDs, message selected/all users, and apply custom or V Official tags.</p></div></div>
+            <div class="search-row"><input id="messageUserSearch" placeholder="User ID / name" /><button id="searchMessageUsers" class="primary">Search</button></div>
+            <div id="messageUserResults" class="stack compact-stack"></div>
+            <p id="selectedMessageUsers" class="muted">0 selected</p>
+            <label>Official message<textarea id="officialMessageBody" rows="4" maxlength="2000"></textarea></label>
+            <div class="action-row"><button id="sendOfficialSelected" class="primary">Send to Selected</button><button id="sendOfficialAll" class="secondary">Send to All Users</button></div>
+            <hr />
+            <div class="form-grid">
+              <label>Tag name<input id="ownerTagName" placeholder="Custom tag" /></label>
+              <label>Tag color<input id="ownerTagColor" type="color" value="#FFD54F" /></label>
+              <label>Designation<input id="ownerTagDesignation" placeholder="For V Official" /></label>
+              <label>Type<select id="ownerTagKind"><option value="custom">Custom Tag</option><option value="v_official">V Official</option></select></label>
+            </div>
+            <button id="applyOwnerTag" class="primary">Apply Tag to Selected</button>
+            <h3>V Officials / Tags</h3><div id="ownerTagList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="roles">
+          <article class="panel"><div class="panel-head"><div><h2>Roles / Posts</h2><p>Reusable allowed roles/posts. Excluded hierarchy roles are not available.</p></div><select id="rolePostKind"><option value="role">Role</option><option value="post">Post</option></select></div>
+            <div class="form-grid"><label>ID<input id="rolePostId" /></label><label>Name<input id="rolePostName" /></label><label>Sort order<input id="rolePostOrder" type="number" value="0" /></label><label class="check"><input id="rolePostEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Details<textarea id="rolePostDetails" rows="3"></textarea></label></div>
+            <div class="action-row"><button id="saveRolePost" class="primary">Save</button><button id="reloadRolesPosts" class="secondary">Reload</button></div><div id="rolePostList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="banners">
+          <article class="panel"><div class="panel-head"><div><h2>Banners</h2><p>Create/edit/schedule/disable app banners.</p></div><button id="reloadBanners" class="secondary">Reload</button></div>
+            <div class="form-grid"><label>ID<input id="bannerId" /></label><label>Name<input id="bannerName" /></label><label>Asset key<input id="bannerAsset" /></label><label>Link<input id="bannerLink" /></label><label>Start timestamp (ms)<input id="bannerStart" type="number" /></label><label>End timestamp (ms)<input id="bannerEnd" type="number" /></label><label class="check"><input id="bannerEnabled" type="checkbox" checked /> Enabled</label></div>
+            <button id="saveBanner" class="primary">Save Banner</button><div id="bannerList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="games">
+          <article class="panel"><div class="panel-head"><div><h2>Games</h2><p>Enable/disable games, change bet limits, and inspect aggregate profit/loss.</p></div><button id="reloadGames" class="secondary">Reload</button></div>
+            <div class="form-grid"><label>Game ID<input id="gameConfigId" /></label><label>Name<input id="gameConfigName" /></label><label>Min bet<input id="gameMinBet" type="number" value="1" /></label><label>Max bet<input id="gameMaxBet" type="number" value="1000000" /></label><label class="check"><input id="gameEnabled" type="checkbox" checked /> Enabled</label></div>
+            <button id="saveGameConfig" class="primary">Save Game Config</button><div id="gameList" class="stack"></div>
+            <h3>Game Stats</h3><div id="gameStats" class="stack"></div>
+            <hr />
+            <div class="panel-head"><div><h3>User Betting Investigation</h3><p>Search by internal ID or current 7-digit public ID.</p></div></div>
+            <div class="search-row"><input id="gameInvestigationUser" placeholder="User ID / 7-digit public ID" /><button id="loadGameInvestigation" class="primary">Investigate</button></div>
+            <div id="gameUserStats" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="policies">
+          <article class="panel"><div class="panel-head"><div><h2>Allowed Policies</h2><p>Economy/app rules only. Excluded hierarchy and verification modules are blocked.</p></div><button id="reloadPolicies" class="secondary">Reload</button></div>
+            <div class="form-grid"><label>Policy key<input id="policyKey" placeholder="e.g. red_pocket.max_claim" /></label><label class="span-2">JSON value<textarea id="policyValue" rows="4" placeholder='{"enabled":true}'></textarea></label></div>
+            <button id="savePolicy" class="primary">Save Policy</button><div id="policyList" class="stack"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Per-user Price / Free / Validity</h2><p>Override live store pricing for a specific user and item, or use * to apply to every item of that type. Gifts support custom price but not zero-cost/free accounting.</p></div><button id="reloadPricingOverrides" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>User internal/public ID<input id="pricingUserId" placeholder="User ID or 7-digit public ID" /></label>
+              <label>Type<select id="pricingKind"><option value="frame">Frame</option><option value="vehicle">Vehicle</option><option value="entry">Entry effect</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="profile_card">Profile card</option><option value="profile_background">Profile background</option><option value="theme">Theme store item</option><option value="gift">Gift</option><option value="unique_id">Unique ID</option><option value="room_theme">Room theme upload</option></select></label>
+              <label>Item ID<input id="pricingItemId" value="*" placeholder="* or specific item ID" /></label>
+              <label>Price coins<input id="pricingPrice" type="number" min="0" placeholder="Blank = base price" /></label>
+              <label>Validity days<input id="pricingDuration" type="number" min="0" max="3650" placeholder="Blank = base validity; 0 = permanent" /></label>
+              <label class="check"><input id="pricingFree" type="checkbox" /> Free for this user</label>
+            </div>
+            <div class="action-row"><button id="savePricingOverride" class="primary">Save Override</button><button id="clearPricingOverride" class="secondary">Clear Form</button></div>
+            <div id="pricingOverrideList" class="stack"></div>
           </article>
         </section>
 
@@ -177,6 +299,69 @@
           </div>
         </section>
 
+
+        <section class="view" data-view-panel="vip">
+          <article class="panel">
+            <div class="panel-head"><div><h2>VIP1–VIP18 Manager</h2><p>Edit the actual level-up rule consumed by DarkVibeX: required EXP, maintenance EXP, validity, entry and frame. Levels remain fixed to VIP1–VIP18.</p></div><button id="reloadVipRules" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>VIP level<input id="vipRuleLevel" type="number" min="1" max="18" value="1" /></label>
+              <label>Display name<input id="vipRuleName" value="VIP 1" /></label>
+              <label>Upgrade EXP<input id="vipRuleUpgradeExp" type="number" min="0" step="1" /></label>
+              <label>Maintenance EXP<input id="vipRuleMaintainExp" type="number" min="0" step="1" /></label>
+              <label>Validity days<input id="vipRuleValidityDays" type="number" min="1" max="3650" value="30" /></label>
+              <label>Entry / vehicle ID<input id="vipRuleEntryId" placeholder="Optional store item ID" /></label>
+              <label>Frame ID<input id="vipRuleFrameId" placeholder="Optional frame item ID" /></label>
+              <label class="check"><input id="vipRuleEnabled" type="checkbox" checked /> Level enabled</label>
+            </div>
+            <div class="action-row"><button id="saveVipRule" class="primary">Save VIP Rule</button><button id="resetVipRule" class="secondary">Reset Selected Level to Base</button></div>
+          </article>
+          <article class="panel"><div class="panel-head"><div><h2>VIP Rules</h2><p>Changing these values changes backend VIP leveling/renewal logic.</p></div></div><div id="vipRuleList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="gifts">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Gift Catalog</h2><p>Add/edit/remove, enable/disable and schedule DarkVibeX gifts.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>Gift ID<input id="giftId" placeholder="Unique gift ID" /></label>
+              <label>Name<input id="giftName" /></label>
+              <label>Coin price<input id="giftPrice" type="number" min="0" value="0" /></label>
+              <label>Minimum VIP<input id="giftVip" type="number" min="0" max="18" value="0" /></label>
+              <label>Emoji<input id="giftEmoji" placeholder="Optional" /></label>
+              <label>Category<input id="giftCategory" placeholder="normal / exclusive / custom" /></label>
+              <label>Asset / DP key<input id="giftAsset" placeholder="R2 / CDN / asset key" /></label>
+              <label>Sort order<input id="giftOrder" type="number" value="0" /></label>
+              <label>Start timestamp (ms)<input id="giftStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="giftEnd" type="number" /></label>
+              <label class="check"><input id="giftEnabled" type="checkbox" checked /> Enabled</label>
+              <label class="span-2">Description<textarea id="giftDescription" rows="3"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveGift" class="primary">Add / Save Gift</button><button id="clearGift" class="secondary">Clear</button></div>
+          </article>
+          <article class="panel"><div id="giftList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="assets">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Manage vehicles, entry effects, profile cards, rings, chat bubbles, profile backgrounds and frames used by the live app store.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>Asset type<select id="assetKind"><option value="vehicle">Vehicle</option><option value="entry">Entry effect</option><option value="frame">Frame</option><option value="profile_card">Profile card</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="profile_background">Profile background</option></select></label>
+              <label>Item ID<input id="assetId" placeholder="Unique item ID" /></label>
+              <label>Name<input id="assetName" /></label>
+              <label>Price in coins<input id="assetPrice" type="number" min="0" value="0" /></label>
+              <label>Minimum VIP<input id="assetVip" type="number" min="0" max="18" value="0" /></label>
+              <label>Validity days<input id="assetDuration" type="number" min="0" value="30" /></label>
+              <label>Tier<input id="assetTier" type="number" min="0" value="0" /></label>
+              <label>Sort order<input id="assetOrder" type="number" value="0" /></label>
+              <label>Asset / file key<input id="assetFileKey" placeholder="R2 / CDN / asset key" /></label>
+              <label>Start timestamp (ms)<input id="assetStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="assetEnd" type="number" /></label>
+              <label class="check"><input id="assetEnabled" type="checkbox" checked /> Enabled</label>
+              <label class="span-2">Description<textarea id="assetDescription" rows="3"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveAsset" class="primary">Add / Save Asset</button><button id="clearAsset" class="secondary">Clear</button></div>
+          </article>
+          <article class="panel"><div id="assetList" class="stack"></div></article>
+        </section>
 
         <section class="view" data-view-panel="store">
           <article class="panel">
@@ -272,9 +457,16 @@
 
         <section class="view" data-view-panel="announcements">
           <article class="panel">
-            <div class="panel-head"><div><h2>Announcements</h2><p>Create in-app notices for all DarkVibeX users.</p></div></div>
-            <div class="form-grid"><label>Title<input id="announcementTitle" /></label><label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label></div>
-            <button id="saveAnnouncement" class="primary">Publish announcement</button>
+            <div class="panel-head"><div><h2>Announcements</h2><p>Create, edit, enable/disable and schedule in-app notices for all DarkVibeX users.</p></div></div>
+            <input id="announcementId" type="hidden" />
+            <div class="form-grid">
+              <label>Title<input id="announcementTitle" /></label>
+              <label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label>
+              <label>Start date/time<input id="announcementStart" type="datetime-local" /></label>
+              <label>End / auto-remove date/time<input id="announcementEnd" type="datetime-local" /></label>
+              <label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveAnnouncement" class="primary">Add / Save Announcement</button><button id="clearAnnouncement" class="secondary">Clear</button></div>
           </article>
           <article class="panel"><div id="announcementList" class="stack"></div></article>
         </section>
@@ -307,7 +499,13 @@
         </section>
 
         <section class="view" data-view-panel="audit">
-          <article class="panel"><div class="panel-head"><div><h2>Audit history</h2><p>Permanent record of owner and staff changes.</p></div><button id="reloadAudit" class="secondary">Reload</button></div><div id="auditList" class="stack"></div></article>
+          <article class="panel">
+            <div class="panel-head">
+              <div><h2>Audit history</h2><p>Main Owner sees all records. Staff panels see only their own activity.</p></div>
+              <div class="action-row"><button id="exportAudit" class="secondary">Export CSV</button><button id="clearAudit" class="danger">Delete All</button><button id="reloadAudit" class="secondary">Reload</button></div>
+            </div>
+            <div id="auditList" class="stack"></div>
+          </article>
         </section>
       </section>
     </main>

@@ -6,6 +6,7 @@ class BackendApi {
   const BackendApi();
 
   static String? sessionToken;
+  static String? deviceKey;
 
   static const List<Map<String, Object>> _featuredRoomGifts =
       <Map<String, Object>>[
@@ -40,9 +41,13 @@ class BackendApi {
 
   Map<String, String> get fileHeaders {
     final bearer = sessionToken;
-    return bearer == null || bearer.trim().isEmpty
-        ? const <String, String>{}
-        : <String, String>{HttpHeaders.authorizationHeader: 'Bearer ${bearer.trim()}'};
+    final headers = <String, String>{};
+    if (bearer != null && bearer.trim().isNotEmpty) {
+      headers[HttpHeaders.authorizationHeader] = 'Bearer ${bearer.trim()}';
+    }
+    final device = deviceKey?.trim() ?? '';
+    if (device.isNotEmpty) headers['x-device-id'] = device;
+    return headers;
   }
 
   Future<Map<String, dynamic>?> _json(
@@ -63,6 +68,8 @@ class BackendApi {
         _ => await client.openUrl(method, uri),
       };
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      final device = deviceKey?.trim() ?? '';
+      if (device.isNotEmpty) request.headers.set('x-device-id', device);
       final bearer = authToken ?? sessionToken;
       if (bearer != null && bearer.trim().isNotEmpty) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${bearer.trim()}');
@@ -96,6 +103,8 @@ class BackendApi {
     try {
       final request = await client.putUrl(Uri.parse('$origin/api/files'));
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${sessionToken!.trim()}');
+      final device = deviceKey?.trim() ?? '';
+      if (device.isNotEmpty) request.headers.set('x-device-id', device);
       request.headers.set('x-file-key', key);
       request.headers.contentType = ContentType.parse(contentType);
       request.add(bytes);
@@ -325,6 +334,16 @@ class BackendApi {
         'POST',
         '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-number',
       );
+
+  Future<List<Map<String, dynamic>>> activeBanners() async {
+    final value = await _json('GET', '/api/banners');
+    final rows = value?['banners'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
 
   Future<Map<String, dynamic>?> roomThemes({
     required String roomId,
@@ -819,6 +838,7 @@ class BackendApi {
         'user_id': userId,
         'token': token,
         'platform': 'android',
+        if ((deviceKey?.trim() ?? '').isNotEmpty) 'device_key': deviceKey!.trim(),
         'enabled': enabled,
       },
       returnErrorBody: true,

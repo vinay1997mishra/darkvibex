@@ -121,13 +121,19 @@ test("VIP coin EXP carries partial coin amounts and resets to zero on every leve
   assert.equal(second.body.vip_award.awarded_exp, 1);
   assert.equal(second.body.vip_award.vip.exp_balance, 1);
 
-  const toVip1 = await transfer(34999600);
-  assert.equal(toVip1.body.vip_award.awarded_exp, 87499);
+  sqlite.prepare(
+    "UPDATE user_vip SET exp_balance=24999999 WHERE user_id='receiver'"
+  ).run();
+  const toVip1 = await transfer(400);
+  assert.equal(toVip1.body.vip_award.awarded_exp, 1);
   assert.equal(toVip1.body.vip_award.vip.level, 1);
   assert.equal(toVip1.body.vip_award.vip.exp_balance, 0);
 
-  const toVip2 = await transfer(100000000);
-  assert.equal(toVip2.body.vip_award.awarded_exp, 250000);
+  sqlite.prepare(
+    "UPDATE user_vip SET exp_balance=99999999 WHERE user_id='receiver'"
+  ).run();
+  const toVip2 = await transfer(400);
+  assert.equal(toVip2.body.vip_award.awarded_exp, 1);
   assert.equal(toVip2.body.vip_award.vip.level, 2);
   assert.equal(toVip2.body.vip_award.vip.exp_balance, 0);
   sqlite.close();

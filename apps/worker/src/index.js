@@ -80,7 +80,7 @@ import {
 const corsHeaders = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "authorization,content-type,x-file-key",
+  "access-control-allow-headers": "authorization,content-type,x-file-key,x-device-id",
 };
 
 const json = (data, init = {}) =>
@@ -215,6 +215,19 @@ async function requireSession(request, env, expectedUserId) {
   if (!actor || (expectedUserId != null && actor !== String(expectedUserId))) {
     return json({ ok: false, error: "forbidden" }, { status: 403 });
   }
+  const deviceKey=String(request.headers.get("x-device-id") ?? "").trim().slice(0,500);
+  if(deviceKey){
+    try{
+      const db=requireDb(env);
+      await ensureOwnerControlSchema(db);
+      await db.prepare(
+        `INSERT INTO owner_user_devices(device_key,user_id,last_seen_at) VALUES(?,?,?)
+         ON CONFLICT(device_key) DO UPDATE SET user_id=excluded.user_id,last_seen_at=excluded.last_seen_at`
+      ).bind(deviceKey,actor,now()).run();
+    }catch(error){
+      console.error("DarkVibeX device identity mapping failed",String(error?.message ?? error));
+    }
+  }
   return null;
 }
 
@@ -237,6 +250,170 @@ async function ownerSetting(db, key, fallback = {}) {
     return parsed && typeof parsed === "object" ? parsed : fallback;
   } catch (error) {
     if (String(error?.message ?? error).includes("no such table")) return fallback;
+    throw error;
+  }
+}
+
+async function ensureOwnerControlSchema(db) {
+  await ensureUsersSchema(db);
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
+      user_id TEXT PRIMARY KEY,
+      invisible_id INTEGER NOT NULL DEFAULT 0,
+      locked_room_bypass INTEGER NOT NULL DEFAULT 0,
+      wallet_frozen INTEGER NOT NULL DEFAULT 0,
+      wallet_banned INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_room_controls (
+      room_id TEXT PRIMARY KEY,
+      banned INTEGER NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_device_bans (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT,
+      banned INTEGER NOT NULL DEFAULT 1,
+      note TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_devices (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_devices_user ON owner_user_devices(user_id,last_seen_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_notifications (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'platform',
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      user_id TEXT,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
+      BEFORE UPDATE OF coins ON users
+      WHEN NEW.coins < OLD.coins
+       AND EXISTS(
+         SELECT 1 FROM owner_user_overrides o
+          WHERE o.user_id=OLD.id AND o.wallet_frozen=1
+       )
+      BEGIN
+        SELECT RAISE(ABORT,'wallet_frozen');
+      END`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_tags (
+      user_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#FFD54F',
+      kind TEXT NOT NULL DEFAULT 'custom',
+      designation TEXT NOT NULL DEFAULT '',
+      background_color TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,tag_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_price_overrides (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      item_id TEXT NOT NULL DEFAULT '*',
+      price_coins INTEGER,
+      free INTEGER NOT NULL DEFAULT 0,
+      duration_days INTEGER,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,kind,item_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_price_override_kind ON owner_user_price_overrides(kind,user_id,updated_at DESC)"),
+  ]);
+  try {
+    await db.prepare("ALTER TABLE owner_user_overrides ADD COLUMN wallet_banned INTEGER NOT NULL DEFAULT 0").run();
+  } catch (_) {}
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_ban_guard
+    BEFORE UPDATE OF coins, diamonds ON users
+    WHEN (NEW.coins <> OLD.coins OR NEW.diamonds <> OLD.diamonds)
+     AND EXISTS(
+       SELECT 1 FROM owner_user_overrides o
+        WHERE o.user_id=OLD.id AND o.wallet_banned=1
+     )
+    BEGIN
+      SELECT RAISE(ABORT,'wallet_banned');
+    END`).run();
+}
+
+async function ensureDeviceAllowed(db, deviceKey) {
+  const key=String(deviceKey ?? "").trim();
+  if(!key) return;
+  await ensureOwnerControlSchema(db);
+  const row=await db.prepare("SELECT banned FROM owner_device_bans WHERE device_key=? LIMIT 1").bind(key).first();
+  if(Number(row?.banned ?? 0)===1) throw new Error("device_banned");
+}
+
+async function ensureWalletAllowed(db, userId) {
+  await ensureOwnerControlSchema(db);
+  const row=await db.prepare("SELECT wallet_frozen,wallet_banned FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first();
+  if(Number(row?.wallet_banned ?? 0)===1) throw new Error("wallet_banned");
+  if(Number(row?.wallet_frozen ?? 0)===1) throw new Error("wallet_frozen");
+}
+
+async function ownerUserPricing(db,userId,kind,itemId,basePrice,baseDuration=null) {
+  await ensureOwnerControlSchema(db);
+  const row=await db.prepare(
+    `SELECT price_coins,free,duration_days,item_id
+       FROM owner_user_price_overrides
+      WHERE user_id=? AND kind=? AND item_id IN (?, '*')
+      ORDER BY CASE WHEN item_id=? THEN 0 ELSE 1 END, updated_at DESC
+      LIMIT 1`
+  ).bind(userId,kind,itemId,itemId).first();
+  const free=Number(row?.free ?? 0)===1;
+  const rawPrice=row?.price_coins==null ? Number(basePrice ?? 0) : Number(row.price_coins);
+  const price=free ? 0 : rawPrice;
+  const rawDuration=row?.duration_days==null ? baseDuration : Number(row.duration_days);
+  return {
+    price_coins:Number.isSafeInteger(price)&&price>=0 ? price : Number(basePrice ?? 0),
+    duration_days:rawDuration==null ? null : Number(rawDuration),
+    free,
+    overridden:Boolean(row),
+    matched_item_id:row?.item_id ?? null,
+  };
+}
+
+async function ownerIdentityMeta(db,userId) {
+  await ensureOwnerControlSchema(db);
+  const [override,tags]=await Promise.all([
+    db.prepare("SELECT invisible_id,locked_room_bypass,wallet_frozen,wallet_banned FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first(),
+    db.prepare("SELECT tag_id,name,color,kind,designation,background_color,created_at,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC").bind(userId).all(),
+  ]);
+  return {
+    invisible_id:Number(override?.invisible_id ?? 0)===1,
+    locked_room_bypass:Number(override?.locked_room_bypass ?? 0)===1,
+    wallet_frozen:Number(override?.wallet_frozen ?? 0)===1,
+    wallet_banned:Number(override?.wallet_banned ?? 0)===1,
+    tags:tags.results ?? [],
+  };
+}
+
+async function ownerGameConfig(db,gameId,defaults={}) {
+  const fallback={
+    enabled:defaults.enabled!==false,
+    min_bet:Number(defaults.min_bet ?? 1),
+    max_bet:Number(defaults.max_bet ?? 900000000000000),
+  };
+  try {
+    const row=await db.prepare(
+      "SELECT enabled,json_data FROM owner_catalog WHERE kind='game_config' AND id=? LIMIT 1"
+    ).bind(gameId).first();
+    if(!row)return fallback;
+    let data={};
+    try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+    return {
+      enabled:Number(row.enabled ?? 1)!==0,
+      min_bet:Number(data.min_bet ?? fallback.min_bet),
+      max_bet:Number(data.max_bet ?? fallback.max_bet),
+    };
+  } catch(error) {
+    if(String(error?.message ?? error).includes("no such table"))return fallback;
     throw error;
   }
 }
@@ -319,7 +496,12 @@ async function effectiveCosmeticCatalog(db) {
     if (!STORE_COSMETIC_KINDS.has(String(row.kind))) continue;
     const itemId = String(row.id ?? "").trim();
     if (!itemId) continue;
-    if (Number(row.enabled ?? 1) === 0) {
+    const startsAt=row.data?.starts_at==null?null:Number(row.data.starts_at);
+    const endsAt=row.data?.ends_at==null?null:Number(row.data.ends_at);
+    const ts=now();
+    if (Number(row.enabled ?? 1) === 0 ||
+        (startsAt!=null&&startsAt>0&&startsAt>ts) ||
+        (endsAt!=null&&endsAt>0&&endsAt<ts)) {
       map.delete(itemId);
       continue;
     }
@@ -335,6 +517,8 @@ async function effectiveCosmeticCatalog(db) {
       tier: Number(row.data?.tier ?? previous.tier ?? 0),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
       description: String(row.data?.description ?? previous.description ?? ""),
+      starts_at: startsAt,
+      ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
     });
   }
@@ -352,7 +536,12 @@ async function effectiveGiftCatalog(db) {
     if (String(row.kind) !== "gift") continue;
     const itemId = String(row.id ?? "").trim();
     if (!itemId) continue;
-    if (Number(row.enabled ?? 1) === 0) {
+    const startsAt=row.data?.starts_at==null?null:Number(row.data.starts_at);
+    const endsAt=row.data?.ends_at==null?null:Number(row.data.ends_at);
+    const ts=now();
+    if (Number(row.enabled ?? 1) === 0 ||
+        (startsAt!=null&&startsAt>0&&startsAt>ts) ||
+        (endsAt!=null&&endsAt>0&&endsAt<ts)) {
       map.delete(itemId);
       continue;
     }
@@ -366,6 +555,8 @@ async function effectiveGiftCatalog(db) {
       vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.vip_level ?? 0),
       category: String(row.data?.category ?? previous.category ?? "normal"),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
+      starts_at: startsAt,
+      ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
     });
   }
@@ -1071,6 +1262,7 @@ async function ensureImageTables(db) {
 }
 
 async function listRooms(db, viewerUserId) {
+  await ensureOwnerControlSchema(db);
   await ensureImageTables(db);
   await ensureRoomSettingsTable(db);
   await ensureVipSchema(db);
@@ -1081,7 +1273,8 @@ async function listRooms(db, viewerUserId) {
   if (!viewerCountry) return [];
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
-            u.public_id AS display_id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
+            COALESCE(io.invisible_id,0) AS owner_invisible_id,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
             COALESCE(rs.room_mode, 'voice') AS room_mode,
@@ -1091,19 +1284,22 @@ async function listRooms(db, viewerUserId) {
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id = u.id
+       LEFT JOIN owner_room_controls rc ON rc.room_id = r.id
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
-      WHERE r.country_code = ?
+      WHERE r.country_code = ? AND COALESCE(rc.banned,0)=0
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).bind(now(), viewerCountry).all();
   const rows = result.results ?? [];
   for (const row of rows) {
     const currentDisplayId = String(row.display_id ?? "").trim();
-    if (!/^[1-9]\d{6}$/.test(currentDisplayId)) {
+    if (Number(row.owner_invisible_id ?? 0) !== 1 && !/^[1-9]\d{6}$/.test(currentDisplayId)) {
       row.display_id = await ensureUserPublicId(db, String(row.owner_user_id ?? ""));
     }
+    delete row.owner_invisible_id;
   }
   return rows;
 }
@@ -2612,6 +2808,14 @@ async function sendDirectMessagePush(
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
+  try {
+    await ensureDeviceAllowed(db, request.headers.get("x-device-id"));
+  } catch (error) {
+    if (String(error?.message ?? error)==="device_banned") {
+      return json({ok:false,error:"device_banned"},{status:403});
+    }
+    throw error;
+  }
 
   if (url.pathname === "/api/auth/config" && request.method === "GET") {
     return json({
@@ -2627,10 +2831,25 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/config" && request.method === "GET") {
-    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "maintenance"];
+    const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "feature.red_pocket", "feature.friends_call", "feature.visitors", "maintenance"];
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
     return json({ ok: true, settings, announcements: await activeAnnouncements(db) });
+  }
+
+  const featurePath=url.pathname;
+  const guardedFeature =
+    featurePath.startsWith("/api/gifts/") ? ["feature.gifts","gifts_disabled"] :
+    (featurePath.startsWith("/api/games/") || featurePath.startsWith("/api/game-rooms")) ? ["feature.games","games_disabled"] :
+    (featurePath.includes("/lucky-pouch") || featurePath.includes("/red-envelope")) ? ["feature.red_pocket","red_pocket_disabled"] :
+    featurePath.startsWith("/api/messages/") ? ["feature.messages","messages_disabled"] :
+    featurePath.startsWith("/api/calls/") ? ["feature.friends_call","friends_call_disabled"] :
+    (/^\/api\/users\/[^/]+\/visitors$/.test(featurePath) ? ["feature.visitors","visitors_disabled"] : null);
+  if(guardedFeature){
+    const setting=await ownerSetting(db,guardedFeature[0],{enabled:true});
+    if(setting.enabled===false){
+      return json({ok:false,error:guardedFeature[1]},{status:403});
+    }
   }
 
   if (url.pathname === "/api/push/device" && request.method === "POST") {
@@ -2638,6 +2857,7 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     const token = String(body.token ?? "").trim();
     const platform = String(body.platform ?? "android").trim().slice(0, 24) || "android";
+    const deviceKey = String(body.device_key ?? request.headers.get("x-device-id") ?? token).trim().slice(0,500);
     const enabled = body.enabled !== false;
     if (!userId || token.length < 16 || token.length > 4096) {
       return json({ ok: false, error: "invalid_push_device" }, { status: 400 });
@@ -2645,17 +2865,24 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensurePushTables(db);
+    await ensureDeviceAllowed(db,deviceKey);
+    try {
+      const info=await db.prepare("PRAGMA table_info(push_devices)").all();
+      const cols=new Set((info.results ?? []).map(row=>String(row.name ?? "")));
+      if(!cols.has("device_key")) await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
+    } catch (_) {}
     if (enabled) {
       await db.batch([
         db.prepare(
-          `INSERT INTO push_devices(token,user_id,platform,enabled,updated_at)
-           VALUES(?,?,?,?,?)
+          `INSERT INTO push_devices(token,user_id,device_key,platform,enabled,updated_at)
+           VALUES(?,?,?,?,?,?)
            ON CONFLICT(token) DO UPDATE SET
              user_id=excluded.user_id,
+             device_key=excluded.device_key,
              platform=excluded.platform,
              enabled=excluded.enabled,
              updated_at=excluded.updated_at`
-        ).bind(token, userId, platform, 1, now()),
+        ).bind(token, userId, deviceKey, platform, 1, now()),
         db.prepare(
           `INSERT INTO push_preferences(user_id,message_enabled,updated_at)
            VALUES(?,1,?)
@@ -2983,7 +3210,12 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json(await submitFeedback(db, userId, body.category, body.message), { status: 201 });
+      const result=await submitFeedback(db, userId, body.category, body.message);
+      await ensureOwnerControlSchema(db);
+      await db.prepare(
+        "INSERT INTO owner_notifications(id,kind,title,body,user_id,read_at,created_at) VALUES(?,?,?,?,?,NULL,?)"
+      ).bind(id(),"complaint","User feedback / complaint",String(body.category ?? "Feedback")+": "+String(body.message ?? "").slice(0,1600),userId,now()).run();
+      return json(result, { status: 201 });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -3467,6 +3699,7 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureLampSchema(db);
+    await ensureOwnerControlSchema(db);
     await ensureRoomSettingsTable(db);
     await ensureImageTables(db);
     const viewer = await db.prepare(
@@ -3476,7 +3709,8 @@ async function handleApi(request, env, url) {
     if (!viewerCountry) return json({ ok:true,rooms:[] });
     const rows = await db.prepare(
       `SELECT r.id,r.name,
-              u.public_id AS display_id,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
+              COALESCE(io.invisible_id,0) AS owner_invisible_id,
               COALESCE(u.display_name,'Owner') AS owner_name,
               r.owner_user_id,
               COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
@@ -3489,19 +3723,54 @@ async function handleApi(request, env, url) {
          FROM room_followers rf
          JOIN rooms r ON r.id=rf.room_id
          LEFT JOIN users u ON u.id=r.owner_user_id
+         LEFT JOIN owner_user_overrides io ON io.user_id=u.id
+         LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
          LEFT JOIN room_images ri ON ri.room_id=r.id
          LEFT JOIN room_settings s ON s.room_id=r.id
-        WHERE rf.user_id=? AND r.country_code=?
+        WHERE rf.user_id=? AND r.country_code=? AND COALESCE(rc.banned,0)=0
         ORDER BY rf.updated_at DESC LIMIT 100`
     ).bind(userId,viewerCountry).all();
     const followedRooms = rows.results ?? [];
     for (const room of followedRooms) {
       const currentDisplayId = String(room.display_id ?? "").trim();
-      if (!/^[1-9]\d{6}$/.test(currentDisplayId)) {
+      if (Number(room.owner_invisible_id ?? 0) !== 1 && !/^[1-9]\d{6}$/.test(currentDisplayId)) {
         room.display_id = await ensureUserPublicId(db, String(room.owner_user_id ?? ""));
       }
+      delete room.owner_invisible_id;
     }
     return json({ ok:true,rooms:followedRooms });
+  }
+
+  if (url.pathname === "/api/banners" && request.method === "GET") {
+    const authError=await requireSession(request,env);
+    if(authError)return authError;
+    let rows=[];
+    try {
+      const result=await db.prepare(
+        "SELECT id,name,sort_order,json_data,updated_at FROM owner_catalog WHERE kind='banner' AND enabled=1 ORDER BY sort_order ASC,updated_at DESC LIMIT 100"
+      ).all();
+      const ts=now();
+      rows=(result.results ?? []).map(row=>{
+        let data={};
+        try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+        return {
+          id:String(row.id),
+          name:String(row.name),
+          asset_key:String(data.asset_key ?? ""),
+          link:String(data.link ?? ""),
+          starts_at:data.starts_at==null?null:Number(data.starts_at),
+          ends_at:data.ends_at==null?null:Number(data.ends_at),
+          sort_order:Number(row.sort_order ?? 0),
+          updated_at:Number(row.updated_at ?? 0),
+        };
+      }).filter(item=>
+        (item.starts_at==null || item.starts_at===0 || item.starts_at<=ts) &&
+        (item.ends_at==null || item.ends_at===0 || item.ends_at>=ts)
+      );
+    } catch(error) {
+      if(!String(error?.message ?? error).includes("no such table"))throw error;
+    }
+    return json({ok:true,banners:rows});
   }
 
   if (url.pathname === "/api/catalog" && request.method === "GET") {
@@ -3517,7 +3786,21 @@ async function handleApi(request, env, url) {
     await ensureUser(db, userId);
     await ensureCosmeticsSchema(db);
     const owned = await ownedCosmetics(db, userId, now());
-    return json({ ok: true, items: await effectiveCosmeticCatalog(db), owned });
+    const pricedItems=[];
+    for(const item of await effectiveCosmeticCatalog(db)){
+      const pricing=await ownerUserPricing(
+        db,userId,String(item.kind ?? ""),String(item.id ?? ""),
+        Number(item.price_coins ?? 0),Number(item.duration_days ?? 0),
+      );
+      pricedItems.push({
+        ...item,
+        price_coins:pricing.price_coins,
+        duration_days:pricing.duration_days,
+        owner_price_override:pricing.overridden,
+        owner_free:pricing.free,
+      });
+    }
+    return json({ ok: true, items: pricedItems, owned });
   }
 
   if (url.pathname === "/api/cosmetics/purchase" && request.method === "POST") {
@@ -3536,6 +3819,7 @@ async function handleApi(request, env, url) {
       if (!recipient) return json({ ok:false,error:"recipient_not_found" }, { status:404 });
     }
     await ensureUserAllowed(db,userId);
+    await ensureWalletAllowed(db,userId);
     if (recipientId !== userId) await ensureUserAllowed(db,recipientId);
     await ensureCosmeticsSchema(db);
     await ensureVipSchema(db);
@@ -3550,8 +3834,14 @@ async function handleApi(request, env, url) {
       }, { status:403 });
     }
 
-    const expiresAt = Number(product.duration_days ?? 0) > 0
-      ? ts + Number(product.duration_days) * 86400000
+    const pricing=await ownerUserPricing(
+      db,userId,String(product.kind ?? ""),itemId,
+      Number(product.price_coins ?? 0),Number(product.duration_days ?? 0),
+    );
+    const effectivePrice=Number(pricing.price_coins ?? 0);
+    const effectiveDuration=Number(pricing.duration_days ?? product.duration_days ?? 0);
+    const expiresAt = effectiveDuration > 0
+      ? ts + effectiveDuration * 86400000
       : 4102444800000;
     const legacy = cosmeticUsesLegacyTable(product.kind);
     const table = legacy ? "user_cosmetics" : "user_props";
@@ -3560,11 +3850,13 @@ async function handleApi(request, env, url) {
     ).bind(recipientId,itemId,ts).first();
     if (owned) return json({ ok:false,error:"already_owned" }, { status:409 });
 
-    const debit = await db.prepare(
-      "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
-    ).bind(product.price_coins,ts,userId,product.price_coins).run();
-    if (Number(debit.meta?.changes ?? 0) !== 1) {
-      return json({ ok:false,error:"insufficient_coins" }, { status:400 });
+    if(effectivePrice>0){
+      const debit = await db.prepare(
+        "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+      ).bind(effectivePrice,ts,userId,effectivePrice).run();
+      if (Number(debit.meta?.changes ?? 0) !== 1) {
+        return json({ ok:false,error:"insufficient_coins" }, { status:400 });
+      }
     }
 
     try {
@@ -3582,7 +3874,7 @@ async function handleApi(request, env, url) {
         id(),
         userId,
         recipientId===userId ? "cosmetic_purchase" : "cosmetic_gift",
-        -Number(product.price_coins),
+        -effectivePrice,
         Number(wallet?.coins ?? 0),
         itemId,
         ts,
@@ -3592,12 +3884,17 @@ async function handleApi(request, env, url) {
         item_id:itemId,
         kind:product.kind,
         coin_balance:Number(wallet?.coins ?? 0),
+        price_coins:effectivePrice,
+        free:pricing.free,
+        owner_price_override:pricing.overridden,
         expires_at:expiresAt,
         recipient_user_id:recipientId,
       });
     } catch (error) {
-      await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
-        .bind(product.price_coins,now(),userId).run();
+      if(effectivePrice>0){
+        await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+          .bind(effectivePrice,now(),userId).run();
+      }
       throw error;
     }
   }
@@ -4133,8 +4430,18 @@ async function handleApi(request, env, url) {
         user["active_" + String(prop.kind) + "_id"] = String(prop.item_id ?? "");
       }
       user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
+      const ownerIdentity=await ownerIdentityMeta(db,viewedUserId);
+      user.owner_tags=ownerIdentity.tags;
+      user.tags=ownerIdentity.tags;
+      user.invisible_id=ownerIdentity.invisible_id;
+      user.wallet_frozen=ownerIdentity.wallet_frozen;
+      if(ownerIdentity.invisible_id && viewerId !== viewedUserId){
+        user.public_id=null;
+        user.vip_custom_id=null;
+      }
     }
-    if (user && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
+    const visitorsFeature=await ownerSetting(db,"feature.visitors",{enabled:true});
+    if (user && visitorsFeature.enabled!==false && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
       const targetVip = await getVipStatus(db, viewedUserId);
       if (targetVip.active && targetVip.level >= 18 && targetVip.preferences.anonymous_everywhere === true) {
         user.display_name = "Anonymous";
@@ -4666,11 +4973,44 @@ async function handleApi(request, env, url) {
           ORDER BY created_at DESC
           LIMIT 100`
       ).bind(roomId, now()).all();
+      let globalThemes=[];
+      try {
+        const globalRows=await db.prepare(
+          "SELECT id,name,json_data,updated_at FROM owner_catalog WHERE kind='theme' AND enabled=1 ORDER BY sort_order ASC,updated_at DESC LIMIT 100"
+        ).all();
+        const ts=now();
+        globalThemes=(globalRows.results ?? []).map(row=>{
+          let data={};
+          try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+          return {
+            id:String(row.id),
+            name:String(row.name),
+            asset_key:String(data.asset_key ?? data.asset ?? ""),
+            price_coins:0,
+            created_at:Number(row.updated_at ?? ts),
+            expires_at:data.ends_at==null||Number(data.ends_at)===0?null:Number(data.ends_at),
+            starts_at:data.starts_at==null?null:Number(data.starts_at),
+            owner_global:true,
+            permanent:data.permanent===true || data.ends_at==null || Number(data.ends_at)===0,
+          };
+        }).filter(theme=>
+          theme.asset_key &&
+          (theme.starts_at==null || theme.starts_at<=ts) &&
+          (theme.expires_at==null || theme.expires_at>=ts)
+        );
+      } catch(error) {
+        if(!String(error?.message ?? error).includes("no such table")) throw error;
+      }
+      const actorRow=await db.prepare("SELECT role FROM users WHERE id=? LIMIT 1").bind(actorId).first();
+      const basePrice=String(actorRow?.role ?? "")==="platform_owner" ? 0 : 10000000;
+      const pricing=await ownerUserPricing(db,actorId,"room_theme","upload",basePrice,7);
       return json({
         ok:true,
-        user_price_coins:10000000,
-        user_duration_days:7,
-        themes:rows.results ?? [],
+        user_price_coins:pricing.price_coins,
+        user_duration_days:pricing.duration_days,
+        user_free:pricing.free,
+        owner_price_override:pricing.overridden,
+        themes:[...globalThemes,...(rows.results ?? [])],
       });
     }
 
@@ -4694,15 +5034,20 @@ async function handleApi(request, env, url) {
       ).bind(actorId).first();
       if (!actor) return json({ ok:false,error:"user_not_found" }, { status:404 });
       const platformOwner = String(actor.role ?? "") === "platform_owner";
-      const price = platformOwner ? 0 : 10000000;
+      await ensureWalletAllowed(db,actorId);
+      const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
+      const pricing=await ownerUserPricing(
+        db,actorId,"room_theme","upload",platformOwner?0:10000000,requestedDays,
+      );
+      const price=Number(pricing.price_coins ?? 0);
+      const effectiveDays=Number(pricing.duration_days ?? requestedDays);
       if (Number(actor.coins ?? 0) < price) {
         return json({ ok:false,error:"insufficient_coins",required_coins:price }, { status:409 });
       }
       const themeId = "room-theme-" + id();
       const ts = now();
-      const permanent = platformOwner && body.permanent === true;
-      const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
-      const expiresAt = permanent ? null : ts + requestedDays * 86400000;
+      const permanent = (platformOwner && body.permanent === true) || effectiveDays===0;
+      const expiresAt = permanent ? null : ts + Math.max(1,effectiveDays) * 86400000;
       if (price > 0) {
         await db.batch([
           db.prepare(
@@ -4744,6 +5089,10 @@ async function handleApi(request, env, url) {
         ok:true,
         theme:created,
         coin_balance:Number(balance?.coins ?? 0),
+        price_coins:price,
+        duration_days:permanent?0:effectiveDays,
+        free:pricing.free,
+        owner_price_override:pricing.overridden,
       }, { status:201 });
     }
 
@@ -4954,28 +5303,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/rooms" && request.method === "POST") {
-    let roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
-    if (roomCreation.enabled === false) {
-      await db.prepare(
-        "CREATE TABLE IF NOT EXISTS app_migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)"
-      ).run();
-      const repairId = "20261013_room_creation_repair";
-      const alreadyRepaired = await db.prepare(
-        "SELECT 1 AS applied FROM app_migrations WHERE id = ? LIMIT 1"
-      ).bind(repairId).first();
-      if (!alreadyRepaired) {
-        const repairTs = now();
-        await db.batch([
-          db.prepare(
-            "UPDATE owner_settings SET value_json = ?, updated_at = ? WHERE key = ?"
-          ).bind(JSON.stringify({ enabled: true }), repairTs, "feature.room_creation"),
-          db.prepare(
-            "INSERT OR IGNORE INTO app_migrations (id, applied_at) VALUES (?, ?)"
-          ).bind(repairId, repairTs),
-        ]);
-        roomCreation = { enabled: true };
-      }
-    }
+    const roomCreation = await ownerSetting(db, "feature.room_creation", { enabled: true });
     if (roomCreation.enabled === false) return json({ ok: false, error: "room_creation_disabled" }, { status: 403 });
     const body = await bodyJson(request);
     const ownerId = String(body.owner_user_id ?? "").trim();
@@ -5011,12 +5339,14 @@ async function handleApi(request, env, url) {
 
     const seatCount = requestedSeatCount;
     const roomId = ownerPublicId;
+    await ensureOwnerControlSchema(db);
     const existingRoomId = await db.prepare(
       "SELECT owner_user_id FROM rooms WHERE id=? LIMIT 1"
     ).bind(roomId).first();
     if (existingRoomId) {
       return json({ ok: false, error: "room_id_taken" }, { status: 409 });
     }
+    await db.prepare("DELETE FROM owner_room_controls WHERE room_id=?").bind(roomId).run();
 
     const ts = now();
     try {
@@ -5072,14 +5402,21 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, userId);
+    await ensureOwnerControlSchema(db);
     await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
-      `SELECT r.owner_user_id,r.locked,r.country_code,COALESCE(s.lock_password_hash,'') AS lock_password_hash
+      `SELECT r.owner_user_id,r.locked,r.country_code,
+              COALESCE(rc.banned,0) AS owner_room_banned,
+              COALESCE(s.lock_password_hash,'') AS lock_password_hash
          FROM rooms r
          LEFT JOIN room_settings s ON s.room_id=r.id
+         LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
         WHERE r.id=?`
     ).bind(roomId).first();
     if (!roomAccess) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    if (Number(roomAccess.owner_room_banned ?? 0)===1) {
+      return json({ok:false,error:"room_banned"},{status:403});
+    }
     const userCountryRow = await db.prepare(
       "SELECT country_code FROM users WHERE id=? LIMIT 1"
     ).bind(userId).first();
@@ -5095,7 +5432,13 @@ async function handleApi(request, env, url) {
     if (roomBan && roomAccess.owner_user_id !== userId) {
       return json({ ok: false, error: "room_blocked" }, { status: 403 });
     }
-    if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId) {
+    let ownerLockedBypass=false;
+    try {
+      await ensureOwnerControlSchema(db);
+      const override=await db.prepare("SELECT locked_room_bypass FROM owner_user_overrides WHERE user_id=?").bind(userId).first();
+      ownerLockedBypass=Number(override?.locked_room_bypass ?? 0)===1;
+    } catch (_) {}
+    if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId && !ownerLockedBypass) {
       const expectedHash = String(roomAccess.lock_password_hash ?? "");
       const suppliedPassword = String(body.password ?? "").trim().slice(0, 64);
       if (!expectedHash) {
@@ -5259,6 +5602,7 @@ async function handleApi(request, env, url) {
                   LIMIT 1) AS active_bubble_id
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
@@ -5321,6 +5665,7 @@ async function handleApi(request, env, url) {
     if (request.method === "GET") {
       await ensureVipSchema(db);
       await ensureCosmeticsSchema(db);
+      await ensureOwnerControlSchema(db);
       await ensureRoomControlTables(db, roomId);
       const authError = await requireSession(request, env);
       if (authError) return authError;
@@ -5340,7 +5685,11 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 14 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.invisible_entry') = 1
                      THEN 1 ELSE 0 END AS invisible_entry,
-                COALESCE(NULLIF(u.public_id,''), m.user_id) AS public_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1
+                     THEN 'Hidden'
+                     ELSE COALESCE(NULLIF(u.public_id,''), m.user_id)
+                END AS public_id,
+                COALESCE(io.invisible_id,0) AS owner_invisible_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
@@ -5352,6 +5701,7 @@ async function handleApi(request, env, url) {
                 CASE WHEN cb.user_id IS NULL THEN 0 ELSE 1 END AS chat_banned
            FROM room_members m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN rooms r ON r.id = m.room_id
            LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
@@ -6536,13 +6886,16 @@ async function handleApi(request, env, url) {
     await ensureTinniSocialSchema(db);
     const vip = await getVipStatus(db, userId, now());
     const friends = await db.prepare(
-      `SELECT u.id,u.public_id,u.display_name,u.avatar_key,u.vip_level,
+      `SELECT u.id,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+              u.display_name,u.avatar_key,u.vip_level,
               MAX(a.created_at,b.created_at) AS created_at
          FROM user_follows a
          JOIN user_follows b
            ON b.follower_id=a.target_id
           AND b.target_id=a.follower_id
          JOIN users u ON u.id=a.target_id
+         LEFT JOIN owner_user_overrides io ON io.user_id=u.id
         WHERE a.follower_id=?
         ORDER BY created_at DESC
         LIMIT 1000`
@@ -6630,8 +6983,26 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/unique-ids/catalog" && request.method === "GET") {
     const authError=await requireSession(request,env);
     if(authError) return authError;
+    const session=await verifySessionToken(bearerToken(request),String(env.SESSION_SECRET));
+    const userId=String(session.sub);
     await ensureUniqueIdStoreSchema(db);
-    return json({ok:true,unique_ids:await uniqueIdCatalog(db,now())});
+    const items=await uniqueIdCatalog(db,now());
+    const priced=[];
+    for(const item of items){
+      const pricing=await ownerUserPricing(
+        db,userId,"unique_id",String(item.public_id ?? ""),
+        Number(item.price_coins ?? 0),Number(item.duration_days ?? 0),
+      );
+      priced.push({
+        ...item,
+        price_coins:pricing.price_coins,
+        duration_days:pricing.duration_days,
+        permanent:Number(pricing.duration_days ?? 0)===0,
+        owner_price_override:pricing.overridden,
+        owner_free:pricing.free,
+      });
+    }
+    return json({ok:true,unique_ids:priced});
   }
 
   if (url.pathname === "/api/unique-ids/purchase" && request.method === "POST") {
@@ -6642,11 +7013,22 @@ async function handleApi(request, env, url) {
     if(authError) return authError;
     await ensureUser(db,userId);
     await ensureUserAllowed(db,userId);
+    await ensureWalletAllowed(db,userId);
     try{
-      const result=await purchaseUniqueId(db,userId,publicId,now());
+      const catalog=(await uniqueIdCatalog(db,now())).find(item=>String(item.public_id)===publicId);
+      if(!catalog) return json({ok:false,error:"unique_id_not_available"},{status:404});
+      const pricing=await ownerUserPricing(
+        db,userId,"unique_id",publicId,
+        Number(catalog.price_coins ?? 0),Number(catalog.duration_days ?? 0),
+      );
+      const result=await purchaseUniqueId(db,userId,publicId,now(),pricing);
       return json({
         ok:true,
         ...result,
+        price_coins:pricing.price_coins,
+        duration_days:pricing.duration_days,
+        free:pricing.free,
+        owner_price_override:pricing.overridden,
         vip:await getVipStatus(db,userId,now()),
       });
     }catch(error){
@@ -6668,6 +7050,7 @@ async function handleApi(request, env, url) {
         : 24 * 60 * 60 * 1000;
     const cutoff = now() - windowMs;
     await ensureRoomCoreSchema(db);
+    await ensureOwnerControlSchema(db);
     const session = await verifySessionToken(
       bearerToken(request),
       String(env.SESSION_SECRET),
@@ -6690,7 +7073,8 @@ async function handleApi(request, env, url) {
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
-          WHERE r.country_code=?
+           LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
+          WHERE r.country_code=? AND COALESCE(rc.banned,0)=0
           ORDER BY score DESC, online DESC, r.updated_at DESC
           LIMIT 100`
       ).bind(cutoff,viewerCountry).all();
@@ -6764,14 +7148,24 @@ async function handleApi(request, env, url) {
       category: "custom",
       asset_key: row.asset_key,
     }));
-    return json({
-      ok: true,
-      gifts: [
-        ...(await effectiveGiftCatalog(db)).filter((gift) =>
-          Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
-        ...customRows,
-      ],
-    });
+    const available=[
+      ...(await effectiveGiftCatalog(db)).filter((gift) =>
+        Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
+      ...customRows,
+    ];
+    const priced=[];
+    for(const gift of available){
+      const pricing=await ownerUserPricing(
+        db,userId,"gift",String(gift.id ?? ""),Number(gift.coin_cost ?? 0),null,
+      );
+      const price=Math.max(1,Number(pricing.price_coins ?? gift.coin_cost ?? 0));
+      priced.push({
+        ...gift,
+        coin_cost:price,
+        owner_price_override:pricing.overridden,
+      });
+    }
+    return json({ ok: true, gifts: priced });
   }
 
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
@@ -6801,13 +7195,17 @@ async function handleApi(request, env, url) {
     if (requiredVip > 0 && (!vip.active || vip.level < requiredVip)) {
       return json({ ok: false, error: "vip_required" }, { status: 403 });
     }
-    const cost = Number(gift.coin_cost ?? 0);
+    const pricing=await ownerUserPricing(
+      db,sender,"gift",giftId,Number(gift.coin_cost ?? 0),null,
+    );
+    const cost = Number(pricing.price_coins ?? gift.coin_cost ?? 0);
     if (!Number.isSafeInteger(cost) || cost <= 0) {
       return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
     }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
+    await ensureWalletAllowed(db, sender);
     await ensureUserAllowed(db, receiver);
     const eventId = id();
     const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
@@ -6822,10 +7220,6 @@ async function handleApi(request, env, url) {
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     let cpProgress = null;
     let vsProgress = null;
-    // DarkVibeX relation levels are partner-only, not gift-category-only.
-    // Any real gift sent directly between the active CP pair can advance CP,
-    // and any real gift sent directly between the active VS pair can advance VS.
-    // Third-party gifts never match the relationship pair and therefore add 0.
     if (giftId !== "cp-invite") {
       cpProgress = await recordCpGiftProgress(
         db,
@@ -6845,6 +7239,8 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       event_id: eventId,
+      gift_cost:cost,
+      owner_price_override:pricing.overridden,
       sender_coin_balance: balance,
       cp_progress: Number(cpProgress?.progress ?? 0),
       cp_state: cpProgress?.cp ?? null,
@@ -6863,7 +7259,8 @@ async function handleApi(request, env, url) {
     );
     const userId = String(session.sub);
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const ludoConfig = await ownerGameConfig(db,"ludo",{enabled:true});
+    if (gamesFeature.enabled === false || ludoConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
 
@@ -7012,7 +7409,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const authError = await requireSession(request, env);
@@ -7029,7 +7427,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const body = await bodyJson(request);
@@ -7043,11 +7442,13 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     if (!FRUIT_PARTY_BY_KEY.has(fruitKey) ||
         !FRUIT_PARTY_BET_AMOUNTS.includes(amount) ||
+        amount < gameConfig.min_bet || amount > gameConfig.max_bet ||
         !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
       return json({ ok:false,error:"invalid_bet" }, { status:400 });
     }
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
+    await ensureWalletAllowed(db,userId);
     await ensureFruitPartySchema(db);
     const ts = now();
     await syncFruitParty(db, ts);
@@ -7109,7 +7510,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/greedy-girl/state" && request.method === "GET") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const authError = await requireSession(request, env);
@@ -7126,7 +7528,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/greedy-girl/bet" && request.method === "POST") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const body = await bodyJson(request);
@@ -7138,12 +7541,14 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     if (!GREEDY_GIRL_BY_KEY.has(foodKey) ||
         !GREEDY_GIRL_BET_AMOUNTS.includes(amount) ||
+        amount < gameConfig.min_bet || amount > gameConfig.max_bet ||
         !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
       return json({ ok:false,error:"invalid_bet" }, { status:400 });
     }
 
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
+    await ensureWalletAllowed(db,userId);
     await ensureGreedyGirlSchema(db);
     const ts = now();
     const roundId = greedyGirlRoundId(ts);
@@ -7596,11 +8001,23 @@ export default {
     }
 
     try {
+      const requestDeviceKey=String(request.headers.get("x-device-id") ?? "").trim();
+      if(requestDeviceKey){
+        const requestDb=requireDb(env);
+        try {
+          await ensureDeviceAllowed(requestDb,requestDeviceKey);
+        } catch(error) {
+          if(String(error?.message ?? error)==="device_banned"){
+            return json({ok:false,error:"device_banned"},{status:403});
+          }
+          throw error;
+        }
+      }
       if (url.pathname === "/api/files" && request.method === "GET") {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts|room-themes)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|room-themes|banners)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {

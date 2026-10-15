@@ -4,6 +4,8 @@ import { adjustRoleWallet, roleWalletDetail } from "./role_wallets.js";
 import { COSMETIC_CATALOG } from "./cosmetics.js";
 import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
+import { VIP_LEVELS } from "./vip_policy.js";
+import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -64,19 +66,47 @@ function defaultPermissions(role) {
       "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
       "treasury.read", "economy.read",
       "support.read", "support.write",
-      "rooms.read", "rooms.write", "catalog.read", "catalog.write",
+      "messaging.read", "messaging.write", "tags.write",
+      "users.device", "users.override", "wallet.freeze",
+      "rooms.read", "rooms.write", "rooms.live", "rooms.media", "rooms.theme",
+      "roles.read", "roles.write", "banners.read", "banners.write",
+      "games.read", "games.write", "policies.read", "policies.write",
+      "catalog.read", "catalog.write",
       "settings.read", "settings.write", "announcements.read", "announcements.write",
       "staff.read", "audit.read",
     ];
   }
   if (role === "manager") {
     return [
-      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "catalog.read",
-      "catalog.write", "settings.read", "announcements.read", "announcements.write",
+      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "rooms.live",
+      "messaging.read", "roles.read", "banners.read", "games.read", "policies.read",
+      "catalog.read", "catalog.write", "settings.read", "announcements.read", "announcements.write",
       "audit.read",
     ];
   }
   return ["dashboard", "users.read", "users.moderate", "rooms.read", "rooms.write", "audit.read"];
+}
+
+async function ownerVipRule(db,level){
+  const base=VIP_LEVELS[Number(level)-1] ?? null;
+  if(!base)return null;
+  try{
+    const row=await db.prepare(
+      "SELECT name,enabled,json_data FROM owner_catalog WHERE kind='vip_rule' AND id=? LIMIT 1"
+    ).bind(String(level)).first();
+    if(!row)return {...base,enabled:true,name:"VIP "+level};
+    const data=safeParse(row.json_data,{});
+    const days=Number(data.validity_days ?? base.days);
+    return {
+      ...base,
+      enabled:Number(row.enabled ?? 1)!==0,
+      name:String(row.name ?? ("VIP "+level)),
+      days:Number.isSafeInteger(days)&&days>=1&&days<=3650?days:base.days,
+    };
+  }catch(error){
+    if(String(error?.message ?? error).includes("no such table"))return {...base,enabled:true,name:"VIP "+level};
+    throw error;
+  }
 }
 
 function can(actor, permission) {
@@ -206,6 +236,17 @@ async function ensureOwnerSchema(db) {
       value_json TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_price_overrides (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      item_id TEXT NOT NULL DEFAULT '*',
+      price_coins INTEGER,
+      free INTEGER NOT NULL DEFAULT 0 CHECK(free IN (0,1)),
+      duration_days INTEGER,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,kind,item_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_price_override_kind ON owner_user_price_overrides(kind,user_id,updated_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_catalog (
       kind TEXT NOT NULL,
       id TEXT NOT NULL,
@@ -275,8 +316,162 @@ async function ensureOwnerSchema(db) {
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.games', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.messages', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.room_creation', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.aladdin_lamp', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.red_pocket', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.friends_call', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.visitors', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_notifications (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'platform',
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      user_id TEXT,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_notifications_time ON owner_notifications(created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
+      user_id TEXT PRIMARY KEY,
+      invisible_id INTEGER NOT NULL DEFAULT 0 CHECK(invisible_id IN (0,1)),
+      locked_room_bypass INTEGER NOT NULL DEFAULT 0 CHECK(locked_room_bypass IN (0,1)),
+      wallet_frozen INTEGER NOT NULL DEFAULT 0 CHECK(wallet_frozen IN (0,1)),
+      wallet_banned INTEGER NOT NULL DEFAULT 0 CHECK(wallet_banned IN (0,1)),
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_room_controls (
+      room_id TEXT PRIMARY KEY,
+      banned INTEGER NOT NULL DEFAULT 0 CHECK(banned IN (0,1)),
+      note TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_device_bans (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT,
+      banned INTEGER NOT NULL DEFAULT 1 CHECK(banned IN (0,1)),
+      note TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_device_bans_user ON owner_device_bans(user_id,updated_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_devices (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_devices_user ON owner_user_devices(user_id,last_seen_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_tags (
+      user_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#FFD54F',
+      kind TEXT NOT NULL DEFAULT 'custom',
+      designation TEXT NOT NULL DEFAULT '',
+      background_color TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,tag_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_tags_kind ON owner_user_tags(kind,designation,updated_at DESC)"),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
+      BEFORE UPDATE OF coins ON users
+      WHEN NEW.coins < OLD.coins
+       AND EXISTS(
+         SELECT 1 FROM owner_user_overrides o
+          WHERE o.user_id=OLD.id AND o.wallet_frozen=1
+       )
+      BEGIN
+        SELECT RAISE(ABORT,'wallet_frozen');
+      END`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_images (
+      room_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_settings (
+      room_id TEXT PRIMARY KEY,
+      announcement TEXT NOT NULL DEFAULT '',
+      theme_id TEXT NOT NULL DEFAULT 'dark',
+      group_pk_enabled INTEGER NOT NULL DEFAULT 0,
+      welcome_image_key TEXT NOT NULL DEFAULT '',
+      party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
+      room_mode TEXT NOT NULL DEFAULT 'voice',
+      seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold',
+      mic_mode TEXT NOT NULL DEFAULT 'free',
+      public_screen_enabled INTEGER NOT NULL DEFAULT 1,
+      lock_password_hash TEXT NOT NULL DEFAULT '',
+      lock_password_code TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_custom_themes (
+      id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      owner_user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      asset_key TEXT NOT NULL,
+      price_coins INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS push_devices (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      device_key TEXT NOT NULL DEFAULT '',
+      platform TEXT NOT NULL DEFAULT 'android',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_push_devices_owner_user ON push_devices(user_id,updated_at DESC)"),
+    db.prepare(`INSERT OR IGNORE INTO users
+      (id,public_id,display_name,role,coins,diamonds,vip_level,created_at,updated_at)
+      VALUES('darkvibex_official',NULL,'DarkVibeX Official','platform_owner',0,0,0,?,?)`).bind(now(),now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('maintenance', '{\"enabled\":false,\"message\":\"\"}', ?)").bind(now()),
   ]);
+  try {
+    const overrideInfo=await db.prepare("PRAGMA table_info(owner_user_overrides)").all();
+    const overrideColumns=new Set((overrideInfo.results ?? []).map(row=>String(row.name ?? "")));
+    if(!overrideColumns.has("wallet_banned")){
+      await db.prepare("ALTER TABLE owner_user_overrides ADD COLUMN wallet_banned INTEGER NOT NULL DEFAULT 0").run();
+    }
+  } catch (_) {}
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_ban_guard
+    BEFORE UPDATE OF coins, diamonds ON users
+    WHEN (NEW.coins <> OLD.coins OR NEW.diamonds <> OLD.diamonds)
+     AND EXISTS(
+       SELECT 1 FROM owner_user_overrides o
+        WHERE o.user_id=OLD.id AND o.wallet_banned=1
+     )
+    BEGIN
+      SELECT RAISE(ABORT,'wallet_banned');
+    END`).run();
+  try {
+    const pushInfo = await db.prepare("PRAGMA table_info(push_devices)").all();
+    const pushColumns = new Set((pushInfo.results ?? []).map((row) => String(row.name ?? "")));
+    if (!pushColumns.has("device_key")) {
+      await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
+    }
+  } catch (_) {}
+  try {
+    const roomSettingsInfo = await db.prepare("PRAGMA table_info(room_settings)").all();
+    const roomSettingsColumns = new Set((roomSettingsInfo.results ?? []).map((row) => String(row.name ?? "")));
+    const roomSettingsAdditions = [
+      ["announcement", "TEXT NOT NULL DEFAULT ''"],
+      ["theme_id", "TEXT NOT NULL DEFAULT 'dark'"],
+      ["group_pk_enabled", "INTEGER NOT NULL DEFAULT 0"],
+      ["welcome_image_key", "TEXT NOT NULL DEFAULT ''"],
+      ["party_mode", "TEXT NOT NULL DEFAULT 'Friends-making Party'"],
+      ["room_mode", "TEXT NOT NULL DEFAULT 'voice'"],
+      ["seat_theme_id", "TEXT NOT NULL DEFAULT 'royal-gold'"],
+      ["mic_mode", "TEXT NOT NULL DEFAULT 'free'"],
+      ["public_screen_enabled", "INTEGER NOT NULL DEFAULT 1"],
+      ["lock_password_hash", "TEXT NOT NULL DEFAULT ''"],
+      ["lock_password_code", "TEXT NOT NULL DEFAULT ''"],
+      ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
+    ];
+    for (const [name, definition] of roomSettingsAdditions) {
+      if (!roomSettingsColumns.has(name)) {
+        await db.prepare(`ALTER TABLE room_settings ADD COLUMN ${name} ${definition}`).run();
+      }
+    }
+  } catch (_) {}
   const userInfo = await db.prepare("PRAGMA table_info(users)").all();
   const userColumns = new Set((userInfo.results ?? []).map((row) => String(row.name ?? "")));
   if (!userColumns.has("public_id")) {
@@ -327,7 +522,7 @@ async function getUserDetails(db, userId) {
     "SELECT id, kind, amount, balance_after, reference_id, created_at FROM wallet_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 25"
   ).bind(userId).all();
   const room = await db.prepare(
-    `SELECT m.room_id, m.seat_index, m.mic_muted, m.updated_at, r.name AS room_name
+    `SELECT m.room_id, m.seat_index, m.mic_muted, m.joined_at, m.updated_at, r.name AS room_name
        FROM room_members m LEFT JOIN rooms r ON r.id = m.room_id
       WHERE m.user_id = ? ORDER BY m.updated_at DESC LIMIT 1`
   ).bind(userId).first();
@@ -340,12 +535,112 @@ async function getUserDetails(db, userId) {
   const oldIds = await db.prepare(
     "SELECT public_id, changed_at, changed_by FROM owner_public_id_history WHERE user_id = ? ORDER BY changed_at DESC LIMIT 25"
   ).bind(userId).all();
+  const overrides = await db.prepare(
+    "SELECT invisible_id,locked_room_bypass,wallet_frozen,wallet_banned,updated_at FROM owner_user_overrides WHERE user_id=?"
+  ).bind(userId).first();
+  const devices = await db.prepare(
+    `SELECT d.device_key,
+            COALESCE(
+              (SELECT p.token FROM push_devices p
+                WHERE p.user_id=d.user_id
+                  AND (p.device_key=d.device_key OR p.token=d.device_key)
+                ORDER BY p.updated_at DESC LIMIT 1),
+              ''
+            ) AS token,
+            COALESCE(
+              (SELECT p.platform FROM push_devices p
+                WHERE p.user_id=d.user_id
+                  AND (p.device_key=d.device_key OR p.token=d.device_key)
+                ORDER BY p.updated_at DESC LIMIT 1),
+              'android'
+            ) AS platform,
+            COALESCE(
+              (SELECT p.enabled FROM push_devices p
+                WHERE p.user_id=d.user_id
+                  AND (p.device_key=d.device_key OR p.token=d.device_key)
+                ORDER BY p.updated_at DESC LIMIT 1),
+              1
+            ) AS enabled,
+            d.last_seen_at AS updated_at,
+            COALESCE(b.banned,0) AS banned,
+            COALESCE(b.note,'') AS ban_note
+       FROM owner_user_devices d
+       LEFT JOIN owner_device_bans b ON b.device_key=d.device_key
+      WHERE d.user_id=?
+      ORDER BY d.last_seen_at DESC LIMIT 20`
+  ).bind(userId).all();
+  const tags = await db.prepare(
+    "SELECT tag_id,name,color,kind,designation,background_color,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC"
+  ).bind(userId).all();
+
+  const [giftStats,gameStats,purchaseStats,recentGames,recentGifts,coinRateRow] = await Promise.all([
+    db.prepare(
+      `SELECT
+          COALESCE(SUM(CASE WHEN sender_user_id=? THEN coin_cost ELSE 0 END),0) AS sent_coins,
+          COALESCE(SUM(CASE WHEN receiver_user_id=? THEN coin_cost ELSE 0 END),0) AS received_coins,
+          COALESCE(SUM(CASE WHEN sender_user_id=? THEN 1 ELSE 0 END),0) AS sent_count,
+          COALESCE(SUM(CASE WHEN receiver_user_id=? THEN 1 ELSE 0 END),0) AS received_count
+         FROM gift_events
+        WHERE sender_user_id=? OR receiver_user_id=?`
+    ).bind(userId,userId,userId,userId,userId,userId).first(),
+    db.prepare(
+      `SELECT COUNT(*) AS bet_count,COALESCE(SUM(stake),0) AS wagered,
+              COALESCE(SUM(payout),0) AS payout,COALESCE(SUM(stake-payout),0) AS house_result
+         FROM game_bets WHERE user_id=?`
+    ).bind(userId).first(),
+    db.prepare(
+      `SELECT COUNT(*) AS purchase_count,
+              COALESCE(SUM(CASE WHEN amount<0 THEN -amount ELSE 0 END),0) AS purchase_coins
+         FROM wallet_ledger
+        WHERE user_id=? AND (kind LIKE '%purchase%' OR kind LIKE '%buy%')`
+    ).bind(userId).first(),
+    db.prepare(
+      "SELECT game_id,stake,result,payout,created_at FROM game_bets WHERE user_id=? ORDER BY created_at DESC LIMIT 10"
+    ).bind(userId).all(),
+    db.prepare(
+      `SELECT CASE WHEN sender_user_id=? THEN 'sent' ELSE 'received' END AS direction,
+              room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,created_at
+         FROM gift_events
+        WHERE sender_user_id=? OR receiver_user_id=?
+        ORDER BY created_at DESC LIMIT 10`
+    ).bind(userId,userId,userId).all(),
+    db.prepare("SELECT value_json,updated_at FROM owner_settings WHERE key='economy.coin_rate'").first(),
+  ]);
+  const coinRateConfig=safeParse(coinRateRow?.value_json,{coins_per_usd:5000000});
+  const coinsPerUsd=Math.max(1,Number(coinRateConfig?.coins_per_usd ?? 5000000)||5000000);
+  const currentRoom=room ?? null;
+  const joinedAt=Number(currentRoom?.joined_at ?? 0);
+  const investigation={
+    coin_rate_coins_per_usd:coinsPerUsd,
+    wallet_usd:Number(user.coins ?? 0)/coinsPerUsd,
+    diamonds:Number(user.diamonds ?? 0),
+    room_id:currentRoom?.room_id ?? null,
+    room_name:currentRoom?.room_name ?? null,
+    room_joined_at:joinedAt||null,
+    online_duration_ms:joinedAt>0?Math.max(0,now()-joinedAt):0,
+    sent_gift_coins:Number(giftStats?.sent_coins ?? 0),
+    received_gift_coins:Number(giftStats?.received_coins ?? 0),
+    sent_gift_count:Number(giftStats?.sent_count ?? 0),
+    received_gift_count:Number(giftStats?.received_count ?? 0),
+    purchase_count:Number(purchaseStats?.purchase_count ?? 0),
+    purchase_coins:Number(purchaseStats?.purchase_coins ?? 0),
+    game_bet_count:Number(gameStats?.bet_count ?? 0),
+    game_wagered:Number(gameStats?.wagered ?? 0),
+    game_payout:Number(gameStats?.payout ?? 0),
+    game_house_result:Number(gameStats?.house_result ?? 0),
+    recent_games:recentGames.results ?? [],
+    recent_gifts:recentGifts.results ?? [],
+  };
   return {
     ...user,
     wallet_ledger: ledger.results ?? [],
     role_wallets,
     old_public_ids: oldIds.results ?? [],
     current_room: room ?? null,
+    investigation,
+    owner_overrides: overrides ?? {invisible_id:0,locked_room_bypass:0,wallet_frozen:0,wallet_banned:0},
+    devices: devices.results ?? [],
+    tags: tags.results ?? [],
   };
 }
 
@@ -354,10 +649,12 @@ async function listRooms(db, query = "") {
   const pattern = `%${q}%`;
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.created_at, r.updated_at,
+            COALESCE(rc.banned,0) AS banned,
             COALESCE(u.display_name, '') AS owner_name,
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
       WHERE (? = '' OR r.id LIKE ? OR r.name LIKE ? OR r.owner_user_id LIKE ? OR u.display_name LIKE ?)
       ORDER BY r.updated_at DESC LIMIT 200`
   ).bind(q, pattern, pattern, pattern, pattern).all();
@@ -366,6 +663,9 @@ async function listRooms(db, query = "") {
 
 async function handleOverview(db, actor) {
   requirePermission(actor, "dashboard");
+  const auditPromise=actor.type==="owner"
+    ? db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all()
+    : db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit WHERE actor_type='staff' AND actor_id=? ORDER BY created_at DESC LIMIT 12").bind(actor.id).all();
   const [users, rooms, online, coins, diamonds, banned, gifts, bets, roomRows, auditRows] = await Promise.all([
     db.prepare("SELECT COUNT(*) AS value FROM users").first(),
     db.prepare("SELECT COUNT(*) AS value FROM rooms").first(),
@@ -376,12 +676,12 @@ async function handleOverview(db, actor) {
     db.prepare("SELECT COUNT(*) AS value FROM gift_events").first(),
     db.prepare("SELECT COUNT(*) AS value FROM game_bets").first(),
     listRooms(db),
-    db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all(),
+    auditPromise,
   ]);
   const treasury = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
   return json({
     ok: true,
-    actor: { id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions },
+    actor: { type:actor.type, id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions },
     stats: {
       users: Number(users?.value ?? 0), rooms: Number(rooms?.value ?? 0), online: Number(online?.value ?? 0),
       coins: Number(coins?.value ?? 0), diamonds: Number(diamonds?.value ?? 0), banned: Number(banned?.value ?? 0),
@@ -428,19 +728,31 @@ async function handleUsers(request, db, actor, url, parts) {
     const role = body.role == null ? current.role : normalizeRole(body.role);
     const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 18, Number(current.vip_level ?? 0));
     const changedAt = now();
-    await db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
-      .bind(name || current.display_name, role, vip, changedAt, userId).run();
-    if (body.vip_level != null && vip !== Number(current.vip_level ?? 0)) {
-      try {
-        const activeUntil = vip > 0
-          ? changedAt + (vip >= 18 ? 45 : 30) * 24 * 60 * 60 * 1000
-          : null;
-        await db.prepare("UPDATE user_vip SET level = ?, active_until = ?, updated_at = ? WHERE user_id = ?")
-          .bind(vip, activeUntil, changedAt, userId).run();
-      } catch (error) {
-        if (!String(error?.message ?? error).includes("no such table")) throw error;
+    const vipChanged=body.vip_level != null && vip !== Number(current.vip_level ?? 0);
+    let activeUntil=null;
+    if(vipChanged){
+      await ensureVipSchema(db);
+      await getVipStatus(db,userId,changedAt);
+      if(vip>0){
+        const rule=await ownerVipRule(db,vip);
+        if(!rule || rule.enabled===false){
+          return json({ok:false,error:"vip_level_disabled"},{status:409});
+        }
+        activeUntil=changedAt+Number(rule.days ?? 30)*24*60*60*1000;
       }
     }
+    const statements=[
+      db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
+        .bind(name || current.display_name, role, vip, changedAt, userId),
+    ];
+    if(vipChanged){
+      statements.push(
+        db.prepare(
+          "UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?"
+        ).bind(vip,activeUntil,String(activeUntil ?? ""),changedAt,userId)
+      );
+    }
+    await db.batch(statements);
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
     return json({ ok: true, user: await getUserDetails(db, userId) });
   }
@@ -534,6 +846,13 @@ async function handleUsers(request, db, actor, url, parts) {
           referenceId:"owner:"+actor.id,
           ts,
         });
+        if(Object.prototype.hasOwnProperty.call(body,"role_wallet_banned")){
+          const nextStatus=body.role_wallet_banned===true?"banned":"active";
+          await db.prepare(
+            "UPDATE role_wallets SET status=?,updated_at=? WHERE user_id=? AND wallet_type=?"
+          ).bind(nextStatus,ts,userId,walletType).run();
+          roleWallet={...roleWallet,status:nextStatus,banned:nextStatus==="banned"};
+        }
       }catch(error){
         return json({ok:false,error:String(error?.message ?? error)},{status:400});
       }
@@ -541,7 +860,7 @@ async function handleUsers(request, db, actor, url, parts) {
 
     await audit(
       db,actor,"wallet_adjustment","user",userId,
-      `coins=${coinDelta}; diamonds=${diamondDelta}; role=${walletType || "-"}`
+      `coins=${coinDelta}; diamonds=${diamondDelta}; role=${walletType || "-"}; role_banned=${body.role_wallet_banned===true}`
     );
     return json({
       ok:true,
@@ -566,6 +885,45 @@ async function handleUsers(request, db, actor, url, parts) {
     ).bind(userId, status, mutedUntil, bannedUntil, note, now()).run();
     await audit(db, actor, "moderation_update", "user", userId, `status=${status}`);
     return json({ ok: true, user: await getUserDetails(db, userId) });
+  }
+
+  if (parts[4] === "owner-overrides" && request.method === "POST") {
+    requirePermission(actor, "users.override");
+    const body = await bodyJson(request);
+    const invisible = body.invisible_id === true ? 1 : 0;
+    const bypass = body.locked_room_bypass === true ? 1 : 0;
+    const frozen = body.wallet_frozen === true ? 1 : 0;
+    const walletBanned = body.wallet_banned === true ? 1 : 0;
+    const exists = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
+    if (!exists) return json({ok:false,error:"not_found"},{status:404});
+    await db.prepare(
+      `INSERT INTO owner_user_overrides(user_id,invisible_id,locked_room_bypass,wallet_frozen,wallet_banned,updated_at)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET invisible_id=excluded.invisible_id,
+         locked_room_bypass=excluded.locked_room_bypass,wallet_frozen=excluded.wallet_frozen,
+         wallet_banned=excluded.wallet_banned,updated_at=excluded.updated_at`
+    ).bind(userId,invisible,bypass,frozen,walletBanned,now()).run();
+    await audit(db,actor,"user_owner_overrides","user",userId,`invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}; wallet_banned=${walletBanned}`);
+    return json({ok:true,user:await getUserDetails(db,userId)});
+  }
+
+  if (parts[4] === "device-ban" && request.method === "POST") {
+    requirePermission(actor, "users.device");
+    const body = await bodyJson(request);
+    const deviceKey = String(body.device_key ?? body.token ?? "").trim().slice(0,500);
+    if (!deviceKey) return json({ok:false,error:"device_key_required"},{status:400});
+    const banned = body.banned === false ? 0 : 1;
+    const note = String(body.note ?? "").trim().slice(0,300);
+    await db.prepare(
+      `INSERT INTO owner_device_bans(device_key,user_id,banned,note,updated_at) VALUES(?,?,?,?,?)
+       ON CONFLICT(device_key) DO UPDATE SET user_id=excluded.user_id,banned=excluded.banned,note=excluded.note,updated_at=excluded.updated_at`
+    ).bind(deviceKey,userId,banned,note,now()).run();
+    if (banned) {
+      await db.prepare("UPDATE push_devices SET enabled=0 WHERE user_id=? AND (device_key=? OR token=?)")
+        .bind(userId,deviceKey,deviceKey).run();
+    }
+    await audit(db,actor,banned?"device_ban":"device_unban","user",userId,deviceKey.slice(0,80));
+    return json({ok:true,user:await getUserDetails(db,userId)});
   }
 
   return null;
@@ -595,9 +953,96 @@ async function handleRooms(request, db, actor, url, parts) {
 
   if (parts.length === 4 && request.method === "DELETE") {
     requirePermission(actor, "rooms.write");
+    await db.prepare("DELETE FROM owner_room_controls WHERE room_id = ?").bind(roomId).run();
     await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
     return json({ ok: true });
+  }
+
+  if (parts[4] === "ban" && request.method === "POST") {
+    requirePermission(actor,"rooms.write");
+    const body=await bodyJson(request);
+    const exists=await db.prepare("SELECT id FROM rooms WHERE id=?").bind(roomId).first();
+    if(!exists)return json({ok:false,error:"not_found"},{status:404});
+    const banned=body.banned===false?0:1;
+    const note=String(body.note ?? "").trim().slice(0,300);
+    await db.prepare(
+      `INSERT INTO owner_room_controls(room_id,banned,note,updated_at) VALUES(?,?,?,?)
+       ON CONFLICT(room_id) DO UPDATE SET banned=excluded.banned,note=excluded.note,updated_at=excluded.updated_at`
+    ).bind(roomId,banned,note,now()).run();
+    if(banned) await db.prepare("DELETE FROM room_members WHERE room_id=?").bind(roomId).run();
+    await audit(db,actor,banned?"room_ban":"room_unban","room",roomId,note);
+    return json({ok:true,banned:Boolean(banned)});
+  }
+
+  if (parts[4] === "live" && request.method === "GET") {
+    requirePermission(actor,"rooms.live");
+    const room = await db.prepare(
+      `SELECT r.*,COALESCE(u.display_name,'') AS owner_name,ri.image_key,
+              COALESCE(rs.theme_id,'dark') AS theme_id,COALESCE(rs.announcement,'') AS announcement,
+              COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
+              COALESCE(rs.room_mode,'voice') AS room_mode,COALESCE(rs.lock_password_code,'') AS lock_code,
+              COALESCE(ct.asset_key,'') AS background_key
+         FROM rooms r LEFT JOIN users u ON u.id=r.owner_user_id
+         LEFT JOIN room_images ri ON ri.room_id=r.id
+         LEFT JOIN room_settings rs ON rs.room_id=r.id
+         LEFT JOIN room_custom_themes ct ON ct.id=rs.theme_id AND ct.room_id=r.id
+        WHERE r.id=?`
+    ).bind(roomId).first();
+    if(!room) return json({ok:false,error:"not_found"},{status:404});
+    const members=await db.prepare(
+      `SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,m.updated_at,
+              u.public_id,u.display_name,u.avatar_key,u.vip_level
+         FROM room_members m LEFT JOIN users u ON u.id=m.user_id
+        WHERE m.room_id=? ORDER BY CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END,m.seat_index,m.joined_at`
+    ).bind(roomId).all();
+    return json({ok:true,room,members:members.results ?? []});
+  }
+
+  if (parts[4] === "media" && request.method === "POST") {
+    requirePermission(actor,"rooms.media");
+    const body=await bodyJson(request);
+    const room=await db.prepare("SELECT owner_user_id FROM rooms WHERE id=?").bind(roomId).first();
+    if(!room) return json({ok:false,error:"not_found"},{status:404});
+    const ts=now();
+    if(Object.prototype.hasOwnProperty.call(body,"image_key")){
+      const imageKey=String(body.image_key ?? "").trim().slice(0,500);
+      if(imageKey){
+        await db.prepare(
+          "INSERT INTO room_images(room_id,image_key,updated_at) VALUES(?,?,?) ON CONFLICT(room_id) DO UPDATE SET image_key=excluded.image_key,updated_at=excluded.updated_at"
+        ).bind(roomId,imageKey,ts).run();
+      }else{
+        await db.prepare("DELETE FROM room_images WHERE room_id=?").bind(roomId).run();
+      }
+    }
+    if(Object.prototype.hasOwnProperty.call(body,"background_key")){
+      const backgroundKey=String(body.background_key ?? "").trim().slice(0,500);
+      await db.prepare("INSERT OR IGNORE INTO room_settings(room_id,updated_at) VALUES(?,?)").bind(roomId,ts).run();
+      if(backgroundKey){
+        const themeId="owner-theme-"+roomId;
+        await db.prepare(
+          `INSERT INTO room_custom_themes(id,room_id,owner_user_id,name,asset_key,price_coins,created_at,expires_at)
+           VALUES(?,?,?,?,?,0,?,NULL)
+           ON CONFLICT(id) DO UPDATE SET asset_key=excluded.asset_key,created_at=excluded.created_at,expires_at=NULL`
+        ).bind(themeId,roomId,room.owner_user_id,"Owner Background",backgroundKey,ts).run();
+        await db.prepare("UPDATE room_settings SET theme_id=?,updated_at=? WHERE room_id=?").bind(themeId,ts,roomId).run();
+      }else{
+        await db.prepare("UPDATE room_settings SET theme_id='dark',updated_at=? WHERE room_id=?").bind(ts,roomId).run();
+        await db.prepare("DELETE FROM room_custom_themes WHERE id=?").bind("owner-theme-"+roomId).run();
+      }
+    }
+    await audit(db,actor,"room_media_update","room",roomId,"DP/background override");
+    return json({ok:true});
+  }
+
+  if (parts[4] === "theme" && request.method === "POST") {
+    requirePermission(actor,"rooms.theme");
+    const body=await bodyJson(request);
+    const themeId=String(body.theme_id ?? "dark").trim().slice(0,120);
+    await db.prepare("INSERT OR IGNORE INTO room_settings(room_id,updated_at) VALUES(?,?)").bind(roomId,now()).run();
+    await db.prepare("UPDATE room_settings SET theme_id=?,updated_at=? WHERE room_id=?").bind(themeId,now(),roomId).run();
+    await audit(db,actor,"room_theme_override","room",roomId,themeId);
+    return json({ok:true,theme_id:themeId});
   }
   return null;
 }
@@ -656,6 +1101,426 @@ async function handleSettings(request, db, actor, parts) {
   return null;
 }
 
+
+
+async function handleNotifications(request, db, actor, parts) {
+  if(actor.type!=="owner"){
+    const error=new Error("owner_only_notifications");
+    error.status=403;
+    throw error;
+  }
+  if(parts.length===3 && request.method==="GET"){
+    requirePermission(actor,"notifications.read");
+    const rows=await db.prepare(
+      "SELECT id,kind,title,body,user_id,read_at,created_at FROM owner_notifications ORDER BY created_at DESC LIMIT 300"
+    ).all();
+    return json({ok:true,notifications:rows.results ?? []});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"notifications.write");
+    const body=await bodyJson(request);
+    const title=String(body.title ?? "Owner notification").trim().slice(0,160);
+    const message=String(body.body ?? "").trim().slice(0,2000);
+    if(!message) return json({ok:false,error:"body_required"},{status:400});
+    const notificationId=id();
+    await db.prepare(
+      "INSERT INTO owner_notifications(id,kind,title,body,user_id,read_at,created_at) VALUES(?,?,?,?,?,NULL,?)"
+    ).bind(notificationId,String(body.kind ?? "platform").slice(0,40),title,message,String(body.user_id ?? "").trim()||null,now()).run();
+    await audit(db,actor,"notification_create","notification",notificationId,title);
+    return json({ok:true,id:notificationId});
+  }
+  const notificationId=decodeURIComponent(parts[3] ?? "");
+  if(notificationId && parts[4]==="read" && request.method==="POST"){
+    requirePermission(actor,"notifications.write");
+    await db.prepare("UPDATE owner_notifications SET read_at=? WHERE id=?").bind(now(),notificationId).run();
+    return json({ok:true});
+  }
+  if(notificationId && request.method==="DELETE"){
+    requirePermission(actor,"notifications.write");
+    await db.prepare("DELETE FROM owner_notifications WHERE id=?").bind(notificationId).run();
+    await audit(db,actor,"notification_delete","notification",notificationId,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleMessaging(request, db, actor, url, parts) {
+  if(parts[2]==="messages" && request.method==="POST"){
+    requirePermission(actor,"messaging.write");
+    const body=await bodyJson(request);
+    const message=String(body.text ?? "").trim().slice(0,2000);
+    if(!message) return json({ok:false,error:"message_required"},{status:400});
+    let recipients=[];
+    if(body.all_users===true){
+      const rows=await db.prepare("SELECT id FROM users WHERE id<>'darkvibex_official' ORDER BY created_at ASC LIMIT 10000").all();
+      recipients=(rows.results ?? []).map(r=>String(r.id));
+    }else{
+      recipients=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
+    }
+    const ts=now();
+    for(const userId of recipients){
+      await db.prepare(
+        "INSERT INTO direct_messages(id,sender_user_id,receiver_user_id,text,created_at,read_at) VALUES(?,?,?,?,?,NULL)"
+      ).bind(id(),"darkvibex_official",userId,message,ts).run();
+    }
+    await audit(db,actor,"official_message","users",body.all_users===true?"all":String(recipients.length),message.slice(0,120));
+    return json({ok:true,sent:recipients.length});
+  }
+  if(parts[2]==="tags" && request.method==="POST"){
+    requirePermission(actor,"tags.write");
+    const body=await bodyJson(request);
+    const userIds=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
+    const name=String(body.name ?? "").trim().slice(0,60);
+    if(!name||userIds.length===0) return json({ok:false,error:"name_and_users_required"},{status:400});
+    const kind=String(body.kind ?? "custom").trim().slice(0,40);
+    const designation=String(body.designation ?? "").trim().slice(0,80);
+    const color=String(body.color ?? "#FFD54F").trim().slice(0,20);
+    const background=String(body.background_color ?? color).trim().slice(0,20);
+    const rawId=kind==="v_official" ? "v-official-"+designation : name;
+    const tagId=String(body.tag_id ?? rawId.toLowerCase().replace(/[^a-z0-9]+/g,"-")).slice(0,100);
+    const ts=now();
+    for(const userId of userIds){
+      await db.prepare(
+        `INSERT INTO owner_user_tags(user_id,tag_id,name,color,kind,designation,background_color,created_at,updated_at)
+         VALUES(?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(user_id,tag_id) DO UPDATE SET name=excluded.name,color=excluded.color,kind=excluded.kind,
+           designation=excluded.designation,background_color=excluded.background_color,updated_at=excluded.updated_at`
+      ).bind(userId,tagId,name,color,kind,designation,background,ts,ts).run();
+    }
+    await audit(db,actor,"tag_apply","users",String(userIds.length),name);
+    return json({ok:true,tagged:userIds.length,name,tag_id:tagId});
+  }
+  if(parts[2]==="tags" && request.method==="GET"){
+    requirePermission(actor,"messaging.read");
+    const kind=String(url.searchParams.get("kind") ?? "").trim();
+    const rows=await db.prepare(
+      `SELECT t.user_id,t.tag_id,t.name,t.color,t.kind,t.designation,t.background_color,t.updated_at,
+              u.public_id,u.display_name,u.avatar_key
+         FROM owner_user_tags t LEFT JOIN users u ON u.id=t.user_id
+        WHERE (?='' OR t.kind=?) ORDER BY t.designation,t.updated_at DESC LIMIT 1000`
+    ).bind(kind,kind).all();
+    return json({ok:true,tags:rows.results ?? []});
+  }
+  const userId=decodeURIComponent(parts[3] ?? "");
+  const tagId=decodeURIComponent(parts[4] ?? "");
+  if(parts[2]==="tags" && userId && tagId && request.method==="DELETE"){
+    requirePermission(actor,"tags.write");
+    await db.prepare("DELETE FROM owner_user_tags WHERE user_id=? AND tag_id=?").bind(userId,tagId).run();
+    await audit(db,actor,"tag_remove","user",userId,tagId);
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleRolesPosts(request, db, actor, url, parts) {
+  requirePermission(actor, request.method==="GET" ? "roles.read" : "roles.write");
+  const kind=String(url.searchParams.get("kind") ?? "role").trim()==="post"?"post":"role";
+  if(parts.length===3 && request.method==="GET"){
+    const rows=await db.prepare(
+      "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind=? ORDER BY sort_order,updated_at DESC"
+    ).bind(kind).all();
+    return json({ok:true,kind,items:(rows.results ?? []).map(parseStoreRow)});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    const body=await bodyJson(request);
+    const itemId=String(body.id ?? id()).trim().slice(0,100);
+    const name=String(body.name ?? "").trim().slice(0,100);
+    if(!name) return json({ok:false,error:"name_required"},{status:400});
+    const data=body.data&&typeof body.data==="object"&&!Array.isArray(body.data)?body.data:{};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES(?,?,?,?,?,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,sort_order=excluded.sort_order,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(kind,itemId,name,body.enabled===false?0:1,clampInt(body.sort_order ?? 0,-100000,100000,0),JSON.stringify(data),now()).run();
+    await audit(db,actor,"role_post_upsert",kind,itemId,name);
+    return json({ok:true,id:itemId});
+  }
+  const itemId=decodeURIComponent(parts[3] ?? "");
+  if(itemId && request.method==="DELETE"){
+    await db.prepare("DELETE FROM owner_catalog WHERE kind=? AND id=?").bind(kind,itemId).run();
+    await audit(db,actor,"role_post_delete",kind,itemId,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleBanners(request, db, actor, parts) {
+  requirePermission(actor, request.method==="GET" ? "banners.read" : "banners.write");
+  if(parts.length===3 && request.method==="GET"){
+    const rows=await db.prepare(
+      "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='banner' ORDER BY sort_order,updated_at DESC"
+    ).all();
+    return json({ok:true,banners:(rows.results ?? []).map(parseStoreRow)});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    const body=await bodyJson(request);
+    const bannerId=String(body.id ?? id()).trim().slice(0,100);
+    const name=String(body.name ?? "Banner").trim().slice(0,100);
+    const data={asset_key:String(body.asset_key ?? "").trim().slice(0,500),link:String(body.link ?? "").trim().slice(0,500),
+      starts_at:Number(body.starts_at ?? 0)||null,ends_at:Number(body.ends_at ?? 0)||null};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES('banner',?,?,?, ?,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,sort_order=excluded.sort_order,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(bannerId,name,body.enabled===false?0:1,clampInt(body.sort_order ?? 0,-100000,100000,0),JSON.stringify(data),now()).run();
+    await audit(db,actor,"banner_upsert","banner",bannerId,name);
+    return json({ok:true,id:bannerId});
+  }
+  const bannerId=decodeURIComponent(parts[3] ?? "");
+  if(bannerId && request.method==="DELETE"){
+    await db.prepare("DELETE FROM owner_catalog WHERE kind='banner' AND id=?").bind(bannerId).run();
+    await audit(db,actor,"banner_delete","banner",bannerId,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handleGamesOwner(request, db, actor, url) {
+  if(request.method==="GET"){
+    requirePermission(actor,"games.read");
+    const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
+    const [catalog,bets]=await Promise.all([
+      db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='game_config' ORDER BY sort_order,updated_at DESC").all(),
+      db.prepare(
+        `SELECT game_id,COUNT(*) AS bets,COALESCE(SUM(stake),0) AS wagered,COALESCE(SUM(payout),0) AS payout,
+                COALESCE(SUM(stake-payout),0) AS house_result
+           FROM game_bets GROUP BY game_id ORDER BY wagered DESC LIMIT 100`
+      ).all()
+    ]);
+    let userInvestigation=null;
+    let userError=null;
+    if(userQuery){
+      const user=await db.prepare(
+        "SELECT id,public_id,display_name FROM users WHERE id=? OR public_id=? LIMIT 1"
+      ).bind(userQuery,userQuery).first();
+      if(!user){
+        userError="user_not_found";
+      }else{
+        const [summary,recent,byGame]=await Promise.all([
+          db.prepare(
+            `SELECT COUNT(*) AS bet_count,COALESCE(SUM(stake),0) AS wagered,
+                    COALESCE(SUM(payout),0) AS payout,COALESCE(SUM(stake-payout),0) AS house_result
+               FROM game_bets WHERE user_id=?`
+          ).bind(user.id).first(),
+          db.prepare(
+            "SELECT game_id,stake,result,payout,created_at FROM game_bets WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
+          ).bind(user.id).all(),
+          db.prepare(
+            `SELECT game_id,COUNT(*) AS bets,COALESCE(SUM(stake),0) AS wagered,
+                    COALESCE(SUM(payout),0) AS payout,COALESCE(SUM(stake-payout),0) AS house_result
+               FROM game_bets WHERE user_id=? GROUP BY game_id ORDER BY wagered DESC LIMIT 100`
+          ).bind(user.id).all(),
+        ]);
+        userInvestigation={
+          user:{id:String(user.id),public_id:user.public_id,display_name:user.display_name},
+          bet_count:Number(summary?.bet_count ?? 0),
+          wagered:Number(summary?.wagered ?? 0),
+          payout:Number(summary?.payout ?? 0),
+          house_result:Number(summary?.house_result ?? 0),
+          by_game:byGame.results ?? [],
+          recent:recent.results ?? [],
+        };
+      }
+    }
+    return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? [],user_investigation:userInvestigation,user_error:userError});
+  }
+  if(request.method==="POST"){
+    requirePermission(actor,"games.write");
+    const body=await bodyJson(request);
+    const gameId=String(body.id ?? "").trim().slice(0,100);
+    if(!gameId) return json({ok:false,error:"game_id_required"},{status:400});
+    const existing=await db.prepare("SELECT name,json_data FROM owner_catalog WHERE kind='game_config' AND id=?").bind(gameId).first();
+    const oldData=safeParse(existing?.json_data,{});
+    const data={...oldData,...(body.data&&typeof body.data==="object"?body.data:{}),
+      min_bet:clampInt(body.min_bet ?? oldData.min_bet ?? 1,1,900000000000000,1),
+      max_bet:clampInt(body.max_bet ?? oldData.max_bet ?? 1000000,1,900000000000000,1000000)};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES('game_config',?,?,?,0,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(gameId,String(body.name ?? existing?.name ?? gameId).slice(0,100),body.enabled===false?0:1,JSON.stringify(data),now()).run();
+    await audit(db,actor,"game_config_update","game",gameId,`enabled=${body.enabled!==false}`);
+    return json({ok:true});
+  }
+  return null;
+}
+
+
+const OWNER_PRICE_KINDS=new Set([
+  "gift","frame","vehicle","entry","ring","bubble","profile_card","profile_background",
+  "theme","unique_id","room_theme"
+]);
+
+async function handlePricingOverrides(request, db, actor, url, parts) {
+  if(request.method==="GET"){
+    requirePermission(actor,"policies.read");
+    const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
+    const kind=String(url.searchParams.get("kind") ?? "").trim();
+    let resolvedUserId=userQuery;
+    if(userQuery){
+      const found=await db.prepare("SELECT id FROM users WHERE id=? OR public_id=? LIMIT 1").bind(userQuery,userQuery).first();
+      if(!found)return json({ok:true,overrides:[]});
+      resolvedUserId=String(found.id);
+    }
+    const rows=await db.prepare(
+      `SELECT o.user_id,o.kind,o.item_id,o.price_coins,o.free,o.duration_days,o.updated_at,
+              u.public_id,u.display_name
+         FROM owner_user_price_overrides o
+         LEFT JOIN users u ON u.id=o.user_id
+        WHERE (?='' OR o.user_id=?) AND (?='' OR o.kind=?)
+        ORDER BY o.updated_at DESC LIMIT 500`
+    ).bind(resolvedUserId,resolvedUserId,kind,kind).all();
+    return json({ok:true,overrides:rows.results ?? []});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"policies.write");
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim().slice(0,120);
+    const kind=String(body.kind ?? "").trim().slice(0,60);
+    const itemId=String(body.item_id ?? "*").trim().slice(0,120)||"*";
+    if(!userId)return json({ok:false,error:"user_id_required"},{status:400});
+    if(!OWNER_PRICE_KINDS.has(kind))return json({ok:false,error:"unsupported_price_override_kind"},{status:400});
+    const user=await db.prepare("SELECT id FROM users WHERE id=? OR public_id=? LIMIT 1").bind(userId,userId).first();
+    if(!user)return json({ok:false,error:"user_not_found"},{status:404});
+    const resolvedUserId=String(user.id);
+    const free=body.free===true?1:0;
+    if(kind==="gift" && free===1){
+      return json({ok:false,error:"free_gift_not_supported_use_price_override"},{status:400});
+    }
+    const rawPrice=body.price_coins;
+    const price=rawPrice==null||rawPrice===""?null:Number(rawPrice);
+    const rawDuration=body.duration_days;
+    const duration=rawDuration==null||rawDuration===""?null:Number(rawDuration);
+    if(price!=null&&(!Number.isSafeInteger(price)||price<0||price>900000000000000)){
+      return json({ok:false,error:"invalid_override_price"},{status:400});
+    }
+    if(duration!=null&&(!Number.isSafeInteger(duration)||duration<0||duration>3650)){
+      return json({ok:false,error:"invalid_override_duration"},{status:400});
+    }
+    await db.prepare(
+      `INSERT INTO owner_user_price_overrides(user_id,kind,item_id,price_coins,free,duration_days,updated_at)
+       VALUES(?,?,?,?,?,?,?)
+       ON CONFLICT(user_id,kind,item_id) DO UPDATE SET price_coins=excluded.price_coins,
+         free=excluded.free,duration_days=excluded.duration_days,updated_at=excluded.updated_at`
+    ).bind(resolvedUserId,kind,itemId,price,free,duration,now()).run();
+    await audit(db,actor,"user_price_override","user",resolvedUserId,
+      `kind=${kind}; item=${itemId}; price=${price}; free=${free}; days=${duration}`);
+    return json({ok:true,user_id:resolvedUserId,kind,item_id:itemId});
+  }
+  if(parts.length>=6 && request.method==="DELETE"){
+    requirePermission(actor,"policies.write");
+    const userId=decodeURIComponent(parts[3] ?? "");
+    const kind=decodeURIComponent(parts[4] ?? "");
+    const itemId=decodeURIComponent(parts.slice(5).join("/") || "*");
+    await db.prepare("DELETE FROM owner_user_price_overrides WHERE user_id=? AND kind=? AND item_id=?")
+      .bind(userId,kind,itemId).run();
+    await audit(db,actor,"user_price_override_remove","user",userId,`kind=${kind}; item=${itemId}`);
+    return json({ok:true});
+  }
+  return null;
+}
+
+async function handlePoliciesOwner(request, db, actor, parts) {
+  if(request.method==="GET"){
+    requirePermission(actor,"policies.read");
+    const rows=await db.prepare(
+      "SELECT key,value_json,updated_at FROM owner_settings WHERE key LIKE 'policy.%' OR key LIKE 'economy.%' ORDER BY key"
+    ).all();
+    return json({ok:true,policies:(rows.results ?? []).map(r=>({key:r.key,value:safeParse(r.value_json,{}),updated_at:r.updated_at}))});
+  }
+  if(request.method==="POST"){
+    requirePermission(actor,"policies.write");
+    const body=await bodyJson(request);
+    const key=String(body.key ?? "").trim().slice(0,100);
+    if(!key || /agency|\bbd\b|host|guardian|verification/i.test(key)){
+      return json({ok:false,error:"invalid_or_excluded_policy"},{status:400});
+    }
+    const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
+    const value=body.value&&typeof body.value==="object"&&!Array.isArray(body.value)?body.value:{value:body.value};
+    await db.prepare(
+      "INSERT INTO owner_settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at"
+    ).bind(fullKey,JSON.stringify(value),now()).run();
+    await audit(db,actor,"policy_update","policy",fullKey,JSON.stringify(value).slice(0,160));
+    return json({ok:true,key:fullKey,value});
+  }
+  const key=decodeURIComponent(parts[3] ?? "");
+  if(key && request.method==="DELETE"){
+    requirePermission(actor,"policies.write");
+    const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
+    await db.prepare("DELETE FROM owner_settings WHERE key=?").bind(fullKey).run();
+    await audit(db,actor,"policy_delete","policy",fullKey,"deleted");
+    return json({ok:true});
+  }
+  return null;
+}
+
+
+async function handleVipRules(request, db, actor, parts) {
+  if (request.method === "GET") {
+    requirePermission(actor,"catalog.read");
+    const overrides=await db.prepare(
+      "SELECT id,name,enabled,json_data,updated_at FROM owner_catalog WHERE kind='vip_rule' ORDER BY CAST(id AS INTEGER) ASC"
+    ).all();
+    const byLevel=new Map((overrides.results ?? []).map(row=>[Number(row.id),row]));
+    const levels=VIP_LEVELS.map(base=>{
+      const row=byLevel.get(Number(base.level));
+      const data=safeParse(row?.json_data,{});
+      return {
+        level:Number(base.level),
+        id:String(base.level),
+        name:String(row?.name ?? ("VIP "+base.level)),
+        enabled:row==null ? 1 : Number(row.enabled ?? 1),
+        upgrade_exp:Number(data.upgrade_exp ?? base.upgrade),
+        maintain_exp:Number(data.maintain_exp ?? base.maintain),
+        validity_days:Number(data.validity_days ?? base.days),
+        entry_id:String(data.entry_id ?? ""),
+        frame_id:String(data.frame_id ?? ""),
+        updated_at:Number(row?.updated_at ?? 0),
+        source:row ? "owner" : "base",
+      };
+    });
+    return json({ok:true,levels});
+  }
+  if (request.method === "POST") {
+    requirePermission(actor,"catalog.write");
+    const body=await bodyJson(request);
+    const level=clampInt(body.level,1,18,0);
+    if(level<1||level>18)return json({ok:false,error:"vip_level_must_be_1_to_18"},{status:400});
+    const base=VIP_LEVELS[level-1];
+    const upgrade=Number(body.upgrade_exp);
+    const maintain=Number(body.maintain_exp);
+    const days=Number(body.validity_days);
+    if(!Number.isSafeInteger(upgrade)||upgrade<0)return json({ok:false,error:"invalid_upgrade_exp"},{status:400});
+    if(!Number.isSafeInteger(maintain)||maintain<0)return json({ok:false,error:"invalid_maintain_exp"},{status:400});
+    if(!Number.isSafeInteger(days)||days<1||days>3650)return json({ok:false,error:"invalid_validity_days"},{status:400});
+    const name=String(body.name ?? ("VIP "+level)).trim().slice(0,80)||("VIP "+level);
+    const data={
+      upgrade_exp:upgrade,
+      maintain_exp:maintain,
+      validity_days:days,
+      entry_id:String(body.entry_id ?? "").trim().slice(0,120),
+      frame_id:String(body.frame_id ?? "").trim().slice(0,120),
+      base_total:Number(base?.total ?? 0),
+    };
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES('vip_rule',?,?,?,?,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,
+         sort_order=excluded.sort_order,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(String(level),name,body.enabled===false?0:1,level,JSON.stringify(data),now()).run();
+    await audit(db,actor,"vip_rule_update","vip",String(level),
+      `upgrade_exp=${upgrade}; maintain_exp=${maintain}; days=${days}; enabled=${body.enabled!==false}`);
+    return json({ok:true,level});
+  }
+  const level=clampInt(decodeURIComponent(parts[3] ?? ""),1,18,0);
+  if(level && request.method==="DELETE"){
+    requirePermission(actor,"catalog.write");
+    await db.prepare("DELETE FROM owner_catalog WHERE kind='vip_rule' AND id=?").bind(String(level)).run();
+    await audit(db,actor,"vip_rule_reset","vip",String(level),"reset to base rule");
+    return json({ok:true,level,reset:true});
+  }
+  return null;
+}
 
 function baseStoreItems(kind) {
   const k=String(kind ?? "").trim();
@@ -836,6 +1701,13 @@ async function handleAnnouncements(request, db, actor, parts) {
     const message = String(body.body ?? "").trim().slice(0, 2000);
     if (!title || !message) return json({ ok: false, error: "title_and_body_required" }, { status: 400 });
     const ts = now();
+    const startsAt=body.starts_at==null||body.starts_at===""?null:Number(body.starts_at);
+    const endsAt=body.ends_at==null||body.ends_at===""?null:Number(body.ends_at);
+    if(startsAt!=null&&!Number.isFinite(startsAt))return json({ok:false,error:"invalid_announcement_start"},{status:400});
+    if(endsAt!=null&&!Number.isFinite(endsAt))return json({ok:false,error:"invalid_announcement_end"},{status:400});
+    if(startsAt!=null&&endsAt!=null&&endsAt<=startsAt){
+      return json({ok:false,error:"announcement_end_must_be_after_start"},{status:400});
+    }
     await db.prepare(
       `INSERT INTO owner_announcements (id,title,body,enabled,starts_at,ends_at,country,created_at,updated_at)
        VALUES (?,?,?,?,?,?,?,?,?)
@@ -843,8 +1715,7 @@ async function handleAnnouncements(request, db, actor, parts) {
          starts_at=excluded.starts_at, ends_at=excluded.ends_at, country=excluded.country, updated_at=excluded.updated_at`
     ).bind(
       announcementId, title, message, body.enabled === false ? 0 : 1,
-      body.starts_at == null ? null : Number(body.starts_at), body.ends_at == null ? null : Number(body.ends_at),
-      "", ts, ts,
+      startsAt, endsAt, "", ts, ts,
     ).run();
     await audit(db, actor, "announcement_upsert", "announcement", announcementId, title);
     return json({ ok: true, id: announcementId });
@@ -972,14 +1843,32 @@ async function handleTreasury(request, db, actor) {
   return json({ ok: false, error: "invalid_treasury_action" }, { status: 400 });
 }
 
-async function handleAudit(request, db, actor, url) {
-  if (request.method !== "GET") return null;
-  requirePermission(actor, "audit.read");
-  const limit = clampInt(url.searchParams.get("limit"), 1, 500, 100);
-  const rows = await db.prepare(
-    "SELECT id,actor_type,actor_id,action,target_type,target_id,summary,created_at FROM owner_audit ORDER BY created_at DESC LIMIT ?"
-  ).bind(limit).all();
-  return json({ ok: true, audit: rows.results ?? [] });
+async function handleAudit(request, db, actor, url, parts) {
+  if (request.method === "GET") {
+    requirePermission(actor, "audit.read");
+    const limit = clampInt(url.searchParams.get("limit"), 1, 500, 100);
+    const rows = actor.type==="owner"
+      ? await db.prepare(
+          "SELECT id,actor_type,actor_id,action,target_type,target_id,summary,created_at FROM owner_audit ORDER BY created_at DESC LIMIT ?"
+        ).bind(limit).all()
+      : await db.prepare(
+          "SELECT id,actor_type,actor_id,action,target_type,target_id,summary,created_at FROM owner_audit WHERE actor_type='staff' AND actor_id=? ORDER BY created_at DESC LIMIT ?"
+        ).bind(actor.id,limit).all();
+    return json({ ok: true, audit: rows.results ?? [], owner_can_delete:actor.type==="owner" });
+  }
+  if(request.method==="DELETE"){
+    if(actor.type!=="owner"){
+      return json({ok:false,error:"owner_only_audit_delete"},{status:403});
+    }
+    const auditId=decodeURIComponent(parts[3] ?? "");
+    if(auditId){
+      await db.prepare("DELETE FROM owner_audit WHERE id=?").bind(auditId).run();
+      return json({ok:true,deleted:auditId});
+    }
+    await db.prepare("DELETE FROM owner_audit").run();
+    return json({ok:true,cleared:true});
+  }
+  return null;
 }
 
 async function handleSupportTickets(request, db, actor, url, parts) {
@@ -1048,14 +1937,22 @@ export async function handleOwnerApi(request, env, url) {
     const parts = url.pathname.split("/").filter(Boolean);
 
     if (url.pathname === "/api/owner/session" && request.method === "GET") {
-      return json({ ok: true, actor: { id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions } });
+      return json({ ok: true, actor: { type:actor.type, id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions } });
     }
     if (url.pathname === "/api/owner/overview" && request.method === "GET") return handleOverview(db, actor);
 
     let response = null;
     if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
+    else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
+    else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
+    else if (parts[2] === "roles-posts") response = await handleRolesPosts(request, db, actor, url, parts);
+    else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
+    else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor, url);
+    else if (parts[2] === "policies") response = await handlePoliciesOwner(request, db, actor, parts);
+    else if (parts[2] === "pricing-overrides") response = await handlePricingOverrides(request, db, actor, url, parts);
+    else if (parts[2] === "vip-rules") response = await handleVipRules(request, db, actor, parts);
     else if (parts[2] === "economy") response = await handleEconomy(request, db, actor);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
     else if (parts[2] === "store") response = await handleStore(request, db, actor, url, parts);
@@ -1063,7 +1960,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "announcements") response = await handleAnnouncements(request, db, actor, parts);
     else if (parts[2] === "treasury") response = await handleTreasury(request, db, actor);
     else if (parts[2] === "staff") response = await handleStaff(request, db, actor, parts);
-    else if (parts[2] === "audit") response = await handleAudit(request, db, actor, url);
+    else if (parts[2] === "audit") response = await handleAudit(request, db, actor, url, parts);
     if (response) return response;
 
     return json({ ok: false, error: "not_found" }, { status: 404 });

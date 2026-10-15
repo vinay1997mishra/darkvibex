@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -62,6 +63,7 @@ class AppState extends ChangeNotifier {
   static const String _sessionUserIdKey = 'darkvibex.session_user_id';
   static const String _sessionDisplayNameKey = 'darkvibex.session_display_name';
   static const String _sessionDateOfBirthKey = 'darkvibex.session_date_of_birth';
+  static const String _deviceKeyPref = 'darkvibex.device_key';
 
   final BackendApi backend = const BackendApi();
 
@@ -144,6 +146,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await _ensureDeviceKey();
       if (!backend.configured) {
         authError = 'Server is not configured.';
         return;
@@ -175,6 +178,18 @@ class AppState extends ChangeNotifier {
       isInitializing = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _ensureDeviceKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    var value = prefs.getString(_deviceKeyPref)?.trim() ?? '';
+    if (value.isEmpty) {
+      final random = Random.secure();
+      final bytes = List<int>.generate(24, (_) => random.nextInt(256));
+      value = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      await prefs.setString(_deviceKeyPref, value);
+    }
+    BackendApi.deviceKey = value;
   }
 
   Future<bool> _restorePersistedSession() async {

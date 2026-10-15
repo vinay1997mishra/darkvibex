@@ -1446,10 +1446,103 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   String _publicId(Map<String, dynamic> value) {
+    final invisible = value['invisible_id'] == true ||
+        value['invisible_id']?.toString() == '1';
+    if (invisible && !isSelf) return 'Hidden';
     final custom = value['vip_custom_id']?.toString().trim() ?? '';
     if (custom.isNotEmpty) return custom;
     final stable = value['public_id']?.toString().trim() ?? '';
     return stable.isNotEmpty ? stable : value['id']?.toString() ?? '';
+  }
+
+  Color _ownerTagColor(String? value) {
+    final hex = (value ?? '').replaceAll('#', '').trim();
+    if (hex.length == 6) {
+      final parsed = int.tryParse(hex, radix: 16);
+      if (parsed != null) return Color(0xFF000000 | parsed);
+    }
+    return const Color(0xFFFFD54F);
+  }
+
+  List<Widget> _ownerTagWidgets(Map<String, dynamic> value) {
+    final raw = value['owner_tags'] ?? value['tags'];
+    if (raw is! List) return const <Widget>[];
+    return raw.whereType<Map>().map((item) {
+      final tag = Map<String, dynamic>.from(item);
+      final kind = tag['kind']?.toString() ?? 'custom';
+      final label = (tag['designation']?.toString().trim().isNotEmpty == true
+              ? tag['designation']
+              : tag['name'])
+          ?.toString()
+          .trim() ??
+          'Tag';
+      final color = _ownerTagColor(
+        tag['background_color']?.toString().trim().isNotEmpty == true
+            ? tag['background_color']?.toString()
+            : tag['color']?.toString(),
+      );
+      if (kind == 'v_official') {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(4, 3, 8, 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .22),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color, width: .8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFFFD86A),
+                    width: 1,
+                  ),
+                ),
+                child: const Text(
+                  'V',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .16),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color, width: .8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+    }).toList(growable: false);
   }
 
   String _partnerId(Map<String, dynamic>? relation) {
@@ -3914,6 +4007,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                   ),
                                 ),
                               ),
+                            ..._ownerTagWidgets(value),
                           ],
                         ),
                         const SizedBox(height: 8),
