@@ -94,6 +94,49 @@ function tierFor({ inviteCount, sourceCoins }) {
   return active;
 }
 
+async function backfillInviteSuccessRewards(db, inviterUserId, ts = Date.now()) {
+  const missing = await db.prepare(`
+    SELECT b.invitee_user_id,b.bound_at
+      FROM invite_bindings b
+      LEFT JOIN invite_success_rewards s
+        ON s.invitee_user_id=b.invitee_user_id
+     WHERE b.inviter_user_id=?
+       AND s.invitee_user_id IS NULL
+     ORDER BY b.bound_at ASC
+     LIMIT 500
+  `).bind(inviterUserId).all();
+
+  for (const row of missing.results ?? []) {
+    const inviteeUserId = String(row.invitee_user_id ?? "");
+    if (!inviteeUserId) continue;
+    const rewardId = crypto.randomUUID();
+    const ledgerId = crypto.randomUUID();
+    const createdAt = Number(row.bound_at ?? 0) > 0
+      ? Number(row.bound_at)
+      : ts;
+    await db.batch([
+      db.prepare(
+        "INSERT OR IGNORE INTO invite_success_rewards(id,inviter_user_id,invitee_user_id,reward_coins,created_at) VALUES(?,?,?,?,?)"
+      ).bind(
+        rewardId, inviterUserId, inviteeUserId,
+        SUCCESSFUL_INVITE_REWARD_COINS, createdAt,
+      ),
+      db.prepare(
+        "UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM invite_success_rewards WHERE id=? AND inviter_user_id=?)"
+      ).bind(
+        SUCCESSFUL_INVITE_REWARD_COINS, ts, inviterUserId,
+        rewardId, inviterUserId,
+      ),
+      db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'invite_success_reward',?,u.coins,?,? FROM users u WHERE u.id=? AND EXISTS(SELECT 1 FROM invite_success_rewards WHERE id=?)"
+      ).bind(
+        ledgerId, SUCCESSFUL_INVITE_REWARD_COINS,
+        rewardId, createdAt, inviterUserId, rewardId,
+      ),
+    ]);
+  }
+}
+
 export async function bindInvitationCode(db, {
   inviteeUserId,
   invitationCode,
@@ -165,6 +208,9 @@ export async function bindInvitationCode(db, {
 
 export async function inviteRewardSummary(db, userId) {
   await ensureInviteRewardSchema(db);
+  // Existing successful invites from before the fixed-reward launch are
+  // credited once on first summary load. Unique invitee_user_id prevents repeats.
+  await backfillInviteSuccessRewards(db, userId);
   const stats = await inviteStats(db, userId);
   const tier = tierFor(stats);
   const owner = await db.prepare(
