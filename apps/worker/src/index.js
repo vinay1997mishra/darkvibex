@@ -533,6 +533,29 @@ async function effectiveCosmeticCatalog(db) {
   );
 }
 
+async function cpStateWithRing(db, userId) {
+  const cp = await cpState(db, userId);
+  if (!cp) return null;
+  const ringId = String(cp.ring_id ?? "").trim();
+  if (!ringId) {
+    return {
+      ...cp,
+      ring_name: "",
+      ring_asset_key: "",
+      ring_tier: 0,
+    };
+  }
+  const ring = (await effectiveCosmeticCatalog(db)).find(
+    (item) => item.kind === "ring" && item.id === ringId
+  );
+  return {
+    ...cp,
+    ring_name: String(ring?.name ?? ringId),
+    ring_asset_key: String(ring?.asset_key ?? ""),
+    ring_tier: Number(ring?.tier ?? 0),
+  };
+}
+
 async function effectiveGiftCatalog(db) {
   const map = new Map(
     [...BASE_GIFT_CATALOG, ...DARKVIBE_EXTRA_GIFTS].map((item) => [item.id, { ...item }])
@@ -3751,7 +3774,7 @@ async function handleApi(request, env, url) {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env);
     if (authError) return authError;
-    return json({ ok: true, cp: await cpState(db, userId) });
+    return json({ ok: true, cp: await cpStateWithRing(db, userId) });
   }
 
   if (url.pathname === "/api/cp/request" && request.method === "POST") {
@@ -3760,7 +3783,8 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      const cp = await cpRequest(db, userId, String(body.target_user_id ?? ""));
+      await cpRequest(db, userId, String(body.target_user_id ?? ""));
+      const cp = await cpStateWithRing(db, userId);
       const wallet = await db.prepare(
         "SELECT coins FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
@@ -3780,7 +3804,8 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json({ ok: true, cp: await cpRespond(db, userId, body.accept === true) });
+      await cpRespond(db, userId, body.accept === true);
+      return json({ ok: true, cp: await cpStateWithRing(db, userId) });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -3792,7 +3817,8 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json({ ok:true, cp:await cpDisconnectRequest(db,userId) });
+      await cpDisconnectRequest(db,userId);
+      return json({ ok:true, cp:await cpStateWithRing(db,userId) });
     } catch (error) {
       return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
     }
@@ -3804,7 +3830,8 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json({ ok:true, cp:await cpDisconnectRespond(db,userId,body.accept === true) });
+      await cpDisconnectRespond(db,userId,body.accept === true);
+      return json({ ok:true, cp:await cpStateWithRing(db,userId) });
     } catch (error) {
       return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
     }
@@ -3818,7 +3845,10 @@ async function handleApi(request, env, url) {
     try {
       return json({
         ok:true,
-        cp:await cpHeartbeat(db,userId,body.action,body.choice),
+        cp:(await (async () => {
+          await cpHeartbeat(db,userId,body.action,body.choice);
+          return cpStateWithRing(db,userId);
+        })()),
       });
     } catch (error) {
       return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
@@ -3847,7 +3877,7 @@ async function handleApi(request, env, url) {
       await db.prepare(
         "UPDATE cp_relationships SET ring_id=NULL,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
       ).bind(now(),cp.user_a,cp.user_b).run();
-      return json({ ok:true,cp:await cpState(db,userId) });
+      return json({ ok:true,cp:await cpStateWithRing(db,userId) });
     }
     await ensureCosmeticsSchema(db);
     const product = (await effectiveCosmeticCatalog(db)).find(
@@ -3865,7 +3895,7 @@ async function handleApi(request, env, url) {
     await db.prepare(
       "UPDATE cp_relationships SET ring_id=?,updated_at=? WHERE user_a=? AND user_b=? AND state='active'"
     ).bind(ringId,now(),cp.user_a,cp.user_b).run();
-    return json({ ok:true,cp:await cpState(db,userId) });
+    return json({ ok:true,cp:await cpStateWithRing(db,userId) });
   }
 
   if (url.pathname === "/api/cp/memories" && request.method === "GET") {
