@@ -22,3 +22,15 @@ test("DarkVibeX owner panel exposes Tinni-style master controls without legacy h
 test("owner treasury mint and deduct stay owner-only", () => {
   assert.match(ownerApi, /if \(actor\.type !== "owner"\) return json\(\{ ok: false, error: "owner_only" \}/);
 });
+
+
+test("owner panel manages public IDs and dedicated seller/merchant wallets", () => {
+  assert.match(ownerApi, /owner_public_id_history/);
+  assert.match(ownerApi, /parts\[4\] === "public-id"/);
+  assert.match(panelHtml, /id="editPublicId"/);
+  assert.match(panelHtml, /id="oldPublicIds"/);
+  assert.match(panelHtml, /id="roleWalletType"/);
+  assert.match(panelHtml, /id="applyRoleWallet"/);
+  assert.match(panelApp, /savePublicId/);
+  assert.match(panelApp, /applyRoleWallet/);
+});
