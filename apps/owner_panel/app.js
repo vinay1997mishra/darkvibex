@@ -930,31 +930,103 @@ async function saveAnnouncement(){
   clearAnnouncementForm();toast("Announcement saved");await loadAnnouncements();
 }
 
+function renderStaffPermissionEditor(selected=[]){
+  const selectedSet=new Set((selected||[]).map(String));
+  const available=staffPermissionOptions.filter(([value])=>state.actor?.type==="owner"||can(value));
+  $("#staffPermissions").innerHTML=available.map(([value,label])=>
+    `<label class="permission-item"><input type="checkbox" value="${esc(value)}" ${selectedSet.has(value)?"checked":""} /> <span>${esc(label)}</span></label>`
+  ).join("")||empty("No assignable functions for this panel.");
+  $("#staffPermissions").dataset.ready="1";
+}
+function cancelStaffEdit(){
+  state.staffEditingId=null;
+  $("#staffName").value="";
+  $("#staffRole").value="manager";
+  renderStaffPermissionEditor([]);
+  $("#createStaff").textContent="Create Custom Panel Access";
+  $("#cancelStaffEdit").hidden=true;
+  applyActionPermissions();
+}
 async function loadStaff(){
-  if(!can("staff.view"))return;
-  if(!$("#staffPermissions").dataset.ready){
-    $("#staffPermissions").innerHTML=staffPermissionOptions.map(([value,label])=>`<label class="permission-item"><input type="checkbox" value="${esc(value)}" /> <span>${esc(label)}</span></label>`).join("");
-    $("#staffPermissions").dataset.ready="1";
+  renderStaffPermissionEditor(
+    state.staffEditingId
+      ? $$("#staffPermissions input:checked").map(x=>x.value)
+      : []
+  );
+  if(!can("staff.view")){
+    $("#staffList").innerHTML=empty("Staff list permission is not selected for this panel.");
+    applyActionPermissions();
+    return;
   }
-  const d=await api('/api/owner/staff');
-  $("#staffList").innerHTML=(d.staff||[]).length?d.staff.map(s=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(s.display_name)} <span class="pill ${Number(s.enabled)?'active':'banned'}">${Number(s.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">${esc(s.role.replaceAll('_',' '))} · last used ${time(s.last_used_at)}<br>${(s.permissions||[]).length?esc((s.permissions||[]).join(', ')):'Role defaults'}</div></div><div class="item-actions">${can('staff.write')?`<button class="secondary mini" data-staff-edit="${esc(s.id)}">Permissions</button><button class="secondary mini" data-staff-toggle="${esc(s.id)}" data-enabled="${Number(s.enabled)}">${Number(s.enabled)?'Disable':'Enable'}</button><button class="danger mini" data-staff-delete="${esc(s.id)}">Delete</button>`:''}</div></div></div>`).join(''):empty('No custom panels created');
-  $$('[data-staff-edit]').forEach(b=>b.onclick=async()=>{
-    const item=(d.staff||[]).find(x=>x.id===b.dataset.staffEdit); if(!item)return;
-    const current=new Set(item.permissions||[]);
-    const raw=prompt("Comma-separated permissions. Use * for full access.",[...current].join(", "));
-    if(raw===null)return;
-    const permissions=raw.split(",").map(x=>x.trim()).filter(Boolean);
-    await api('/api/owner/staff/'+encodeURIComponent(item.id),{method:'POST',body:JSON.stringify({permissions})});
-    toast('Custom panel permissions updated');loadStaff();
+  const d=await api("/api/owner/staff");
+  const rows=d.staff||[];
+  $("#staffList").innerHTML=rows.length?rows.map(item=>{
+    const permissions=item.permissions||[];
+    const actions=[];
+    if(can("staff.permissions.edit"))actions.push(`<button class="secondary mini" data-staff-edit="${esc(item.id)}">Edit Functions</button>`);
+    if(can("staff.toggle"))actions.push(`<button class="secondary mini" data-staff-toggle="${esc(item.id)}" data-enabled="${Number(item.enabled)}">${Number(item.enabled)?"Disable":"Enable"}</button>`);
+    if(can("staff.delete"))actions.push(`<button class="danger mini" data-staff-delete="${esc(item.id)}">Delete</button>`);
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.display_name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.role.replaceAll("_"," "))} · last used ${time(item.last_used_at)}<br>${permissions.length?esc(permissions.join(", ")):"No functions selected"}</div></div><div class="item-actions">${actions.join("")}</div></div></div>`;
+  }).join(""):empty("No custom panels created");
+
+  $$("[data-staff-edit]").forEach(b=>b.onclick=()=>{
+    const item=rows.find(x=>x.id===b.dataset.staffEdit);
+    if(!item)return;
+    if(!can("staff.permissions.edit"))return toast("Staff permission-edit access required",false);
+    state.staffEditingId=item.id;
+    $("#staffName").value=item.display_name||"";
+    $("#staffRole").value=item.role||"manager";
+    renderStaffPermissionEditor(item.permissions||[]);
+    $("#createStaff").textContent="Save Staff Panel";
+    $("#cancelStaffEdit").hidden=false;
+    $("#staffName").scrollIntoView({behavior:"smooth",block:"center"});
+    applyActionPermissions();
   });
-  $$('[data-staff-toggle]').forEach(b=>b.onclick=async()=>{await api('/api/owner/staff/'+encodeURIComponent(b.dataset.staffToggle),{method:'POST',body:JSON.stringify({enabled:!Number(b.dataset.enabled)})});toast('Staff access updated');loadStaff();});
-  $$('[data-staff-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this staff access?'))return;await api('/api/owner/staff/'+encodeURIComponent(b.dataset.staffDelete),{method:'DELETE'});toast('Staff access deleted');loadStaff();});
+  $$("[data-staff-toggle]").forEach(b=>b.onclick=async()=>{
+    if(!can("staff.toggle"))return toast("Staff enable/disable permission required",false);
+    await api("/api/owner/staff/"+encodeURIComponent(b.dataset.staffToggle),{method:"POST",body:JSON.stringify({enabled:!Number(b.dataset.enabled)})});
+    toast("Staff access updated");
+    await loadStaff();
+  });
+  $$("[data-staff-delete]").forEach(b=>b.onclick=async()=>{
+    if(!can("staff.delete"))return toast("Staff delete permission required",false);
+    if(!confirm("Delete this staff access?"))return;
+    await api("/api/owner/staff/"+encodeURIComponent(b.dataset.staffDelete),{method:"DELETE"});
+    toast("Staff access deleted");
+    if(state.staffEditingId===b.dataset.staffDelete)cancelStaffEdit();
+    await loadStaff();
+  });
+  applyActionPermissions();
 }
 
-async function loadSupport(){if(!can('support.read'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
-async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.write');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.write');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.write');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
-async function sendSupportReply(){if(!state.selectedTicket)return;const message=$("#supportReply").value.trim();if(!message)return toast('Write a reply first',false);await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/reply`,{method:'POST',body:JSON.stringify({message})});$("#supportReply").value='';toast('Reply sent');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
-async function closeSupportTicket(){if(!state.selectedTicket)return;if(!confirm('Close this VIP support ticket?'))return;await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/close`,{method:'POST',body:'{}'});toast('Ticket closed');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
+async function createStaff(){
+  const editing=Boolean(state.staffEditingId);
+  if(editing&&!can("staff.permissions.edit"))return toast("Staff permission-edit access required",false);
+  if(!editing&&!can("staff.create"))return toast("Staff create permission required",false);
+  const name=$("#staffName").value.trim();
+  if(!name)return toast("Enter staff name",false);
+  const permissions=$$("#staffPermissions input:checked").map(x=>x.value);
+  const payload={display_name:name,role:$("#staffRole").value,permissions};
+  if(editing){
+    await api("/api/owner/staff/"+encodeURIComponent(state.staffEditingId),{method:"POST",body:JSON.stringify(payload)});
+    toast("Staff panel functions updated");
+    cancelStaffEdit();
+    await loadStaff();
+    return;
+  }
+  const d=await api("/api/owner/staff",{method:"POST",body:JSON.stringify(payload)});
+  const box=$("#newStaffToken");
+  box.hidden=false;
+  box.innerHTML=`<b>One-time access token</b><br>${esc(d.token)}<br><small>Save it securely now. It cannot be viewed again from this panel.</small>`;
+  toast(permissions.length?"Custom panel created with selected functions":"Custom panel created with zero functions");
+  cancelStaffEdit();
+  await loadStaff();
+}
+
+async function loadSupport(){if(!can('support.view'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
+async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.close');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
+async function sendSupportReply(){if(!state.selectedTicket)return;if(!can('support.reply'))return toast('Support reply permission required',false);const message=$("#supportReply").value.trim();if(!message)return toast('Write a reply first',false);await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/reply`,{method:'POST',body:JSON.stringify({message})});$("#supportReply").value='';toast('Reply sent');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
+async function closeSupportTicket(){if(!state.selectedTicket)return;if(!can('support.close'))return toast('Support close permission required',false);if(!confirm('Close this VIP support ticket?'))return;await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/close`,{method:'POST',body:'{}'});toast('Ticket closed');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
 async function createStaff(){if(!can('staff.write'))return toast('Only owner or authorized super admin can create staff access',false);const name=$("#staffName").value.trim();if(!name)return toast('Enter staff name',false);const permissions=$$("#staffPermissions input:checked").map(x=>x.value);const payload={display_name:name,role:$("#staffRole").value};if(permissions.length)payload.permissions=permissions;const d=await api('/api/owner/staff',{method:'POST',body:JSON.stringify(payload)});$("#staffName").value='';$$("#staffPermissions input").forEach(x=>x.checked=false);const box=$("#newStaffToken");box.hidden=false;box.innerHTML=`<b>One-time access token</b><br>${esc(d.token)}<br><small>Save it securely now. It cannot be viewed again from this panel.</small>`;toast('Custom panel access created');loadStaff();}
 
 
@@ -1296,7 +1368,9 @@ $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.mes
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
-$("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};
+$("#clearPermissions").onclick=()=>{$("#staffPermissions input").forEach(x=>x.checked=false);};$("#cancelStaffEdit").onclick=cancelStaffEdit;
 $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));$("#sendSupportReply").onclick=()=>sendSupportReply().catch(e=>toast(e.message,false));$("#closeSupportTicket").onclick=()=>closeSupportTicket().catch(e=>toast(e.message,false));
 
+const permissionObserver=new MutationObserver(()=>applyActionPermissions());
+permissionObserver.observe(document.body,{childList:true,subtree:true});
 if(state.token){connect();}else{showApp(false);}
