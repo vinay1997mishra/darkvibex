@@ -550,6 +550,19 @@ CREATE TABLE IF NOT EXISTS invite_bindings (
 CREATE INDEX IF NOT EXISTS idx_invite_bindings_inviter
   ON invite_bindings(inviter_user_id, bound_at DESC);
 
+CREATE TABLE IF NOT EXISTS invite_success_rewards (
+  id TEXT PRIMARY KEY,
+  inviter_user_id TEXT NOT NULL,
+  invitee_user_id TEXT NOT NULL UNIQUE,
+  reward_coins INTEGER NOT NULL CHECK (reward_coins > 0),
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (invitee_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_success_rewards_inviter
+  ON invite_success_rewards(inviter_user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS invite_commission_rewards (
   id TEXT PRIMARY KEY,
   inviter_user_id TEXT NOT NULL,
