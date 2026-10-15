@@ -110,6 +110,14 @@ jobs:
           cp /tmp/dvx-room-service.kt android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXRoomForegroundService.kt
           cp /tmp/dvx-messaging-service.kt android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXMessagingService.kt
 
+          # Replace Flutter's default launcher icon with the finalized DarkVibeX
+          # Voice Vibe logo. Keep the source outside res/ so flutter create cannot
+          # overwrite it, then leave a single xxxhdpi resource for Android to
+          # downscale cleanly on lower-density devices.
+          find android/app/src/main/res -type f \( -name 'ic_launcher.png' -o -name 'ic_launcher.webp' \) -delete
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          cp assets/branding/darkvibex_launcher.webp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp
+
       - name: Configure optional Firebase message push
         working-directory: apps/mobile
         shell: bash
