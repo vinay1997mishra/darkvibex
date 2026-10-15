@@ -266,6 +266,18 @@ async function ensureOwnerControlSchema(db) {
       read_at INTEGER,
       created_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_tags (
+      user_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#FFD54F',
+      kind TEXT NOT NULL DEFAULT 'custom',
+      designation TEXT NOT NULL DEFAULT '',
+      background_color TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,tag_id)
+    )`),
   ]);
 }
 
@@ -281,6 +293,44 @@ async function ensureWalletAllowed(db, userId) {
   await ensureOwnerControlSchema(db);
   const row=await db.prepare("SELECT wallet_frozen FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first();
   if(Number(row?.wallet_frozen ?? 0)===1) throw new Error("wallet_frozen");
+}
+
+async function ownerIdentityMeta(db,userId) {
+  await ensureOwnerControlSchema(db);
+  const [override,tags]=await Promise.all([
+    db.prepare("SELECT invisible_id,locked_room_bypass,wallet_frozen FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first(),
+    db.prepare("SELECT tag_id,name,color,kind,designation,background_color,created_at,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC").bind(userId).all(),
+  ]);
+  return {
+    invisible_id:Number(override?.invisible_id ?? 0)===1,
+    locked_room_bypass:Number(override?.locked_room_bypass ?? 0)===1,
+    wallet_frozen:Number(override?.wallet_frozen ?? 0)===1,
+    tags:tags.results ?? [],
+  };
+}
+
+async function ownerGameConfig(db,gameId,defaults={}) {
+  const fallback={
+    enabled:defaults.enabled!==false,
+    min_bet:Number(defaults.min_bet ?? 1),
+    max_bet:Number(defaults.max_bet ?? 900000000000000),
+  };
+  try {
+    const row=await db.prepare(
+      "SELECT enabled,json_data FROM owner_catalog WHERE kind='game_config' AND id=? LIMIT 1"
+    ).bind(gameId).first();
+    if(!row)return fallback;
+    let data={};
+    try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+    return {
+      enabled:Number(row.enabled ?? 1)!==0,
+      min_bet:Number(data.min_bet ?? fallback.min_bet),
+      max_bet:Number(data.max_bet ?? fallback.max_bet),
+    };
+  } catch(error) {
+    if(String(error?.message ?? error).includes("no such table"))return fallback;
+    throw error;
+  }
 }
 
 async function ensureUserAllowed(db, userId, { checkMute = false } = {}) {
@@ -4197,6 +4247,15 @@ async function handleApi(request, env, url) {
         user["active_" + String(prop.kind) + "_id"] = String(prop.item_id ?? "");
       }
       user.privacy_protection_enabled = targetVip.active && targetVip.level >= 15 && targetVip.preferences.privacy_protection === true;
+      const ownerIdentity=await ownerIdentityMeta(db,viewedUserId);
+      user.owner_tags=ownerIdentity.tags;
+      user.tags=ownerIdentity.tags;
+      user.invisible_id=ownerIdentity.invisible_id;
+      user.wallet_frozen=ownerIdentity.wallet_frozen;
+      if(ownerIdentity.invisible_id && viewerId !== viewedUserId){
+        user.public_id=null;
+        user.vip_custom_id=null;
+      }
     }
     if (user && viewerId !== viewedUserId && url.searchParams.get("record_visit") !== "0") {
       const targetVip = await getVipStatus(db, viewedUserId);
@@ -6935,7 +6994,8 @@ async function handleApi(request, env, url) {
     );
     const userId = String(session.sub);
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const ludoConfig = await ownerGameConfig(db,"ludo",{enabled:true});
+    if (gamesFeature.enabled === false || ludoConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
 
@@ -7084,7 +7144,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const authError = await requireSession(request, env);
@@ -7101,7 +7162,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const body = await bodyJson(request);
@@ -7115,11 +7177,13 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     if (!FRUIT_PARTY_BY_KEY.has(fruitKey) ||
         !FRUIT_PARTY_BET_AMOUNTS.includes(amount) ||
+        amount < gameConfig.min_bet || amount > gameConfig.max_bet ||
         !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
       return json({ ok:false,error:"invalid_bet" }, { status:400 });
     }
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
+    await ensureWalletAllowed(db,userId);
     await ensureFruitPartySchema(db);
     const ts = now();
     await syncFruitParty(db, ts);
@@ -7181,7 +7245,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/greedy-girl/state" && request.method === "GET") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const authError = await requireSession(request, env);
@@ -7198,7 +7263,8 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/games/greedy-girl/bet" && request.method === "POST") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
-    if (gamesFeature.enabled === false) {
+    const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
       return json({ ok:false,error:"games_disabled" }, { status:403 });
     }
     const body = await bodyJson(request);
@@ -7210,12 +7276,14 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     if (!GREEDY_GIRL_BY_KEY.has(foodKey) ||
         !GREEDY_GIRL_BET_AMOUNTS.includes(amount) ||
+        amount < gameConfig.min_bet || amount > gameConfig.max_bet ||
         !/^[a-zA-Z0-9_-]{16,96}$/.test(requestId)) {
       return json({ ok:false,error:"invalid_bet" }, { status:400 });
     }
 
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
+    await ensureWalletAllowed(db,userId);
     await ensureGreedyGirlSchema(db);
     const ts = now();
     const roundId = greedyGirlRoundId(ts);
