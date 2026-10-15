@@ -5,12 +5,16 @@ export async function ensureRoleWalletSchema(db) {
     user_id TEXT NOT NULL,
     wallet_type TEXT NOT NULL CHECK(wallet_type IN ('coin_seller','merchant')),
     balance_coins INTEGER NOT NULL DEFAULT 0 CHECK(balance_coins>=0),
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','banned')),
     credential_hash TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY(user_id,wallet_type),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   )`).run();
+  try {
+    await db.prepare("ALTER TABLE role_wallets ADD COLUMN status TEXT NOT NULL DEFAULT 'active'").run();
+  } catch (_) {}
   await db.prepare(`CREATE TABLE IF NOT EXISTS role_wallet_ledger (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -35,12 +39,12 @@ export async function ensureRoleWallet(db,userId,walletType,ts=Date.now()){
     throw new Error(type+"_role_required");
   }
   await db.prepare(
-    `INSERT INTO role_wallets(user_id,wallet_type,balance_coins,credential_hash,created_at,updated_at)
-     VALUES(?,?,0,NULL,?,?)
+    `INSERT INTO role_wallets(user_id,wallet_type,balance_coins,status,credential_hash,created_at,updated_at)
+     VALUES(?,?,0,'active',NULL,?,?)
      ON CONFLICT(user_id,wallet_type) DO NOTHING`
   ).bind(userId,type,ts,ts).run();
   return db.prepare(
-    "SELECT user_id,wallet_type,balance_coins,credential_hash,created_at,updated_at FROM role_wallets WHERE user_id=? AND wallet_type=?"
+    "SELECT user_id,wallet_type,balance_coins,status,credential_hash,created_at,updated_at FROM role_wallets WHERE user_id=? AND wallet_type=?"
   ).bind(userId,type).first();
 }
 
@@ -56,6 +60,8 @@ export async function roleWalletDetail(db,userId,walletType,limit=200,ts=Date.no
   return {
     wallet_type:walletType,
     balance_coins:Number(wallet?.balance_coins ?? 0),
+    status:String(wallet?.status ?? "active"),
+    banned:String(wallet?.status ?? "active")==="banned",
     credential_set:Boolean(wallet?.credential_hash),
     transactions:rows.results ?? [],
   };
@@ -72,6 +78,7 @@ export async function setRoleWalletCredential(db,userId,walletType,credentialHas
 
 export async function verifyRoleWalletCredential(db,userId,walletType,credentialHash,ts=Date.now()){
   const wallet=await ensureRoleWallet(db,userId,walletType,ts);
+  if(String(wallet?.status ?? "active")==="banned") throw new Error("role_wallet_banned");
   if(!wallet?.credential_hash) throw new Error("wallet_credential_not_set");
   if(String(wallet.credential_hash)!==String(credentialHash)) {
     throw new Error("invalid_wallet_credential");
