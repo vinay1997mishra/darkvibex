@@ -307,6 +307,12 @@ async function ensureOwnerSchema(db) {
       updated_at INTEGER NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_device_bans_user ON owner_device_bans(user_id,updated_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_devices (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_devices_user ON owner_user_devices(user_id,last_seen_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_tags (
       user_id TEXT NOT NULL,
       tag_id TEXT NOT NULL,
@@ -471,12 +477,35 @@ async function getUserDetails(db, userId) {
     "SELECT invisible_id,locked_room_bypass,wallet_frozen,updated_at FROM owner_user_overrides WHERE user_id=?"
   ).bind(userId).first();
   const devices = await db.prepare(
-    `SELECT p.token,p.device_key,p.platform,p.enabled,p.updated_at,
-            COALESCE(b.banned,0) AS banned,COALESCE(b.note,'') AS ban_note
-       FROM push_devices p
-       LEFT JOIN owner_device_bans b
-         ON b.device_key=CASE WHEN p.device_key<>'' THEN p.device_key ELSE p.token END
-      WHERE p.user_id=? ORDER BY p.updated_at DESC LIMIT 20`
+    `SELECT d.device_key,
+            COALESCE(
+              (SELECT p.token FROM push_devices p
+                WHERE p.user_id=d.user_id
+                  AND (p.device_key=d.device_key OR p.token=d.device_key)
+                ORDER BY p.updated_at DESC LIMIT 1),
+              ''
+            ) AS token,
+            COALESCE(
+              (SELECT p.platform FROM push_devices p
+                WHERE p.user_id=d.user_id
+                  AND (p.device_key=d.device_key OR p.token=d.device_key)
+                ORDER BY p.updated_at DESC LIMIT 1),
+              'android'
+            ) AS platform,
+            COALESCE(
+              (SELECT p.enabled FROM push_devices p
+                WHERE p.user_id=d.user_id
+                  AND (p.device_key=d.device_key OR p.token=d.device_key)
+                ORDER BY p.updated_at DESC LIMIT 1),
+              1
+            ) AS enabled,
+            d.last_seen_at AS updated_at,
+            COALESCE(b.banned,0) AS banned,
+            COALESCE(b.note,'') AS ban_note
+       FROM owner_user_devices d
+       LEFT JOIN owner_device_bans b ON b.device_key=d.device_key
+      WHERE d.user_id=?
+      ORDER BY d.last_seen_at DESC LIMIT 20`
   ).bind(userId).all();
   const tags = await db.prepare(
     "SELECT tag_id,name,color,kind,designation,background_color,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC"
