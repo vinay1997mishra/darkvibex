@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../widgets/gift_media_preview.dart';
 
 class GiftsScreen extends StatefulWidget {
   const GiftsScreen({
@@ -325,9 +326,21 @@ class _GiftsScreenState extends State<GiftsScreen> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    gift['emoji']?.toString() ?? '🎁',
-                                    style: const TextStyle(fontSize: 34),
+                                  SizedBox(
+                                    width: 58,
+                                    height: 58,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: GiftMediaPreview(
+                                        backend: state.backend,
+                                        videoKey:
+                                            gift['video_key']?.toString() ?? '',
+                                        assetKey:
+                                            gift['asset_key']?.toString() ?? '',
+                                        emoji:
+                                            gift['emoji']?.toString() ?? '🎁',
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
