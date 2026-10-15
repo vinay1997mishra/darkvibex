@@ -485,7 +485,7 @@ async function getUserDetails(db, userId) {
     "SELECT id, kind, amount, balance_after, reference_id, created_at FROM wallet_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 25"
   ).bind(userId).all();
   const room = await db.prepare(
-    `SELECT m.room_id, m.seat_index, m.mic_muted, m.updated_at, r.name AS room_name
+    `SELECT m.room_id, m.seat_index, m.mic_muted, m.joined_at, m.updated_at, r.name AS room_name
        FROM room_members m LEFT JOIN rooms r ON r.id = m.room_id
       WHERE m.user_id = ? ORDER BY m.updated_at DESC LIMIT 1`
   ).bind(userId).first();
@@ -535,12 +535,72 @@ async function getUserDetails(db, userId) {
   const tags = await db.prepare(
     "SELECT tag_id,name,color,kind,designation,background_color,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC"
   ).bind(userId).all();
+
+  const [giftStats,gameStats,purchaseStats,recentGames,recentGifts,coinRateRow] = await Promise.all([
+    db.prepare(
+      `SELECT
+          COALESCE(SUM(CASE WHEN sender_user_id=? THEN coin_cost ELSE 0 END),0) AS sent_coins,
+          COALESCE(SUM(CASE WHEN receiver_user_id=? THEN coin_cost ELSE 0 END),0) AS received_coins,
+          COALESCE(SUM(CASE WHEN sender_user_id=? THEN 1 ELSE 0 END),0) AS sent_count,
+          COALESCE(SUM(CASE WHEN receiver_user_id=? THEN 1 ELSE 0 END),0) AS received_count
+         FROM gift_events
+        WHERE sender_user_id=? OR receiver_user_id=?`
+    ).bind(userId,userId,userId,userId,userId,userId).first(),
+    db.prepare(
+      `SELECT COUNT(*) AS bet_count,COALESCE(SUM(stake),0) AS wagered,
+              COALESCE(SUM(payout),0) AS payout,COALESCE(SUM(stake-payout),0) AS house_result
+         FROM game_bets WHERE user_id=?`
+    ).bind(userId).first(),
+    db.prepare(
+      `SELECT COUNT(*) AS purchase_count,
+              COALESCE(SUM(CASE WHEN amount<0 THEN -amount ELSE 0 END),0) AS purchase_coins
+         FROM wallet_ledger
+        WHERE user_id=? AND (kind LIKE '%purchase%' OR kind LIKE '%buy%')`
+    ).bind(userId).first(),
+    db.prepare(
+      "SELECT game_id,stake,result,payout,created_at FROM game_bets WHERE user_id=? ORDER BY created_at DESC LIMIT 10"
+    ).bind(userId).all(),
+    db.prepare(
+      `SELECT CASE WHEN sender_user_id=? THEN 'sent' ELSE 'received' END AS direction,
+              room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,created_at
+         FROM gift_events
+        WHERE sender_user_id=? OR receiver_user_id=?
+        ORDER BY created_at DESC LIMIT 10`
+    ).bind(userId,userId,userId).all(),
+    db.prepare("SELECT value_json,updated_at FROM owner_settings WHERE key='economy.coin_rate'").first(),
+  ]);
+  const coinRateConfig=safeParse(coinRateRow?.value_json,{coins_per_usd:5000000});
+  const coinsPerUsd=Math.max(1,Number(coinRateConfig?.coins_per_usd ?? 5000000)||5000000);
+  const currentRoom=room ?? null;
+  const joinedAt=Number(currentRoom?.joined_at ?? 0);
+  const investigation={
+    coin_rate_coins_per_usd:coinsPerUsd,
+    wallet_usd:Number(user.coins ?? 0)/coinsPerUsd,
+    diamonds:Number(user.diamonds ?? 0),
+    room_id:currentRoom?.room_id ?? null,
+    room_name:currentRoom?.room_name ?? null,
+    room_joined_at:joinedAt||null,
+    online_duration_ms:joinedAt>0?Math.max(0,now()-joinedAt):0,
+    sent_gift_coins:Number(giftStats?.sent_coins ?? 0),
+    received_gift_coins:Number(giftStats?.received_coins ?? 0),
+    sent_gift_count:Number(giftStats?.sent_count ?? 0),
+    received_gift_count:Number(giftStats?.received_count ?? 0),
+    purchase_count:Number(purchaseStats?.purchase_count ?? 0),
+    purchase_coins:Number(purchaseStats?.purchase_coins ?? 0),
+    game_bet_count:Number(gameStats?.bet_count ?? 0),
+    game_wagered:Number(gameStats?.wagered ?? 0),
+    game_payout:Number(gameStats?.payout ?? 0),
+    game_house_result:Number(gameStats?.house_result ?? 0),
+    recent_games:recentGames.results ?? [],
+    recent_gifts:recentGifts.results ?? [],
+  };
   return {
     ...user,
     wallet_ledger: ledger.results ?? [],
     role_wallets,
     old_public_ids: oldIds.results ?? [],
     current_room: room ?? null,
+    investigation,
     owner_overrides: overrides ?? {invisible_id:0,locked_room_bypass:0,wallet_frozen:0,wallet_banned:0},
     devices: devices.results ?? [],
     tags: tags.results ?? [],
