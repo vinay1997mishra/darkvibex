@@ -343,7 +343,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          'Only Coin Seller received coins count for this commission. Merchant transfers, gifts, game winnings and other coins do not count.',
+                          'Only Coin Seller received coins count for this commission. Rewards are coins only; no Entry Vehicle or other prize item is included. Merchant transfers, gifts, game winnings and other coins do not count.',
                           style: TextStyle(
                             color: Color(0xFFFFD7B0),
                             fontSize: 11,
