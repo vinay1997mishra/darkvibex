@@ -78,10 +78,10 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
         const <Map<String, dynamic>>[];
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('ID Level'),
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         actions: [IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh_rounded))],
       ),
       body: loading
