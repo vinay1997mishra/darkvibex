@@ -9,6 +9,7 @@ import 'mine_social_screens.dart';
 import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
 import 'personal_profile_screen.dart';
+import 'room_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 
@@ -1819,41 +1820,103 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
-  Widget _roomOnlineChip() {
-    final room = currentRoom;
-    if (room == null) return const SizedBox.shrink();
-    return Container(
-      key: const Key('public-profile-room-online'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 7,
-            offset: Offset(0, 2),
-          ),
-        ],
+  RoomSummary? _currentRoomSummary() {
+    final row = currentRoom;
+    if (row == null) return null;
+    final roomId = row['room_id']?.toString().trim() ?? '';
+    if (roomId.isEmpty) return null;
+
+    RoomSummary? cached;
+    for (final item in widget.state.rooms) {
+      if (item.id == roomId || item.roomNumber == roomId) {
+        cached = item;
+        break;
+      }
+    }
+
+    final avatar = row['avatar_key']?.toString().trim() ?? '';
+    return RoomSummary(
+      id: roomId,
+      displayId: row['display_id']?.toString().trim().isNotEmpty == true
+          ? row['display_id']?.toString().trim()
+          : cached?.displayId,
+      name: row['room_name']?.toString().trim().isNotEmpty == true
+          ? row['room_name']!.toString().trim()
+          : cached?.name ?? 'Room',
+      ownerName: row['owner_name']?.toString().trim().isNotEmpty == true
+          ? row['owner_name']!.toString().trim()
+          : cached?.ownerName ?? 'Owner',
+      ownerUserId: row['owner_user_id']?.toString().trim().isNotEmpty == true
+          ? row['owner_user_id']!.toString().trim()
+          : cached?.ownerUserId ?? '',
+      online: int.tryParse(row['online']?.toString() ?? '') ??
+          cached?.online ??
+          1,
+      seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ??
+          cached?.seatCount ??
+          12,
+      avatarKey: avatar.isNotEmpty ? avatar : cached?.avatarKey,
+      partyMode: row['party_mode']?.toString().trim().isNotEmpty == true
+          ? row['party_mode']!.toString().trim()
+          : cached?.partyMode ?? 'Friends-making Party',
+      roomMode: row['room_mode']?.toString().trim().isNotEmpty == true
+          ? row['room_mode']!.toString().trim()
+          : cached?.roomMode ?? 'voice',
+    );
+  }
+
+  Future<void> _openCurrentRoom() async {
+    final room = _currentRoomSummary();
+    if (room == null || !mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoomScreen(
+          state: widget.state,
+          room: room,
+        ),
       ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.graphic_eq_rounded,
-            size: 19,
-            color: Color(0xFF27C66B),
-          ),
-          SizedBox(width: 7),
-          Text(
-            'Room',
-            style: TextStyle(
-              color: Color(0xFF27C66B),
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+    );
+    if (mounted) await _load();
+  }
+
+  Widget _roomOnlineChip() {
+    if (_currentRoomSummary() == null) return const SizedBox.shrink();
+    return GestureDetector(
+      key: const Key('public-profile-room-online'),
+      behavior: HitTestBehavior.opaque,
+      onTap: _openCurrentRoom,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 7,
+              offset: Offset(0, 2),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.graphic_eq_rounded,
+              size: 19,
+              color: Color(0xFF27C66B),
+            ),
+            SizedBox(width: 7),
+            Text(
+              'Room',
+              style: TextStyle(
+                color: Color(0xFF27C66B),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
