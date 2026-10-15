@@ -977,7 +977,9 @@ export async function cpState(db, userId) {
   await ensureTinniSocialSchema(db);
   let row = await db.prepare(
     `SELECT c.*,ua.display_name AS user_a_name,ua.avatar_key AS user_a_avatar_key,
-            ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key
+            ua.public_id AS user_a_public_id,
+            ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key,
+            ub.public_id AS user_b_public_id
        FROM cp_relationships c
        LEFT JOIN users ua ON ua.id=c.user_a
        LEFT JOIN users ub ON ub.id=c.user_b
@@ -1268,7 +1270,9 @@ export async function vsState(db, userId) {
   await ensureTinniSocialSchema(db);
   let row = await db.prepare(
     `SELECT v.*,ua.display_name AS user_a_name,ua.avatar_key AS user_a_avatar_key,
-            ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key
+            ua.public_id AS user_a_public_id,
+            ub.display_name AS user_b_name,ub.avatar_key AS user_b_avatar_key,
+            ub.public_id AS user_b_public_id
        FROM vs_relationships v
        LEFT JOIN users ua ON ua.id=v.user_a
        LEFT JOIN users ub ON ub.id=v.user_b
