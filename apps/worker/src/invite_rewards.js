@@ -1,7 +1,8 @@
 const COINS_PER_USD = 6_000_000;
 
-// Invite rewards are coin commission only. Do not attach entry vehicles,
-// frames, cosmetics, gifts, or other prize inventory to this reward flow.
+// Invite rewards are coin commission only. Eligible source is a Coin Seller
+// or Merchant transfer into the invited user's normal wallet. Do not attach
+// entry vehicles, frames, cosmetics, gifts, or other prize inventory.
 
 // Direct-invite reward levels copied from the visible levels in the reference
 // flow. The last visible level is 5%; higher levels can be added without
@@ -189,11 +190,14 @@ export async function recordCoinSellerInviteCommission(db, {
   inviteeUserId,
   sourceTransferId,
   sourceCoins,
+  sourceWalletType = "coin_seller",
   ts = Date.now(),
 }) {
   await ensureInviteRewardSchema(db);
   const amount = Number(sourceCoins);
+  const walletType = String(sourceWalletType ?? "").trim();
   if (!inviteeUserId || !sourceTransferId ||
+      !["coin_seller", "merchant"].includes(walletType) ||
       !Number.isSafeInteger(amount) || amount <= 0) {
     throw new Error("invalid_invite_commission_source");
   }
