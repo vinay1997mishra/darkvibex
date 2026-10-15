@@ -26,6 +26,7 @@ const json = (data, init = {}) =>
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 const encoder = new TextEncoder();
+const MAIN_OWNER_GMAIL_SHA256 = "821a3b8e3fad7bf5644a2ae91752590b48010c8ba56a3d1e647aafe55f1f85f2";
 let schemaReady = false;
 
 function bearerToken(request) {
@@ -110,6 +111,71 @@ async function issueStaffSession(db, staffId) {
     "INSERT INTO owner_staff_sessions(token_hash,staff_id,created_at,expires_at,last_used_at) VALUES(?,?,?,?,?)"
   ).bind(tokenHash, staffId, createdAt, expiresAt, createdAt).run();
   return { token, expires_at: expiresAt };
+}
+
+async function issueOwnerGoogleSession(db) {
+  const token = "dvxo_" + randomHex(32);
+  const tokenHash = await sha256Hex(token);
+  const createdAt = now();
+  const expiresAt = createdAt + 7 * 24 * 60 * 60 * 1000;
+  await db.prepare(
+    "INSERT INTO owner_login_sessions(token_hash,created_at,expires_at,last_used_at) VALUES(?,?,?,?)"
+  ).bind(tokenHash, createdAt, expiresAt, createdAt).run();
+  return { token, expires_at: expiresAt };
+}
+
+async function verifyOwnerGoogleIdToken(idToken, expectedAudience) {
+  const audience = String(expectedAudience ?? "").trim();
+  if (!audience) throw new Error("google_auth_not_configured");
+  const token = String(idToken ?? "").trim();
+  if (!token) throw new Error("google_id_token_required");
+
+  const response = await fetch(
+    "https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(token),
+    { headers: { accept: "application/json" } },
+  );
+  if (!response.ok) throw new Error("invalid_google_token");
+  const claims = await response.json();
+  if (String(claims.aud ?? "") !== audience) throw new Error("invalid_google_audience");
+  const issuer = String(claims.iss ?? "");
+  if (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") {
+    throw new Error("invalid_google_issuer");
+  }
+  const verified = claims.email_verified === true || String(claims.email_verified ?? "") === "true";
+  if (!claims.email || !verified) throw new Error("google_email_not_verified");
+  return claims;
+}
+
+async function loginMainOwnerWithGoogle(db, env, body) {
+  let claims;
+  try {
+    claims = await verifyOwnerGoogleIdToken(body.id_token, env.GOOGLE_WEB_CLIENT_ID);
+  } catch (error) {
+    const code = String(error?.message ?? error);
+    const status = code === "google_auth_not_configured" ? 503 : 401;
+    return json({ ok: false, error: code }, { status });
+  }
+
+  const email = normalizeStaffEmail(claims.email);
+  const emailHash = email ? await sha256Hex(email) : "";
+  if (!email || emailHash !== MAIN_OWNER_GMAIL_SHA256) {
+    return json({ ok: false, error: "owner_google_account_not_authorized" }, { status: 403 });
+  }
+
+  await db.prepare("DELETE FROM owner_login_sessions WHERE expires_at<=?").bind(now()).run();
+  const session = await issueOwnerGoogleSession(db);
+  return json({
+    ok: true,
+    token: session.token,
+    expires_at: session.expires_at,
+    actor: {
+      type: "owner",
+      id: "owner",
+      name: "Platform Owner",
+      role: "owner",
+      permissions: ["*"],
+    },
+  });
 }
 
 function safeParse(value, fallback) {
@@ -480,6 +546,12 @@ async function ensureOwnerSchema(db) {
       FOREIGN KEY (staff_id) REFERENCES owner_staff(id) ON DELETE CASCADE
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_staff_sessions_staff ON owner_staff_sessions(staff_id,expires_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_login_sessions (
+      token_hash TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      last_used_at INTEGER NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_audit (
       id TEXT PRIMARY KEY,
       actor_type TEXT NOT NULL,
@@ -717,6 +789,15 @@ async function authenticate(request, env, db) {
   }
 
   const hash = await sha256Hex(supplied);
+  const ownerSession = await db.prepare(
+    "SELECT token_hash FROM owner_login_sessions WHERE token_hash=? AND expires_at>? LIMIT 1"
+  ).bind(hash, now()).first();
+  if (ownerSession) {
+    await db.prepare("UPDATE owner_login_sessions SET last_used_at=? WHERE token_hash=?")
+      .bind(now(), hash).run();
+    return { type: "owner", id: "owner", name: "Platform Owner", role: "owner", permissions: ["*"] };
+  }
+
   const session = await db.prepare(
     `SELECT s.staff_id, st.display_name, st.role, st.permissions_json
        FROM owner_staff_sessions s
@@ -2552,6 +2633,10 @@ export async function handleOwnerApi(request, env, url) {
     if (url.pathname === "/api/owner/login" && request.method === "POST") {
       const body = await bodyJson(request);
       return loginStaffWithPassword(db, body);
+    }
+    if (url.pathname === "/api/owner/google-login" && request.method === "POST") {
+      const body = await bodyJson(request);
+      return loginMainOwnerWithGoogle(db, env, body);
     }
     const actor = await authenticate(request, env, db);
     if (!actor) return json({ ok: false, error: "unauthorized" }, { status: 401 });
