@@ -233,26 +233,39 @@ class _VipRingPainter extends CustomPainter {
     switch (theme.motif) {
       case 'crown':
         _drawCrown(canvas, center, radius, colors, phase);
+        break;
       case 'heart':
         _drawHearts(canvas, center, radius, colors, phase);
+        break;
       case 'butterfly':
         _drawButterflies(canvas, center, radius, colors, phase);
+        break;
       case 'rose':
         _drawRoses(canvas, center, radius, colors, phase);
+        break;
       case 'star':
         _drawStars(canvas, center, radius, colors, phase);
+        break;
       case 'flower':
         _drawFlowers(canvas, center, radius, colors, phase);
+        break;
       case 'blossom':
         _drawBlossoms(canvas, center, radius, colors, progress);
+        break;
       case 'angel':
         _drawAngel(canvas, center, radius, colors, phase);
+        break;
       case 'royal_wings':
         _drawRoyalWings(canvas, center, radius, colors, phase);
+        break;
       case 'royal_love':
         _drawRoyalLove(canvas, center, radius, colors, phase);
+        break;
       case 'nature':
         _drawNature(canvas, center, radius, colors, phase);
+        break;
+      default:
+        break;
     }
   }
 
