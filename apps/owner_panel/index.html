@@ -14,7 +14,13 @@
       <nav id="nav">
         <button class="nav-btn active" data-view="overview">Dashboard</button>
         <button class="nav-btn" data-view="users">Users</button>
+        <button class="nav-btn" data-view="notifications">Notifications</button>
+        <button class="nav-btn" data-view="messaging">Messages & Tags</button>
         <button class="nav-btn" data-view="rooms">Rooms</button>
+        <button class="nav-btn" data-view="roles">Roles / Posts</button>
+        <button class="nav-btn" data-view="banners">Banners</button>
+        <button class="nav-btn" data-view="games">Games</button>
+        <button class="nav-btn" data-view="policies">Policies</button>
         <button class="nav-btn" data-view="wallets">Wallets / Treasury</button>
         <button class="nav-btn" data-view="economy">Unique ID / Coin Rate</button>
         <button class="nav-btn" data-view="store">App Store</button>
@@ -110,14 +116,89 @@
               <label>Role coin change<input id="roleCoinDelta" type="number" placeholder="e.g. 5000000 or -5000000" /></label>
             </div>
             <button id="applyRoleWallet" class="primary">Apply role-wallet adjustment</button>
+            <hr />
+            <h3>Owner Overrides</h3>
+            <div class="form-grid compact">
+              <label class="check"><input id="userInvisibleId" type="checkbox" /> Invisible ID</label>
+              <label class="check"><input id="userLockedBypass" type="checkbox" /> Locked-room bypass</label>
+              <label class="check"><input id="userWalletFrozen" type="checkbox" /> Wallet security freeze</label>
+            </div>
+            <button id="saveUserOverrides" class="primary">Save Owner Overrides</button>
+            <hr />
+            <h3>Registered Devices</h3>
+            <p class="muted">Ban/unban a registered installation. Banned device keys are rejected by the API.</p>
+            <div id="userDevices" class="stack compact-stack"></div>
           </article>
         </section>
 
         <section class="view" data-view-panel="rooms">
           <article class="panel">
-            <div class="panel-head"><div><h2>Room control</h2><p>Rename rooms, change seats, lock or remove a room.</p></div></div>
+            <div class="panel-head"><div><h2>Room Control & Investigation</h2><p>Rename, seats, lock, DP/background, themes and live users/seats.</p></div></div>
             <div class="search-row"><input id="roomSearch" placeholder="Room ID, name or owner" /><button id="searchRooms" class="primary">Search</button></div>
             <div id="roomList" class="stack"></div>
+          </article>
+          <article id="roomInvestigation" class="panel" hidden>
+            <div class="panel-head"><div><h2 id="roomInvestigationTitle">Room Investigation</h2><p id="roomInvestigationMeta" class="muted"></p></div><button id="closeRoomInvestigation" class="secondary">Close</button></div>
+            <div class="form-grid">
+              <label>Room DP asset key<input id="ownerRoomDpKey" placeholder="Asset / R2 key" /></label>
+              <label>Room background asset key<input id="ownerRoomBackgroundKey" placeholder="Asset / R2 key" /></label>
+              <label>Theme ID<input id="ownerRoomThemeId" placeholder="dark / custom theme ID" /></label>
+            </div>
+            <div class="action-row"><button id="saveOwnerRoomMedia" class="primary">Save DP / Background</button><button id="saveOwnerRoomTheme" class="secondary">Apply Theme</button></div>
+            <h3>Live Users / Seats</h3>
+            <div id="roomLiveMembers" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="notifications">
+          <article class="panel"><div class="panel-head"><div><h2>Owner Notifications</h2><p>User complaints/feedback and owner alerts.</p></div><button id="reloadNotifications" class="secondary">Refresh</button></div><div id="notificationList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="messaging">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Official Messages & Tags</h2><p>Search users, select IDs, message selected/all users, and apply custom or V Official tags.</p></div></div>
+            <div class="search-row"><input id="messageUserSearch" placeholder="User ID / name" /><button id="searchMessageUsers" class="primary">Search</button></div>
+            <div id="messageUserResults" class="stack compact-stack"></div>
+            <p id="selectedMessageUsers" class="muted">0 selected</p>
+            <label>Official message<textarea id="officialMessageBody" rows="4" maxlength="2000"></textarea></label>
+            <div class="action-row"><button id="sendOfficialSelected" class="primary">Send to Selected</button><button id="sendOfficialAll" class="secondary">Send to All Users</button></div>
+            <hr />
+            <div class="form-grid">
+              <label>Tag name<input id="ownerTagName" placeholder="Custom tag" /></label>
+              <label>Tag color<input id="ownerTagColor" type="color" value="#FFD54F" /></label>
+              <label>Designation<input id="ownerTagDesignation" placeholder="For V Official" /></label>
+              <label>Type<select id="ownerTagKind"><option value="custom">Custom Tag</option><option value="v_official">V Official</option></select></label>
+            </div>
+            <button id="applyOwnerTag" class="primary">Apply Tag to Selected</button>
+            <h3>V Officials / Tags</h3><div id="ownerTagList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="roles">
+          <article class="panel"><div class="panel-head"><div><h2>Roles / Posts</h2><p>Reusable allowed roles/posts. Excluded hierarchy roles are not available.</p></div><select id="rolePostKind"><option value="role">Role</option><option value="post">Post</option></select></div>
+            <div class="form-grid"><label>ID<input id="rolePostId" /></label><label>Name<input id="rolePostName" /></label><label>Sort order<input id="rolePostOrder" type="number" value="0" /></label><label class="check"><input id="rolePostEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Details<textarea id="rolePostDetails" rows="3"></textarea></label></div>
+            <div class="action-row"><button id="saveRolePost" class="primary">Save</button><button id="reloadRolesPosts" class="secondary">Reload</button></div><div id="rolePostList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="banners">
+          <article class="panel"><div class="panel-head"><div><h2>Banners</h2><p>Create/edit/schedule/disable app banners.</p></div><button id="reloadBanners" class="secondary">Reload</button></div>
+            <div class="form-grid"><label>ID<input id="bannerId" /></label><label>Name<input id="bannerName" /></label><label>Asset key<input id="bannerAsset" /></label><label>Link<input id="bannerLink" /></label><label>Start timestamp (ms)<input id="bannerStart" type="number" /></label><label>End timestamp (ms)<input id="bannerEnd" type="number" /></label><label class="check"><input id="bannerEnabled" type="checkbox" checked /> Enabled</label></div>
+            <button id="saveBanner" class="primary">Save Banner</button><div id="bannerList" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="games">
+          <article class="panel"><div class="panel-head"><div><h2>Games</h2><p>Enable/disable games, change bet limits, and inspect aggregate profit/loss.</p></div><button id="reloadGames" class="secondary">Reload</button></div>
+            <div class="form-grid"><label>Game ID<input id="gameConfigId" /></label><label>Name<input id="gameConfigName" /></label><label>Min bet<input id="gameMinBet" type="number" value="1" /></label><label>Max bet<input id="gameMaxBet" type="number" value="1000000" /></label><label class="check"><input id="gameEnabled" type="checkbox" checked /> Enabled</label></div>
+            <button id="saveGameConfig" class="primary">Save Game Config</button><div id="gameList" class="stack"></div><h3>Game Stats</h3><div id="gameStats" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="policies">
+          <article class="panel"><div class="panel-head"><div><h2>Allowed Policies</h2><p>Economy/app rules only. Agency, BD, Host, Guardian and verification policies are blocked.</p></div><button id="reloadPolicies" class="secondary">Reload</button></div>
+            <div class="form-grid"><label>Policy key<input id="policyKey" placeholder="e.g. red_pocket.max_claim" /></label><label class="span-2">JSON value<textarea id="policyValue" rows="4" placeholder='{"enabled":true}'></textarea></label></div>
+            <button id="savePolicy" class="primary">Save Policy</button><div id="policyList" class="stack"></div>
           </article>
         </section>
 
