@@ -22,7 +22,8 @@ test("new room ID equals the owner's seven-digit profile ID", () => {
 });
 
 test("room listings and profiles expose the stable public ID", () => {
-  assert.match(source, /u\.public_id AS display_id/);
+  assert.match(source, /CASE WHEN COALESCE\(io\.invisible_id,0\)=1 THEN 'Hidden' ELSE u\.public_id END AS display_id/);
   assert.match(source, /WHERE public_id=\? LIMIT 1/);
-  assert.match(source, /COALESCE\(NULLIF\(u\.public_id,''\), m\.user_id\) AS public_id/);
+  assert.match(source, /COALESCE\(NULLIF\(u\.public_id,''\), m\.user_id\)/);
+  assert.match(source, /LEFT JOIN owner_user_overrides io/);
 });
