@@ -108,7 +108,7 @@ class _UniqueIdStoreScreenState extends State<UniqueIdStoreScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text(
             'Unique ID Store',
