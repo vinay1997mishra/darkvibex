@@ -489,6 +489,14 @@ async function publicIdOwnedByAnotherUser(db, candidate, userId) {
   } catch (error) {
     if (!String(error?.message ?? error).includes("no such table")) throw error;
   }
+  try {
+    const purchased = await db.prepare(
+      "SELECT buyer_user_id FROM unique_id_purchases WHERE public_id=? AND buyer_user_id<>? LIMIT 1"
+    ).bind(candidate,userId).first();
+    if (purchased) return true;
+  } catch (error) {
+    if (!String(error?.message ?? error).includes("no such table")) throw error;
+  }
   return false;
 }
 
