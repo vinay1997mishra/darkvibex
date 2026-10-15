@@ -453,6 +453,8 @@ async function handleUsers(request, db, actor, url, parts) {
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const taken = await db.prepare("SELECT id FROM users WHERE public_id = ? AND id <> ? LIMIT 1").bind(requested, userId).first();
     if (taken) return json({ ok: false, error: "public_id_already_used" }, { status: 409 });
+    const reserved = await db.prepare("SELECT user_id FROM owner_public_id_history WHERE public_id = ? AND user_id <> ? LIMIT 1").bind(requested, userId).first();
+    if (reserved) return json({ ok: false, error: "public_id_reserved_by_history" }, { status: 409 });
     const previous = String(current.public_id ?? "").trim();
     const ts = now();
     const statements = [
