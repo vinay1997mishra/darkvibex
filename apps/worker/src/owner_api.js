@@ -724,12 +724,11 @@ async function handleUsers(request, db, actor, url, parts) {
     const role = body.role == null ? current.role : normalizeRole(body.role);
     const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 18, Number(current.vip_level ?? 0));
     const changedAt = now();
-    await db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
-      .bind(name || current.display_name, role, vip, changedAt, userId).run();
-    if (body.vip_level != null && vip !== Number(current.vip_level ?? 0)) {
+    const vipChanged=body.vip_level != null && vip !== Number(current.vip_level ?? 0);
+    let activeUntil=null;
+    if(vipChanged){
       await ensureVipSchema(db);
       await getVipStatus(db,userId,changedAt);
-      let activeUntil=null;
       if(vip>0){
         const rule=await ownerVipRule(db,vip);
         if(!rule || rule.enabled===false){
@@ -737,10 +736,19 @@ async function handleUsers(request, db, actor, url, parts) {
         }
         activeUntil=changedAt+Number(rule.days ?? 30)*24*60*60*1000;
       }
-      await db.prepare(
-        "UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?"
-      ).bind(vip,activeUntil,String(activeUntil ?? ""),changedAt,userId).run();
     }
+    const statements=[
+      db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
+        .bind(name || current.display_name, role, vip, changedAt, userId),
+    ];
+    if(vipChanged){
+      statements.push(
+        db.prepare(
+          "UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?"
+        ).bind(vip,activeUntil,String(activeUntil ?? ""),changedAt,userId)
+      );
+    }
+    await db.batch(statements);
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
     return json({ ok: true, user: await getUserDetails(db, userId) });
   }
