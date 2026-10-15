@@ -36,7 +36,7 @@ function toast(message,good=true){const el=$("#toast");el.textContent=message;el
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
 function applyPermissions(){
-  const map={users:"users.read",rooms:"rooms.read",wallets:"treasury.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
+  const map={overview:"dashboard",users:"users.read",rooms:"rooms.read",wallets:"treasury.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
   $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=!!p&&!can(p);});
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
@@ -46,7 +46,7 @@ async function connect(){
   state.token=$("#token").value.trim()||state.token;if(!state.token)return;
   $("#loginStatus").textContent="Checking protected access…";
   try{
-    const session=await api("/api/owner/session");state.actor=session.actor;sessionStorage.setItem("dvxOwnerToken",state.token);showApp(true);actorCard();applyPermissions();$("#loginStatus").textContent="";await loadOverview();
+    const session=await api("/api/owner/session");state.actor=session.actor;sessionStorage.setItem("dvxOwnerToken",state.token);showApp(true);actorCard();applyPermissions();$("#loginStatus").textContent="";const first=$(".nav-btn").find(b=>!b.hidden);if(!first)throw new Error("no_panel_permissions");setView(first.dataset.view);
   }catch(e){state.token="";state.actor=null;sessionStorage.removeItem("dvxOwnerToken");showApp(false);$("#loginStatus").textContent=e.message;}
 }
 
