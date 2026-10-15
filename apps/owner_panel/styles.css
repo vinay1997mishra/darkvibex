@@ -14,3 +14,20 @@
 .permission-item input{width:auto}
 @media(max-width:1100px){.module-grid{grid-template-columns:repeat(2,1fr)}.permission-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.module-grid,.permission-grid{grid-template-columns:1fr}}
+
+
+.theme-crop-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  align-items:flex-start;
+}
+#globalThemeCropCanvas{
+  display:block;
+  max-width:100%;
+  max-height:480px;
+  background:#0b0c12;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:16px;
+  object-fit:contain;
+}
