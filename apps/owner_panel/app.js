@@ -424,15 +424,6 @@ async function connect(){
   }
 }
 
-async function connectOwnerToken(){
-  const token=$("#token").value.trim();
-  if(!token){
-    $("#loginStatus").textContent="Enter the private Main Owner access key.";
-    return;
-  }
-  await connectWithToken(token);
-}
-
 async function handleOwnerGoogleCredential(response){
   const credential=String(response?.credential||"").trim();
   if(!credential){
@@ -1530,18 +1521,16 @@ async function clearAudit(){
 }
 
 $("#connect").onclick=()=>connect().catch(e=>$("#loginStatus").textContent=e.message);
-$("#connectToken").onclick=()=>connectOwnerToken().catch(e=>$("#loginStatus").textContent=e.message);
 $("#loginEmail").addEventListener("keydown",e=>{if(e.key==="Enter")$("#loginPassword").focus();});
 $("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter")connect().catch(x=>$("#loginStatus").textContent=x.message);});
-$("#token").addEventListener("keydown",e=>{if(e.key==="Enter")connectOwnerToken().catch(x=>$("#loginStatus").textContent=x.message);});
 $("#logout").onclick=()=>{
   state.token="";
   state.actor=null;
   sessionStorage.removeItem("dvxOwnerToken");
   showApp(false);
   applyPanelBranding();
-  $("#token").value="";
   $("#loginPassword").value="";
+  initOwnerGoogleLogin();
 };
 $$('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
