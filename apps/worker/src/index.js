@@ -3633,6 +3633,38 @@ async function handleApi(request, env, url) {
     return json({ ok:true,rooms:followedRooms });
   }
 
+  if (url.pathname === "/api/banners" && request.method === "GET") {
+    const authError=await requireSession(request,env);
+    if(authError)return authError;
+    let rows=[];
+    try {
+      const result=await db.prepare(
+        "SELECT id,name,sort_order,json_data,updated_at FROM owner_catalog WHERE kind='banner' AND enabled=1 ORDER BY sort_order ASC,updated_at DESC LIMIT 100"
+      ).all();
+      const ts=now();
+      rows=(result.results ?? []).map(row=>{
+        let data={};
+        try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+        return {
+          id:String(row.id),
+          name:String(row.name),
+          asset_key:String(data.asset_key ?? ""),
+          link:String(data.link ?? ""),
+          starts_at:data.starts_at==null?null:Number(data.starts_at),
+          ends_at:data.ends_at==null?null:Number(data.ends_at),
+          sort_order:Number(row.sort_order ?? 0),
+          updated_at:Number(row.updated_at ?? 0),
+        };
+      }).filter(item=>
+        (item.starts_at==null || item.starts_at===0 || item.starts_at<=ts) &&
+        (item.ends_at==null || item.ends_at===0 || item.ends_at>=ts)
+      );
+    } catch(error) {
+      if(!String(error?.message ?? error).includes("no such table"))throw error;
+    }
+    return json({ok:true,banners:rows});
+  }
+
   if (url.pathname === "/api/catalog" && request.method === "GET") {
     const kind = String(url.searchParams.get("kind") ?? "").trim().slice(0, 60);
     if (!kind) return json({ ok: false, error: "kind_required" }, { status: 400 });
