@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../widgets/cosmetic_store_previews.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/vip_animated_frame.dart';
 import 'unique_id_store_screen.dart';
@@ -29,15 +30,9 @@ class _StoreCategory {
 
 class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
   static const _categories = <_StoreCategory>[
-    _StoreCategory('Car', 'vehicle', Icons.directions_car_filled_rounded),
     _StoreCategory('Profile', 'profile_card', Icons.badge_rounded),
     _StoreCategory('Unique ID', 'unique_id', Icons.numbers_rounded),
-    _StoreCategory('Ring', 'ring', Icons.circle_outlined),
-    _StoreCategory(
-      'Profile Background',
-      'profile_background',
-      Icons.wallpaper_rounded,
-    ),
+    _StoreCategory('Ring', 'ring', Icons.diamond_rounded),
     _StoreCategory('Entrance', 'entry', Icons.auto_awesome_rounded),
     _StoreCategory('Bubble', 'bubble', Icons.chat_bubble_rounded),
     _StoreCategory('Frame', 'frame', Icons.account_box_rounded),
@@ -414,18 +409,60 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     if (kind == 'frame') {
       return Center(
         child: VipAnimatedFrame(
-          size: 84,
+          size: 100,
           enabled: true,
           level: tier,
           styleId: id,
-          child: const CircleAvatar(
-            backgroundColor: Color(0xFF110D18),
-            child: Icon(
-              Icons.person_rounded,
-              color: Colors.white70,
-              size: 34,
-            ),
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFF110D18),
+            backgroundImage: widget.state.avatarKey?.isNotEmpty == true
+                ? NetworkImage(
+                    widget.state.backend.fileUrl(widget.state.avatarKey!),
+                    headers: widget.state.backend.fileHeaders,
+                  )
+                : null,
+            child: widget.state.avatarKey?.isNotEmpty == true
+                ? null
+                : const Icon(
+                    Icons.person_rounded,
+                    color: Colors.white70,
+                    size: 34,
+                  ),
           ),
+        ),
+      );
+    }
+    if (kind == 'ring') {
+      return Center(
+        child: JewelryRingPreview(
+          styleId: id,
+          size: 112,
+        ),
+      );
+    }
+    if (kind == 'bubble') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
+        child: BubbleCosmeticPreview(
+          styleId: id,
+          height: 92,
+        ),
+      );
+    }
+    if (kind == 'profile_card') {
+      return Padding(
+        padding: const EdgeInsets.all(6),
+        child: ProfileCardCosmeticPreview(
+          styleId: id,
+          displayName: widget.state.displayName,
+          publicId: widget.state.publicId,
+          vipLevel: widget.state.vipLevel,
+          avatar: widget.state.avatarKey?.isNotEmpty == true
+              ? NetworkImage(
+                  widget.state.backend.fileUrl(widget.state.avatarKey!),
+                  headers: widget.state.backend.fileHeaders,
+                )
+              : null,
         ),
       );
     }
@@ -436,27 +473,10 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
       );
     }
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TinniGlowIcon(
-            icon: _kindIcon(kind),
-            size: 30,
-            boxSize: 66,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            item['name']?.toString() ?? '',
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: TinniPalette.gold,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
+      child: TinniGlowIcon(
+        icon: _kindIcon(kind),
+        size: 30,
+        boxSize: 66,
       ),
     );
   }
@@ -560,10 +580,16 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                     children: [
                       Expanded(
                         child: canUse
-                            ? FilledButton(
+                            ? FilledButton.icon(
                                 onPressed:
                                     busy ? null : () => _buy(item),
-                                child: Text(
+                                icon: Icon(
+                                  price <= 0
+                                      ? Icons.redeem_rounded
+                                      : Icons.shopping_cart_rounded,
+                                  size: 17,
+                                ),
+                                label: Text(
                                   busy ? '…' : (price <= 0 ? 'Get Free' : 'Buy'),
                                 ),
                               )
@@ -574,9 +600,10 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                       ),
                       const SizedBox(width: 5),
                       Expanded(
-                        child: OutlinedButton(
+                        child: OutlinedButton.icon(
                           onPressed: busy ? null : () => _send(item),
-                          child: const Text('Send'),
+                          icon: const Icon(Icons.send_rounded, size: 16),
+                          label: const Text('Send'),
                         ),
                       ),
                     ],
