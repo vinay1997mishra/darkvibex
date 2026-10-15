@@ -289,6 +289,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                   _sectionTitle('My Record'),
                   _panel(
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _recordRow(
                           'Friends Invite',
@@ -304,6 +305,31 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           'My invite commission',
                           '${_formatCoins(data?['commission_coins'])} coins',
                         ),
+                        _divider(),
+                        _recordRow(
+                          'Fixed invite rewards',
+                          '${_formatCoins(data?['successful_invite_reward_coins'])} coins',
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Successful Friend Invite Details',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (invited.isEmpty)
+                          const Text(
+                            'No successful invites yet.',
+                            style: TextStyle(
+                              color: Color(0xFFFFD7B0),
+                              fontSize: 12,
+                            ),
+                          )
+                        else
+                          _inviteRecordsTable(invited),
                       ],
                     ),
                   ),
@@ -393,7 +419,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ],
                         const SizedBox(height: 10),
                         const Text(
-                          "Coin Seller and Merchant transfers both count only when coins are transferred into the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.",
+                          "Each successful invite gives 300,000 coins once. Coin Seller and Merchant transfers both count for ongoing commission only when coins enter the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.",
                           style: TextStyle(
                             color: Color(0xFFFFD7B0),
                             fontSize: 11,
@@ -457,7 +483,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          'ID ${boundMap['inviter_user_id'] ?? ''}',
+                          'ID ${boundMap['inviter_public_id'] ?? boundMap['invitation_code'] ?? ''}',
                           style: const TextStyle(color: Color(0xFFFFD7B0)),
                         ),
                         trailing: const Icon(
@@ -473,62 +499,141 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                     _tierCard(tier),
                     const SizedBox(height: 8),
                   ],
-                  if (invited.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    _sectionTitle('Invited users'),
-                    _panel(
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < invited.length; i++) ...[
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0x33FFD36B),
-                                child: Text(
-                                  (invited[i]['display_name']?.toString().trim().isNotEmpty ==
-                                              true
-                                          ? invited[i]['display_name'].toString()[0]
-                                          : '?')
-                                      .toUpperCase(),
-                                  style: const TextStyle(
-                                    color: TinniPalette.gold,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                invited[i]['display_name']?.toString().trim().isNotEmpty ==
-                                        true
-                                    ? invited[i]['display_name'].toString()
-                                    : invited[i]['user_id'].toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(
-                                'Received ${_formatCoins(invited[i]['received_coins'])} coins',
-                                style: const TextStyle(
-                                  color: Color(0xFFFFD7B0),
-                                ),
-                              ),
-                              trailing: Text(
-                                '+${_formatCoins(invited[i]['commission_coins'])}',
-                                style: const TextStyle(
-                                  color: TinniPalette.gold,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            if (i != invited.length - 1) _divider(),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
+
                 ],
               ),
             ),
+    );
+  }
+
+  String _formatDateTime(Object? raw) {
+    final ms = int.tryParse(raw?.toString() ?? '') ?? 0;
+    if (ms <= 0) return '-';
+    final value = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(value.day)}/${two(value.month)}/${value.year} '
+        '${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Widget _inviteUserCell(Map<String, dynamic> row) {
+    final name = row['display_name']?.toString().trim() ?? '';
+    final avatarKey = row['avatar_key']?.toString().trim() ?? '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 17,
+            backgroundColor: const Color(0x33FFD36B),
+            foregroundImage: avatarKey.isEmpty
+                ? null
+                : NetworkImage(
+                    state.backend.fileUrl(avatarKey),
+                    headers: state.backend.fileHeaders,
+                  ),
+            child: Text(
+              (name.isNotEmpty ? name[0] : '?').toUpperCase(),
+              style: const TextStyle(
+                color: TinniPalette.gold,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          SizedBox(
+            width: 125,
+            child: Text(
+              name.isNotEmpty ? name : 'DarkVibeX User',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inviteTableCell(
+    String text, {
+    bool header = false,
+    TextAlign align = TextAlign.center,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 9),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: align,
+          style: TextStyle(
+            color: header ? TinniPalette.gold : const Color(0xFFFFE6CB),
+            fontSize: header ? 10 : 11,
+            fontWeight: header ? FontWeight.w900 : FontWeight.w700,
+          ),
+        ),
+      );
+
+  Widget _inviteRecordsTable(List<Map<String, dynamic>> invited) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Table(
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          border: TableBorder.all(
+            color: const Color(0x44FFD36B),
+            width: 0.8,
+          ),
+          columnWidths: const <int, TableColumnWidth>{
+            0: FixedColumnWidth(190),
+            1: FixedColumnWidth(90),
+            2: FixedColumnWidth(145),
+            3: FixedColumnWidth(155),
+            4: FixedColumnWidth(135),
+            5: FixedColumnWidth(120),
+          },
+          children: [
+            TableRow(
+              decoration: const BoxDecoration(color: Color(0xFF7A1320)),
+              children: [
+                _inviteTableCell('DP / Name', header: true),
+                _inviteTableCell('7-digit ID', header: true),
+                _inviteTableCell('Invite Date & Time', header: true),
+                _inviteTableCell('Seller/Merchant Coins', header: true),
+                _inviteTableCell('Commission', header: true),
+                _inviteTableCell('Invite Reward', header: true),
+              ],
+            ),
+            for (final row in invited)
+              TableRow(
+                decoration: const BoxDecoration(color: Color(0xFF5A0D17)),
+                children: [
+                  _inviteUserCell(row),
+                  _inviteTableCell(
+                    row['public_id']?.toString().trim().isNotEmpty == true
+                        ? row['public_id'].toString()
+                        : '-',
+                  ),
+                  _inviteTableCell(_formatDateTime(row['bound_at'])),
+                  _inviteTableCell(
+                    '${_formatCoins(row['received_coins'])} coins',
+                  ),
+                  _inviteTableCell(
+                    '+${_formatCoins(row['commission_coins'])}',
+                  ),
+                  _inviteTableCell(
+                    '+${_formatCoins(row['fixed_reward_coins'])}',
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
     );
   }
 
