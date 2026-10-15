@@ -172,7 +172,7 @@ async function loadOwnerMessageInbox(){
     const unread=Number(row.unread_for_user||0);
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(name)} · ID ${esc(publicId)} ${unread?`<span class="pill banned">${num(unread)} unread</span>`:""}</div><div class="item-meta">${esc(preview)}<br>${num(row.message_count||0)} messages · ${time(row.created_at)}</div></div><button class="secondary mini" data-owner-message-thread="${esc(id)}">Open Thread</button></div></div>`;
   }).join(""):empty("No private conversations found for this user.");
-  $("[data-owner-message-thread]").forEach(b=>b.onclick=()=>loadOwnerMessageThread(b.dataset.ownerMessageThread).catch(e=>toast(e.message,false)));
+  document.querySelectorAll("[data-owner-message-thread]").forEach(b=>b.onclick=()=>loadOwnerMessageThread(b.dataset.ownerMessageThread).catch(e=>toast(e.message,false)));
 }
 
 async function loadOwnerMessageThread(otherId){
@@ -210,7 +210,7 @@ async function loadOwnerMessageThread(otherId){
 
   $("#ownerMessageRedPockets").innerHTML=(d.red_envelopes||[]).length?(d.red_envelopes||[]).map(e=>`<div class="item-card"><div class="item-title">${num(e.amount)} coins · ${esc(e.status||"")}</div><div class="item-meta">${esc(e.sender_user_id)} → ${esc(e.receiver_user_id)} · ${time(e.created_at)}${e.claimed_at?" · claimed "+time(e.claimed_at):""}</div></div>`).join(""):empty("No Red Pocket history in this thread.");
 
-  $("[data-owner-message-image]").forEach(b=>b.onclick=()=>openOwnerMessageImage(b.dataset.ownerMessageImage));
+  document.querySelectorAll("[data-owner-message-image]").forEach(b=>b.onclick=()=>openOwnerMessageImage(b.dataset.ownerMessageImage));
   $("#ownerMessageThreadPanel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
