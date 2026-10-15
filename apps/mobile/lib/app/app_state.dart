@@ -623,18 +623,28 @@ class AppState extends ChangeNotifier {
     final remoteRooms = await backend.listRooms();
     rooms
       ..clear()
-      ..addAll(remoteRooms.map((row) => RoomSummary(
-              id: row['id']?.toString() ?? '',
-              displayId: row['display_id']?.toString(),
-              name: row['name']?.toString() ?? 'Room',
-              ownerName: row['owner_name']?.toString() ?? '',
-              ownerUserId: row['owner_user_id']?.toString() ?? '',
-              online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
-              seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-              avatarKey: row['avatar_key']?.toString(),
-              partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
-              roomMode: row['room_mode']?.toString() ?? 'voice',
-            )));
+      ..addAll(
+        remoteRooms
+            .where(
+              (row) =>
+                  (int.tryParse(row['online']?.toString() ?? '') ?? 0) > 0,
+            )
+            .map((row) => RoomSummary(
+                  id: row['id']?.toString() ?? '',
+                  displayId: row['display_id']?.toString(),
+                  name: row['name']?.toString() ?? 'Room',
+                  ownerName: row['owner_name']?.toString() ?? '',
+                  ownerUserId: row['owner_user_id']?.toString() ?? '',
+                  online:
+                      int.tryParse(row['online']?.toString() ?? '') ?? 0,
+                  seatCount:
+                      int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+                  avatarKey: row['avatar_key']?.toString(),
+                  partyMode:
+                      row['party_mode']?.toString() ?? 'Friends-making Party',
+                  roomMode: row['room_mode']?.toString() ?? 'voice',
+                )),
+      );
 
     await refreshInbox(notify: false);
   }
@@ -644,18 +654,28 @@ class AppState extends ChangeNotifier {
     final remoteRooms = await backend.listRooms();
     rooms
       ..clear()
-      ..addAll(remoteRooms.map((row) => RoomSummary(
-              id: row['id']?.toString() ?? '',
-              displayId: row['display_id']?.toString(),
-              name: row['name']?.toString() ?? 'Room',
-              ownerName: row['owner_name']?.toString() ?? '',
-              ownerUserId: row['owner_user_id']?.toString() ?? '',
-              online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
-              seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-              avatarKey: row['avatar_key']?.toString(),
-              partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
-              roomMode: row['room_mode']?.toString() ?? 'voice',
-            )));
+      ..addAll(
+        remoteRooms
+            .where(
+              (row) =>
+                  (int.tryParse(row['online']?.toString() ?? '') ?? 0) > 0,
+            )
+            .map((row) => RoomSummary(
+                  id: row['id']?.toString() ?? '',
+                  displayId: row['display_id']?.toString(),
+                  name: row['name']?.toString() ?? 'Room',
+                  ownerName: row['owner_name']?.toString() ?? '',
+                  ownerUserId: row['owner_user_id']?.toString() ?? '',
+                  online:
+                      int.tryParse(row['online']?.toString() ?? '') ?? 0,
+                  seatCount:
+                      int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+                  avatarKey: row['avatar_key']?.toString(),
+                  partyMode:
+                      row['party_mode']?.toString() ?? 'Friends-making Party',
+                  roomMode: row['room_mode']?.toString() ?? 'voice',
+                )),
+      );
     if (notify) notifyListeners();
   }
 
