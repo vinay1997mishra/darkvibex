@@ -5,6 +5,7 @@ import { COSMETIC_CATALOG } from "./cosmetics.js";
 import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
 import { VIP_LEVELS } from "./vip_policy.js";
+import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -84,6 +85,28 @@ function defaultPermissions(role) {
     ];
   }
   return ["dashboard", "users.read", "users.moderate", "rooms.read", "rooms.write", "audit.read"];
+}
+
+async function ownerVipRule(db,level){
+  const base=VIP_LEVELS[Number(level)-1] ?? null;
+  if(!base)return null;
+  try{
+    const row=await db.prepare(
+      "SELECT name,enabled,json_data FROM owner_catalog WHERE kind='vip_rule' AND id=? LIMIT 1"
+    ).bind(String(level)).first();
+    if(!row)return {...base,enabled:true,name:"VIP "+level};
+    const data=safeParse(row.json_data,{});
+    const days=Number(data.validity_days ?? base.days);
+    return {
+      ...base,
+      enabled:Number(row.enabled ?? 1)!==0,
+      name:String(row.name ?? ("VIP "+level)),
+      days:Number.isSafeInteger(days)&&days>=1&&days<=3650?days:base.days,
+    };
+  }catch(error){
+    if(String(error?.message ?? error).includes("no such table"))return {...base,enabled:true,name:"VIP "+level};
+    throw error;
+  }
 }
 
 function can(actor, permission) {
@@ -704,15 +727,19 @@ async function handleUsers(request, db, actor, url, parts) {
     await db.prepare("UPDATE users SET display_name = ?, role = ?, vip_level = ?, updated_at = ? WHERE id = ?")
       .bind(name || current.display_name, role, vip, changedAt, userId).run();
     if (body.vip_level != null && vip !== Number(current.vip_level ?? 0)) {
-      try {
-        const activeUntil = vip > 0
-          ? changedAt + (vip >= 18 ? 45 : 30) * 24 * 60 * 60 * 1000
-          : null;
-        await db.prepare("UPDATE user_vip SET level = ?, active_until = ?, updated_at = ? WHERE user_id = ?")
-          .bind(vip, activeUntil, changedAt, userId).run();
-      } catch (error) {
-        if (!String(error?.message ?? error).includes("no such table")) throw error;
+      await ensureVipSchema(db);
+      await getVipStatus(db,userId,changedAt);
+      let activeUntil=null;
+      if(vip>0){
+        const rule=await ownerVipRule(db,vip);
+        if(!rule || rule.enabled===false){
+          return json({ok:false,error:"vip_level_disabled"},{status:409});
+        }
+        activeUntil=changedAt+Number(rule.days ?? 30)*24*60*60*1000;
       }
+      await db.prepare(
+        "UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?"
+      ).bind(vip,activeUntil,String(activeUntil ?? ""),changedAt,userId).run();
     }
     await audit(db, actor, "user_profile_update", "user", userId, `role=${role}; vip=${vip}`);
     return json({ ok: true, user: await getUserDetails(db, userId) });
