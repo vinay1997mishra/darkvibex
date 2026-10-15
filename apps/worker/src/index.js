@@ -505,7 +505,7 @@ async function ensureUserPublicId(db, userId) {
     "SELECT public_id FROM users WHERE id=? LIMIT 1"
   ).bind(userId).first();
   const current = String(row?.public_id ?? "").trim();
-  if (/^[1-9]\d{6}$/.test(current)) return current;
+  if (/^\d{7}$/.test(current) && Number(current) >= 1000001) return current;
 
   for (let attempt = 0; attempt < 100000; attempt += 1) {
     const allocated = await db.prepare(
@@ -531,7 +531,7 @@ async function ensureUserPublicId(db, userId) {
         "SELECT public_id FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       const latestId = String(latest?.public_id ?? "").trim();
-      if (/^[1-9]\d{6}$/.test(latestId)) return latestId;
+      if (/^\d{7}$/.test(latestId) && Number(latestId) >= 1000001) return latestId;
     } catch (error) {
       if (String(error?.message ?? error).toLowerCase().includes("unique")) continue;
       throw error;
