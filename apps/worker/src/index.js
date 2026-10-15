@@ -463,7 +463,12 @@ async function effectiveCosmeticCatalog(db) {
     if (!STORE_COSMETIC_KINDS.has(String(row.kind))) continue;
     const itemId = String(row.id ?? "").trim();
     if (!itemId) continue;
-    if (Number(row.enabled ?? 1) === 0) {
+    const startsAt=row.data?.starts_at==null?null:Number(row.data.starts_at);
+    const endsAt=row.data?.ends_at==null?null:Number(row.data.ends_at);
+    const ts=now();
+    if (Number(row.enabled ?? 1) === 0 ||
+        (startsAt!=null&&startsAt>0&&startsAt>ts) ||
+        (endsAt!=null&&endsAt>0&&endsAt<ts)) {
       map.delete(itemId);
       continue;
     }
@@ -479,6 +484,8 @@ async function effectiveCosmeticCatalog(db) {
       tier: Number(row.data?.tier ?? previous.tier ?? 0),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
       description: String(row.data?.description ?? previous.description ?? ""),
+      starts_at: startsAt,
+      ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
     });
   }
@@ -496,7 +503,12 @@ async function effectiveGiftCatalog(db) {
     if (String(row.kind) !== "gift") continue;
     const itemId = String(row.id ?? "").trim();
     if (!itemId) continue;
-    if (Number(row.enabled ?? 1) === 0) {
+    const startsAt=row.data?.starts_at==null?null:Number(row.data.starts_at);
+    const endsAt=row.data?.ends_at==null?null:Number(row.data.ends_at);
+    const ts=now();
+    if (Number(row.enabled ?? 1) === 0 ||
+        (startsAt!=null&&startsAt>0&&startsAt>ts) ||
+        (endsAt!=null&&endsAt>0&&endsAt<ts)) {
       map.delete(itemId);
       continue;
     }
@@ -510,6 +522,8 @@ async function effectiveGiftCatalog(db) {
       vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.vip_level ?? 0),
       category: String(row.data?.category ?? previous.category ?? "normal"),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
+      starts_at: startsAt,
+      ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
     });
   }
