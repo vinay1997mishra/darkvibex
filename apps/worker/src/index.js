@@ -6155,7 +6155,11 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, userId);
     try {
       const summary = await inviteRewardSummary(db, userId);
-      return json({ ok: true, ...summary });
+      return json({
+        ok: true,
+        ...summary,
+        invite_link: new URL("/invite/" + summary.invitation_code, url.origin).toString(),
+      });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -8126,6 +8130,53 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
     const url = new URL(request.url);
+
+    const inviteLandingMatch = url.pathname.match(/^\/invite\/([1-9]\\d{6})$/);
+    if (inviteLandingMatch && request.method === "GET") {
+      const invitationCode = inviteLandingMatch[1];
+      const playUrl =
+        "https://play.google.com/store/apps/details?id=com.darkvibex.app&referrer=" +
+        encodeURIComponent("invite_code=" + invitationCode);
+      const intentUrl =
+        "intent://invite/" + invitationCode +
+        "#Intent;scheme=darkvibex;package=com.darkvibex.app;S.browser_fallback_url=" +
+        encodeURIComponent(playUrl) + ";end";
+      const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Join DarkVibeX</title>
+<style>
+body{margin:0;background:#26040a;color:#fff;font-family:system-ui,-apple-system,sans-serif;display:grid;min-height:100vh;place-items:center}
+.card{width:min(92vw,420px);background:#5b0712;border:1px solid #f3ba35;border-radius:20px;padding:26px;text-align:center;box-shadow:0 20px 60px #0008}
+h1{color:#ffd36b;margin:0 0 8px}.code{font-size:30px;font-weight:900;letter-spacing:2px;color:#ffd36b;margin:16px 0}
+a{display:block;text-decoration:none;font-weight:800;border-radius:12px;padding:13px 16px;margin-top:10px}
+.open{background:#ffb517;color:#681008}.store{border:1px solid #ffca55;color:#ffe0a0}
+small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>DarkVibeX Invite</h1>
+<div>Invitation code</div>
+<div class="code">${invitationCode}</div>
+<a class="open" href="${intentUrl}">Open DarkVibeX</a>
+<a class="store" href="${playUrl}">Download from Google Play</a>
+<small>If DarkVibeX is not installed, Google Play keeps this invitation code so it can be linked after signup.</small>
+</div>
+<script>setTimeout(function(){window.location.href=${JSON.stringify(intentUrl)};},250);</script>
+</body>
+</html>`;
+      return new Response(html, {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
 
     if (url.pathname === "/health") {
       return json({
