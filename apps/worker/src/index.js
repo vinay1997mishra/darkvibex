@@ -5716,6 +5716,12 @@ async function handleApi(request, env, url) {
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
       ).bind(roomId, actorId).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      const lampOwner = await db.prepare(
+        "SELECT owner_user_id FROM rooms WHERE id = ? LIMIT 1"
+      ).bind(roomId).first();
+      if (String(lampOwner?.owner_user_id ?? "") === actorId) {
+        await sampleLampMicProgress(db, roomId, now());
+      }
       const rows = await db.prepare(
         `SELECT m.user_id,
                 CASE WHEN v.level >= 18 AND v.active_until > ?
