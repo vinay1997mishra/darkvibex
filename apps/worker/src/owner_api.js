@@ -1301,6 +1301,9 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
     if(!user)return json({ok:false,error:"user_not_found"},{status:404});
     const resolvedUserId=String(user.id);
     const free=body.free===true?1:0;
+    if(kind==="gift" && free===1){
+      return json({ok:false,error:"free_gift_not_supported_use_price_override"},{status:400});
+    }
     const rawPrice=body.price_coins;
     const price=rawPrice==null||rawPrice===""?null:Number(rawPrice);
     const rawDuration=body.duration_days;
