@@ -242,6 +242,7 @@ async function ownerSetting(db, key, fallback = {}) {
 }
 
 async function ensureOwnerControlSchema(db) {
+  await ensureUsersSchema(db);
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
       user_id TEXT PRIMARY KEY,
@@ -7836,7 +7837,7 @@ export default {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts|room-themes)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|room-themes|banners)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {
