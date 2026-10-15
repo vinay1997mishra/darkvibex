@@ -1932,17 +1932,27 @@ async function effectiveOwnerStore(db, kind) {
   );
 }
 
+function storePermissionForKind(kind, action) {
+  const normalized=String(kind ?? "").trim();
+  if(normalized==="gift") return "gifts."+action;
+  if(normalized==="theme") return "themes.global."+action;
+  if(["frame","vehicle","entry","ring","bubble","profile_card","profile_background"].includes(normalized)) {
+    return "assets."+action;
+  }
+  return "store."+action;
+}
+
 async function handleStore(request, db, actor, url, parts) {
   if (parts.length===3 && request.method==="GET") {
-    requirePermission(actor,"catalog.read");
     const kind=String(url.searchParams.get("kind") ?? "").trim().slice(0,60);
     if(!kind) return json({ok:false,error:"kind_required"},{status:400});
+    requirePermission(actor,storePermissionForKind(kind,"view"));
     return json({ok:true,kind,items:await effectiveOwnerStore(db,kind)});
   }
   if (parts.length===3 && request.method==="POST") {
-    requirePermission(actor,"catalog.write");
     const body=await bodyJson(request);
     const kind=String(body.kind ?? "").trim().slice(0,60);
+    requirePermission(actor,storePermissionForKind(kind,"save"));
     const itemId=String(body.id ?? "").trim().slice(0,100);
     const name=String(body.name ?? itemId).trim().slice(0,120);
     if(!kind||!itemId||!name) return json({ok:false,error:"kind_id_name_required"},{status:400});
@@ -1965,9 +1975,9 @@ async function handleStore(request, db, actor, url, parts) {
     return json({ok:true,item:items.find(item=>item.id===itemId) ?? null});
   }
   if (parts.length===5 && request.method==="DELETE") {
-    requirePermission(actor,"catalog.write");
     const kind=decodeURIComponent(parts[3]);
     const itemId=decodeURIComponent(parts[4]);
+    requirePermission(actor,storePermissionForKind(kind,"remove"));
     const items=await effectiveOwnerStore(db,kind);
     const item=items.find(row=>row.id===itemId);
     if(!item) return json({ok:false,error:"not_found"},{status:404});
@@ -1984,7 +1994,7 @@ async function handleStore(request, db, actor, url, parts) {
 
 async function handleCatalog(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "catalog.read");
+    requirePermission(actor, "catalog.view");
     const filter = String(url.searchParams.get("kind") ?? "").trim();
     const rows = filter
       ? await db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind = ? ORDER BY sort_order ASC, updated_at DESC").bind(filter).all()
@@ -1992,7 +2002,7 @@ async function handleCatalog(request, db, actor, url, parts) {
     return json({ ok: true, items: (rows.results ?? []).map((row) => ({ ...row, data: safeParse(row.json_data, {}) })) });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "catalog.write");
+    requirePermission(actor, "catalog.save");
     const body = await bodyJson(request);
     const itemKind = String(body.kind ?? "").trim().slice(0, 60);
     const itemId = String(body.id ?? "").trim().slice(0, 100) || id();
@@ -2013,7 +2023,7 @@ async function handleCatalog(request, db, actor, url, parts) {
     return json({ ok: true, id: itemId });
   }
   if (parts.length === 5 && request.method === "DELETE") {
-    requirePermission(actor, "catalog.write");
+    requirePermission(actor, "catalog.remove");
     const itemKind = decodeURIComponent(parts[3]);
     const itemId = decodeURIComponent(parts[4]);
     await db.prepare("DELETE FROM owner_catalog WHERE kind = ? AND id = ?").bind(itemKind, itemId).run();
