@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
@@ -13,6 +15,11 @@ import 'personal_profile_screen.dart';
 import 'room_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
+import '../ui/intimacy_vs_art_b64.dart';
+import '../ui/intimacy_cp_art_b64.dart';
+
+final _intimacyVsArtBytes = base64Decode(intimacyVsArtBase64);
+final _intimacyCpArtBytes = base64Decode(intimacyCpArtBase64);
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.state});
@@ -1596,6 +1603,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     return a == targetId
         ? relation['user_b_avatar_key']?.toString() ?? ''
         : relation['user_a_avatar_key']?.toString() ?? '';
+  }
+
+  String _partnerPublicId(Map<String, dynamic>? relation) {
+    if (relation == null) return '';
+    final a = relation['user_a']?.toString() ?? '';
+    final publicId = a == targetId
+        ? relation['user_b_public_id']?.toString().trim() ?? ''
+        : relation['user_a_public_id']?.toString().trim() ?? '';
+    return publicId.isNotEmpty ? publicId : _partnerId(relation);
   }
 
   void _openPartner(Map<String, dynamic>? relation) {
@@ -3372,12 +3388,74 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  Widget _intimacyIdentityLabel({
+    required String name,
+    required String id,
+    required bool versus,
+  }) {
+    final safeName = name.trim().isEmpty ? 'None' : name.trim();
+    final safeId = id.trim();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: versus
+            ? const Color(0xB314030A)
+            : const Color(0xB35F2635),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: versus
+              ? const Color(0x99FF4B79)
+              : const Color(0x99FFF0F4),
+          width: .8,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            safeName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              height: 1.05,
+            ),
+          ),
+          if (safeId.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              'ID $safeId',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: versus
+                    ? const Color(0xFFFFC6D5)
+                    : const Color(0xFFFFE7EC),
+                fontSize: 8.5,
+                fontWeight: FontWeight.w600,
+                height: 1,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _versusCard() {
     final data = vs ?? const <String, dynamic>{};
     final active = data['state']?.toString() == 'active';
     final rivalId = active ? _partnerId(vs) : '';
+    final rivalPublicId = active ? _partnerPublicId(vs) : '';
     final rivalAvatar = active ? _partnerAvatar(vs) : '';
+    final rivalName = active ? _partnerName(vs) : '';
     final ownAvatar = user?['avatar_key']?.toString() ?? '';
+    final ownName = user?['display_name']?.toString().trim() ?? '';
+    final ownPublicId = user == null ? '' : _publicId(user!);
 
     return AspectRatio(
       aspectRatio: 867 / 282,
@@ -3385,11 +3463,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           final h = constraints.maxHeight;
-          // Use one opaque relation shell on both sides. The larger shell
-          // fully covers the baked-in circle artwork underneath, so the left
-          // avatar and right add/partner slot cannot reveal different
-          // background rings.
-          final relationCircleSize = w * .225;
+          final relationCircleSize = w * .18;
 
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -3399,92 +3473,93 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: Stack(
+                fit: StackFit.expand,
                 children: [
-                Positioned.fill(
-                  child: Image.asset(
-                    'assets/images/vs_card_reference.webp',
+                  Image.memory(
+                    _intimacyVsArtBytes,
                     fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
                   ),
-                ),
-                Positioned(
-                  left: w * .279 - relationCircleSize / 2,
-                  top: h * .515 - relationCircleSize / 2,
-                  child: _intimacyRelationCircle(
-                    size: relationCircleSize,
-                    image: _avatar(ownAvatar),
-                    empty: false,
-                    onTap: null,
-                    versus: true,
-                  ),
-                ),
-                Positioned(
-                  left: w * .732 - relationCircleSize / 2,
-                  top: h * .515 - relationCircleSize / 2,
-                  child: _intimacyRelationCircle(
-                    size: relationCircleSize,
-                    image: _avatar(rivalAvatar),
-                    empty: !active,
-                    onTap: active && rivalId.isNotEmpty
-                        ? () => _openPartner(vs)
-                        : isSelf
-                            ? _openVsBinding
-                            : null,
-                    versus: true,
-                  ),
-                ),
-                Positioned(
-                  left: w * .19,
-                  top: 0,
-                  width: w * .18,
-                  height: h,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: null,
-                  ),
-                ),
-                Positioned(
-                  key: const Key('profile-intimacy-vs-level-badge'),
-                  left: w * .43,
-                  top: h * .70,
-                  width: w * .14,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                  Positioned(
+                    left: w * .245 - relationCircleSize / 2,
+                    top: h * .49 - relationCircleSize / 2,
+                    width: relationCircleSize,
+                    height: relationCircleSize,
+                    child: _intimacyRelationCircle(
+                      size: relationCircleSize,
+                      image: _avatar(ownAvatar),
+                      empty: false,
+                      onTap: null,
+                      versus: true,
                     ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xAA1A020A),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: const Color(0x99FF4B79),
-                        width: .8,
+                  ),
+                  Positioned(
+                    left: w * .755 - relationCircleSize / 2,
+                    top: h * .49 - relationCircleSize / 2,
+                    width: relationCircleSize,
+                    height: relationCircleSize,
+                    child: _intimacyRelationCircle(
+                      size: relationCircleSize,
+                      image: _avatar(rivalAvatar),
+                      empty: !active,
+                      onTap: active && rivalId.isNotEmpty
+                          ? () => _openPartner(vs)
+                          : isSelf
+                              ? _openVsBinding
+                              : null,
+                      versus: true,
+                    ),
+                  ),
+                  Positioned(
+                    left: w * .105,
+                    bottom: h * .035,
+                    width: w * .28,
+                    child: _intimacyIdentityLabel(
+                      name: ownName.isEmpty ? 'DarkVibeX User' : ownName,
+                      id: ownPublicId,
+                      versus: true,
+                    ),
+                  ),
+                  Positioned(
+                    right: w * .105,
+                    bottom: h * .035,
+                    width: w * .28,
+                    child: _intimacyIdentityLabel(
+                      name: active && rivalName.isNotEmpty ? rivalName : 'None',
+                      id: active ? rivalPublicId : '',
+                      versus: true,
+                    ),
+                  ),
+                  Positioned(
+                    key: const Key('profile-intimacy-vs-level-badge'),
+                    left: w * .43,
+                    top: h * .68,
+                    width: w * .14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xE61A020A),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: const Color(0xCCFF4B79),
+                          width: .8,
+                        ),
+                      ),
+                      child: Text(
+                        'Lv.${data['level'] ?? 1}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      'Lv.${data['level'] ?? 1}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
                   ),
-                ),
-                Positioned(
-                  left: w * .64,
-                  top: 0,
-                  width: w * .19,
-                  height: h,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: active && rivalId.isNotEmpty
-                        ? () => _openPartner(vs)
-                        : isSelf
-                            ? _openVsBinding
-                            : null,
-                  ),
-                ),
                 ],
               ),
             ),
@@ -3574,9 +3649,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final data = cp ?? const <String, dynamic>{};
     final active = data['state']?.toString() == 'active';
     final partnerId = active ? _partnerId(cp) : '';
+    final partnerPublicId = active ? _partnerPublicId(cp) : '';
     final partnerAvatar = active ? _partnerAvatar(cp) : '';
     final partnerName = active ? _partnerName(cp) : '';
     final ownAvatar = user?['avatar_key']?.toString() ?? '';
+    final ownName = user?['display_name']?.toString().trim() ?? '';
+    final ownPublicId = user == null ? '' : _publicId(user!);
 
     return AspectRatio(
       aspectRatio: 635 / 258,
@@ -3584,41 +3662,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         builder: (context, constraints) {
           final w = constraints.maxWidth;
           final h = constraints.maxHeight;
-          // Keep CP exactly the same circle diameter as VS. The opaque
-          // shared shell masks the original left/right artwork so both slots
-          // have one identical visual background.
-          final relationCircleSize = w * .225;
-
-          final ownImage = _avatar(ownAvatar);
-          final partnerImage = _avatar(partnerAvatar);
-
-          Widget namePatch({
-            required String text,
-            required double left,
-            required double width,
-          }) {
-            return Positioned(
-              left: left,
-              bottom: h * .055,
-              width: width,
-              height: h * .13,
-              child: Container(
-                alignment: Alignment.center,
-                color: const Color(0xFFD17D89).withOpacity(.96),
-                child: Text(
-                  text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: const Color(0xFFFFEBEE),
-                    fontSize: h * .085,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            );
-          }
+          final relationCircleSize = w * .18;
 
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -3628,77 +3672,96 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Stack(
+                fit: StackFit.expand,
                 children: [
-                Positioned.fill(
-                  child: Image.asset(
-                    'assets/images/cp_card_reference.webp',
+                  Image.memory(
+                    _intimacyCpArtBytes,
                     fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
                   ),
-                ),
-                Positioned(
-                  left: w * .184 - relationCircleSize / 2,
-                  top: h * .415 - relationCircleSize / 2,
-                  child: _intimacyRelationCircle(
-                    size: relationCircleSize,
-                    image: ownImage,
-                    empty: false,
-                    onTap: null,
-                    versus: false,
-                  ),
-                ),
-                Positioned(
-                  left: w * .833 - relationCircleSize / 2,
-                  top: h * .415 - relationCircleSize / 2,
-                  child: _intimacyRelationCircle(
-                    size: relationCircleSize,
-                    image: partnerImage,
-                    empty: !active,
-                    onTap: active && partnerId.isNotEmpty
-                        ? () => _openPartner(cp)
-                        : isSelf
-                            ? _openCpBinding
-                            : null,
-                    versus: false,
-                  ),
-                ),
-                if (active)
                   Positioned(
-                    key: const Key('profile-intimacy-cp-level-badge'),
-                    left: w * .435,
-                    top: h * .63,
-                    width: w * .13,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xAAFFFFFF),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Lv.${data['level'] ?? 1}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFFCB6076),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
+                    left: w * .205 - relationCircleSize / 2,
+                    top: h * .46 - relationCircleSize / 2,
+                    width: relationCircleSize,
+                    height: relationCircleSize,
+                    child: _intimacyRelationCircle(
+                      size: relationCircleSize,
+                      image: _avatar(ownAvatar),
+                      empty: false,
+                      onTap: null,
+                      versus: false,
+                    ),
+                  ),
+                  Positioned(
+                    left: w * .795 - relationCircleSize / 2,
+                    top: h * .46 - relationCircleSize / 2,
+                    width: relationCircleSize,
+                    height: relationCircleSize,
+                    child: _intimacyRelationCircle(
+                      size: relationCircleSize,
+                      image: _avatar(partnerAvatar),
+                      empty: !active,
+                      onTap: active && partnerId.isNotEmpty
+                          ? () => _openPartner(cp)
+                          : isSelf
+                              ? _openCpBinding
+                              : null,
+                      versus: false,
+                    ),
+                  ),
+                  Positioned(
+                    left: w * .055,
+                    bottom: h * .055,
+                    width: w * .30,
+                    child: _intimacyIdentityLabel(
+                      name: ownName.isEmpty ? 'DarkVibeX User' : ownName,
+                      id: ownPublicId,
+                      versus: false,
+                    ),
+                  ),
+                  Positioned(
+                    right: w * .055,
+                    bottom: h * .055,
+                    width: w * .30,
+                    child: _intimacyIdentityLabel(
+                      name: active && partnerName.isNotEmpty
+                          ? partnerName
+                          : 'None',
+                      id: active ? partnerPublicId : '',
+                      versus: false,
+                    ),
+                  ),
+                  if (active)
+                    Positioned(
+                      key: const Key('profile-intimacy-cp-level-badge'),
+                      left: w * .435,
+                      top: h * .66,
+                      width: w * .13,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xD9FFF5F7),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0x99CB6076),
+                            width: .8,
+                          ),
+                        ),
+                        child: Text(
+                          'Lv.${data['level'] ?? 1}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFFB63F5C),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                namePatch(
-                  text: user?['display_name']?.toString() ?? 'User',
-                  left: w * .075,
-                  width: w * .24,
-                ),
-                namePatch(
-                  text: active && partnerName.isNotEmpty
-                      ? partnerName
-                      : 'None',
-                  left: w * .755,
-                  width: w * .16,
-                ),
                 ],
               ),
             ),
@@ -4166,10 +4229,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         const SizedBox(height: 7),
         _coupleCard(),
         _relationRequestStatus(couple: true, relation: cp),
-        const SizedBox(height: 18),
-        _intimacyHeading('Friend'),
-        const SizedBox(height: 9),
-        _intimacyFriendCards(),
       ],
     );
   }
