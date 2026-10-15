@@ -325,7 +325,18 @@ function canAny(list){return (list||[]).some(can);}
 function empty(text){return `<div class="empty">${esc(text)}</div>`;}
 function toast(message,good=true){const el=$("#toast");el.textContent=message;el.className="toast "+(good?"good":"bad");el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600);}
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
-function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
+function applyPanelBranding(){
+  const isOwner=state.actor?.type==="owner";
+  const title=isOwner?"DarkVibeX Owner Panel":"DarkVibeX Panel";
+  document.title=title;
+  if($("#panelBrandLabel"))$("#panelBrandLabel").textContent=title;
+  if($("#loginPanelTitle")&&!state.actor)$("#loginPanelTitle").textContent="DarkVibeX Panel";
+}
+function actorCard(){
+  if(!state.actor)return;
+  applyPanelBranding();
+  $("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;
+}
 
 function permissionTarget(element,mode){
   if(mode==="label")return element.closest("label")||element;
@@ -1468,6 +1479,7 @@ $("#logout").onclick=()=>{
   state.actor=null;
   sessionStorage.removeItem("dvxOwnerToken");
   showApp(false);
+  applyPanelBranding();
   $("#token").value="";
   $("#loginPassword").value="";
 };
@@ -1504,4 +1516,5 @@ $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));
 
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
 permissionObserver.observe(document.body,{childList:true,subtree:true});
+applyPanelBranding();
 if(state.token){connectWithToken(state.token);}else{showApp(false);}
