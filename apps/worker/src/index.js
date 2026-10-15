@@ -1448,6 +1448,9 @@ async function claimWeeklySignIn(db, userId, ts = now()) {
       ok: true,
       duplicate: true,
       reward: 0,
+      claimed_day: Number(status.current_day),
+      receipt_day: Number(status.current_day),
+      receipt_reward: 0,
       coin_balance: Number(user?.coins ?? 0),
       ...status,
     };
@@ -1505,6 +1508,8 @@ async function claimWeeklySignIn(db, userId, ts = now()) {
     duplicate: !ownClaim,
     reward: ownClaim ? Number(claim?.reward ?? reward) : 0,
     claimed_day: Number(claim?.day_number ?? dayNumber),
+    receipt_day: Number(claim?.day_number ?? dayNumber),
+    receipt_reward: ownClaim ? Number(claim?.reward ?? reward) : 0,
     coin_balance: Number(user?.coins ?? 0),
     ...current,
   };
