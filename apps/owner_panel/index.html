@@ -214,7 +214,12 @@
         <section class="view" data-view-panel="games">
           <article class="panel"><div class="panel-head"><div><h2>Games</h2><p>Enable/disable games, change bet limits, and inspect aggregate profit/loss.</p></div><button id="reloadGames" class="secondary">Reload</button></div>
             <div class="form-grid"><label>Game ID<input id="gameConfigId" /></label><label>Name<input id="gameConfigName" /></label><label>Min bet<input id="gameMinBet" type="number" value="1" /></label><label>Max bet<input id="gameMaxBet" type="number" value="1000000" /></label><label class="check"><input id="gameEnabled" type="checkbox" checked /> Enabled</label></div>
-            <button id="saveGameConfig" class="primary">Save Game Config</button><div id="gameList" class="stack"></div><h3>Game Stats</h3><div id="gameStats" class="stack"></div>
+            <button id="saveGameConfig" class="primary">Save Game Config</button><div id="gameList" class="stack"></div>
+            <h3>Game Stats</h3><div id="gameStats" class="stack"></div>
+            <hr />
+            <div class="panel-head"><div><h3>User Betting Investigation</h3><p>Search by internal ID or current 7-digit public ID.</p></div></div>
+            <div class="search-row"><input id="gameInvestigationUser" placeholder="User ID / 7-digit public ID" /><button id="loadGameInvestigation" class="primary">Investigate</button></div>
+            <div id="gameUserStats" class="stack"></div>
           </article>
         </section>
 
