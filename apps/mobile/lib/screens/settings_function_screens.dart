@@ -56,7 +56,7 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Message notification')),
         body: TinniBackground(
           child: loading
@@ -161,7 +161,7 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Bind account')),
         body: TinniBackground(
           child: ListView(
@@ -273,7 +273,7 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Language settings')),
         body: TinniBackground(
           child: ListView(
@@ -334,7 +334,7 @@ class AboutDarkVibeXScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('About DarkVibeX')),
         body: TinniBackground(
           child: ListView(
@@ -417,7 +417,7 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Blocklist'),
           actions: [
@@ -538,7 +538,7 @@ class _PropsScreenState extends State<PropsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Props'),
           actions: [
