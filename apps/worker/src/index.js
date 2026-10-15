@@ -2841,8 +2841,8 @@ async function handleApi(request, env, url) {
   const guardedFeature =
     featurePath.startsWith("/api/gifts/") ? ["feature.gifts","gifts_disabled"] :
     (featurePath.startsWith("/api/games/") || featurePath.startsWith("/api/game-rooms")) ? ["feature.games","games_disabled"] :
-    featurePath.startsWith("/api/messages/") ? ["feature.messages","messages_disabled"] :
     (featurePath.includes("/lucky-pouch") || featurePath.includes("/red-envelope")) ? ["feature.red_pocket","red_pocket_disabled"] :
+    featurePath.startsWith("/api/messages/") ? ["feature.messages","messages_disabled"] :
     featurePath.startsWith("/api/calls/") ? ["feature.friends_call","friends_call_disabled"] :
     (/^\/api\/users\/[^/]+\/visitors$/.test(featurePath) ? ["feature.visitors","visitors_disabled"] : null);
   if(guardedFeature){
