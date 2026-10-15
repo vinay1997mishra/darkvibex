@@ -1,8 +1,9 @@
 const COINS_PER_USD = 6_000_000;
+const SUCCESSFUL_INVITE_REWARD_COINS = 300_000;
 
-// Invite rewards are coin commission only. Eligible source is a Coin Seller
-// or Merchant transfer into the invited user's normal wallet. Do not attach
-// entry vehicles, frames, cosmetics, gifts, or other prize inventory.
+// Every newly successful invite gives the inviter a fixed one-time coin reward.
+// Ongoing commission is separate and only counts eligible Coin Seller/Merchant
+// transfers into the invited user's normal wallet. No vehicle/cosmetic prize.
 
 // Direct-invite reward levels copied from the visible levels in the reference
 // flow. The last visible level is 5%; higher levels can be added without
@@ -27,6 +28,19 @@ export async function ensureInviteRewardSchema(db) {
 
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_bindings_inviter
     ON invite_bindings(inviter_user_id, bound_at DESC)`).run();
+
+  await db.prepare(`CREATE TABLE IF NOT EXISTS invite_success_rewards (
+    id TEXT PRIMARY KEY,
+    inviter_user_id TEXT NOT NULL,
+    invitee_user_id TEXT NOT NULL UNIQUE,
+    reward_coins INTEGER NOT NULL CHECK(reward_coins > 0),
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(invitee_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_success_rewards_inviter
+    ON invite_success_rewards(inviter_user_id, created_at DESC)`).run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS invite_commission_rewards (
     id TEXT PRIMARY KEY,
@@ -104,22 +118,47 @@ export async function bindInvitationCode(db, {
   // DarkVibeX public profile IDs are unique, so the inviter's public ID is
   // also the invitation code. This avoids a second identity/code system.
   const inviter = await db.prepare(
-    "SELECT id,public_id,display_name,avatar_key FROM users WHERE public_id=? LIMIT 1"
+    "SELECT id,public_id,display_name,avatar_key,coins FROM users WHERE public_id=? LIMIT 1"
   ).bind(code).first();
   if (!inviter) throw new Error("invitation_code_not_found");
   if (String(inviter.id) === String(inviteeUserId)) {
     throw new Error("cannot_invite_self");
   }
 
-  await db.prepare(
-    "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
-  ).bind(inviteeUserId, String(inviter.id), code, ts).run();
+  const inviterUserId = String(inviter.id);
+  const rewardId = crypto.randomUUID();
+  const ledgerId = crypto.randomUUID();
+
+  // The binding and fixed invite reward are written together. invitee_user_id
+  // is unique in both tables, so retries cannot mint the 300,000 coin reward twice.
+  await db.batch([
+    db.prepare(
+      "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
+    ).bind(inviteeUserId, inviterUserId, code, ts),
+    db.prepare(
+      "INSERT INTO invite_success_rewards(id,inviter_user_id,invitee_user_id,reward_coins,created_at) VALUES(?,?,?,?,?)"
+    ).bind(
+      rewardId, inviterUserId, inviteeUserId,
+      SUCCESSFUL_INVITE_REWARD_COINS, ts,
+    ),
+    db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(SUCCESSFUL_INVITE_REWARD_COINS, ts, inviterUserId),
+    db.prepare(
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'invite_success_reward',?,u.coins,?,? FROM users u WHERE u.id=?"
+    ).bind(
+      ledgerId, SUCCESSFUL_INVITE_REWARD_COINS,
+      rewardId, ts, inviterUserId,
+    ),
+  ]);
 
   return {
     already_bound: false,
-    inviter_user_id: String(inviter.id),
+    inviter_user_id: inviterUserId,
+    inviter_public_id: String(inviter.public_id ?? ""),
     inviter_name: String(inviter.display_name ?? ""),
     invitation_code: code,
+    fixed_reward_coins: SUCCESSFUL_INVITE_REWARD_COINS,
     bound_at: ts,
   };
 }
@@ -137,23 +176,32 @@ export async function inviteRewardSummary(db, userId) {
   }
   const binding = await db.prepare(`
     SELECT b.inviter_user_id,b.invitation_code,b.bound_at,
+           u.public_id AS inviter_public_id,
            u.display_name AS inviter_name,u.avatar_key AS inviter_avatar_key
       FROM invite_bindings b
       LEFT JOIN users u ON u.id=b.inviter_user_id
      WHERE b.invitee_user_id=?
   `).bind(userId).first();
 
+  const successRewardTotal = await db.prepare(
+    "SELECT COALESCE(SUM(reward_coins),0) AS reward_coins FROM invite_success_rewards WHERE inviter_user_id=?"
+  ).bind(userId).first();
+
   const invited = await db.prepare(`
-    SELECT b.invitee_user_id,u.display_name,u.avatar_key,b.bound_at,
+    SELECT b.invitee_user_id,u.public_id,u.display_name,u.avatar_key,b.bound_at,
            COALESCE(SUM(r.source_coins),0) AS source_coins,
-           COALESCE(SUM(r.reward_coins),0) AS reward_coins
+           COALESCE(SUM(r.reward_coins),0) AS reward_coins,
+           COALESCE(MAX(s.reward_coins),0) AS fixed_reward_coins
       FROM invite_bindings b
       LEFT JOIN users u ON u.id=b.invitee_user_id
+      LEFT JOIN invite_success_rewards s
+        ON s.invitee_user_id=b.invitee_user_id
+       AND s.inviter_user_id=b.inviter_user_id
       LEFT JOIN invite_commission_rewards r
         ON r.invitee_user_id=b.invitee_user_id
        AND r.inviter_user_id=b.inviter_user_id
      WHERE b.inviter_user_id=?
-     GROUP BY b.invitee_user_id,u.display_name,u.avatar_key,b.bound_at
+     GROUP BY b.invitee_user_id,u.public_id,u.display_name,u.avatar_key,b.bound_at
      ORDER BY b.bound_at DESC
      LIMIT 100
   `).bind(userId).all();
@@ -166,11 +214,14 @@ export async function inviteRewardSummary(db, userId) {
     invited_received_usd: stats.sourceCoins / COINS_PER_USD,
     commission_coins: stats.rewardCoins,
     commission_usd: stats.rewardCoins / COINS_PER_USD,
+    fixed_reward_per_successful_invite: SUCCESSFUL_INVITE_REWARD_COINS,
+    successful_invite_reward_coins: Number(successRewardTotal?.reward_coins ?? 0),
     current_level: tier?.level ?? 0,
     current_rate_bps: tier?.rateBps ?? 0,
     current_rate_percent: (tier?.rateBps ?? 0) / 100,
     bound_to: binding ? {
       inviter_user_id: String(binding.inviter_user_id),
+      inviter_public_id: String(binding.inviter_public_id ?? binding.invitation_code ?? ""),
       inviter_name: String(binding.inviter_name ?? ""),
       inviter_avatar_key: String(binding.inviter_avatar_key ?? ""),
       invitation_code: String(binding.invitation_code),
@@ -185,11 +236,13 @@ export async function inviteRewardSummary(db, userId) {
     })),
     invited_users: (invited.results ?? []).map((row) => ({
       user_id: String(row.invitee_user_id),
+      public_id: String(row.public_id ?? ""),
       display_name: String(row.display_name ?? ""),
       avatar_key: String(row.avatar_key ?? ""),
       bound_at: Number(row.bound_at ?? 0),
       received_coins: Number(row.source_coins ?? 0),
       commission_coins: Number(row.reward_coins ?? 0),
+      fixed_reward_coins: Number(row.fixed_reward_coins ?? 0),
     })),
   };
 }
