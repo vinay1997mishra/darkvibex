@@ -59,7 +59,7 @@ function defaultPermissions(role) {
   if (role === "admin") {
     return [
       "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
-      "treasury.read",
+      "treasury.read", "economy.read",
       "support.read", "support.write",
       "rooms.read", "rooms.write", "catalog.read", "catalog.write",
       "settings.read", "settings.write", "announcements.read", "announcements.write",
@@ -68,7 +68,7 @@ function defaultPermissions(role) {
   }
   if (role === "manager") {
     return [
-      "dashboard", "users.read", "rooms.read", "rooms.write", "catalog.read",
+      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "catalog.read",
       "catalog.write", "settings.read", "announcements.read", "announcements.write",
       "audit.read",
     ];
@@ -585,6 +585,40 @@ async function handleRooms(request, db, actor, url, parts) {
   return null;
 }
 
+
+async function handleEconomy(request, db, actor) {
+  const key = "economy.coin_rate";
+  const fallback = 5000000;
+  if (request.method === "GET") {
+    requirePermission(actor, "economy.read");
+    const row = await db.prepare("SELECT value_json, updated_at FROM owner_settings WHERE key = ?").bind(key).first();
+    const value = safeParse(row?.value_json, {});
+    const parsed = Number(value?.coins_per_usd);
+    const coinsPerUsd = Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+    return json({ ok: true, coins_per_usd: coinsPerUsd, updated_at: row?.updated_at ?? null });
+  }
+  if (request.method !== "POST") return null;
+
+  requirePermission(actor, "economy.write");
+  const body = await bodyJson(request);
+  const coinsPerUsd = Number(body.coins_per_usd);
+  if (!Number.isSafeInteger(coinsPerUsd) || coinsPerUsd < 1 || coinsPerUsd > 900000000000000) {
+    return json({ ok: false, error: "invalid_coins_per_usd" }, { status: 400 });
+  }
+  const current = await db.prepare("SELECT value_json FROM owner_settings WHERE key = ?").bind(key).first();
+  const oldValue = safeParse(current?.value_json, {});
+  const oldRate = Number.isSafeInteger(Number(oldValue?.coins_per_usd)) && Number(oldValue?.coins_per_usd) > 0
+    ? Number(oldValue.coins_per_usd)
+    : fallback;
+  const ts = now();
+  const value = { coins_per_usd: coinsPerUsd };
+  await db.prepare(
+    "INSERT INTO owner_settings (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at"
+  ).bind(key, JSON.stringify(value), ts).run();
+  await audit(db, actor, "coin_rate_update", "economy", "coin_rate", `old=${oldRate}; new=${coinsPerUsd}`);
+  return json({ ok: true, coins_per_usd: coinsPerUsd, updated_at: ts });
+}
+
 async function handleSettings(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "settings.read");
@@ -882,6 +916,7 @@ export async function handleOwnerApi(request, env, url) {
     if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
+    else if (parts[2] === "economy") response = await handleEconomy(request, db, actor);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
     else if (parts[2] === "catalog") response = await handleCatalog(request, db, actor, url, parts);
     else if (parts[2] === "announcements") response = await handleAnnouncements(request, db, actor, parts);
