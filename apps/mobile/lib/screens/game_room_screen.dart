@@ -835,7 +835,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
         int.tryParse(room['shared_score']?.toString() ?? '') ?? 0;
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
