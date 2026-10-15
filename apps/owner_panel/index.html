@@ -17,6 +17,7 @@
         <button class="nav-btn" data-view="rooms">Rooms</button>
         <button class="nav-btn" data-view="wallets">Wallets / Treasury</button>
         <button class="nav-btn" data-view="economy">Unique ID / Coin Rate</button>
+        <button class="nav-btn" data-view="store">App Store</button>
         <button class="nav-btn" data-view="catalog">VIP / Gifts / Assets</button>
         <button class="nav-btn" data-view="settings">Master Switches</button>
         <button class="nav-btn" data-view="announcements">Announcements</button>
@@ -174,6 +175,57 @@
               <button id="saveCoinRate" class="primary">Save Coin Price</button>
             </article>
           </div>
+        </section>
+
+
+        <section class="view" data-view-panel="store">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>App Store — Full Owner Control</h2>
+                <p>Add, edit, enable/disable or remove store items. Changes feed the live store catalog used by purchases, gifts and cosmetics.</p>
+              </div>
+              <button id="reloadStore" class="secondary">Reload</button>
+            </div>
+            <div class="form-grid">
+              <label>Store category
+                <input id="storeKind" list="storeKinds" value="frame" placeholder="frame / vehicle / gift / unique_id" />
+                <datalist id="storeKinds">
+                  <option value="gift"></option>
+                  <option value="frame"></option>
+                  <option value="vehicle"></option>
+                  <option value="entry"></option>
+                  <option value="ring"></option>
+                  <option value="bubble"></option>
+                  <option value="profile_card"></option>
+                  <option value="profile_background"></option>
+                  <option value="theme"></option>
+                  <option value="unique_id"></option>
+                  <option value="custom"></option>
+                </datalist>
+              </label>
+              <label>Item ID<input id="storeId" placeholder="Unique store item ID" /></label>
+              <label>Display name<input id="storeName" placeholder="Item name" /></label>
+              <label>Price in coins<input id="storePrice" type="number" min="0" value="0" /></label>
+              <label>Minimum VIP level<input id="storeVip" type="number" min="0" max="18" value="0" /></label>
+              <label>Duration days<input id="storeDuration" type="number" min="0" value="30" /></label>
+              <label>Tier / level<input id="storeTier" type="number" min="0" value="0" /></label>
+              <label>Sort order<input id="storeOrder" type="number" value="0" /></label>
+              <label>Asset / file key<input id="storeAsset" placeholder="R2 / CDN / asset key" /></label>
+              <label>Emoji<input id="storeEmoji" placeholder="Optional" /></label>
+              <label>Category label<input id="storeCategory" placeholder="normal / exclusive / custom" /></label>
+              <label class="check"><input id="storeEnabled" type="checkbox" checked /> Enabled in app</label>
+              <label class="span-2">Description<textarea id="storeDescription" rows="3" placeholder="Store item description"></textarea></label>
+            </div>
+            <div class="action-row">
+              <button id="saveStoreItem" class="primary">Add / Save Item</button>
+              <button id="clearStoreItem" class="secondary">Clear</button>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Store Items</h2><p>Base items and Owner overrides are shown together. Editing a base item creates a safe Owner override.</p></div></div>
+            <div id="storeList" class="stack"></div>
+          </article>
         </section>
 
         <section class="view" data-view-panel="catalog">
