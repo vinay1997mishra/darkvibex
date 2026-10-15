@@ -3,6 +3,7 @@ import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
 import 'vip_screen.dart';
 import 'app_settings_screen.dart';
+import 'invite_share_screen.dart';
 import 'recharge_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'mine_social_screens.dart';
@@ -781,6 +782,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   context,
                   MaterialPageRoute<void>(
                     builder: (_) => FeedbackScreen(state: state),
+                  ),
+                ),
+              ),
+              ListTile(
+                key: const Key('mine-invite-share'),
+                leading: const Icon(
+                  Icons.card_giftcard_rounded,
+                  color: TinniPalette.gold,
+                ),
+                title: const Text('Invite & Share'),
+                subtitle: const Text(
+                  'Invite friends and earn Coin Seller recharge commission',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => InviteShareScreen(state: state),
                   ),
                 ),
               ),
