@@ -726,9 +726,7 @@ async function authenticate(request, env, db) {
   ).bind(hash, now()).first();
   if (session) {
     const explicit = safeParse(session.permissions_json, []);
-    const permissions = Array.isArray(explicit)
-      ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*")
-      : [];
+    const permissions = Array.isArray(explicit) ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*") : [];
     const ts = now();
     await db.batch([
       db.prepare("UPDATE owner_staff_sessions SET last_used_at=? WHERE token_hash=?").bind(ts, hash),
