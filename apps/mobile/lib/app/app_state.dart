@@ -860,7 +860,8 @@ class AppState extends ChangeNotifier {
       weeklySignInLastReward =
           int.tryParse(value?['reward']?.toString() ?? '') ?? 0;
       weeklySignInLastClaimedDay =
-          (int.tryParse(value?['claimed_day']?.toString() ?? '') ??
+          (int.tryParse(value?['receipt_day']?.toString() ?? '') ??
+                  int.tryParse(value?['claimed_day']?.toString() ?? '') ??
                   requestedDay)
               .clamp(1, 7)
               .toInt();
