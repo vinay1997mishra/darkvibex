@@ -1,6 +1,9 @@
 import { normalizeRole } from "./role_policy.js";
 import { ensureSupportSchema } from "./support_store.js";
 import { adjustRoleWallet, roleWalletDetail } from "./role_wallets.js";
+import { COSMETIC_CATALOG } from "./cosmetics.js";
+import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
+import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -446,8 +449,8 @@ async function handleUsers(request, db, actor, url, parts) {
     requirePermission(actor, "users.write");
     const body = await bodyJson(request);
     const requested = String(body.public_id ?? "").trim();
-    if (!/^[1-9]\d{6}$/.test(requested)) {
-      return json({ ok: false, error: "public_id_must_be_7_digits" }, { status: 400 });
+    if (!/^\d{7}$/.test(requested) || Number(requested) < 1000001) {
+      return json({ ok: false, error: "public_id_must_be_1000001_to_9999999" }, { status: 400 });
     }
     const current = await db.prepare("SELECT public_id FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
@@ -455,6 +458,18 @@ async function handleUsers(request, db, actor, url, parts) {
     if (taken) return json({ ok: false, error: "public_id_already_used" }, { status: 409 });
     const reserved = await db.prepare("SELECT user_id FROM owner_public_id_history WHERE public_id = ? AND user_id <> ? LIMIT 1").bind(requested, userId).first();
     if (reserved) return json({ ok: false, error: "public_id_reserved_by_history" }, { status: 409 });
+    try {
+      const custom = await db.prepare("SELECT user_id FROM user_vip WHERE custom_id = ? AND user_id <> ? LIMIT 1").bind(requested, userId).first();
+      if (custom) return json({ ok: false, error: "public_id_owned_by_another_user" }, { status: 409 });
+    } catch (error) {
+      if (!String(error?.message ?? error).includes("no such table")) throw error;
+    }
+    try {
+      const purchase = await db.prepare("SELECT buyer_user_id FROM unique_id_purchases WHERE public_id = ? AND buyer_user_id <> ? LIMIT 1").bind(requested, userId).first();
+      if (purchase) return json({ ok: false, error: "public_id_owned_by_another_user" }, { status: 409 });
+    } catch (error) {
+      if (!String(error?.message ?? error).includes("no such table")) throw error;
+    }
     const previous = String(current.public_id ?? "").trim();
     const ts = now();
     const statements = [
@@ -637,6 +652,129 @@ async function handleSettings(request, db, actor, parts) {
     ).bind(key, JSON.stringify(value), now()).run();
     await audit(db, actor, "setting_update", "setting", key, "configuration updated");
     return json({ ok: true, key, value });
+  }
+  return null;
+}
+
+
+function baseStoreItems(kind) {
+  const k=String(kind ?? "").trim();
+  if (k==="gift") {
+    return [...BASE_GIFT_CATALOG,...DARKVIBE_EXTRA_GIFTS].map((item,index)=>({
+      kind:k,id:String(item.id),name:String(item.name),enabled:1,sort_order:index,
+      price_coins:Number(item.coin_cost ?? 0),source:"base",
+      data:{
+        emoji:String(item.emoji ?? "🎁"),
+        min_vip_level:Number(item.vip_level ?? 0),
+        vip_level:Number(item.vip_level ?? 0),
+        category:String(item.category ?? "normal"),
+        asset_key:String(item.asset_key ?? ""),
+        duration_days:0,
+        tier:0,
+      },
+    }));
+  }
+  if (k==="unique_id") {
+    return BASE_UNIQUE_ID_CATALOG.map((item,index)=>({
+      kind:k,id:String(item.public_id),name:String(item.public_id),enabled:1,sort_order:index,
+      price_coins:Number(item.price_coins ?? 0),source:"base",
+      data:{duration_days:Number(item.duration_days ?? 0),min_vip_level:0,tier:0,asset_key:""},
+    }));
+  }
+  return COSMETIC_CATALOG.filter(item=>String(item.kind)===k).map((item,index)=>({
+    kind:k,id:String(item.id),name:String(item.name),enabled:1,sort_order:index,
+    price_coins:Number(item.price_coins ?? 0),source:"base",
+    data:{
+      min_vip_level:Number(item.min_vip_level ?? 0),
+      duration_days:Number(item.duration_days ?? 30),
+      tier:Number(item.tier ?? 0),
+      asset_key:String(item.asset_key ?? ""),
+      description:String(item.description ?? ""),
+    },
+  }));
+}
+
+function parseStoreRow(row) {
+  let data={};
+  try { data=JSON.parse(String(row?.json_data ?? "{}")) || {}; } catch (_) {}
+  return {
+    kind:String(row?.kind ?? ""),
+    id:String(row?.id ?? ""),
+    name:String(row?.name ?? ""),
+    enabled:Number(row?.enabled ?? 1),
+    sort_order:Number(row?.sort_order ?? 0),
+    price_coins:Number(row?.price_coins ?? 0),
+    updated_at:row?.updated_at ?? null,
+    data,
+  };
+}
+
+async function effectiveOwnerStore(db, kind) {
+  const map=new Map(baseStoreItems(kind).map(item=>[item.id,item]));
+  const rows=await db.prepare(
+    "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind=? ORDER BY sort_order ASC,updated_at DESC"
+  ).bind(kind).all();
+  for(const raw of rows.results ?? []) {
+    const row=parseStoreRow(raw);
+    const previous=map.get(row.id) ?? {kind,id:row.id,source:"custom",data:{}};
+    map.set(row.id,{
+      ...previous,...row,
+      source:previous.source==="base"?"override":"custom",
+      data:{...(previous.data ?? {}),...(row.data ?? {})},
+    });
+  }
+  return [...map.values()].sort((a,b)=>
+    Number(a.sort_order ?? 0)-Number(b.sort_order ?? 0) ||
+    String(a.name ?? "").localeCompare(String(b.name ?? ""))
+  );
+}
+
+async function handleStore(request, db, actor, url, parts) {
+  if (parts.length===3 && request.method==="GET") {
+    requirePermission(actor,"catalog.read");
+    const kind=String(url.searchParams.get("kind") ?? "").trim().slice(0,60);
+    if(!kind) return json({ok:false,error:"kind_required"},{status:400});
+    return json({ok:true,kind,items:await effectiveOwnerStore(db,kind)});
+  }
+  if (parts.length===3 && request.method==="POST") {
+    requirePermission(actor,"catalog.write");
+    const body=await bodyJson(request);
+    const kind=String(body.kind ?? "").trim().slice(0,60);
+    const itemId=String(body.id ?? "").trim().slice(0,100);
+    const name=String(body.name ?? itemId).trim().slice(0,120);
+    if(!kind||!itemId||!name) return json({ok:false,error:"kind_id_name_required"},{status:400});
+    if(kind==="unique_id"&&!/^\d{4,8}$/.test(itemId)) {
+      return json({ok:false,error:"numeric_unique_id_required"},{status:400});
+    }
+    const price=clampInt(body.price_coins ?? 0,0,900000000000000,0);
+    const sortOrder=clampInt(body.sort_order ?? 0,-100000,100000,0);
+    const enabled=body.enabled===false?0:1;
+    const data=body.data&&typeof body.data==="object"&&!Array.isArray(body.data)?body.data:{};
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES(?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET
+         name=excluded.name,enabled=excluded.enabled,sort_order=excluded.sort_order,
+         price_coins=excluded.price_coins,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(kind,itemId,name,enabled,sortOrder,price,"",JSON.stringify(data),now()).run();
+    await audit(db,actor,"store_upsert",kind,itemId,`${name}; price=${price}; enabled=${enabled}`);
+    const items=await effectiveOwnerStore(db,kind);
+    return json({ok:true,item:items.find(item=>item.id===itemId) ?? null});
+  }
+  if (parts.length===5 && request.method==="DELETE") {
+    requirePermission(actor,"catalog.write");
+    const kind=decodeURIComponent(parts[3]);
+    const itemId=decodeURIComponent(parts[4]);
+    const items=await effectiveOwnerStore(db,kind);
+    const item=items.find(row=>row.id===itemId);
+    if(!item) return json({ok:false,error:"not_found"},{status:404});
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES(?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET enabled=0,updated_at=excluded.updated_at`
+    ).bind(kind,itemId,String(item.name||itemId),0,Number(item.sort_order||0),Number(item.price_coins||0),"",JSON.stringify(item.data||{}),now()).run();
+    await audit(db,actor,"store_remove",kind,itemId,"removed from app store");
+    return json({ok:true});
   }
   return null;
 }
@@ -920,6 +1058,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
     else if (parts[2] === "economy") response = await handleEconomy(request, db, actor);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
+    else if (parts[2] === "store") response = await handleStore(request, db, actor, url, parts);
     else if (parts[2] === "catalog") response = await handleCatalog(request, db, actor, url, parts);
     else if (parts[2] === "announcements") response = await handleAnnouncements(request, db, actor, parts);
     else if (parts[2] === "treasury") response = await handleTreasury(request, db, actor);

@@ -883,8 +883,16 @@ export const BASE_GIFT_CATALOG = [
   }
 ];
 
+
+export const DARKVIBE_EXTRA_GIFTS = [
+  { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0, category: "normal" },
+  { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3, category: "exclusive" },
+  { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3, category: "exclusive" },
+  { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3, category: "exclusive" },
+];
+
 export function giftById(id) {
-  return BASE_GIFT_CATALOG.find((gift) => gift.id === id) ?? null;
+  return [...BASE_GIFT_CATALOG, ...DARKVIBE_EXTRA_GIFTS].find((gift) => gift.id === id) ?? null;
 }
 
 export function publicGiftCatalog() {

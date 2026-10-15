@@ -23,6 +23,28 @@ export async function changeVipUniqueId(db,userId,requestedId,ts=Date.now()){
   const customId=String(requestedId??"").trim();
   if(!/^[A-Za-z0-9_-]{3,20}$/.test(customId)) throw new Error("invalid_custom_id");
 
+  const publicOwner=await db.prepare("SELECT id FROM users WHERE public_id=? AND id<>? LIMIT 1")
+    .bind(customId,userId).first();
+  if(publicOwner) throw new Error("custom_id_taken");
+  try{
+    const historicalOwner=await db.prepare(
+      "SELECT user_id FROM owner_public_id_history WHERE public_id=? AND user_id<>? LIMIT 1"
+    ).bind(customId,userId).first();
+    if(historicalOwner) throw new Error("custom_id_taken");
+  }catch(error){
+    if(String(error?.message ?? error)==="custom_id_taken") throw error;
+    if(!String(error?.message ?? error).includes("no such table")) throw error;
+  }
+  try{
+    const purchaseOwner=await db.prepare(
+      "SELECT buyer_user_id FROM unique_id_purchases WHERE public_id=? AND buyer_user_id<>? LIMIT 1"
+    ).bind(customId,userId).first();
+    if(purchaseOwner) throw new Error("custom_id_taken");
+  }catch(error){
+    if(String(error?.message ?? error)==="custom_id_taken") throw error;
+    if(!String(error?.message ?? error).includes("no such table")) throw error;
+  }
+
   const previousAt=Number(row.last_id_change_at??0);
   const previousLevel=Number(row.id_change_level??0);
   const nowDate=new Date(ts);

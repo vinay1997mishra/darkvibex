@@ -6,7 +6,7 @@ import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
-import { BASE_GIFT_CATALOG, giftById } from "./gift_catalog.js";
+import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS, giftById } from "./gift_catalog.js";
 import {
   roleWalletDetail,
   setRoleWalletCredential,
@@ -293,6 +293,88 @@ async function publicCatalog(db, kind) {
   }
 }
 
+const STORE_COSMETIC_KINDS = new Set([
+  "frame","vehicle","entry","ring","bubble","profile_card","profile_background","theme"
+]);
+
+async function ownerStoreOverrides(db) {
+  try {
+    const rows = await db.prepare(
+      "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog ORDER BY kind ASC,sort_order ASC,updated_at DESC LIMIT 1000"
+    ).all();
+    return (rows.results ?? []).map((row) => {
+      let data = {};
+      try { data = JSON.parse(String(row.json_data ?? "{}")); } catch (_) {}
+      return { ...row, data };
+    });
+  } catch (error) {
+    if (String(error?.message ?? error).includes("no such table")) return [];
+    throw error;
+  }
+}
+
+async function effectiveCosmeticCatalog(db) {
+  const map = new Map(COSMETIC_CATALOG.map((item) => [item.id, { ...item }]));
+  for (const row of await ownerStoreOverrides(db)) {
+    if (!STORE_COSMETIC_KINDS.has(String(row.kind))) continue;
+    const itemId = String(row.id ?? "").trim();
+    if (!itemId) continue;
+    if (Number(row.enabled ?? 1) === 0) {
+      map.delete(itemId);
+      continue;
+    }
+    const previous = map.get(itemId) ?? {};
+    map.set(itemId, {
+      ...previous,
+      id: itemId,
+      kind: String(row.kind),
+      name: String(row.name ?? previous.name ?? itemId),
+      price_coins: Number(row.price_coins ?? previous.price_coins ?? 0),
+      min_vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.min_vip_level ?? 0),
+      duration_days: Number(row.data?.duration_days ?? previous.duration_days ?? 30),
+      tier: Number(row.data?.tier ?? previous.tier ?? 0),
+      asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
+      description: String(row.data?.description ?? previous.description ?? ""),
+      sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
+    });
+  }
+  return [...map.values()].sort((a,b)=>
+    Number(a.sort_order ?? 0)-Number(b.sort_order ?? 0) ||
+    String(a.name ?? "").localeCompare(String(b.name ?? ""))
+  );
+}
+
+async function effectiveGiftCatalog(db) {
+  const map = new Map(
+    [...BASE_GIFT_CATALOG, ...DARKVIBE_EXTRA_GIFTS].map((item) => [item.id, { ...item }])
+  );
+  for (const row of await ownerStoreOverrides(db)) {
+    if (String(row.kind) !== "gift") continue;
+    const itemId = String(row.id ?? "").trim();
+    if (!itemId) continue;
+    if (Number(row.enabled ?? 1) === 0) {
+      map.delete(itemId);
+      continue;
+    }
+    const previous = map.get(itemId) ?? {};
+    map.set(itemId, {
+      ...previous,
+      id: itemId,
+      name: String(row.name ?? previous.name ?? itemId),
+      emoji: String(row.data?.emoji ?? previous.emoji ?? "🎁"),
+      coin_cost: Number(row.price_coins ?? previous.coin_cost ?? 0),
+      vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.vip_level ?? 0),
+      category: String(row.data?.category ?? previous.category ?? "normal"),
+      asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
+      sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
+    });
+  }
+  return [...map.values()].sort((a,b)=>
+    Number(a.sort_order ?? 0)-Number(b.sort_order ?? 0) ||
+    Number(a.coin_cost ?? 0)-Number(b.coin_cost ?? 0)
+  );
+}
+
 const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
   "English",
   "Hindi",
@@ -369,6 +451,53 @@ async function ensureUsersSchema(db) {
   await db.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_public_id ON users(public_id) WHERE public_id IS NOT NULL AND public_id <> ''"
   ).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS owner_public_id_history (
+    user_id TEXT NOT NULL,
+    public_id TEXT NOT NULL,
+    changed_at INTEGER NOT NULL,
+    changed_by TEXT NOT NULL,
+    PRIMARY KEY (user_id, public_id)
+  )`).run();
+  await db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_owner_old_public_id ON owner_public_id_history(public_id)"
+  ).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS public_id_sequence (
+    id TEXT PRIMARY KEY,
+    next_value INTEGER NOT NULL CHECK(next_value BETWEEN 1000001 AND 10000000)
+  )`).run();
+  await db.prepare(
+    "INSERT OR IGNORE INTO public_id_sequence(id,next_value) VALUES('main',1000001)"
+  ).run();
+}
+
+async function publicIdOwnedByAnotherUser(db, candidate, userId) {
+  const current = await db.prepare(
+    "SELECT id FROM users WHERE public_id=? AND id<>? LIMIT 1"
+  ).bind(candidate,userId).first();
+  if (current) return true;
+
+  const history = await db.prepare(
+    "SELECT user_id FROM owner_public_id_history WHERE public_id=? AND user_id<>? LIMIT 1"
+  ).bind(candidate,userId).first();
+  if (history) return true;
+
+  try {
+    const custom = await db.prepare(
+      "SELECT user_id FROM user_vip WHERE custom_id=? AND user_id<>? LIMIT 1"
+    ).bind(candidate,userId).first();
+    if (custom) return true;
+  } catch (error) {
+    if (!String(error?.message ?? error).includes("no such table")) throw error;
+  }
+  try {
+    const purchased = await db.prepare(
+      "SELECT buyer_user_id FROM unique_id_purchases WHERE public_id=? AND buyer_user_id<>? LIMIT 1"
+    ).bind(candidate,userId).first();
+    if (purchased) return true;
+  } catch (error) {
+    if (!String(error?.message ?? error).includes("no such table")) throw error;
+  }
+  return false;
 }
 
 async function ensureUserPublicId(db, userId) {
@@ -376,23 +505,35 @@ async function ensureUserPublicId(db, userId) {
     "SELECT public_id FROM users WHERE id=? LIMIT 1"
   ).bind(userId).first();
   const current = String(row?.public_id ?? "").trim();
-  if (/^[1-9]\d{6}$/.test(current)) return current;
+  if (/^\d{7}$/.test(current) && Number(current) >= 1000001) return current;
 
-  for (let attempt = 0; attempt < 64; attempt += 1) {
-    const candidate = String(Math.floor(1000000 + Math.random() * 9000000));
-    const taken = await db.prepare(
-      "SELECT id FROM users WHERE public_id=? AND id<>? LIMIT 1"
-    ).bind(candidate, userId).first();
-    if (taken) continue;
+  for (let attempt = 0; attempt < 100000; attempt += 1) {
+    const allocated = await db.prepare(
+      "UPDATE public_id_sequence SET next_value=next_value+1 WHERE id='main' AND next_value<=9999999 RETURNING next_value-1 AS value"
+    ).first();
+    const value = Number(allocated?.value ?? 0);
+    if (!Number.isSafeInteger(value) || value < 1000001 || value > 9999999) {
+      throw new Error("public_id_sequence_exhausted");
+    }
+    const candidate = String(value);
+    if (await publicIdOwnedByAnotherUser(db,candidate,userId)) continue;
+
     try {
-      await db.prepare(
-        "UPDATE users SET public_id=?,updated_at=? WHERE id=?"
-      ).bind(candidate, now(), userId).run();
-      return candidate;
+      const update = await db.prepare(
+        `UPDATE users
+            SET public_id=?,updated_at=?
+          WHERE id=?
+            AND (public_id IS NULL OR public_id='' OR LENGTH(public_id)<>7 OR public_id GLOB '*[^0-9]*' OR substr(public_id,1,1)='0')`
+      ).bind(candidate,now(),userId).run();
+      if (Number(update.meta?.changes ?? 0) === 1) return candidate;
+
+      const latest = await db.prepare(
+        "SELECT public_id FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      const latestId = String(latest?.public_id ?? "").trim();
+      if (/^\d{7}$/.test(latestId) && Number(latestId) >= 1000001) return latestId;
     } catch (error) {
-      if (String(error?.message ?? error).toLowerCase().includes("unique")) {
-        continue;
-      }
+      if (String(error?.message ?? error).toLowerCase().includes("unique")) continue;
       throw error;
     }
   }
@@ -3284,7 +3425,7 @@ async function handleApi(request, env, url) {
       return json({ ok:true,cp:await cpState(db,userId) });
     }
     await ensureCosmeticsSchema(db);
-    const product = COSMETIC_CATALOG.find(
+    const product = (await effectiveCosmeticCatalog(db)).find(
       (item) => item.id === ringId && item.kind === "ring"
     );
     if (!product) {
@@ -3376,7 +3517,7 @@ async function handleApi(request, env, url) {
     await ensureUser(db, userId);
     await ensureCosmeticsSchema(db);
     const owned = await ownedCosmetics(db, userId, now());
-    return json({ ok: true, items: COSMETIC_CATALOG, owned });
+    return json({ ok: true, items: await effectiveCosmeticCatalog(db), owned });
   }
 
   if (url.pathname === "/api/cosmetics/purchase" && request.method === "POST") {
@@ -3386,7 +3527,7 @@ async function handleApi(request, env, url) {
     const itemId = String(body.item_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    const product = COSMETIC_CATALOG.find((item) => item.id === itemId);
+    const product = (await effectiveCosmeticCatalog(db)).find((item) => item.id === itemId);
     if (!product) return json({ ok:false,error:"cosmetic_not_found" }, { status:404 });
     await ensureUser(db,userId);
     if (!recipientId) return json({ ok:false,error:"recipient_required" }, { status:400 });
@@ -3470,7 +3611,7 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db,userId);
     await ensureCosmeticsSchema(db);
     await ensureVipSchema(db);
-    const item=COSMETIC_CATALOG.find((product)=>product.id===itemId);
+    const item=(await effectiveCosmeticCatalog(db)).find((product)=>product.id===itemId);
     if (!item) return json({ok:false,error:"cosmetic_not_found"}, {status:404});
     const vip=await getVipStatus(db,userId,now());
     if (Number(item.min_vip_level ?? 0)>0 &&
@@ -3574,8 +3715,10 @@ async function handleApi(request, env, url) {
     try {
       const userId=await emailPasswordLogin(db,body.email,body.password);
       await ensureUserAllowed(db,userId);
+      await ensureUsersSchema(db);
+      await ensureUserPublicId(db,userId);
       const user=await db.prepare(
-        "SELECT id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
+        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       if(!user) throw new Error("user_not_found");
       const token=await createSessionToken(env,userId,user.display_name);
@@ -6608,12 +6751,6 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     const vip = await getVipStatus(db, userId, now());
-    const darkVibeExtras = [
-      { id: "basic-star", name: "Star", emoji: "⭐", coin_cost: 5000, vip_level: 0, category: "normal" },
-      { id: "vip-rose", name: "VIP Rose", emoji: "🌹", coin_cost: 10000, vip_level: 3, category: "exclusive" },
-      { id: "vip-crown", name: "Royal Crown", emoji: "👑", coin_cost: 50000, vip_level: 3, category: "exclusive" },
-      { id: "vip-phoenix", name: "Golden Phoenix", emoji: "🔥", coin_cost: 100000, vip_level: 3, category: "exclusive" },
-    ];
     await ensureCustomGiftSchema(db);
     const custom = await db.prepare(
       "SELECT id,name,asset_key,coin_cost FROM custom_gifts WHERE status='approved' ORDER BY updated_at DESC LIMIT 100"
@@ -6630,9 +6767,8 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       gifts: [
-        ...BASE_GIFT_CATALOG,
-        ...darkVibeExtras.filter((gift) =>
-          gift.vip_level === 0 || (vip.active && vip.level >= gift.vip_level)),
+        ...(await effectiveGiftCatalog(db)).filter((gift) =>
+          Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
         ...customRows,
       ],
     });
@@ -6649,16 +6785,7 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, sender);
     if (authError) return authError;
     const giftId = String(body.gift_id ?? "").trim().slice(0, 100);
-    let gift = giftById(giftId);
-    if (!gift) {
-      const extras = {
-        "basic-star": { coin_cost: 5000, vip_level: 0 },
-        "vip-rose": { coin_cost: 10000, vip_level: 3 },
-        "vip-crown": { coin_cost: 50000, vip_level: 3 },
-        "vip-phoenix": { coin_cost: 100000, vip_level: 3 },
-      };
-      gift = extras[giftId] ?? null;
-    }
+    let gift = (await effectiveGiftCatalog(db)).find((item) => item.id === giftId) ?? null;
     if (!gift && giftId.startsWith("custom-")) {
       await ensureCustomGiftSchema(db);
       const custom = await db.prepare(
