@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#fff8bf"/><stop offset=".18" stop-color="#ffd15b"/>
+    <stop offset=".42" stop-color="#9f5410"/><stop offset=".63" stop-color="#fff0a0"/>
+    <stop offset=".82" stop-color="#d77e18"/><stop offset="1" stop-color="#68310c"/>
+  </linearGradient>
+  <radialGradient id="ruby" cx=".35" cy=".24" r=".8">
+    <stop offset="0" stop-color="#fff1da"/><stop offset=".16" stop-color="#ff9b67"/>
+    <stop offset=".42" stop-color="#ef3a2f"/><stop offset=".7" stop-color="#9b120f"/>
+    <stop offset="1" stop-color="#430706"/>
+  </radialGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<ellipse cx="128" cy="166" rx="74" ry="38" fill="none" stroke="#ff9f24" stroke-opacity=".25" stroke-width="19" filter="url(#glow)"/>
+<ellipse cx="128" cy="166" rx="74" ry="38" fill="none" stroke="url(#gold)" stroke-width="17"/>
+<ellipse cx="128" cy="166" rx="63" ry="28" fill="none" stroke="#fff0a0" stroke-opacity=".65" stroke-width="3"/>
+<path d="M92 99 L99 61 L118 83 L129 45 L144 83 L166 59 L164 101 Z" fill="url(#gold)" stroke="#fff1a6" stroke-width="2.5" filter="url(#glow)"/>
+<circle cx="99" cy="61" r="5" fill="#ff5f48"/><circle cx="129" cy="45" r="6" fill="#ffdf72"/><circle cx="166" cy="59" r="5" fill="#ff5f48"/>
+<polygon points="128,71 151,88 145,118 128,135 111,118 105,88" fill="url(#ruby)" stroke="#ffe6b2" stroke-width="3"/>
+<path d="M128 71 L128 135 M105 88 H151 M111 118 H145 M105 88 L128 104 L151 88" fill="none" stroke="#ffd6b1" stroke-opacity=".58" stroke-width="1.7"/>
+<path d="M115 82 Q128 71 141 80" fill="none" stroke="#fff3d0" stroke-width="6" stroke-linecap="round" opacity=".82"/>
+<g fill="#fff8d6">
+ <circle cx="72" cy="142" r="4.5"/><circle cx="84" cy="135" r="4"/><circle cx="95" cy="130" r="3.7"/>
+ <circle cx="161" cy="130" r="3.7"/><circle cx="172" cy="135" r="4"/><circle cx="184" cy="142" r="4.5"/>
+</g>
+<g stroke="#fff2b0" stroke-linecap="round">
+ <path d="M48 71h19M57.5 61.5v19" stroke-width="3"/><path d="M195 63h16M203 55v16" stroke-width="2.7"/>
+</g>
+</svg>
