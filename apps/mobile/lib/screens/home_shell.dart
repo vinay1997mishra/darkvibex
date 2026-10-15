@@ -55,9 +55,9 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       backgroundColor: TinniPalette.black,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
+            Positioned.fill(
               child: IndexedStack(
                 index: index,
                 children: [
@@ -67,11 +67,13 @@ class _HomeShellState extends State<HomeShell> {
               ),
             ),
             if (widget.minimizedRoom != null)
-              _MiniActiveRoomBar(
-                state: widget.state,
-                room: widget.minimizedRoom!,
-                onResume: widget.onResumeRoom,
-                onClose: widget.onCloseMinimizedRoom,
+              Positioned.fill(
+                child: _MiniActiveRoomBubble(
+                  state: widget.state,
+                  room: widget.minimizedRoom!,
+                  onResume: widget.onResumeRoom,
+                  onClose: widget.onCloseMinimizedRoom,
+                ),
               ),
           ],
         ),
@@ -145,8 +147,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-class _MiniActiveRoomBar extends StatefulWidget {
-  const _MiniActiveRoomBar({
+class _MiniActiveRoomBubble extends StatefulWidget {
+  const _MiniActiveRoomBubble({
     required this.state,
     required this.room,
     this.onResume,
@@ -159,11 +161,22 @@ class _MiniActiveRoomBar extends StatefulWidget {
   final Future<void> Function()? onClose;
 
   @override
-  State<_MiniActiveRoomBar> createState() => _MiniActiveRoomBarState();
+  State<_MiniActiveRoomBubble> createState() => _MiniActiveRoomBubbleState();
 }
 
-class _MiniActiveRoomBarState extends State<_MiniActiveRoomBar> {
+class _MiniActiveRoomBubbleState extends State<_MiniActiveRoomBubble> {
+  static const double _bubbleExtent = 82;
+  Offset? position;
   bool closing = false;
+
+  Offset _clampPosition(Offset value, BoxConstraints constraints) {
+    final maxX = (constraints.maxWidth - _bubbleExtent).clamp(4.0, double.infinity);
+    final maxY = (constraints.maxHeight - _bubbleExtent).clamp(4.0, double.infinity);
+    return Offset(
+      value.dx.clamp(4.0, maxX).toDouble(),
+      value.dy.clamp(4.0, maxY).toDouble(),
+    );
+  }
 
   Future<void> _closeRoom() async {
     if (closing) return;
@@ -172,8 +185,8 @@ class _MiniActiveRoomBarState extends State<_MiniActiveRoomBar> {
     try {
       await widget.onClose?.call();
       if (!mounted) return;
-      navigator.pop();
-      navigator.pop();
+      if (navigator.canPop()) navigator.pop();
+      if (navigator.canPop()) navigator.pop();
     } finally {
       if (mounted) setState(() => closing = false);
     }
@@ -182,79 +195,126 @@ class _MiniActiveRoomBarState extends State<_MiniActiveRoomBar> {
   @override
   Widget build(BuildContext context) {
     final room = widget.room;
-    return Material(
-      color: TinniPalette.nearBlack,
-      child: InkWell(
-        key: const Key('mini-room-bar'),
-        onTap: widget.onResume,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: const BoxDecoration(
-            border: Border(top: BorderSide(color: TinniPalette.deepGold)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final defaultPosition = Offset(
+          (constraints.maxWidth - _bubbleExtent - 8).clamp(4.0, double.infinity),
+          (constraints.maxHeight * .42).clamp(
+            4.0,
+            (constraints.maxHeight - _bubbleExtent).clamp(4.0, double.infinity),
           ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                key: const Key('mini-room-dp'),
-                radius: 21,
-                backgroundColor: TinniPalette.panel2,
-                backgroundImage: room.avatarKey == null
+        );
+        final bubblePosition =
+            _clampPosition(position ?? defaultPosition, constraints);
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: bubblePosition.dx,
+              top: bubblePosition.dy,
+              width: _bubbleExtent,
+              height: _bubbleExtent,
+              child: GestureDetector(
+                key: const Key('mini-room-bubble'),
+                behavior: HitTestBehavior.opaque,
+                onTap: closing ? null : widget.onResume,
+                onPanUpdate: closing
                     ? null
-                    : NetworkImage(
-                        widget.state.backend.fileUrl(room.avatarKey!),
-                        headers: widget.state.backend.fileHeaders,
-                      ),
-                child: room.avatarKey == null
-                    ? const Icon(
-                        Icons.mic_external_on_rounded,
-                        color: TinniPalette.gold,
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                    : (details) {
+                        setState(() {
+                          position = _clampPosition(
+                            bubblePosition + details.delta,
+                            constraints,
+                          );
+                        });
+                      },
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Text(
-                      room.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: TinniPalette.cream,
-                        fontWeight: FontWeight.w900,
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: TinniPalette.brightGold,
+                            width: 3,
+                          ),
+                          boxShadow: const <BoxShadow>[
+                            BoxShadow(
+                              color: Color(0x55000000),
+                              blurRadius: 12,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: room.avatarKey == null
+                              ? Container(
+                                  color: TinniPalette.panel2,
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.mic_external_on_rounded,
+                                    size: 34,
+                                    color: TinniPalette.gold,
+                                  ),
+                                )
+                              : Image.network(
+                                  widget.state.backend.fileUrl(room.avatarKey!),
+                                  headers: widget.state.backend.fileHeaders,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: TinniPalette.panel2,
+                                    alignment: Alignment.center,
+                                    child: const Icon(
+                                      Icons.mic_external_on_rounded,
+                                      size: 34,
+                                      color: TinniPalette.gold,
+                                    ),
+                                  ),
+                                ),
+                        ),
                       ),
                     ),
-                    const Text(
-                      'Voice room active • Tap to return',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: TinniPalette.muted,
-                        fontSize: 11,
+                    Positioned(
+                      right: -3,
+                      top: -3,
+                      child: Material(
+                        color: const Color(0xE6F4B400),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          key: const Key('mini-room-bubble-close'),
+                          customBorder: const CircleBorder(),
+                          onTap: closing ? null : _closeRoom,
+                          child: SizedBox(
+                            width: 27,
+                            height: 27,
+                            child: Center(
+                              child: closing
+                                  ? const SizedBox.square(
+                                      dimension: 13,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.close_rounded,
+                                      size: 19,
+                                      color: Colors.white,
+                                    ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: 'Close voice room',
-                onPressed: closing ? null : _closeRoom,
-                icon: closing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(
-                        Icons.close_rounded,
-                        color: Colors.redAccent,
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
