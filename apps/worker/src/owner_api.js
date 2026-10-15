@@ -840,6 +840,7 @@ async function handleRooms(request, db, actor, url, parts) {
 
   if (parts.length === 4 && request.method === "DELETE") {
     requirePermission(actor, "rooms.write");
+    await db.prepare("DELETE FROM owner_room_controls WHERE room_id = ?").bind(roomId).run();
     await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
     return json({ ok: true });
