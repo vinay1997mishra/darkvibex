@@ -23,25 +23,40 @@ class AladdinLampScreen extends StatefulWidget {
 class _AladdinLampScreenState extends State<AladdinLampScreen> {
   bool loading = true;
   bool isHost = false;
+  bool refreshingStatus = false;
   int bonusPercent = 5;
   int? resetAt;
   String? error;
   String? claimingTaskId;
+  Timer? progressRefreshTimer;
   List<_LampTask> tasks = const <_LampTask>[];
 
   @override
   void initState() {
     super.initState();
     unawaited(_load());
+    progressRefreshTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_load()),
+    );
+  }
+
+  @override
+  void dispose() {
+    progressRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (refreshingStatus) return;
+    refreshingStatus = true;
     if (!widget.state.backendConnected) {
       if (!mounted) return;
       setState(() {
         loading = false;
         error = 'Connect to the DarkVibeX server to use Aladdin\'s Lamp.';
       });
+      refreshingStatus = false;
       return;
     }
     final value = await widget.state.backend.aladdinLampStatus(
@@ -54,6 +69,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
         loading = false;
         error = 'Aladdin\'s Lamp is unavailable right now.';
       });
+      refreshingStatus = false;
       return;
     }
     final raw = value['tasks'];
@@ -72,6 +88,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
       resetAt = int.tryParse(value['reset_at']?.toString() ?? '');
       tasks = next;
     });
+    refreshingStatus = false;
   }
 
   Future<void> _claim(_LampTask task) async {
@@ -125,6 +142,12 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
         return;
       case 'share_room':
         await _showShareChoices();
+        return;
+      case 'host_gift':
+      case 'room_activity':
+      case 'mic_time':
+      case 'host_mic':
+        if (mounted) Navigator.pop(context);
         return;
       default:
         if (mounted) Navigator.pop(context);
@@ -577,7 +600,7 @@ class _LampTaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const gold = Color(0xFFFFD94A);
     final showGoFinish =
-        task.target == 1 && task.progress == 0 && !task.claimed;
+        isHost && !task.completed && !task.claimed;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
