@@ -172,7 +172,7 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
           if (!didPop) unawaited(_endCall());
         },
         child: Scaffold(
-          backgroundColor: TinniPalette.black,
+          backgroundColor: Colors.transparent,
           body: TinniBackground(
             child: SafeArea(
               child: Column(
