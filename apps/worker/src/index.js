@@ -1267,6 +1267,16 @@ async function ensureImageTables(db) {
   ).run();
 }
 
+const ROOM_PRESENCE_TTL_MS = 30 * 1000;
+
+async function cleanupStaleRoomMembers(db, ts = now()) {
+  const cutoff = Number(ts) - ROOM_PRESENCE_TTL_MS;
+  await db.prepare(
+    "DELETE FROM room_members WHERE updated_at > 0 AND updated_at < ?"
+  ).bind(cutoff).run();
+  return cutoff;
+}
+
 async function listRooms(db, viewerUserId) {
   await ensureOwnerControlSchema(db);
   await ensureImageTables(db);
@@ -1277,6 +1287,7 @@ async function listRooms(db, viewerUserId) {
   ).bind(viewerUserId).first();
   const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
   if (!viewerCountry) return [];
+  const presenceCutoff = await cleanupStaleRoomMembers(db, now());
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
             CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -1287,7 +1298,8 @@ async function listRooms(db, viewerUserId) {
             CASE WHEN ov.level >= 18 AND ov.active_until > ?
                        AND json_extract(ov.preferences_json, '$.anonymous_everywhere') = 1
                  THEN 'Anonymous' ELSE COALESCE(u.display_name, '') END AS owner_name,
-            (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
+            (SELECT COUNT(*) FROM room_members m
+              WHERE m.room_id = r.id AND m.updated_at >= ?) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
        LEFT JOIN owner_user_overrides io ON io.user_id = u.id
@@ -1300,10 +1312,11 @@ async function listRooms(db, viewerUserId) {
         AND EXISTS (
           SELECT 1 FROM room_members visible_member
            WHERE visible_member.room_id = r.id
+             AND visible_member.updated_at >= ?
         )
       ORDER BY r.updated_at DESC
       LIMIT 100`
-  ).bind(now(), viewerCountry).all();
+  ).bind(now(), presenceCutoff, viewerCountry, presenceCutoff).all();
   const rows = result.results ?? [];
   for (const row of rows) {
     const currentDisplayId = String(row.display_id ?? "").trim();
@@ -5893,9 +5906,14 @@ async function handleApi(request, env, url) {
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
       const actorId = String(session.sub);
+      const heartbeatTs = now();
+      await db.prepare(
+        "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
+      ).bind(heartbeatTs, roomId, actorId).run();
+      const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs);
       const member = await db.prepare(
-        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, actorId).first();
+        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? AND updated_at >= ?"
+      ).bind(roomId, actorId, presenceCutoff).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
       const lampOwner = await db.prepare(
         "SELECT owner_user_id FROM rooms WHERE id = ? LIMIT 1"
@@ -5939,7 +5957,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
