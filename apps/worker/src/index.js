@@ -5256,12 +5256,14 @@ async function handleApi(request, env, url) {
 
     const seatCount = requestedSeatCount;
     const roomId = ownerPublicId;
+    await ensureOwnerControlSchema(db);
     const existingRoomId = await db.prepare(
       "SELECT owner_user_id FROM rooms WHERE id=? LIMIT 1"
     ).bind(roomId).first();
     if (existingRoomId) {
       return json({ ok: false, error: "room_id_taken" }, { status: 409 });
     }
+    await db.prepare("DELETE FROM owner_room_controls WHERE room_id=?").bind(roomId).run();
 
     const ts = now();
     try {
@@ -6937,6 +6939,7 @@ async function handleApi(request, env, url) {
         : 24 * 60 * 60 * 1000;
     const cutoff = now() - windowMs;
     await ensureRoomCoreSchema(db);
+    await ensureOwnerControlSchema(db);
     const session = await verifySessionToken(
       bearerToken(request),
       String(env.SESSION_SECRET),
@@ -6959,7 +6962,8 @@ async function handleApi(request, env, url) {
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
-          WHERE r.country_code=?
+           LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
+          WHERE r.country_code=? AND COALESCE(rc.banned,0)=0
           ORDER BY score DESC, online DESC, r.updated_at DESC
           LIMIT 100`
       ).bind(cutoff,viewerCountry).all();
