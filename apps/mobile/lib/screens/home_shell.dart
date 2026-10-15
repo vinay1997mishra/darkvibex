@@ -68,7 +68,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
             if (widget.minimizedRoom != null)
               Positioned.fill(
-                child: _MiniActiveRoomBubble(
+                child: MinimizedRoomBubble(
                   state: widget.state,
                   room: widget.minimizedRoom!,
                   onResume: widget.onResumeRoom,
@@ -147,8 +147,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-class _MiniActiveRoomBubble extends StatefulWidget {
-  const _MiniActiveRoomBubble({
+class MinimizedRoomBubble extends StatefulWidget {
+  const MinimizedRoomBubble({
     required this.state,
     required this.room,
     this.onResume,
@@ -161,10 +161,10 @@ class _MiniActiveRoomBubble extends StatefulWidget {
   final Future<void> Function()? onClose;
 
   @override
-  State<_MiniActiveRoomBubble> createState() => _MiniActiveRoomBubbleState();
+  State<MinimizedRoomBubble> createState() => MinimizedRoomBubbleState();
 }
 
-class _MiniActiveRoomBubbleState extends State<_MiniActiveRoomBubble> {
+class MinimizedRoomBubbleState extends State<MinimizedRoomBubble> {
   static const double _bubbleExtent = 82;
   Offset? position;
   bool closing = false;
@@ -181,12 +181,8 @@ class _MiniActiveRoomBubbleState extends State<_MiniActiveRoomBubble> {
   Future<void> _closeRoom() async {
     if (closing) return;
     setState(() => closing = true);
-    final navigator = Navigator.of(context);
     try {
       await widget.onClose?.call();
-      if (!mounted) return;
-      if (navigator.canPop()) navigator.pop();
-      if (navigator.canPop()) navigator.pop();
     } finally {
       if (mounted) setState(() => closing = false);
     }
