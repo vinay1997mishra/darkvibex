@@ -4455,7 +4455,27 @@ async function handleApi(request, env, url) {
         ).bind(viewedUserId, viewerId, ts, ts).run();
       }
     }
-    return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
+    let currentRoom = null;
+    if (user) {
+      currentRoom = await db.prepare(
+        `SELECT r.id AS room_id,
+                r.name AS room_name,
+                r.owner_user_id,
+                r.locked,
+                r.country_code,
+                m.seat_index,
+                m.joined_at,
+                m.updated_at
+           FROM room_members m
+           JOIN rooms r ON r.id=m.room_id
+          WHERE m.user_id=?
+          ORDER BY m.updated_at DESC,m.joined_at DESC
+          LIMIT 1`
+      ).bind(viewedUserId).first();
+    }
+    return user
+      ? json({ ok: true, user, current_room: currentRoom })
+      : json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
   if (url.pathname === "/api/legal/consent" && request.method === "GET") {
@@ -5352,6 +5372,9 @@ async function handleApi(request, env, url) {
     try {
       await db.batch([
         db.prepare(
+          "DELETE FROM room_members WHERE user_id=?"
+        ).bind(ownerId),
+        db.prepare(
           "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, country_code, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)"
         ).bind(roomId, ownerId, name, seatCount, ownerCountry, ts, ts),
         db.prepare(
@@ -5453,9 +5476,14 @@ async function handleApi(request, env, url) {
       }
     }
     const ts = now();
-    await db.prepare(
-      "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
-    ).bind(roomId, userId, ts, ts).run();
+    await db.batch([
+      db.prepare(
+        "DELETE FROM room_members WHERE user_id=? AND room_id<>?"
+      ).bind(userId, roomId),
+      db.prepare(
+        "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
+      ).bind(roomId, userId, ts, ts),
+    ]);
     await recordLampRoomEntry(db, roomId, userId, ts);
     const idLevelDailyExp = await awardIdLevelDaily(db, userId, "room_entry", ts);
     return json({ ok: true, id_level_daily_exp: idLevelDailyExp });
