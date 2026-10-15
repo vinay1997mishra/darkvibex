@@ -228,7 +228,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Invite friends and earn commission from their Coin Seller received coins.',
+                          'Invite friends and earn commission when they receive Coin Seller or Merchant coins in their normal wallet.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Color(0xFFFFE6CB),
@@ -343,7 +343,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          'Only Coin Seller received coins count for this commission. Rewards are coins only; no Entry Vehicle or other prize item is included. Merchant transfers, gifts, game winnings and other coins do not count.',
+                          'Coin Seller and Merchant transfers both count only when coins are transferred into the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.',
                           style: TextStyle(
                             color: Color(0xFFFFD7B0),
                             fontSize: 11,
