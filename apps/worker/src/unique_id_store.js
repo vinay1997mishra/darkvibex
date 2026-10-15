@@ -1,6 +1,6 @@
 import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 
-const seeds = [
+export const BASE_UNIQUE_ID_CATALOG = [
   { public_id: "1111", price_coins: 500000, duration_days: 30 },
   { public_id: "2222", price_coins: 750000, duration_days: 30 },
   { public_id: "7777", price_coins: 1500000, duration_days: 30 },
@@ -32,7 +32,7 @@ export async function ensureUniqueIdStoreSchema(db) {
     "CREATE INDEX IF NOT EXISTS idx_unique_id_purchase_owner ON unique_id_purchases(buyer_user_id,activated_at DESC)"
   ).run();
   const ts=Date.now();
-  for (const item of seeds) {
+  for (const item of BASE_UNIQUE_ID_CATALOG) {
     await db.prepare(
       `INSERT INTO unique_id_catalog(public_id,price_coins,duration_days,enabled,created_at,updated_at)
        VALUES(?,?,?,1,?,?)
@@ -41,34 +41,84 @@ export async function ensureUniqueIdStoreSchema(db) {
   }
 }
 
+async function ownerUniqueIdOverrides(db) {
+  try {
+    const rows=await db.prepare(
+      "SELECT id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='unique_id' ORDER BY sort_order ASC,updated_at DESC"
+    ).all();
+    return (rows.results ?? []).map(row=>{
+      let data={};
+      try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+      return {...row,data};
+    });
+  } catch (error) {
+    if (String(error?.message ?? error).includes("no such table")) return [];
+    throw error;
+  }
+}
+
+async function idOwnedByAnotherUser(db, requested, userId, ts=Date.now()) {
+  const current=await db.prepare("SELECT id FROM users WHERE public_id=? AND id<>? LIMIT 1")
+    .bind(requested,userId).first();
+  if(current) return true;
+  try{
+    const history=await db.prepare(
+      "SELECT user_id FROM owner_public_id_history WHERE public_id=? AND user_id<>? LIMIT 1"
+    ).bind(requested,userId).first();
+    if(history) return true;
+  }catch(error){
+    if(!String(error?.message ?? error).includes("no such table")) throw error;
+  }
+  const active=await db.prepare(
+    "SELECT user_id,custom_id_expires_at FROM user_vip WHERE custom_id=? AND user_id<>? LIMIT 1"
+  ).bind(requested,userId).first();
+  if(active){
+    const expiry=active.custom_id_expires_at==null?null:Number(active.custom_id_expires_at);
+    if(expiry==null || expiry===0 || expiry>ts) return true;
+  }
+  return false;
+}
+
 export async function uniqueIdCatalog(db, ts=Date.now()) {
   await ensureUniqueIdStoreSchema(db);
   const rows=await db.prepare(
     `SELECT public_id,price_coins,duration_days,enabled
        FROM unique_id_catalog
-      WHERE enabled=1 AND public_id GLOB '[0-9]*'
+      WHERE public_id GLOB '[0-9]*'
       ORDER BY LENGTH(public_id),CAST(public_id AS INTEGER)`
   ).all();
-  const active=await db.prepare(
-    `SELECT custom_id,custom_id_expires_at
-       FROM user_vip
-      WHERE custom_id IS NOT NULL`
-  ).all();
-  const taken=new Set();
-  for (const row of active.results ?? []) {
-    const id=String(row.custom_id ?? "");
-    const expiry=row.custom_id_expires_at==null?null:Number(row.custom_id_expires_at);
-    if (id && (expiry==null || expiry===0 || expiry>ts)) taken.add(id);
-  }
-  return (rows.results ?? [])
+  const map=new Map((rows.results ?? [])
     .filter(row=>/^\d{4,8}$/.test(String(row.public_id ?? "")))
-    .map(row=>({
+    .map(row=>[String(row.public_id),{
       public_id:String(row.public_id),
       price_coins:Number(row.price_coins ?? 0),
       duration_days:Number(row.duration_days ?? 0),
-      permanent:Number(row.duration_days ?? 0)===0,
-      available:!taken.has(String(row.public_id)),
-    }));
+      enabled:Number(row.enabled ?? 1)!==0,
+    }]));
+  for(const row of await ownerUniqueIdOverrides(db)){
+    const publicId=String(row.id ?? "").trim();
+    if(!/^\d{4,8}$/.test(publicId)) continue;
+    const existing=map.get(publicId) ?? {public_id:publicId,price_coins:0,duration_days:0,enabled:true};
+    map.set(publicId,{
+      ...existing,
+      public_id:publicId,
+      price_coins:Number(row.price_coins ?? existing.price_coins ?? 0),
+      duration_days:Number(row.data?.duration_days ?? existing.duration_days ?? 0),
+      enabled:Number(row.enabled ?? 1)!==0,
+    });
+  }
+  const result=[];
+  for(const item of map.values()){
+    if(!item.enabled) continue;
+    result.push({
+      public_id:item.public_id,
+      price_coins:item.price_coins,
+      duration_days:item.duration_days,
+      permanent:item.duration_days===0,
+      available:!(await idOwnedByAnotherUser(db,item.public_id,"",ts)),
+    });
+  }
+  return result.sort((a,b)=>a.public_id.length-b.public_id.length || Number(a.public_id)-Number(b.public_id));
 }
 
 export async function purchaseUniqueId(db,userId,publicId,ts=Date.now()) {
@@ -76,21 +126,16 @@ export async function purchaseUniqueId(db,userId,publicId,ts=Date.now()) {
   await getVipStatus(db,userId,ts);
   const requested=String(publicId ?? "").trim();
   if(!/^\d{4,8}$/.test(requested)) throw new Error("invalid_unique_id");
-  const item=await db.prepare(
-    "SELECT * FROM unique_id_catalog WHERE public_id=? AND enabled=1 LIMIT 1"
+  const baseItem=await db.prepare(
+    "SELECT * FROM unique_id_catalog WHERE public_id=? LIMIT 1"
   ).bind(requested).first();
-  if(!item) throw new Error("unique_id_not_available");
+  const override=(await ownerUniqueIdOverrides(db)).find(row=>String(row.id)===requested) ?? null;
+  if(override && Number(override.enabled ?? 1)===0) throw new Error("unique_id_not_available");
+  if(!baseItem && !override) throw new Error("unique_id_not_available");
+  if(await idOwnedByAnotherUser(db,requested,userId,ts)) throw new Error("unique_id_taken");
 
-  const active=await db.prepare(
-    "SELECT user_id,custom_id_expires_at FROM user_vip WHERE custom_id=? LIMIT 1"
-  ).bind(requested).first();
-  if(active && String(active.user_id)!==String(userId)){
-    const expiry=active.custom_id_expires_at==null?null:Number(active.custom_id_expires_at);
-    if(expiry==null || expiry===0 || expiry>ts) throw new Error("unique_id_taken");
-  }
-
-  const price=Number(item.price_coins ?? 0);
-  const duration=Number(item.duration_days ?? 0);
+  const price=Number(override?.price_coins ?? baseItem?.price_coins ?? 0);
+  const duration=Number(override?.data?.duration_days ?? baseItem?.duration_days ?? 0);
   const expiresAt=duration>0 ? ts+duration*86400000 : null;
   const debit=await db.prepare(
     "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
