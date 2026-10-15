@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#fff8cf"/><stop offset=".18" stop-color="#ffd976"/>
+    <stop offset=".42" stop-color="#b9681b"/><stop offset=".62" stop-color="#fff1a7"/>
+    <stop offset=".82" stop-color="#e49031"/><stop offset="1" stop-color="#7b3f13"/>
+  </linearGradient>
+  <radialGradient id="ruby" cx=".35" cy=".25" r=".8">
+    <stop offset="0" stop-color="#fff5fb"/><stop offset=".12" stop-color="#ffb7db"/>
+    <stop offset=".36" stop-color="#ff4b9d"/><stop offset=".68" stop-color="#c10b55"/>
+    <stop offset="1" stop-color="#5a062d"/>
+  </radialGradient>
+  <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ff7dbc"/>
+  </linearGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<ellipse cx="128" cy="163" rx="72" ry="38" fill="none" stroke="#ff6cae" stroke-opacity=".25" stroke-width="18" filter="url(#glow)"/>
+<ellipse cx="128" cy="163" rx="72" ry="38" fill="none" stroke="url(#gold)" stroke-width="17"/>
+<ellipse cx="128" cy="163" rx="62" ry="28" fill="none" stroke="#fff7cf" stroke-opacity=".55" stroke-width="3"/>
+<path d="M128 78 C110 45 64 57 64 94 C64 126 96 145 128 171 C160 145 192 126 192 94 C192 57 146 45 128 78Z" fill="#ff4b9d" fill-opacity=".18" filter="url(#glow)"/>
+<path d="M128 72 C109 41 70 55 70 88 C70 116 98 133 128 158 C158 133 186 116 186 88 C186 55 147 41 128 72Z" fill="url(#ruby)" stroke="#ffe5f1" stroke-width="3"/>
+<path d="M128 75 L128 149 M78 88 L178 88 M91 114 L165 114 M96 60 L128 88 L160 60 M78 88 L128 114 L178 88" fill="none" stroke="#ffd9ec" stroke-opacity=".55" stroke-width="1.8"/>
+<path d="M101 69 C112 56 124 53 134 57" fill="none" stroke="url(#shine)" stroke-width="7" stroke-linecap="round" opacity=".85"/>
+<g fill="#fffdf8">
+ <circle cx="76" cy="139" r="5"/><circle cx="88" cy="132" r="4.5"/><circle cx="99" cy="127" r="4"/>
+ <circle cx="157" cy="127" r="4"/><circle cx="168" cy="132" r="4.5"/><circle cx="180" cy="139" r="5"/>
+</g>
+<g stroke="#fff" stroke-linecap="round" opacity=".95">
+ <path d="M49 67h18M58 58v18" stroke-width="3"/><path d="M197 57h14M204 50v14" stroke-width="2.5"/>
+ <path d="M203 127h12M209 121v12" stroke-width="2"/>
+</g>
+</svg>
