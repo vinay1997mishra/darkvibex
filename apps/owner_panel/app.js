@@ -374,8 +374,9 @@ async function loadOverview(){
   $("#overviewAudit").innerHTML=(d.audit||[]).length?(d.audit||[]).map(a=>`<div class="item-card"><div class="item-title">${esc(a.action.replaceAll('_',' '))}</div><div class="item-meta">${esc(a.target_type)} ${esc(a.target_id)} · ${esc(a.summary||'')}<br>${time(a.created_at)}</div></div>`).join(""):empty("No owner activity yet");
 }
 
-async function loadUsers(){if(!can("users.read"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$$('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
+async function loadUsers(){if(!can("users.search"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$$('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
 async function openUser(id){
+  if(!can("users.detail"))return toast("Full ID View permission required",false);
   const d=await api("/api/owner/users/"+encodeURIComponent(id));
   const u=d.user;
   state.selectedUser=u;
@@ -518,11 +519,30 @@ async function openOwnerMessageImage(key){
 }
 
 function renderLedger(rows){$("#walletLedger").innerHTML=rows.length?`<div class="small-table">${rows.map(r=>`<div class="ledger-row"><span>${time(r.created_at)}</span><span>${esc(r.kind.replaceAll('_',' '))}</span><b>${Number(r.amount)>0?'+':''}${num(r.amount)} → ${num(r.balance_after)}</b></div>`).join("")}</div>`:empty("No coin ledger entries");}
-async function saveUserProfile(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/profile`,{method:"POST",body:JSON.stringify({display_name:$("#editUserName").value,role:$("#editUserRole").value,vip_level:Number($("#editVip").value||0)})});toast("User profile saved");await openUser(state.selectedUser.id);await loadUsers();}
-async function saveModeration(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
-async function savePublicId(){if(!state.selectedUser)return;const publicId=$("#editPublicId").value.trim();if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Public ID must be between 1000001 and 9999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
-async function applyWallet(){if(!state.selectedUser)return;const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
-async function applyRoleWallet(){if(!state.selectedUser)return;const walletType=$("#roleWalletType").value;const delta=Number($("#roleCoinDelta").value||0);if(!walletType)return toast("Select Coin Seller or Merchant wallet",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({role_wallet_type:walletType,role_coin_delta:delta,role_wallet_banned:$("#roleWalletBanned").checked})});toast("Role wallet balance/status updated");await openUser(state.selectedUser.id);await loadUsers();}
+async function saveUserProfile(){
+  if(!state.selectedUser)return;
+  const payload={};
+  if(can("users.name.edit"))payload.display_name=$("#editUserName").value;
+  if(can("users.role.edit"))payload.role=$("#editUserRole").value;
+  if(can("users.vip.edit"))payload.vip_level=Number($("#editVip").value||0);
+  if(!Object.keys(payload).length)return toast("No profile edit permission selected",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/profile`,{method:"POST",body:JSON.stringify(payload)});
+  toast("User profile saved");await openUser(state.selectedUser.id);if(can("users.search"))await loadUsers();
+}
+async function saveModeration(){if(!state.selectedUser)return;if(!can("users.moderation"))return toast("Moderation permission required",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
+async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim();if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Public ID must be between 1000001 and 9999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
+async function applyWallet(){if(!state.selectedUser)return;if(!can("users.wallet.adjust"))return toast("Wallet adjustment permission required",false);const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
+async function applyRoleWallet(){
+  if(!state.selectedUser)return;
+  const walletType=$("#roleWalletType").value;
+  if(!walletType)return toast("Select Coin Seller or Merchant wallet",false);
+  const payload={role_wallet_type:walletType};
+  if(can("users.role_wallet.adjust"))payload.role_coin_delta=Number($("#roleCoinDelta").value||0);
+  if(can("users.role_wallet.ban"))payload.role_wallet_banned=$("#roleWalletBanned").checked;
+  if(!Object.prototype.hasOwnProperty.call(payload,"role_coin_delta")&&!Object.prototype.hasOwnProperty.call(payload,"role_wallet_banned"))return toast("No role-wallet permission selected",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify(payload)});
+  toast("Role wallet balance/status updated");await openUser(state.selectedUser.id);if(can("users.search"))await loadUsers();
+}
 
 async function loadRooms(){
   if(!can("rooms.read"))return;
@@ -940,22 +960,21 @@ async function createStaff(){if(!can('staff.write'))return toast('Only owner or 
 
 async function saveUserOverrides(){
   if(!state.selectedUser)return toast("Select a user first",false);
-  if(!can("users.override"))return toast("User override permission required",false);
+  const payload={};
+  if(can("users.override.invisible"))payload.invisible_id=$("#userInvisibleId").checked;
+  if(can("users.override.lock_bypass"))payload.locked_room_bypass=$("#userLockedBypass").checked;
+  if(can("users.wallet.ban"))payload.wallet_banned=$("#userWalletBanned").checked;
+  if(can("users.wallet.freeze"))payload.wallet_frozen=$("#userWalletFrozen").checked;
+  if(!Object.keys(payload).length)return toast("No Owner override permission selected",false);
   await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/owner-overrides`,{
-    method:"POST",
-    body:JSON.stringify({
-      invisible_id:$("#userInvisibleId").checked,
-      locked_room_bypass:$("#userLockedBypass").checked,
-      wallet_banned:$("#userWalletBanned").checked,
-      wallet_frozen:$("#userWalletFrozen").checked,
-    }),
+    method:"POST",body:JSON.stringify(payload),
   });
   toast("Owner overrides saved");
   await openUser(state.selectedUser.id);
 }
 async function toggleDeviceBan(deviceKey,currentlyBanned){
   if(!state.selectedUser)return;
-  if(!can("users.device"))return toast("Device-ban permission required",false);
+  if(!can("users.device.ban"))return toast("Device-ban permission required",false);
   await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/device-ban`,{
     method:"POST",
     body:JSON.stringify({device_key:deviceKey,banned:!currentlyBanned}),
