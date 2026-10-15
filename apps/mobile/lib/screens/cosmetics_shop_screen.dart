@@ -437,6 +437,12 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         child: JewelryRingPreview(
           styleId: id,
           size: 112,
+          imageProvider: item['asset_key']?.toString().isNotEmpty == true
+              ? NetworkImage(
+                  widget.state.backend.fileUrl(item['asset_key'].toString()),
+                  headers: widget.state.backend.fileHeaders,
+                )
+              : null,
         ),
       );
     }
