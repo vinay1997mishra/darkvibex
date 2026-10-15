@@ -315,6 +315,17 @@ async function ensureOwnerControlSchema(db) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(user_id,tag_id)
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_price_overrides (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      item_id TEXT NOT NULL DEFAULT '*',
+      price_coins INTEGER,
+      free INTEGER NOT NULL DEFAULT 0,
+      duration_days INTEGER,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,kind,item_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_price_override_kind ON owner_user_price_overrides(kind,user_id,updated_at DESC)"),
   ]);
   try {
     await db.prepare("ALTER TABLE owner_user_overrides ADD COLUMN wallet_banned INTEGER NOT NULL DEFAULT 0").run();
@@ -344,6 +355,28 @@ async function ensureWalletAllowed(db, userId) {
   const row=await db.prepare("SELECT wallet_frozen,wallet_banned FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first();
   if(Number(row?.wallet_banned ?? 0)===1) throw new Error("wallet_banned");
   if(Number(row?.wallet_frozen ?? 0)===1) throw new Error("wallet_frozen");
+}
+
+async function ownerUserPricing(db,userId,kind,itemId,basePrice,baseDuration=null) {
+  await ensureOwnerControlSchema(db);
+  const row=await db.prepare(
+    `SELECT price_coins,free,duration_days,item_id
+       FROM owner_user_price_overrides
+      WHERE user_id=? AND kind=? AND item_id IN (?, '*')
+      ORDER BY CASE WHEN item_id=? THEN 0 ELSE 1 END, updated_at DESC
+      LIMIT 1`
+  ).bind(userId,kind,itemId,itemId).first();
+  const free=Number(row?.free ?? 0)===1;
+  const rawPrice=row?.price_coins==null ? Number(basePrice ?? 0) : Number(row.price_coins);
+  const price=free ? 0 : rawPrice;
+  const rawDuration=row?.duration_days==null ? baseDuration : Number(row.duration_days);
+  return {
+    price_coins:Number.isSafeInteger(price)&&price>=0 ? price : Number(basePrice ?? 0),
+    duration_days:rawDuration==null ? null : Number(rawDuration),
+    free,
+    overridden:Boolean(row),
+    matched_item_id:row?.item_id ?? null,
+  };
 }
 
 async function ownerIdentityMeta(db,userId) {
