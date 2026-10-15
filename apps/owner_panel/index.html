@@ -148,6 +148,20 @@
             <h3>Live Users / Seats</h3>
             <div id="roomLiveMembers" class="stack"></div>
           </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Global Room Theme Manager</h2><p>Owner themes are free to users and can be permanent or scheduled by start/end timestamp.</p></div><button id="reloadGlobalThemes" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>Theme ID<input id="globalThemeId" placeholder="e.g. festival-night" /></label>
+              <label>Name<input id="globalThemeName" /></label>
+              <label>Asset key<input id="globalThemeAsset" placeholder="R2 / CDN asset key" /></label>
+              <label>Start timestamp (ms)<input id="globalThemeStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="globalThemeEnd" type="number" /></label>
+              <label class="check"><input id="globalThemePermanent" type="checkbox" /> Permanent</label>
+              <label class="check"><input id="globalThemeEnabled" type="checkbox" checked /> Enabled</label>
+            </div>
+            <button id="saveGlobalTheme" class="primary">Save Global Theme</button>
+            <div id="globalThemeList" class="stack"></div>
+          </article>
         </section>
 
         <section class="view" data-view-panel="notifications">
