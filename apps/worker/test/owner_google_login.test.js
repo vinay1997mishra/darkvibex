@@ -22,3 +22,9 @@ test("Owner Panel exposes Google login without displaying the authorized Gmail",
   assert.match(panelApp, /\/api\/owner\/google-login/);
   assert.doesNotMatch(panelHtml + panelApp, /mishrajii7991@gmail\.com/i);
 });
+
+test("Owner Panel does not expose token recovery controls", () => {
+  assert.doesNotMatch(panelHtml, /Owner access key|Private owner key|connectToken|id="token"/i);
+  assert.doesNotMatch(panelApp, /connectOwnerToken|#token|connectToken/);
+  assert.match(panelHtml, /Main Owner signs in only with the authorized Google account/);
+});
