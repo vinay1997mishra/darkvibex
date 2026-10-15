@@ -65,7 +65,6 @@ function defaultPermissions(role) {
       "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
       "treasury.read", "economy.read",
       "support.read", "support.write",
-      "notifications.read", "notifications.write",
       "messaging.read", "messaging.write", "tags.write",
       "users.device", "users.override", "wallet.freeze",
       "rooms.read", "rooms.write", "rooms.live", "rooms.media", "rooms.theme",
@@ -79,7 +78,7 @@ function defaultPermissions(role) {
   if (role === "manager") {
     return [
       "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "rooms.live",
-      "notifications.read", "messaging.read", "roles.read", "banners.read", "games.read", "policies.read",
+      "messaging.read", "roles.read", "banners.read", "games.read", "policies.read",
       "catalog.read", "catalog.write", "settings.read", "announcements.read", "announcements.write",
       "audit.read",
     ];
@@ -626,6 +625,9 @@ async function listRooms(db, query = "") {
 
 async function handleOverview(db, actor) {
   requirePermission(actor, "dashboard");
+  const auditPromise=actor.type==="owner"
+    ? db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all()
+    : db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit WHERE actor_type='staff' AND actor_id=? ORDER BY created_at DESC LIMIT 12").bind(actor.id).all();
   const [users, rooms, online, coins, diamonds, banned, gifts, bets, roomRows, auditRows] = await Promise.all([
     db.prepare("SELECT COUNT(*) AS value FROM users").first(),
     db.prepare("SELECT COUNT(*) AS value FROM rooms").first(),
@@ -636,12 +638,12 @@ async function handleOverview(db, actor) {
     db.prepare("SELECT COUNT(*) AS value FROM gift_events").first(),
     db.prepare("SELECT COUNT(*) AS value FROM game_bets").first(),
     listRooms(db),
-    db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all(),
+    auditPromise,
   ]);
   const treasury = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
   return json({
     ok: true,
-    actor: { id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions },
+    actor: { type:actor.type, id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions },
     stats: {
       users: Number(users?.value ?? 0), rooms: Number(rooms?.value ?? 0), online: Number(online?.value ?? 0),
       coins: Number(coins?.value ?? 0), diamonds: Number(diamonds?.value ?? 0), banned: Number(banned?.value ?? 0),
@@ -1052,6 +1054,11 @@ async function handleSettings(request, db, actor, parts) {
 
 
 async function handleNotifications(request, db, actor, parts) {
+  if(actor.type!=="owner"){
+    const error=new Error("owner_only_notifications");
+    error.status=403;
+    throw error;
+  }
   if(parts.length===3 && request.method==="GET"){
     requirePermission(actor,"notifications.read");
     const rows=await db.prepare(
@@ -1669,14 +1676,32 @@ async function handleTreasury(request, db, actor) {
   return json({ ok: false, error: "invalid_treasury_action" }, { status: 400 });
 }
 
-async function handleAudit(request, db, actor, url) {
-  if (request.method !== "GET") return null;
-  requirePermission(actor, "audit.read");
-  const limit = clampInt(url.searchParams.get("limit"), 1, 500, 100);
-  const rows = await db.prepare(
-    "SELECT id,actor_type,actor_id,action,target_type,target_id,summary,created_at FROM owner_audit ORDER BY created_at DESC LIMIT ?"
-  ).bind(limit).all();
-  return json({ ok: true, audit: rows.results ?? [] });
+async function handleAudit(request, db, actor, url, parts) {
+  if (request.method === "GET") {
+    requirePermission(actor, "audit.read");
+    const limit = clampInt(url.searchParams.get("limit"), 1, 500, 100);
+    const rows = actor.type==="owner"
+      ? await db.prepare(
+          "SELECT id,actor_type,actor_id,action,target_type,target_id,summary,created_at FROM owner_audit ORDER BY created_at DESC LIMIT ?"
+        ).bind(limit).all()
+      : await db.prepare(
+          "SELECT id,actor_type,actor_id,action,target_type,target_id,summary,created_at FROM owner_audit WHERE actor_type='staff' AND actor_id=? ORDER BY created_at DESC LIMIT ?"
+        ).bind(actor.id,limit).all();
+    return json({ ok: true, audit: rows.results ?? [], owner_can_delete:actor.type==="owner" });
+  }
+  if(request.method==="DELETE"){
+    if(actor.type!=="owner"){
+      return json({ok:false,error:"owner_only_audit_delete"},{status:403});
+    }
+    const auditId=decodeURIComponent(parts[3] ?? "");
+    if(auditId){
+      await db.prepare("DELETE FROM owner_audit WHERE id=?").bind(auditId).run();
+      return json({ok:true,deleted:auditId});
+    }
+    await db.prepare("DELETE FROM owner_audit").run();
+    return json({ok:true,cleared:true});
+  }
+  return null;
 }
 
 async function handleSupportTickets(request, db, actor, url, parts) {
@@ -1745,7 +1770,7 @@ export async function handleOwnerApi(request, env, url) {
     const parts = url.pathname.split("/").filter(Boolean);
 
     if (url.pathname === "/api/owner/session" && request.method === "GET") {
-      return json({ ok: true, actor: { id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions } });
+      return json({ ok: true, actor: { type:actor.type, id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions } });
     }
     if (url.pathname === "/api/owner/overview" && request.method === "GET") return handleOverview(db, actor);
 
@@ -1767,7 +1792,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "announcements") response = await handleAnnouncements(request, db, actor, parts);
     else if (parts[2] === "treasury") response = await handleTreasury(request, db, actor);
     else if (parts[2] === "staff") response = await handleStaff(request, db, actor, parts);
-    else if (parts[2] === "audit") response = await handleAudit(request, db, actor, url);
+    else if (parts[2] === "audit") response = await handleAudit(request, db, actor, url, parts);
     if (response) return response;
 
     return json({ ok: false, error: "not_found" }, { status: 404 });
