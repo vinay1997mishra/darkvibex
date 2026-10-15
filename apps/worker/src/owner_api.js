@@ -1219,7 +1219,7 @@ async function handleGiftMediaUpload(request, env, db, actor) {
 
   const body = new Uint8Array(await request.arrayBuffer());
   if (!body.length || body.length > maxBytes) {
-    return json({ ok: false, error: "gift_video_too_large" }, { status: 413 });
+    return json({ ok: false, error: "gift_video_max_11mb" }, { status: 413 });
   }
   const isMp4 =
     body.length >= 12 &&
