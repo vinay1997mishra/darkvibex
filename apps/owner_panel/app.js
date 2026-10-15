@@ -681,7 +681,7 @@ function clearStoreForm(){
   $("#storeEnabled").checked=true;
 }
 async function loadStore(){
-  if(!can("catalog.view"))return;
+  if(!can("store.view"))return;
   const kind=$("#storeKind").value.trim();
   if(!kind)return;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
@@ -720,7 +720,7 @@ function editStoreItem(id){
   $("#storeId").scrollIntoView({behavior:"smooth",block:"center"});
 }
 async function saveStoreItem(){
-  if(!can("catalog.save"))return toast("Store write permission required",false);
+  if(!can("store.save"))return toast("Store save permission required",false);
   const kind=$("#storeKind").value.trim();
   const itemId=$("#storeId").value.trim();
   const name=$("#storeName").value.trim()||itemId;
@@ -750,7 +750,7 @@ async function saveStoreItem(){
   await loadStore();
 }
 async function removeStoreItem(id){
-  if(!can("catalog.save"))return toast("Store write permission required",false);
+  if(!can("store.remove"))return toast("Store remove permission required",false);
   const kind=$("#storeKind").value.trim();
   if(!confirm("Remove this item from the app store?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});
@@ -771,7 +771,7 @@ function fillVipRuleForm(rule){
   $("#vipRuleEnabled").checked=Number(rule.enabled)!==0;
 }
 async function loadVipRules(){
-  if(!can("catalog.view"))return;
+  if(!can("vip.view"))return;
   const d=await api("/api/owner/vip-rules");
   state.vipRules=d.levels||[];
   $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Level ${num(rule.level)} · upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}${rule.entry_id?" · entry "+esc(rule.entry_id):""}${rule.frame_id?" · frame "+esc(rule.frame_id):""}</div></div><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button></div></div>`).join(""):empty("No VIP rules");
@@ -780,7 +780,7 @@ async function loadVipRules(){
   if(selected)fillVipRuleForm(selected);
 }
 async function saveVipRule(){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("vip.save"))return toast("VIP save permission required",false);
   const level=Number($("#vipRuleLevel").value);
   const upgrade=Number($("#vipRuleUpgradeExp").value);
   const maintain=Number($("#vipRuleMaintainExp").value);
@@ -798,7 +798,7 @@ async function saveVipRule(){
   await loadVipRules();
 }
 async function resetVipRule(){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("vip.reset"))return toast("VIP reset permission required",false);
   const level=Number($("#vipRuleLevel").value);
   if(!Number.isSafeInteger(level)||level<1||level>18)return toast("Select VIP1–VIP18",false);
   if(!confirm("Reset VIP "+level+" to the DarkVibeX base rule?"))return;
@@ -813,7 +813,7 @@ function clearGiftForm(){
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
 }
 async function loadGifts(){
-  if(!can("catalog.view"))return;
+  if(!can("gifts.view"))return;
   const d=await api("/api/owner/store?kind=gift");
   state.giftItems=d.items||[];
   $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
@@ -832,7 +832,7 @@ function editGift(id){
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
 async function saveGift(){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("gifts.save"))return toast("Gift save permission required",false);
   const id=$("#giftId").value.trim(),name=$("#giftName").value.trim()||id;
   if(!id||!name)return toast("Gift ID and name are required",false);
   const starts=Number($("#giftStart").value||0)||null,ends=Number($("#giftEnd").value||0)||null;
@@ -844,7 +844,7 @@ async function saveGift(){
   toast("Gift saved to live catalog");clearGiftForm();await loadGifts();
 }
 async function removeGift(id){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("gifts.remove"))return toast("Gift remove permission required",false);
   if(!confirm("Remove this gift from the app?"))return;
   await api("/api/owner/store/gift/"+encodeURIComponent(id),{method:"DELETE"});toast("Gift removed");await loadGifts();
 }
@@ -855,7 +855,7 @@ function clearAssetForm(){
   $("#assetEnabled").checked=true;$("#assetDescription").value="";
 }
 async function loadAssets(){
-  if(!can("catalog.view"))return;
+  if(!can("assets.view"))return;
   const kind=$("#assetKind").value;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.assetItems=d.items||[];
@@ -875,7 +875,7 @@ function editAsset(id){
   $("#assetEnabled").checked=Number(item.enabled)!==0;$("#assetDescription").value=d.description||"";
 }
 async function saveAsset(){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("assets.save"))return toast("Asset save permission required",false);
   const kind=$("#assetKind").value,id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
   if(!kind||!id||!name)return toast("Asset type, ID and name are required",false);
   const starts=Number($("#assetStart").value||0)||null,ends=Number($("#assetEnd").value||0)||null;
@@ -887,7 +887,7 @@ async function saveAsset(){
   toast("Asset saved to live store");clearAssetForm();await loadAssets();
 }
 async function removeAsset(id){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("assets.remove"))return toast("Asset remove permission required",false);
   const kind=$("#assetKind").value;if(!confirm("Remove this "+kind+" from the app?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});toast("Asset removed");await loadAssets();
 }
@@ -1015,8 +1015,8 @@ async function loadOwnerTags(){
   if(!can("tags.view"))return;
   const d=await api("/api/owner/tags");
   const rows=d.tags||[];
-  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.apply")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
-  $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
+  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.remove")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
+  $("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
 }
 async function loadMessaging(){
   renderSelectedMessageUsers();
@@ -1210,7 +1210,7 @@ async function savePricingOverride(){
 }
 
 async function loadGlobalThemes(){
-  if(!can("catalog.view"))return;
+  if(!can("themes.global.view"))return;
   const d=await api("/api/owner/store?kind=theme");
   state.globalThemes=d.items||[];
   $("#globalThemeList").innerHTML=state.globalThemes.length?state.globalThemes.map(item=>{
@@ -1227,7 +1227,7 @@ async function loadGlobalThemes(){
   $$("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
 }
 async function saveGlobalTheme(){
-  if(!can("catalog.save"))return toast("Catalog write permission required",false);
+  if(!can("themes.global.save"))return toast("Global theme save permission required",false);
   const id=$("#globalThemeId").value.trim(),name=$("#globalThemeName").value.trim(),asset=$("#globalThemeAsset").value.trim();
   if(!id||!name||!asset)return toast("Theme ID, name and asset are required",false);
   const permanent=$("#globalThemePermanent").checked;
@@ -1252,6 +1252,7 @@ async function loadAudit(){
   $$("[data-audit-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this audit record?"))return;await api("/api/owner/audit/"+encodeURIComponent(b.dataset.auditDelete),{method:"DELETE"});toast("Audit record deleted");await loadAudit();});
 }
 function exportAuditCsv(){
+  if(!can("audit.export"))return toast("Audit export permission required",false);
   const rows=state.auditRows||[];
   const quote=value=>'"'+String(value??"").replaceAll('"','""')+'"';
   const lines=[["Date","Panel Type","Panel ID","Action","Target Type","Target ID","Details"].map(quote).join(",")];
