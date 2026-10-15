@@ -1043,9 +1043,9 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xCCF4E8FE),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xCCF4E8FE),
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: true,
@@ -1242,9 +1242,9 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xCCF4E8FE),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xCCF4E8FE),
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: true,
@@ -4413,14 +4413,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Widget build(BuildContext context) {
     if (loading) {
       return const Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: Color(0xCCF4E8FE),
         body: Center(child: CircularProgressIndicator()),
       );
     }
     if (user == null) {
       return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(),
+        backgroundColor: const Color(0xCCF4E8FE),
+        appBar: AppBar(backgroundColor: const Color(0xCCF4E8FE)),
         body: const Center(child: Text('Profile not found')),
       );
     }
@@ -4428,14 +4428,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xCCF4E8FE),
         body: Column(
           children: [
             _hero(),
             Expanded(
               child: Container(
                 decoration: const BoxDecoration(
-                  color: Colors.white,
+                  color: Color(0xE6F4E8FE),
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
@@ -4609,9 +4609,9 @@ class _CpRuleScreen extends StatelessWidget {
       height: 1.5,
     );
     return Scaffold(
-      backgroundColor: const Color(0xFFF4E8FE),
+      backgroundColor: const Color(0xCCF4E8FE),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF4E8FE),
+        backgroundColor: const Color(0xCCF4E8FE),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
