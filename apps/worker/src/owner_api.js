@@ -316,6 +316,10 @@ async function ensureOwnerSchema(db) {
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.games', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.messages', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.room_creation', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.aladdin_lamp', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.red_pocket', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.friends_call', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.visitors', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_notifications (
       id TEXT PRIMARY KEY,
       kind TEXT NOT NULL DEFAULT 'platform',
