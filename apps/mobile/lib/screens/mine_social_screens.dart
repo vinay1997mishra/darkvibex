@@ -1445,6 +1445,15 @@ class _CpScreenState extends State<CpScreen> {
                   leading: JewelryRingPreview(
                     styleId: ring['id']?.toString() ?? '',
                     size: 48,
+                    imageProvider:
+                        ring['asset_key']?.toString().isNotEmpty == true
+                            ? NetworkImage(
+                                widget.state.backend.fileUrl(
+                                  ring['asset_key'].toString(),
+                                ),
+                                headers: widget.state.backend.fileHeaders,
+                              )
+                            : null,
                   ),
                   title: Text(
                     ring['name']?.toString() ??
@@ -1732,42 +1741,173 @@ class _CpScreenState extends State<CpScreen> {
                       TinniPanel(
                         child: Column(
                           children: [
-                            CircleAvatar(
-                              radius: 38,
-                              backgroundColor: TinniPalette.panel2,
-                              backgroundImage:
-                                  partnerAvatar?.isNotEmpty == true
-                                      ? NetworkImage(
-                                          widget.state.backend.fileUrl(
-                                            partnerAvatar!,
+                            if (relationState == 'active')
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 34,
+                                          backgroundColor: TinniPalette.panel2,
+                                          backgroundImage: widget.state.avatarKey
+                                                      ?.isNotEmpty ==
+                                                  true
+                                              ? NetworkImage(
+                                                  widget.state.backend.fileUrl(
+                                                    widget.state.avatarKey!,
+                                                  ),
+                                                  headers: widget.state.backend
+                                                      .fileHeaders,
+                                                )
+                                              : null,
+                                          child: widget.state.avatarKey
+                                                      ?.isNotEmpty ==
+                                                  true
+                                              ? null
+                                              : const Icon(
+                                                  Icons.person_rounded,
+                                                  color: TinniPalette.gold,
+                                                ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          widget.state.displayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: TinniPalette.cream,
+                                            fontWeight: FontWeight.w900,
                                           ),
-                                          headers:
-                                              widget.state.backend.fileHeaders,
-                                        )
-                                      : null,
-                              child: partnerAvatar?.isNotEmpty == true
-                                  ? null
-                                  : const Icon(
-                                      Icons.favorite_rounded,
-                                      color: TinniPalette.gold,
-                                      size: 36,
+                                        ),
+                                        Text(
+                                          'ID ${widget.state.publicId}',
+                                          style: const TextStyle(
+                                            color: TinniPalette.muted,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _partnerName(),
-                              style: const TextStyle(
-                                color: TinniPalette.gold,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
+                                  ),
+                                  SizedBox(
+                                    width: 92,
+                                    height: 92,
+                                    child: cp?['ring_id']
+                                                ?.toString()
+                                                .isNotEmpty ==
+                                            true
+                                        ? JewelryRingPreview(
+                                            styleId:
+                                                cp!['ring_id'].toString(),
+                                            size: 92,
+                                            imageProvider: cp![
+                                                            'ring_asset_key']
+                                                        ?.toString()
+                                                        .isNotEmpty ==
+                                                    true
+                                                ? NetworkImage(
+                                                    widget.state.backend.fileUrl(
+                                                      cp!['ring_asset_key']
+                                                          .toString(),
+                                                    ),
+                                                    headers: widget.state
+                                                        .backend.fileHeaders,
+                                                  )
+                                                : null,
+                                          )
+                                        : const Icon(
+                                            Icons.favorite_rounded,
+                                            color: Color(0xFFFF5A9F),
+                                            size: 42,
+                                          ),
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 34,
+                                          backgroundColor: TinniPalette.panel2,
+                                          backgroundImage:
+                                              partnerAvatar?.isNotEmpty == true
+                                                  ? NetworkImage(
+                                                      widget.state.backend
+                                                          .fileUrl(
+                                                        partnerAvatar!,
+                                                      ),
+                                                      headers: widget.state
+                                                          .backend.fileHeaders,
+                                                    )
+                                                  : null,
+                                          child: partnerAvatar?.isNotEmpty ==
+                                                  true
+                                              ? null
+                                              : const Icon(
+                                                  Icons.person_rounded,
+                                                  color: TinniPalette.gold,
+                                                ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          _partnerName(),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: TinniPalette.cream,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        Text(
+                                          'ID ${_partnerId()}',
+                                          style: const TextStyle(
+                                            color: TinniPalette.muted,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else ...[
+                              CircleAvatar(
+                                radius: 38,
+                                backgroundColor: TinniPalette.panel2,
+                                backgroundImage:
+                                    partnerAvatar?.isNotEmpty == true
+                                        ? NetworkImage(
+                                            widget.state.backend.fileUrl(
+                                              partnerAvatar!,
+                                            ),
+                                            headers:
+                                                widget.state.backend.fileHeaders,
+                                          )
+                                        : null,
+                                child: partnerAvatar?.isNotEmpty == true
+                                    ? null
+                                    : const Icon(
+                                        Icons.favorite_rounded,
+                                        color: TinniPalette.gold,
+                                        size: 36,
+                                      ),
                               ),
-                            ),
-                            Text(
-                              'ID ${_partnerId()} • ${relationState ?? ''}',
-                              style: const TextStyle(
-                                color: TinniPalette.muted,
+                              const SizedBox(height: 10),
+                              Text(
+                                _partnerName(),
+                                style: const TextStyle(
+                                  color: TinniPalette.gold,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
-                            ),
+                              Text(
+                                'ID ${_partnerId()} • ${relationState ?? ''}',
+                                style: const TextStyle(
+                                  color: TinniPalette.muted,
+                                ),
+                              ),
+                            ],
                             if (relationState == 'active') ...[
                               const SizedBox(height: 9),
                               Text(
@@ -1854,25 +1994,7 @@ class _CpScreenState extends State<CpScreen> {
                                   fontSize: 10,
                                 ),
                               ),
-                              if (cp?['ring_id']
-                                      ?.toString()
-                                      .isNotEmpty ==
-                                  true) ...[
-                                const SizedBox(height: 10),
-                                JewelryRingPreview(
-                                  styleId: cp!['ring_id'].toString(),
-                                  size: 78,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  ringDisplayName(cp!['ring_id']?.toString()),
-                                  style: const TextStyle(
-                                    color: TinniPalette.gold,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
+
                             ],
                           ],
                         ),
