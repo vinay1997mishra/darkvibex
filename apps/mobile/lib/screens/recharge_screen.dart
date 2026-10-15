@@ -81,7 +81,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
         .toList(growable: false);
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Wallet',
