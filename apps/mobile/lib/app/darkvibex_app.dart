@@ -44,6 +44,30 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
       title: AppIdentity.appName,
       debugShowCheckedModeBanner: false,
       theme: buildTinniStyleTheme(),
+      builder: (context, child) => AnimatedBuilder(
+        animation: state,
+        builder: (context, _) {
+          final room = state.minimizedRoom;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: child ?? const SizedBox.shrink(),
+              ),
+              if (room != null)
+                Positioned.fill(
+                  child: SafeArea(
+                    child: MinimizedRoomBubble(
+                      state: state,
+                      room: room,
+                      onResume: state.minimizedRoomResume,
+                      onClose: state.minimizedRoomClose,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
       home: AnimatedBuilder(
         animation: state,
         builder: (context, _) {
