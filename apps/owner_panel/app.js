@@ -11,12 +11,20 @@ const state = {
   treasury: null,
   economyUser: null,
   storeItems: [],
+  messageSelected: new Map(),
+  selectedRoomId: null,
 };
-const viewTitles = {overview:"Dashboard",users:"Users",rooms:"Rooms",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",store:"App Store",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
+const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",store:"App Store",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
   ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
-  ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["economy.read","Economy: view coin rate / ID tools"],["economy.write","Economy: change coin rate"],["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],
+  ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["economy.read","Economy: view coin rate / ID tools"],["economy.write","Economy: change coin rate"],
+  ["notifications.read","Notifications: view"],["notifications.write","Notifications: manage"],
+  ["messaging.read","Messages/Tags: view"],["messaging.write","Official messages: send"],["tags.write","Tags/V Official: manage"],
+  ["users.device","Users: device ban"],["users.override","Users: invisible/bypass/freeze"],["wallet.freeze","Wallet security freeze"],
+  ["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],["rooms.live","Rooms: live users/seats"],["rooms.media","Rooms: DP/background"],["rooms.theme","Rooms: theme override"],
+  ["roles.read","Roles/Posts: view"],["roles.write","Roles/Posts: manage"],["banners.read","Banners: view"],["banners.write","Banners: manage"],
+  ["games.read","Games: view/stats"],["games.write","Games: manage"],["policies.read","Policies: view"],["policies.write","Policies: manage"],
   ["catalog.read","VIP/Gifts/Assets: view"],["catalog.write","VIP/Gifts/Assets: edit"],["settings.read","Master switches: view"],["settings.write","Master switches: edit"],
   ["announcements.read","Announcements: view"],["announcements.write","Announcements: publish"],["support.read","VIP support: view"],["support.write","VIP support: reply/close"],
   ["staff.read","Custom panels: view"],["staff.write","Custom panels: manage"],["audit.read","Audit log"]
@@ -38,11 +46,11 @@ function toast(message,good=true){const el=$("#toast");el.textContent=message;el
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
 function applyPermissions(){
-  const map={overview:"dashboard",users:"users.read",rooms:"rooms.read",wallets:"treasury.read",economy:"economy.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
+  const map={overview:"dashboard",users:"users.read",notifications:"notifications.read",messaging:"messaging.read",rooms:"rooms.read",roles:"roles.read",banners:"banners.read",games:"games.read",policies:"policies.read",wallets:"treasury.read",economy:"economy.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
   $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=!!p&&!can(p);});
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
-async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="rooms")return loadRooms();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
+async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
 async function connect(){
   state.token=$("#token").value.trim()||state.token;if(!state.token)return;
