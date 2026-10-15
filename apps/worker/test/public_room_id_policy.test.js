@@ -4,12 +4,15 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
 
-test("users receive a permanent unique seven-digit public ID", () => {
+test("users receive a permanent serial seven-digit public ID", () => {
   assert.match(source, /public_id TEXT/);
   assert.match(source, /CREATE UNIQUE INDEX IF NOT EXISTS idx_users_public_id/);
   assert.match(source, /async function ensureUserPublicId\(db, userId\)/);
-  assert.match(source, /1000000 \+ Math\.random\(\) \* 9000000/);
-  assert.match(source, /\^\[1-9\]\\d\{6\}\$/);
+  assert.match(source, /CREATE TABLE IF NOT EXISTS public_id_sequence/);
+  assert.match(source, /VALUES\('main',1000001\)/);
+  assert.match(source, /RETURNING next_value-1 AS value/);
+  assert.match(source, /value < 1000001/);
+  assert.doesNotMatch(source, /1000000 \+ Math\.random\(\) \* 9000000/);
 });
 
 test("new room ID equals the owner's seven-digit profile ID", () => {
