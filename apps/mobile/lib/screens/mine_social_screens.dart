@@ -110,7 +110,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text(
             'Trends',
@@ -250,7 +250,7 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
     final next = int.tryParse(wealth['next_threshold']?.toString() ?? '');
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Wealth level')),
       body: TinniBackground(
         child: RefreshIndicator(
@@ -348,7 +348,7 @@ class _MedalOfHonorScreenState extends State<MedalOfHonorScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Medal of Honor')),
         body: TinniBackground(
           child: RefreshIndicator(
@@ -461,7 +461,7 @@ class _TaskScreenState extends State<TaskScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Task')),
         body: TinniBackground(
           child: RefreshIndicator(
@@ -591,7 +591,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Feedback')),
         body: TinniBackground(
           child: ListView(
@@ -784,7 +784,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Family')),
         body: TinniBackground(
           child: loading
@@ -1592,7 +1592,7 @@ class _CpScreenState extends State<CpScreen> {
     final partnerAvatar = _partnerAvatarKey();
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('My CP'),
         actions: [
@@ -2321,7 +2321,7 @@ class _CpRankingScreenState extends State<CpRankingScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('CP')),
         body: TinniBackground(
           child: loading
@@ -3357,7 +3357,7 @@ class _FamilyRankingScreenState extends State<FamilyRankingScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Family Ranking')),
         body: TinniBackground(
           child: loading
