@@ -1403,13 +1403,27 @@ async function handleEconomy(request, db, actor) {
 
 async function handleSettings(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "settings.read");
+    requirePermission(actor, "settings.view");
     const rows = await db.prepare("SELECT key, value_json, updated_at FROM owner_settings ORDER BY key ASC").all();
     return json({ ok: true, settings: (rows.results ?? []).map((row) => ({ ...row, value: safeParse(row.value_json, {}) })) });
   }
   if (parts.length === 4 && request.method === "POST") {
-    requirePermission(actor, "settings.write");
     const key = decodeURIComponent(parts[3]).trim().slice(0, 100);
+    const permissionByKey={
+      "feature.voice":"settings.feature.voice",
+      "feature.gifts":"settings.feature.gifts",
+      "feature.games":"settings.feature.games",
+      "feature.messages":"settings.feature.messages",
+      "feature.room_creation":"settings.feature.room_creation",
+      "feature.aladdin_lamp":"settings.feature.aladdin_lamp",
+      "feature.red_pocket":"settings.feature.red_pocket",
+      "feature.friends_call":"settings.feature.friends_call",
+      "feature.visitors":"settings.feature.visitors",
+      "maintenance":"settings.maintenance",
+    };
+    const settingPermission=permissionByKey[key];
+    if(!settingPermission)return json({ok:false,error:"setting_not_assignable"},{status:403});
+    requirePermission(actor,settingPermission);
     const body = await bodyJson(request);
     const value = body.value ?? {};
     await db.prepare(
@@ -1677,7 +1691,7 @@ const OWNER_PRICE_KINDS=new Set([
 
 async function handlePricingOverrides(request, db, actor, url, parts) {
   if(request.method==="GET"){
-    requirePermission(actor,"policies.read");
+    requirePermission(actor,"pricing.view");
     const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
     const kind=String(url.searchParams.get("kind") ?? "").trim();
     let resolvedUserId=userQuery;
@@ -1697,7 +1711,7 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
     return json({ok:true,overrides:rows.results ?? []});
   }
   if(parts.length===3 && request.method==="POST"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"pricing.save");
     const body=await bodyJson(request);
     const userId=String(body.user_id ?? "").trim().slice(0,120);
     const kind=String(body.kind ?? "").trim().slice(0,60);
@@ -1732,7 +1746,7 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
     return json({ok:true,user_id:resolvedUserId,kind,item_id:itemId});
   }
   if(parts.length>=6 && request.method==="DELETE"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"pricing.delete");
     const userId=decodeURIComponent(parts[3] ?? "");
     const kind=decodeURIComponent(parts[4] ?? "");
     const itemId=decodeURIComponent(parts.slice(5).join("/") || "*");
@@ -1746,14 +1760,14 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
 
 async function handlePoliciesOwner(request, db, actor, parts) {
   if(request.method==="GET"){
-    requirePermission(actor,"policies.read");
+    requirePermission(actor,"policies.view");
     const rows=await db.prepare(
       "SELECT key,value_json,updated_at FROM owner_settings WHERE key LIKE 'policy.%' OR key LIKE 'economy.%' ORDER BY key"
     ).all();
     return json({ok:true,policies:(rows.results ?? []).map(r=>({key:r.key,value:safeParse(r.value_json,{}),updated_at:r.updated_at}))});
   }
   if(request.method==="POST"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"policies.save");
     const body=await bodyJson(request);
     const key=String(body.key ?? "").trim().slice(0,100);
     if(!key || /agency|\bbd\b|host|guardian|verification/i.test(key)){
@@ -1769,7 +1783,7 @@ async function handlePoliciesOwner(request, db, actor, parts) {
   }
   const key=decodeURIComponent(parts[3] ?? "");
   if(key && request.method==="DELETE"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"policies.delete");
     const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
     await db.prepare("DELETE FROM owner_settings WHERE key=?").bind(fullKey).run();
     await audit(db,actor,"policy_delete","policy",fullKey,"deleted");
@@ -1781,7 +1795,7 @@ async function handlePoliciesOwner(request, db, actor, parts) {
 
 async function handleVipRules(request, db, actor, parts) {
   if (request.method === "GET") {
-    requirePermission(actor,"catalog.read");
+    requirePermission(actor,"vip.view");
     const overrides=await db.prepare(
       "SELECT id,name,enabled,json_data,updated_at FROM owner_catalog WHERE kind='vip_rule' ORDER BY CAST(id AS INTEGER) ASC"
     ).all();
@@ -1806,7 +1820,7 @@ async function handleVipRules(request, db, actor, parts) {
     return json({ok:true,levels});
   }
   if (request.method === "POST") {
-    requirePermission(actor,"catalog.write");
+    requirePermission(actor,"vip.save");
     const body=await bodyJson(request);
     const level=clampInt(body.level,1,18,0);
     if(level<1||level>18)return json({ok:false,error:"vip_level_must_be_1_to_18"},{status:400});
@@ -1838,7 +1852,7 @@ async function handleVipRules(request, db, actor, parts) {
   }
   const level=clampInt(decodeURIComponent(parts[3] ?? ""),1,18,0);
   if(level && request.method==="DELETE"){
-    requirePermission(actor,"catalog.write");
+    requirePermission(actor,"vip.reset");
     await db.prepare("DELETE FROM owner_catalog WHERE kind='vip_rule' AND id=?").bind(String(level)).run();
     await audit(db,actor,"vip_rule_reset","vip",String(level),"reset to base rule");
     return json({ok:true,level,reset:true});
@@ -2056,14 +2070,14 @@ async function handleAnnouncements(request, db, actor, parts) {
 
 async function handleStaff(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "staff.read");
+    requirePermission(actor, "staff.view");
     const rows = await db.prepare(
       "SELECT id,display_name,role,permissions_json,enabled,created_at,updated_at,last_used_at FROM owner_staff ORDER BY created_at DESC"
     ).all();
     return json({ ok: true, staff: (rows.results ?? []).map((row) => ({ ...row, permissions: safeParse(row.permissions_json, []) })) });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "staff.write");
+    requirePermission(actor, "staff.create");
     const body = await bodyJson(request);
     const displayName = String(body.display_name ?? "").trim().slice(0, 80);
     const role = ["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : "manager";
@@ -2084,8 +2098,12 @@ async function handleStaff(request, db, actor, parts) {
   const staffId = decodeURIComponent(parts[3] ?? "");
   if (!staffId) return null;
   if (parts.length === 4 && request.method === "POST") {
-    requirePermission(actor, "staff.write");
     const body = await bodyJson(request);
+    const changesPermissions=Array.isArray(body.permissions) || body.display_name!=null || body.role!=null;
+    const changesEnabled=body.enabled!=null;
+    if(changesPermissions) requirePermission(actor,"staff.permissions.edit");
+    if(changesEnabled) requirePermission(actor,"staff.toggle");
+    if(!changesPermissions && !changesEnabled) return json({ok:false,error:"no_staff_change_requested"},{status:400});
     const current = await db.prepare("SELECT id,display_name,role,permissions_json,enabled FROM owner_staff WHERE id = ?").bind(staffId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const displayName = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 80) || current.display_name;
@@ -2100,7 +2118,7 @@ async function handleStaff(request, db, actor, parts) {
     return json({ ok: true });
   }
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "staff.write");
+    requirePermission(actor, "staff.delete");
     if (actor.type === "staff" && actor.id === staffId) return json({ ok: false, error: "cannot_delete_current_staff" }, { status: 400 });
     await db.prepare("DELETE FROM owner_staff WHERE id = ?").bind(staffId).run();
     await audit(db, actor, "staff_delete", "staff", staffId, "staff removed");
@@ -2111,7 +2129,7 @@ async function handleStaff(request, db, actor, parts) {
 
 async function handleTreasury(request, db, actor) {
   if (request.method === "GET") {
-    requirePermission(actor, "treasury.read");
+    requirePermission(actor, "treasury.view");
     const row = await db.prepare("SELECT balance, updated_at FROM owner_treasury WHERE id = 'main'").first();
     const ledger = await db.prepare(
       "SELECT id, amount, balance_after, kind, target_user_id, actor_id, note, created_at FROM owner_treasury_ledger ORDER BY created_at DESC LIMIT 100"
@@ -2120,7 +2138,6 @@ async function handleTreasury(request, db, actor) {
   }
   if (request.method !== "POST") return null;
 
-  requirePermission(actor, "treasury.write");
   const body = await bodyJson(request);
   const action = String(body.action ?? "").trim().toLowerCase();
   const amount = clampInt(body.amount ?? 0, 1, 900000000000000, 0);
@@ -2146,6 +2163,7 @@ async function handleTreasury(request, db, actor) {
   }
 
   if (action === "send") {
+    requirePermission(actor,"treasury.send");
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const user = await db.prepare("SELECT id, coins FROM users WHERE id = ?").bind(userId).first();
@@ -2221,7 +2239,7 @@ async function handleSupportTickets(request, db, actor, url, parts) {
   ).bind(ticketId).first();
   if (!ticket) return json({ ok: false, error: "not_found" }, { status: 404 });
   if (request.method === "GET" && parts.length === 4) {
-    requirePermission(actor, "support.read");
+    requirePermission(actor, "support.view");
     const rows = await db.prepare("SELECT id,sender_type,sender_id,body,created_at FROM vip_support_messages WHERE ticket_id=? ORDER BY created_at ASC LIMIT 500").bind(ticketId).all();
     return json({ ok: true, ticket, messages: rows.results ?? [] });
   }
