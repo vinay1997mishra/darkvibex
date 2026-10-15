@@ -2510,6 +2510,12 @@ async function handleStaff(request, db, actor, parts) {
     const existing = await db.prepare("SELECT id FROM owner_staff WHERE email=? LIMIT 1").bind(email).first();
     if (existing) return json({ ok: false, error: "staff_gmail_already_used" }, { status: 409 });
 
+    const staffCountRow = await db.prepare("SELECT COUNT(*) AS value FROM owner_staff").first();
+    const staffCount = Number(staffCountRow?.value ?? 0);
+    if (staffCount >= 20) {
+      return json({ ok: false, error: "staff_panel_limit_20_reached", limit: 20, count: staffCount }, { status: 409 });
+    }
+
     const staffId = id();
     const tokenHash = await sha256Hex("credential-only:" + staffId + ":" + randomHex(24));
     const passwordSalt = randomHex(16);
