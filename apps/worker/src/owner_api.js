@@ -44,6 +44,74 @@ async function sha256Hex(value) {
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function randomHex(byteLength = 24) {
+  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function hexBytes(value) {
+  const clean = String(value ?? "").trim();
+  if (!clean || clean.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(clean)) {
+    throw new Error("invalid_hex");
+  }
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(clean.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+async function deriveStaffPasswordHash(password, saltHex, iterations = 120000) {
+  const secret = String(password ?? "");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: hexBytes(saltHex),
+      iterations,
+    },
+    key,
+    256,
+  );
+  return [...new Uint8Array(bits)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function normalizeStaffEmail(value) {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return "";
+  const normalized = raw.endsWith("@googlemail.com")
+    ? raw.slice(0, -"@googlemail.com".length) + "@gmail.com"
+    : raw;
+  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/.test(normalized)
+    ? normalized
+    : "";
+}
+
+function validateStaffPassword(value) {
+  const password = String(value ?? "");
+  return password.length >= 8 && password.length <= 128;
+}
+
+async function issueStaffSession(db, staffId) {
+  const token = "dvxs_" + randomHex(32);
+  const tokenHash = await sha256Hex(token);
+  const createdAt = now();
+  const expiresAt = createdAt + 7 * 24 * 60 * 60 * 1000;
+  await db.prepare(
+    "INSERT INTO owner_staff_sessions(token_hash,staff_id,created_at,expires_at,last_used_at) VALUES(?,?,?,?,?)"
+  ).bind(tokenHash, staffId, createdAt, expiresAt, createdAt).run();
+  return { token, expires_at: expiresAt };
+}
+
 function safeParse(value, fallback) {
   try {
     const parsed = JSON.parse(String(value ?? ""));
@@ -393,12 +461,25 @@ async function ensureOwnerSchema(db) {
       display_name TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('super_admin','admin','manager','moderator')),
       token_hash TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL DEFAULT '',
+      password_salt TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL DEFAULT '',
+      password_iterations INTEGER NOT NULL DEFAULT 120000,
       permissions_json TEXT NOT NULL DEFAULT '[]',
       enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_used_at INTEGER
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_staff_sessions (
+      token_hash TEXT PRIMARY KEY,
+      staff_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      last_used_at INTEGER NOT NULL,
+      FOREIGN KEY (staff_id) REFERENCES owner_staff(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_staff_sessions_staff ON owner_staff_sessions(staff_id,expires_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_audit (
       id TEXT PRIMARY KEY,
       actor_type TEXT NOT NULL,
@@ -555,6 +636,22 @@ async function ensureOwnerSchema(db) {
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('maintenance', '{\"enabled\":false,\"message\":\"\"}', ?)").bind(now()),
   ]);
   try {
+    const staffInfo = await db.prepare("PRAGMA table_info(owner_staff)").all();
+    const staffColumns = new Set((staffInfo.results ?? []).map((row) => String(row.name ?? "")));
+    const staffAdditions = [
+      ["email", "TEXT NOT NULL DEFAULT ''"],
+      ["password_salt", "TEXT NOT NULL DEFAULT ''"],
+      ["password_hash", "TEXT NOT NULL DEFAULT ''"],
+      ["password_iterations", "INTEGER NOT NULL DEFAULT 120000"],
+    ];
+    for (const [name, definition] of staffAdditions) {
+      if (!staffColumns.has(name)) {
+        await db.prepare(`ALTER TABLE owner_staff ADD COLUMN ${name} ${definition}`).run();
+      }
+    }
+    await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_staff_email ON owner_staff(email) WHERE email <> ''").run();
+  } catch (_) {}
+  try {
     const overrideInfo=await db.prepare("PRAGMA table_info(owner_user_overrides)").all();
     const overrideColumns=new Set((overrideInfo.results ?? []).map(row=>String(row.name ?? "")));
     if(!overrideColumns.has("wallet_banned")){
@@ -620,16 +717,87 @@ async function authenticate(request, env, db) {
   }
 
   const hash = await sha256Hex(supplied);
+  const session = await db.prepare(
+    `SELECT s.staff_id, st.display_name, st.role, st.permissions_json
+       FROM owner_staff_sessions s
+       JOIN owner_staff st ON st.id=s.staff_id
+      WHERE s.token_hash=? AND s.expires_at>? AND st.enabled=1
+      LIMIT 1`
+  ).bind(hash, now()).first();
+  if (session) {
+    const explicit = safeParse(session.permissions_json, []);
+    const permissions = Array.isArray(explicit)
+      ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*")
+      : [];
+    const ts = now();
+    await db.batch([
+      db.prepare("UPDATE owner_staff_sessions SET last_used_at=? WHERE token_hash=?").bind(ts, hash),
+      db.prepare("UPDATE owner_staff SET last_used_at=?,updated_at=? WHERE id=?").bind(ts, ts, session.staff_id),
+    ]);
+    return {
+      type: "staff",
+      id: session.staff_id,
+      name: session.display_name,
+      role: session.role,
+      permissions,
+    };
+  }
+
+  // Legacy one-time staff tokens continue to work for panels created before
+  // Gmail/password login was enabled. New staff panels do not expose such a token.
   const staff = await db.prepare(
     "SELECT id, display_name, role, permissions_json FROM owner_staff WHERE token_hash = ? AND enabled = 1 LIMIT 1"
   ).bind(hash).first();
   if (!staff) return null;
 
   const explicit = safeParse(staff.permissions_json, []);
-  const permissions = Array.isArray(explicit) ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*") : [];
+  const permissions = Array.isArray(explicit)
+    ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*")
+    : [];
   await db.prepare("UPDATE owner_staff SET last_used_at = ?, updated_at = ? WHERE id = ?")
     .bind(now(), now(), staff.id).run();
   return { type: "staff", id: staff.id, name: staff.display_name, role: staff.role, permissions };
+}
+
+async function loginStaffWithPassword(db, body) {
+  const email = normalizeStaffEmail(body.email);
+  const password = String(body.password ?? "");
+  if (!email || !password) {
+    return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
+  }
+  const staff = await db.prepare(
+    `SELECT id,display_name,role,permissions_json,password_salt,password_hash,password_iterations,enabled
+       FROM owner_staff
+      WHERE email=? LIMIT 1`
+  ).bind(email).first();
+  if (!staff || Number(staff.enabled) !== 1 || !staff.password_salt || !staff.password_hash) {
+    return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
+  }
+  const iterations = Math.max(10000, Number(staff.password_iterations ?? 120000));
+  const derived = await deriveStaffPasswordHash(password, String(staff.password_salt), iterations);
+  if (derived !== String(staff.password_hash)) {
+    return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
+  }
+  await db.prepare("DELETE FROM owner_staff_sessions WHERE expires_at<=?").bind(now()).run();
+  const session = await issueStaffSession(db, staff.id);
+  const explicit = safeParse(staff.permissions_json, []);
+  const permissions = Array.isArray(explicit)
+    ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission))
+    : [];
+  await db.prepare("UPDATE owner_staff SET last_used_at=?,updated_at=? WHERE id=?")
+    .bind(now(), now(), staff.id).run();
+  return json({
+    ok: true,
+    token: session.token,
+    expires_at: session.expires_at,
+    actor: {
+      type: "staff",
+      id: staff.id,
+      name: staff.display_name,
+      role: staff.role,
+      permissions,
+    },
+  });
 }
 
 async function audit(db, actor, action, targetType, targetId, summary = "") {
@@ -2097,54 +2265,136 @@ async function handleStaff(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "staff.view");
     const rows = await db.prepare(
-      "SELECT id,display_name,role,permissions_json,enabled,created_at,updated_at,last_used_at FROM owner_staff ORDER BY created_at DESC"
+      "SELECT id,display_name,email,role,permissions_json,enabled,created_at,updated_at,last_used_at FROM owner_staff ORDER BY created_at DESC"
     ).all();
-    return json({ ok: true, staff: (rows.results ?? []).map((row) => ({ ...row, permissions: safeParse(row.permissions_json, []) })) });
+    return json({
+      ok: true,
+      staff: (rows.results ?? []).map((row) => ({
+        ...row,
+        email: actor.type === "owner" ? String(row.email ?? "") : "",
+        permissions: safeParse(row.permissions_json, []),
+      })),
+    });
   }
   if (parts.length === 3 && request.method === "POST") {
     requirePermission(actor, "staff.create");
+    if (actor.type !== "owner") {
+      return json({ ok: false, error: "owner_only_staff_credentials" }, { status: 403 });
+    }
     const body = await bodyJson(request);
     const displayName = String(body.display_name ?? "").trim().slice(0, 80);
     const role = ["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : "manager";
+    const email = normalizeStaffEmail(body.email);
+    const password = String(body.password ?? "");
     if (!displayName) return json({ ok: false, error: "display_name_required" }, { status: 400 });
+    if (!email) return json({ ok: false, error: "valid_gmail_required" }, { status: 400 });
+    if (!validateStaffPassword(password)) {
+      return json({ ok: false, error: "staff_password_must_be_8_to_128_characters" }, { status: 400 });
+    }
+
+    const existing = await db.prepare("SELECT id FROM owner_staff WHERE email=? LIMIT 1").bind(email).first();
+    if (existing) return json({ ok: false, error: "staff_gmail_already_used" }, { status: 409 });
+
     const staffId = id();
-    const raw = crypto.getRandomValues(new Uint8Array(24));
-    const token = "dvx_" + [...raw].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-    const tokenHash = await sha256Hex(token);
+    const tokenHash = await sha256Hex("credential-only:" + staffId + ":" + randomHex(24));
+    const passwordSalt = randomHex(16);
+    const passwordIterations = 120000;
+    const passwordHash = await deriveStaffPasswordHash(password, passwordSalt, passwordIterations);
     const permissions = sanitizeStaffPermissions(actor, body.permissions);
     const ts = now();
     await db.prepare(
-      "INSERT INTO owner_staff (id,display_name,role,token_hash,permissions_json,enabled,created_at,updated_at,last_used_at) VALUES (?,?,?,?,?,1,?,?,NULL)"
-    ).bind(staffId, displayName, role, tokenHash, JSON.stringify(permissions), ts, ts).run();
-    await audit(db, actor, "staff_create", "staff", staffId, `${displayName}; role=${role}`);
-    return json({ ok: true, staff: { id: staffId, display_name: displayName, role, permissions }, token });
+      `INSERT INTO owner_staff (
+         id,display_name,role,token_hash,email,password_salt,password_hash,password_iterations,
+         permissions_json,enabled,created_at,updated_at,last_used_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,1,?,?,NULL)`
+    ).bind(
+      staffId, displayName, role, tokenHash, email, passwordSalt, passwordHash,
+      passwordIterations, JSON.stringify(permissions), ts, ts,
+    ).run();
+    await audit(db, actor, "staff_create", "staff", staffId, `${displayName}; role=${role}; gmail=${email}`);
+    return json({
+      ok: true,
+      staff: { id: staffId, display_name: displayName, email, role, permissions },
+    });
   }
 
   const staffId = decodeURIComponent(parts[3] ?? "");
   if (!staffId) return null;
   if (parts.length === 4 && request.method === "POST") {
     const body = await bodyJson(request);
-    const changesPermissions=Array.isArray(body.permissions) || body.display_name!=null || body.role!=null;
-    const changesEnabled=body.enabled!=null;
+    const credentialChange = body.email != null || body.password != null;
+    const changesPermissions = Array.isArray(body.permissions) || body.display_name != null || body.role != null;
+    const changesEnabled = body.enabled != null;
+    if (credentialChange && actor.type !== "owner") {
+      return json({ ok: false, error: "owner_only_staff_password_change" }, { status: 403 });
+    }
     if(changesPermissions) requirePermission(actor,"staff.permissions.edit");
     if(changesEnabled) requirePermission(actor,"staff.toggle");
-    if(!changesPermissions && !changesEnabled) return json({ok:false,error:"no_staff_change_requested"},{status:400});
-    const current = await db.prepare("SELECT id,display_name,role,permissions_json,enabled FROM owner_staff WHERE id = ?").bind(staffId).first();
+    if(!credentialChange && !changesPermissions && !changesEnabled) {
+      return json({ok:false,error:"no_staff_change_requested"},{status:400});
+    }
+    const current = await db.prepare(
+      "SELECT id,display_name,email,role,permissions_json,enabled,password_salt,password_hash,password_iterations FROM owner_staff WHERE id = ?"
+    ).bind(staffId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
-    const displayName = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 80) || current.display_name;
-    const role = body.role == null ? current.role : (["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : current.role);
+
+    const displayName = body.display_name == null
+      ? current.display_name
+      : String(body.display_name).trim().slice(0, 80) || current.display_name;
+    const role = body.role == null
+      ? current.role
+      : (["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : current.role);
     const permissions = Array.isArray(body.permissions)
       ? sanitizeStaffPermissions(actor, body.permissions)
       : safeParse(current.permissions_json, []).map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission));
     const enabled = body.enabled == null ? Number(current.enabled) : (body.enabled === true ? 1 : 0);
-    await db.prepare("UPDATE owner_staff SET display_name=?,role=?,permissions_json=?,enabled=?,updated_at=? WHERE id=?")
-      .bind(displayName, role, JSON.stringify(permissions), enabled, now(), staffId).run();
-    await audit(db, actor, "staff_update", "staff", staffId, `${displayName}; role=${role}; enabled=${enabled}`);
+
+    let email = String(current.email ?? "");
+    if (body.email != null) {
+      email = normalizeStaffEmail(body.email);
+      if (!email) return json({ ok: false, error: "valid_gmail_required" }, { status: 400 });
+      const emailOwner = await db.prepare("SELECT id FROM owner_staff WHERE email=? AND id<>? LIMIT 1").bind(email, staffId).first();
+      if (emailOwner) return json({ ok: false, error: "staff_gmail_already_used" }, { status: 409 });
+    }
+
+    let passwordSalt = String(current.password_salt ?? "");
+    let passwordHash = String(current.password_hash ?? "");
+    let passwordIterations = Math.max(10000, Number(current.password_iterations ?? 120000));
+    if (body.password != null && String(body.password).length > 0) {
+      if (!validateStaffPassword(body.password)) {
+        return json({ ok: false, error: "staff_password_must_be_8_to_128_characters" }, { status: 400 });
+      }
+      passwordSalt = randomHex(16);
+      passwordIterations = 120000;
+      passwordHash = await deriveStaffPasswordHash(String(body.password), passwordSalt, passwordIterations);
+      await db.prepare("DELETE FROM owner_staff_sessions WHERE staff_id=?").bind(staffId).run();
+    }
+
+    await db.prepare(
+      `UPDATE owner_staff
+          SET display_name=?,role=?,permissions_json=?,enabled=?,email=?,
+              password_salt=?,password_hash=?,password_iterations=?,updated_at=?
+        WHERE id=?`
+    ).bind(
+      displayName, role, JSON.stringify(permissions), enabled, email,
+      passwordSalt, passwordHash, passwordIterations, now(), staffId,
+    ).run();
+    await audit(
+      db,
+      actor,
+      "staff_update",
+      "staff",
+      staffId,
+      `${displayName}; role=${role}; enabled=${enabled}; gmail=${email}; password_changed=${body.password != null && String(body.password).length > 0}`,
+    );
     return json({ ok: true });
   }
   if (parts.length === 4 && request.method === "DELETE") {
     requirePermission(actor, "staff.delete");
-    if (actor.type === "staff" && actor.id === staffId) return json({ ok: false, error: "cannot_delete_current_staff" }, { status: 400 });
+    if (actor.type === "staff" && actor.id === staffId) {
+      return json({ ok: false, error: "cannot_delete_current_staff" }, { status: 400 });
+    }
+    await db.prepare("DELETE FROM owner_staff_sessions WHERE staff_id=?").bind(staffId).run();
     await db.prepare("DELETE FROM owner_staff WHERE id = ?").bind(staffId).run();
     await audit(db, actor, "staff_delete", "staff", staffId, "staff removed");
     return json({ ok: true });
@@ -2301,6 +2551,10 @@ export async function handleOwnerApi(request, env, url) {
 
   try {
     await ensureOwnerSchema(db);
+    if (url.pathname === "/api/owner/login" && request.method === "POST") {
+      const body = await bodyJson(request);
+      return loginStaffWithPassword(db, body);
+    }
     const actor = await authenticate(request, env, db);
     if (!actor) return json({ ok: false, error: "unauthorized" }, { status: 401 });
     const parts = url.pathname.split("/").filter(Boolean);
