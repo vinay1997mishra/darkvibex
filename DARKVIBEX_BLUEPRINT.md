@@ -36,8 +36,17 @@ DarkVibeX has a 7-day per-day login/sign-in reward cycle.
 ### Weekly sign-in UI rule
 - Use the DarkVibeX **blue–purple galaxy visual identity** for the sign-in experience.
 - Do not use the previously mocked orange/yellow + white theme as the final DarkVibeX design.
-- The current/claimed day should have a clear claimed state.
+- Show the weekly sign-in as a **floating modal** above the current app screen.
+- The Sign in button must be clickable and the claimed day must show a clear **right/check mark**.
+- Coins remain **metallic gold**.
 - Day 7 may receive a stronger celebratory highlight while staying within the DarkVibeX galaxy theme.
+
+### Weekly sign-in behavior
+- The 7-day cycle repeats continuously; it does **not** stop after Day 7.
+- After Day 7, the next eligible day starts again from Day 1.
+- If the user misses a calendar day between claims, the streak resets and the next claim starts again from Day 1.
+- A reward can be claimed only once per calendar day.
+- Reward credit and streak state are server-authoritative.
 
 ## 3. Precedence rule
 When an older blueprint, mockup, note, or implementation conflicts with this file, the **latest confirmed DarkVibeX rule** takes precedence.
