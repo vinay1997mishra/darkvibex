@@ -534,3 +534,35 @@ CREATE INDEX IF NOT EXISTS idx_direct_calls_receiver_state
 
 CREATE INDEX IF NOT EXISTS idx_direct_calls_caller_state
   ON direct_calls(caller_user_id,state,created_at DESC);
+
+-- Invite & Share direct-referral commission.
+-- Invitation code is the inviter's unique DarkVibeX public user ID.
+CREATE TABLE IF NOT EXISTS invite_bindings (
+  invitee_user_id TEXT PRIMARY KEY,
+  inviter_user_id TEXT NOT NULL,
+  invitation_code TEXT NOT NULL,
+  bound_at INTEGER NOT NULL,
+  CHECK (invitee_user_id <> inviter_user_id),
+  FOREIGN KEY (invitee_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_bindings_inviter
+  ON invite_bindings(inviter_user_id, bound_at DESC);
+
+CREATE TABLE IF NOT EXISTS invite_commission_rewards (
+  id TEXT PRIMARY KEY,
+  inviter_user_id TEXT NOT NULL,
+  invitee_user_id TEXT NOT NULL,
+  source_transfer_id TEXT NOT NULL UNIQUE,
+  source_coins INTEGER NOT NULL CHECK (source_coins > 0),
+  rate_bps INTEGER NOT NULL CHECK (rate_bps >= 0),
+  reward_coins INTEGER NOT NULL CHECK (reward_coins >= 0),
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (invitee_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_rewards_inviter_time
+  ON invite_commission_rewards(inviter_user_id, created_at DESC);
+
