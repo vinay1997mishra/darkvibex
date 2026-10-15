@@ -17,6 +17,7 @@ const state = {
   banners: [],
   games: [],
   policies: [],
+  globalThemes: [],
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",store:"App Store",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
@@ -537,6 +538,40 @@ async function savePolicy(){
   await loadPolicies();
 }
 
+
+async function loadGlobalThemes(){
+  if(!can("catalog.read"))return;
+  const d=await api("/api/owner/store?kind=theme");
+  state.globalThemes=d.items||[];
+  $("#globalThemeList").innerHTML=state.globalThemes.length?state.globalThemes.map(item=>{
+    const data=item.data||{};
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(data.asset_key||data.asset||"")} · ${data.permanent?"Permanent":((data.starts_at?time(data.starts_at):"Now")+" → "+(data.ends_at?time(data.ends_at):"No end"))}</div></div><div class="item-actions"><button class="secondary mini" data-global-theme-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-global-theme-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+  }).join(""):empty("No global room themes");
+  $("[data-global-theme-edit]").forEach(b=>b.onclick=()=>{
+    const x=state.globalThemes.find(item=>item.id===b.dataset.globalThemeEdit);if(!x)return;
+    const data=x.data||{};
+    $("#globalThemeId").value=x.id;$("#globalThemeName").value=x.name||"";$("#globalThemeAsset").value=data.asset_key||data.asset||"";
+    $("#globalThemeStart").value=data.starts_at||"";$("#globalThemeEnd").value=data.ends_at||"";
+    $("#globalThemePermanent").checked=data.permanent===true||!data.ends_at;$("#globalThemeEnabled").checked=Number(x.enabled)!==0;
+  });
+  $("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
+}
+async function saveGlobalTheme(){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  const id=$("#globalThemeId").value.trim(),name=$("#globalThemeName").value.trim(),asset=$("#globalThemeAsset").value.trim();
+  if(!id||!name||!asset)return toast("Theme ID, name and asset are required",false);
+  const permanent=$("#globalThemePermanent").checked;
+  const starts=Number($("#globalThemeStart").value||0)||null;
+  const ends=permanent?null:(Number($("#globalThemeEnd").value||0)||null);
+  if(!permanent&&starts&&ends&&ends<=starts)return toast("End time must be after start time",false);
+  await api("/api/owner/store",{method:"POST",body:JSON.stringify({
+    kind:"theme",id,name,price_coins:0,sort_order:0,enabled:$("#globalThemeEnabled").checked,
+    data:{asset_key:asset,asset,starts_at:starts,ends_at:ends,permanent}
+  })});
+  toast("Global room theme saved");
+  await loadGlobalThemes();
+}
+
 async function loadAudit(){if(!can('audit.read'))return;const d=await api('/api/owner/audit?limit=200');$("#auditList").innerHTML=(d.audit||[]).length?`<div class="small-table">${d.audit.map(a=>`<div class="audit-row"><span>${time(a.created_at)}</span><span><b>${esc(a.action.replaceAll('_',' '))}</b><br><span class="muted">${esc(a.actor_type)} ${esc(a.actor_id)} → ${esc(a.target_type)} ${esc(a.target_id)}${a.summary?' · '+esc(a.summary):''}</span></span></div>`).join('')}</div>`:empty('No audit records yet');}
 
 $("#connect").onclick=connect;$("#token").addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
@@ -553,6 +588,8 @@ $("#sendOfficialSelected").onclick=()=>sendOfficialMessage(false).catch(e=>toast
 $("#closeUser").onclick=()=>{$("#userEditor").hidden=true;state.selectedUser=null;};$("#saveUserProfile").onclick=()=>saveUserProfile().catch(e=>toast(e.message,false));$("#saveModeration").onclick=()=>saveModeration().catch(e=>toast(e.message,false));$("#savePublicId").onclick=()=>savePublicId().catch(e=>toast(e.message,false));$("#applyWallet").onclick=()=>applyWallet().catch(e=>toast(e.message,false));$("#applyRoleWallet").onclick=()=>applyRoleWallet().catch(e=>toast(e.message,false));$("#roleWalletType").onchange=()=>{$("#roleWalletBalance").textContent="Selected "+($("#roleWalletType").value||"role")+" wallet. Enter a coin change and apply.";};
 $("#searchRooms").onclick=()=>loadRooms().catch(e=>toast(e.message,false));$("#roomSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadRooms().catch(x=>toast(x.message,false));});
 $("#closeRoomInvestigation").onclick=()=>{$("#roomInvestigation").hidden=true;state.selectedRoomId=null;};$("#saveOwnerRoomMedia").onclick=()=>saveOwnerRoomMedia().catch(e=>toast(e.message,false));$("#saveOwnerRoomTheme").onclick=()=>saveOwnerRoomTheme().catch(e=>toast(e.message,false));
+$("#reloadGlobalThemes").onclick=()=>loadGlobalThemes().catch(e=>toast(e.message,false));$("#saveGlobalTheme").onclick=()=>saveGlobalTheme().catch(e=>toast(e.message,false));
+
 $("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
 $("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));
 $("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));
