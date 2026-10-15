@@ -26,9 +26,9 @@ class VipScreen extends StatelessWidget {
             : (state.vipExpBalance / target).clamp(0.0, 1.0).toDouble();
 
         return Scaffold(
-          backgroundColor: const Color(0xFF070707),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF070707),
+            backgroundColor: Colors.transparent,
             title: const Text('VIP'),
             actions: [
               IconButton(
@@ -630,9 +630,9 @@ class VipRulesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF07070A),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF07070A),
+        backgroundColor: Colors.transparent,
         title: const Text('VIP Rules'),
       ),
       body: ListView(
