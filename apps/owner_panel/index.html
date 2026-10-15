@@ -92,7 +92,7 @@
               <div class="module-card"><b>Rooms</b><span>Search, lock, rename, seats and removal controls</span></div>
               <div class="module-card"><b>Wallets</b><span>Normal, Coin Seller, Merchant and separate Owner Treasury</span></div>
               <div class="module-card"><b>VIP & Gifts</b><span>Data-driven levels, privileges, gifts and prices</span></div>
-              <div class="module-card"><b>Assets</b><span>Frames, rings, bubbles, profile backgrounds and vehicles</span></div>
+              <div class="module-card"><b>Assets</b><span>Frames, rings, bubbles, profile cards and entrance effects</span></div>
               <div class="module-card"><b>Games</b><span>Game configuration through the live catalog and switches</span></div>
               <div class="module-card"><b>Custom Panels</b><span>Admin / Super Admin / Manager / Moderator with exact permissions</span></div>
               <div class="module-card"><b>Audit</b><span>Every protected owner and staff change is recorded</span></div>
@@ -431,9 +431,9 @@
 
         <section class="view" data-view-panel="assets">
           <article class="panel">
-            <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Manage vehicles, entry effects, profile cards, rings, chat bubbles, profile backgrounds and frames used by the live app store.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
+            <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Manage entry effects, profile cards, rings, chat bubbles and frames used by the live app store.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
             <div class="form-grid">
-              <label>Asset type<select id="assetKind"><option value="vehicle">Vehicle</option><option value="entry">Entry effect</option><option value="frame">Frame</option><option value="profile_card">Profile card</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="profile_background">Profile background</option></select></label>
+              <label>Asset type<select id="assetKind"><option value="entry">Entry effect</option><option value="frame">Frame</option><option value="profile_card">Profile card</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option></select></label>
               <label>Item ID<input id="assetId" placeholder="Unique item ID" /></label>
               <label>Name<input id="assetName" /></label>
               <label>Price in coins<input id="assetPrice" type="number" min="0" value="0" /></label>
@@ -463,16 +463,14 @@
             </div>
             <div class="form-grid">
               <label>Store category
-                <input id="storeKind" list="storeKinds" value="frame" placeholder="frame / vehicle / gift / unique_id" />
+                <input id="storeKind" list="storeKinds" value="frame" placeholder="frame / entry / ring / bubble / profile_card / gift / unique_id" />
                 <datalist id="storeKinds">
                   <option value="gift"></option>
                   <option value="frame"></option>
-                  <option value="vehicle"></option>
                   <option value="entry"></option>
                   <option value="ring"></option>
                   <option value="bubble"></option>
                   <option value="profile_card"></option>
-                  <option value="profile_background"></option>
                   <option value="theme"></option>
                   <option value="unique_id"></option>
                   <option value="custom"></option>
