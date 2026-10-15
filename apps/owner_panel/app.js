@@ -23,6 +23,8 @@ const state = {
   assetItems: [],
   pricingOverrides: [],
   auditRows: [],
+  ownerMessageConversations: [],
+  ownerMessageThreadOtherId: null,
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
@@ -45,6 +47,14 @@ async function api(path, options={}){
   const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
   if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
   return data;
+}
+async function apiBlob(path){
+  const res=await fetch(path,{headers:{authorization:"Bearer "+state.token}});
+  if(!res.ok){
+    const data=await res.json().catch(()=>({error:"HTTP "+res.status}));
+    throw new Error(data.error||("HTTP "+res.status));
+  }
+  return res.blob();
 }
 function esc(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));}
 function num(v){return Number(v||0).toLocaleString();}
@@ -108,6 +118,17 @@ async function openUser(id){
   const recentGames=(inv.recent_games||[]).map(x=>`<div class="item-card"><div class="item-title">Game · ${esc(x.game_id)}</div><div class="item-meta">Stake ${num(x.stake)} · payout ${num(x.payout)} · ${esc(x.result)} · ${time(x.created_at)}</div></div>`);
   const recentGifts=(inv.recent_gifts||[]).map(x=>`<div class="item-card"><div class="item-title">Gift · ${esc(x.direction)} · ${esc(x.gift_id)}</div><div class="item-meta">${num(x.coin_cost)} coins · ${time(x.created_at)}</div></div>`);
   $("#userInvestigationActivity").innerHTML=[...recentGames,...recentGifts].slice(0,16).join("")||empty("No recent game/gift activity");
+  const ownerMessageAccess=state.actor?.type==="owner";
+  $("#ownerPrivateMessages").hidden=!ownerMessageAccess;
+  $("#ownerMessageThreadPanel").hidden=true;
+  state.ownerMessageConversations=[];
+  state.ownerMessageThreadOtherId=null;
+  if(ownerMessageAccess){
+    $("#ownerMessageSummary").textContent="Message history is not loaded until the Owner opens it.";
+    $("#ownerConversationList").innerHTML=empty("Click “Load Message Inbox” to inspect this ID's chats.");
+    $("#ownerMessageThread").innerHTML="";
+    $("#ownerMessageRedPockets").innerHTML="";
+  }
   renderLedger(u.wallet_ledger||[]);
   const roleType=(u.role==="coin_seller"||u.role==="merchant")?u.role:"";
   $("#roleWalletType").value=roleType;
@@ -134,6 +155,82 @@ async function openUser(id){
   $$("[data-device-key]").forEach(b=>b.onclick=()=>toggleDeviceBan(b.dataset.deviceKey,Number(b.dataset.deviceBanned)===1).catch(e=>toast(e.message,false)));
   $("#userEditor").scrollIntoView({behavior:"smooth",block:"start"});
 }
+
+async function loadOwnerMessageInbox(){
+  if(state.actor?.type!=="owner")return toast("Only the main Owner can inspect private messages",false);
+  if(!state.selectedUser)return toast("Select a user first",false);
+  const d=await api("/api/owner/users/"+encodeURIComponent(state.selectedUser.id)+"/messages");
+  state.ownerMessageConversations=d.conversations||[];
+  state.ownerMessageThreadOtherId=null;
+  $("#ownerMessageThreadPanel").hidden=true;
+  $("#ownerMessageSummary").textContent=`${state.ownerMessageConversations.length} conversation(s) found. Opening a thread is also audited.`;
+  $("#ownerConversationList").innerHTML=state.ownerMessageConversations.length?state.ownerMessageConversations.map(row=>{
+    const id=row.other_user_id||"";
+    const name=row.other_name||"User";
+    const publicId=row.other_public_id||id;
+    const preview=row.preview||"(No text)";
+    const unread=Number(row.unread_for_user||0);
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(name)} · ID ${esc(publicId)} ${unread?`<span class="pill banned">${num(unread)} unread</span>`:""}</div><div class="item-meta">${esc(preview)}<br>${num(row.message_count||0)} messages · ${time(row.created_at)}</div></div><button class="secondary mini" data-owner-message-thread="${esc(id)}">Open Thread</button></div></div>`;
+  }).join(""):empty("No private conversations found for this user.");
+  document.querySelectorAll("[data-owner-message-thread]").forEach(b=>b.onclick=()=>loadOwnerMessageThread(b.dataset.ownerMessageThread).catch(e=>toast(e.message,false)));
+}
+
+async function loadOwnerMessageThread(otherId){
+  if(state.actor?.type!=="owner")return toast("Only the main Owner can inspect private messages",false);
+  if(!state.selectedUser)return;
+  const id=String(otherId||"").trim();
+  if(!id)return;
+  const d=await api("/api/owner/users/"+encodeURIComponent(state.selectedUser.id)+"/messages?other_user_id="+encodeURIComponent(id)+"&limit=1000");
+  state.ownerMessageThreadOtherId=id;
+  const other=d.other_user||{};
+  $("#ownerMessageThreadPanel").hidden=false;
+  $("#ownerMessageThreadTitle").textContent="Chat with "+(other.display_name||"User");
+  $("#ownerMessageThreadMeta").textContent=`ID ${other.public_id||other.id||id} · ${(d.messages||[]).length} message(s) · inspection does not change read status`;
+
+  const selectedId=String(state.selectedUser.id);
+  const timeline=[];
+  for(const m of d.messages||[]) timeline.push({type:"message",created_at:Number(m.created_at||0),data:m});
+  for(const e of d.red_envelopes||[]) timeline.push({type:"red",created_at:Number(e.created_at||0),data:e});
+  timeline.sort((a,b)=>a.created_at-b.created_at);
+
+  $("#ownerMessageThread").innerHTML=timeline.length?timeline.map(entry=>{
+    if(entry.type==="red"){
+      const e=entry.data;
+      const sender=String(e.sender_user_id)===selectedId?"Selected ID":"Other user";
+      return `<div class="item-card"><div class="item-title">🧧 Red Pocket · ${esc(sender)} → ${String(e.receiver_user_id)===selectedId?"Selected ID":"Other user"}</div><div class="item-meta">${num(e.amount)} coins · ${esc(e.status||"")} · ${time(e.created_at)}${e.claimed_at?" · claimed "+time(e.claimed_at):""}</div></div>`;
+    }
+    const m=entry.data;
+    const fromSelected=String(m.sender_user_id)===selectedId;
+    const senderName=m.sender_name||m.sender_public_id||m.sender_user_id||"User";
+    const receiverName=m.receiver_name||m.receiver_public_id||m.receiver_user_id||"User";
+    const readText=m.read_at?"Read "+time(m.read_at):"Unread";
+    const imageButton=m.image_key?`<button class="secondary mini" data-owner-message-image="${esc(m.image_key)}">View Photo</button>`:"";
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${fromSelected?"→":"←"} ${esc(senderName)} → ${esc(receiverName)}</div><div class="item-meta">${m.text?esc(m.text):"(Photo message)"}<br>${time(m.created_at)} · ${esc(readText)}${m.image_key?" · photo attached":""}</div></div>${imageButton}</div></div>`;
+  }).join(""):empty("No messages in this thread.");
+
+  $("#ownerMessageRedPockets").innerHTML=(d.red_envelopes||[]).length?(d.red_envelopes||[]).map(e=>`<div class="item-card"><div class="item-title">${num(e.amount)} coins · ${esc(e.status||"")}</div><div class="item-meta">${esc(e.sender_user_id)} → ${esc(e.receiver_user_id)} · ${time(e.created_at)}${e.claimed_at?" · claimed "+time(e.claimed_at):""}</div></div>`).join(""):empty("No Red Pocket history in this thread.");
+
+  document.querySelectorAll("[data-owner-message-image]").forEach(b=>b.onclick=()=>openOwnerMessageImage(b.dataset.ownerMessageImage));
+  $("#ownerMessageThreadPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+async function openOwnerMessageImage(key){
+  const popup=window.open("","_blank");
+  try{
+    if(popup){
+      popup.document.write("<title>DarkVibeX message photo</title><p>Loading protected message photo…</p>");
+    }
+    const blob=await apiBlob("/api/owner/message-media?key="+encodeURIComponent(key));
+    const url=URL.createObjectURL(blob);
+    if(popup) popup.location.href=url;
+    else window.location.href=url;
+    setTimeout(()=>URL.revokeObjectURL(url),120000);
+  }catch(error){
+    if(popup)popup.close();
+    toast(error.message,false);
+  }
+}
+
 function renderLedger(rows){$("#walletLedger").innerHTML=rows.length?`<div class="small-table">${rows.map(r=>`<div class="ledger-row"><span>${time(r.created_at)}</span><span>${esc(r.kind.replaceAll('_',' '))}</span><b>${Number(r.amount)>0?'+':''}${num(r.amount)} → ${num(r.balance_after)}</b></div>`).join("")}</div>`:empty("No coin ledger entries");}
 async function saveUserProfile(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/profile`,{method:"POST",body:JSON.stringify({display_name:$("#editUserName").value,role:$("#editUserRole").value,vip_level:Number($("#editVip").value||0)})});toast("User profile saved");await openUser(state.selectedUser.id);await loadUsers();}
 async function saveModeration(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
@@ -870,6 +967,8 @@ $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
 $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
 $("#saveUserOverrides").onclick=()=>saveUserOverrides().catch(e=>toast(e.message,false));
+$("#loadOwnerMessageInbox").onclick=()=>loadOwnerMessageInbox().catch(e=>toast(e.message,false));
+$("#closeOwnerMessageThread").onclick=()=>{$("#ownerMessageThreadPanel").hidden=true;state.ownerMessageThreadOtherId=null;};
 $("#reloadNotifications").onclick=()=>loadNotifications().catch(e=>toast(e.message,false));
 $("#searchMessageUsers").onclick=()=>searchMessagingUsers().catch(e=>toast(e.message,false));$("#messageUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchMessagingUsers().catch(x=>toast(x.message,false));});
 $("#sendOfficialSelected").onclick=()=>sendOfficialMessage(false).catch(e=>toast(e.message,false));$("#sendOfficialAll").onclick=()=>sendOfficialMessage(true).catch(e=>toast(e.message,false));$("#applyOwnerTag").onclick=()=>applyOwnerTag().catch(e=>toast(e.message,false));

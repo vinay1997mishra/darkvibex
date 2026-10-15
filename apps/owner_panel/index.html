@@ -92,6 +92,30 @@
             <h3>Live User Investigation</h3>
             <div id="userInvestigation" class="module-grid"></div>
             <div id="userInvestigationActivity" class="stack compact-stack"></div>
+            <div id="ownerPrivateMessages" hidden>
+              <hr />
+              <div class="panel-head">
+                <div>
+                  <h3>Private Message Inspection</h3>
+                  <p class="muted">Main Owner only. Viewing inbox, threads or photos is written to the Audit log. Inspection never marks the user's messages as read.</p>
+                </div>
+                <button id="loadOwnerMessageInbox" class="secondary">Load Message Inbox</button>
+              </div>
+              <p id="ownerMessageSummary" class="muted">Message history is not loaded until the Owner opens it.</p>
+              <div id="ownerConversationList" class="stack compact-stack"></div>
+              <div id="ownerMessageThreadPanel" hidden>
+                <div class="panel-head">
+                  <div>
+                    <h3 id="ownerMessageThreadTitle">Message Thread</h3>
+                    <p id="ownerMessageThreadMeta" class="muted"></p>
+                  </div>
+                  <button id="closeOwnerMessageThread" class="secondary">Back to Inbox</button>
+                </div>
+                <div id="ownerMessageThread" class="stack"></div>
+                <h3>Red Pocket / Envelope History</h3>
+                <div id="ownerMessageRedPockets" class="stack compact-stack"></div>
+              </div>
+            </div>
             <hr />
             <div class="form-grid">
               <label>Display name<input id="editUserName" /></label>
