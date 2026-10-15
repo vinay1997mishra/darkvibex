@@ -136,7 +136,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final otpSent = requestId != null && setupToken == null;
     final verified = setupToken != null;
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Reset password')),
       body: TinniBackground(
         child: SafeArea(
