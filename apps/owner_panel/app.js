@@ -433,6 +433,66 @@ async function connectOwnerToken(){
   await connectWithToken(token);
 }
 
+async function handleOwnerGoogleCredential(response){
+  const credential=String(response?.credential||"").trim();
+  if(!credential){
+    $("#googleOwnerStatus").textContent="Google Login could not be completed.";
+    return;
+  }
+  $("#googleOwnerStatus").textContent="Signing in…";
+  try{
+    const res=await fetch("/api/owner/google-login",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({id_token:credential})
+    });
+    const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
+    if(!res.ok||!data.ok)throw new Error(data.error||("HTTP "+res.status));
+    $("#googleOwnerStatus").textContent="";
+    await connectWithToken(data.token);
+  }catch(e){
+    $("#googleOwnerStatus").textContent=e.message==="owner_google_account_not_authorized"
+      ?"This Google account is not authorized for Main Owner access."
+      :"Google Login could not be completed.";
+  }
+}
+
+async function initOwnerGoogleLogin(attempt=0){
+  if(state.actor)return;
+  const googleApi=window.google?.accounts?.id;
+  if(!googleApi){
+    if(attempt<40)setTimeout(()=>initOwnerGoogleLogin(attempt+1),250);
+    return;
+  }
+  try{
+    const res=await fetch("/api/auth/config",{headers:{"accept":"application/json"}});
+    const data=await res.json();
+    const clientId=String(data?.google_web_client_id||"").trim();
+    if(!clientId){
+      $("#googleOwnerStatus").textContent="Google Login is temporarily unavailable.";
+      return;
+    }
+    googleApi.initialize({
+      client_id:clientId,
+      callback:handleOwnerGoogleCredential,
+      auto_select:false,
+      cancel_on_tap_outside:true
+    });
+    const target=$("#googleOwnerButton");
+    target.innerHTML="";
+    googleApi.renderButton(target,{
+      theme:"filled_black",
+      size:"large",
+      type:"standard",
+      shape:"pill",
+      text:"continue_with",
+      width:320
+    });
+  }catch(_){
+    $("#googleOwnerStatus").textContent="Google Login is temporarily unavailable.";
+  }
+}
+
 async function loadOverview(){
   const d=await api("/api/owner/overview");state.actor=d.actor||state.actor;actorCard();
   const labels=[["Users",d.stats.users],["Rooms",d.stats.rooms],["Online",d.stats.online],["Owner Treasury",d.stats.treasury],["Coins",d.stats.coins],["Diamonds",d.stats.diamonds],["Banned",d.stats.banned],["Gift events",d.stats.gifts],["Game bets",d.stats.bets]];
@@ -1517,4 +1577,9 @@ $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
 permissionObserver.observe(document.body,{childList:true,subtree:true});
 applyPanelBranding();
-if(state.token){connectWithToken(state.token);}else{showApp(false);}
+if(state.token){
+  connectWithToken(state.token);
+}else{
+  showApp(false);
+  initOwnerGoogleLogin();
+}
