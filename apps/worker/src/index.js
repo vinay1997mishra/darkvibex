@@ -8131,7 +8131,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
     const url = new URL(request.url);
 
-    const inviteLandingMatch = url.pathname.match(/^\/invite\/([1-9]\\d{6})$/);
+    const inviteLandingMatch = url.pathname.match(/^\/invite\/([1-9]\d{6})$/);
     if (inviteLandingMatch && request.method === "GET") {
       const invitationCode = inviteLandingMatch[1];
       const playUrl =
