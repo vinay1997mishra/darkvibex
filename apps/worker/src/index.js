@@ -555,6 +555,7 @@ async function effectiveGiftCatalog(db) {
       vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.vip_level ?? 0),
       category: String(row.data?.category ?? previous.category ?? "normal"),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
+      video_key: String(row.data?.video_key ?? previous.video_key ?? ""),
       starts_at: startsAt,
       ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
