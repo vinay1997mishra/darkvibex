@@ -195,10 +195,10 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
         : const <Map<String, dynamic>>[];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF36030A),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Invite & Share'),
-        backgroundColor: const Color(0xFF5B0712),
+        backgroundColor: const Color(0x66130A2A),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
