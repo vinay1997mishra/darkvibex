@@ -1275,9 +1275,10 @@ async function handleBanners(request, db, actor, parts) {
   return null;
 }
 
-async function handleGamesOwner(request, db, actor) {
+async function handleGamesOwner(request, db, actor, url) {
   if(request.method==="GET"){
     requirePermission(actor,"games.read");
+    const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
     const [catalog,bets]=await Promise.all([
       db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='game_config' ORDER BY sort_order,updated_at DESC").all(),
       db.prepare(
@@ -1286,7 +1287,42 @@ async function handleGamesOwner(request, db, actor) {
            FROM game_bets GROUP BY game_id ORDER BY wagered DESC LIMIT 100`
       ).all()
     ]);
-    return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? []});
+    let userInvestigation=null;
+    let userError=null;
+    if(userQuery){
+      const user=await db.prepare(
+        "SELECT id,public_id,display_name FROM users WHERE id=? OR public_id=? LIMIT 1"
+      ).bind(userQuery,userQuery).first();
+      if(!user){
+        userError="user_not_found";
+      }else{
+        const [summary,recent,byGame]=await Promise.all([
+          db.prepare(
+            `SELECT COUNT(*) AS bet_count,COALESCE(SUM(stake),0) AS wagered,
+                    COALESCE(SUM(payout),0) AS payout,COALESCE(SUM(stake-payout),0) AS house_result
+               FROM game_bets WHERE user_id=?`
+          ).bind(user.id).first(),
+          db.prepare(
+            "SELECT game_id,stake,result,payout,created_at FROM game_bets WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
+          ).bind(user.id).all(),
+          db.prepare(
+            `SELECT game_id,COUNT(*) AS bets,COALESCE(SUM(stake),0) AS wagered,
+                    COALESCE(SUM(payout),0) AS payout,COALESCE(SUM(stake-payout),0) AS house_result
+               FROM game_bets WHERE user_id=? GROUP BY game_id ORDER BY wagered DESC LIMIT 100`
+          ).bind(user.id).all(),
+        ]);
+        userInvestigation={
+          user:{id:String(user.id),public_id:user.public_id,display_name:user.display_name},
+          bet_count:Number(summary?.bet_count ?? 0),
+          wagered:Number(summary?.wagered ?? 0),
+          payout:Number(summary?.payout ?? 0),
+          house_result:Number(summary?.house_result ?? 0),
+          by_game:byGame.results ?? [],
+          recent:recent.results ?? [],
+        };
+      }
+    }
+    return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? [],user_investigation:userInvestigation,user_error:userError});
   }
   if(request.method==="POST"){
     requirePermission(actor,"games.write");
@@ -1913,7 +1949,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
     else if (parts[2] === "roles-posts") response = await handleRolesPosts(request, db, actor, url, parts);
     else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
-    else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor);
+    else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor, url);
     else if (parts[2] === "policies") response = await handlePoliciesOwner(request, db, actor, parts);
     else if (parts[2] === "pricing-overrides") response = await handlePricingOverrides(request, db, actor, url, parts);
     else if (parts[2] === "vip-rules") response = await handleVipRules(request, db, actor, parts);
