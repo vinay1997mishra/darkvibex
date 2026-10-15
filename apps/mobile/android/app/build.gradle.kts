@@ -60,4 +60,6 @@ flutter {
 dependencies {
     // 24.1.2 keeps Android API 21 compatibility while providing native FCM delivery.
     implementation("com.google.firebase:firebase-messaging:24.1.2")
+    // Official Google Play Install Referrer client. Carries invite_code through install.
+    implementation("com.android.installreferrer:installreferrer:2.2")
 }
