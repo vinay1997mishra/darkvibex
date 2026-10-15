@@ -4,6 +4,7 @@ import { adjustRoleWallet, roleWalletDetail } from "./role_wallets.js";
 import { COSMETIC_CATALOG } from "./cosmetics.js";
 import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
+import { VIP_LEVELS } from "./vip_policy.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -1225,6 +1226,74 @@ async function handlePoliciesOwner(request, db, actor, parts) {
   return null;
 }
 
+
+async function handleVipRules(request, db, actor, parts) {
+  if (request.method === "GET") {
+    requirePermission(actor,"catalog.read");
+    const overrides=await db.prepare(
+      "SELECT id,name,enabled,json_data,updated_at FROM owner_catalog WHERE kind='vip_rule' ORDER BY CAST(id AS INTEGER) ASC"
+    ).all();
+    const byLevel=new Map((overrides.results ?? []).map(row=>[Number(row.id),row]));
+    const levels=VIP_LEVELS.map(base=>{
+      const row=byLevel.get(Number(base.level));
+      const data=safeParse(row?.json_data,{});
+      return {
+        level:Number(base.level),
+        id:String(base.level),
+        name:String(row?.name ?? ("VIP "+base.level)),
+        enabled:row==null ? 1 : Number(row.enabled ?? 1),
+        upgrade_exp:Number(data.upgrade_exp ?? base.upgrade),
+        maintain_exp:Number(data.maintain_exp ?? base.maintain),
+        validity_days:Number(data.validity_days ?? base.days),
+        entry_id:String(data.entry_id ?? ""),
+        frame_id:String(data.frame_id ?? ""),
+        updated_at:Number(row?.updated_at ?? 0),
+        source:row ? "owner" : "base",
+      };
+    });
+    return json({ok:true,levels});
+  }
+  if (request.method === "POST") {
+    requirePermission(actor,"catalog.write");
+    const body=await bodyJson(request);
+    const level=clampInt(body.level,1,18,0);
+    if(level<1||level>18)return json({ok:false,error:"vip_level_must_be_1_to_18"},{status:400});
+    const base=VIP_LEVELS[level-1];
+    const upgrade=Number(body.upgrade_exp);
+    const maintain=Number(body.maintain_exp);
+    const days=Number(body.validity_days);
+    if(!Number.isSafeInteger(upgrade)||upgrade<0)return json({ok:false,error:"invalid_upgrade_exp"},{status:400});
+    if(!Number.isSafeInteger(maintain)||maintain<0)return json({ok:false,error:"invalid_maintain_exp"},{status:400});
+    if(!Number.isSafeInteger(days)||days<1||days>3650)return json({ok:false,error:"invalid_validity_days"},{status:400});
+    const name=String(body.name ?? ("VIP "+level)).trim().slice(0,80)||("VIP "+level);
+    const data={
+      upgrade_exp:upgrade,
+      maintain_exp:maintain,
+      validity_days:days,
+      entry_id:String(body.entry_id ?? "").trim().slice(0,120),
+      frame_id:String(body.frame_id ?? "").trim().slice(0,120),
+      base_total:Number(base?.total ?? 0),
+    };
+    await db.prepare(
+      `INSERT INTO owner_catalog(kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at)
+       VALUES('vip_rule',?,?,?,?,0,'',?,?)
+       ON CONFLICT(kind,id) DO UPDATE SET name=excluded.name,enabled=excluded.enabled,
+         sort_order=excluded.sort_order,json_data=excluded.json_data,updated_at=excluded.updated_at`
+    ).bind(String(level),name,body.enabled===false?0:1,level,JSON.stringify(data),now()).run();
+    await audit(db,actor,"vip_rule_update","vip",String(level),
+      `upgrade_exp=${upgrade}; maintain_exp=${maintain}; days=${days}; enabled=${body.enabled!==false}`);
+    return json({ok:true,level});
+  }
+  const level=clampInt(decodeURIComponent(parts[3] ?? ""),1,18,0);
+  if(level && request.method==="DELETE"){
+    requirePermission(actor,"catalog.write");
+    await db.prepare("DELETE FROM owner_catalog WHERE kind='vip_rule' AND id=?").bind(String(level)).run();
+    await audit(db,actor,"vip_rule_reset","vip",String(level),"reset to base rule");
+    return json({ok:true,level,reset:true});
+  }
+  return null;
+}
+
 function baseStoreItems(kind) {
   const k=String(kind ?? "").trim();
   if (k==="gift") {
@@ -1630,6 +1699,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
     else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor);
     else if (parts[2] === "policies") response = await handlePoliciesOwner(request, db, actor, parts);
+    else if (parts[2] === "vip-rules") response = await handleVipRules(request, db, actor, parts);
     else if (parts[2] === "economy") response = await handleEconomy(request, db, actor);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
     else if (parts[2] === "store") response = await handleStore(request, db, actor, url, parts);
