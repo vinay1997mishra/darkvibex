@@ -754,10 +754,13 @@ async function handleRooms(request, db, actor, url, parts) {
       `SELECT r.*,COALESCE(u.display_name,'') AS owner_name,ri.image_key,
               COALESCE(rs.theme_id,'dark') AS theme_id,COALESCE(rs.announcement,'') AS announcement,
               COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
-              COALESCE(rs.room_mode,'voice') AS room_mode,COALESCE(rs.lock_password_code,'') AS lock_code
+              COALESCE(rs.room_mode,'voice') AS room_mode,COALESCE(rs.lock_password_code,'') AS lock_code,
+              COALESCE(ct.asset_key,'') AS background_key
          FROM rooms r LEFT JOIN users u ON u.id=r.owner_user_id
          LEFT JOIN room_images ri ON ri.room_id=r.id
-         LEFT JOIN room_settings rs ON rs.room_id=r.id WHERE r.id=?`
+         LEFT JOIN room_settings rs ON rs.room_id=r.id
+         LEFT JOIN room_custom_themes ct ON ct.id=rs.theme_id AND ct.room_id=r.id
+        WHERE r.id=?`
     ).bind(roomId).first();
     if(!room) return json({ok:false,error:"not_found"},{status:404});
     const members=await db.prepare(
