@@ -18,7 +18,7 @@ class InviteReferralService {
   bool _disposed = false;
 
   Future<void> initialize() async {
-    await _channel.setMethodCallHandler((call) async {
+    _channel.setMethodCallHandler((call) async {
       if (call.method == 'inviteCode') {
         await _capture(call.arguments?.toString());
       }
@@ -93,6 +93,6 @@ class InviteReferralService {
   void dispose() {
     _disposed = true;
     state.removeListener(_onStateChanged);
-    unawaited(_channel.setMethodCallHandler(null));
+    _channel.setMethodCallHandler(null);
   }
 }
