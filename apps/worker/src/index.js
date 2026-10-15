@@ -1173,7 +1173,8 @@ async function listRooms(db, viewerUserId) {
   if (!viewerCountry) return [];
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
-            u.public_id AS display_id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS display_id,
+            COALESCE(io.invisible_id,0) AS owner_invisible_id,
             ri.image_key AS avatar_key,
             COALESCE(rs.party_mode, 'Friends-making Party') AS party_mode,
             COALESCE(rs.room_mode, 'voice') AS room_mode,
@@ -1183,6 +1184,7 @@ async function listRooms(db, viewerUserId) {
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id = u.id
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
@@ -1193,9 +1195,10 @@ async function listRooms(db, viewerUserId) {
   const rows = result.results ?? [];
   for (const row of rows) {
     const currentDisplayId = String(row.display_id ?? "").trim();
-    if (!/^[1-9]\d{6}$/.test(currentDisplayId)) {
+    if (Number(row.owner_invisible_id ?? 0) !== 1 && !/^[1-9]\d{6}$/.test(currentDisplayId)) {
       row.display_id = await ensureUserPublicId(db, String(row.owner_user_id ?? ""));
     }
+    delete row.owner_invisible_id;
   }
   return rows;
 }
@@ -3589,7 +3592,8 @@ async function handleApi(request, env, url) {
     if (!viewerCountry) return json({ ok:true,rooms:[] });
     const rows = await db.prepare(
       `SELECT r.id,r.name,
-              u.public_id AS display_id,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS display_id,
+              COALESCE(io.invisible_id,0) AS owner_invisible_id,
               COALESCE(u.display_name,'Owner') AS owner_name,
               r.owner_user_id,
               COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
@@ -3602,6 +3606,7 @@ async function handleApi(request, env, url) {
          FROM room_followers rf
          JOIN rooms r ON r.id=rf.room_id
          LEFT JOIN users u ON u.id=r.owner_user_id
+         LEFT JOIN owner_user_overrides io ON io.user_id=u.id
          LEFT JOIN room_images ri ON ri.room_id=r.id
          LEFT JOIN room_settings s ON s.room_id=r.id
         WHERE rf.user_id=? AND r.country_code=?
@@ -3610,9 +3615,10 @@ async function handleApi(request, env, url) {
     const followedRooms = rows.results ?? [];
     for (const room of followedRooms) {
       const currentDisplayId = String(room.display_id ?? "").trim();
-      if (!/^[1-9]\d{6}$/.test(currentDisplayId)) {
+      if (Number(room.owner_invisible_id ?? 0) !== 1 && !/^[1-9]\d{6}$/.test(currentDisplayId)) {
         room.display_id = await ensureUserPublicId(db, String(room.owner_user_id ?? ""));
       }
+      delete room.owner_invisible_id;
     }
     return json({ ok:true,rooms:followedRooms });
   }
@@ -5416,6 +5422,7 @@ async function handleApi(request, env, url) {
                   LIMIT 1) AS active_bubble_id
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
@@ -5497,7 +5504,11 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 14 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.invisible_entry') = 1
                      THEN 1 ELSE 0 END AS invisible_entry,
-                COALESCE(NULLIF(u.public_id,''), m.user_id) AS public_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1
+                     THEN ''
+                     ELSE COALESCE(NULLIF(u.public_id,''), m.user_id)
+                END AS public_id,
+                COALESCE(io.invisible_id,0) AS owner_invisible_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
@@ -6693,13 +6704,16 @@ async function handleApi(request, env, url) {
     await ensureTinniSocialSchema(db);
     const vip = await getVipStatus(db, userId, now());
     const friends = await db.prepare(
-      `SELECT u.id,u.public_id,u.display_name,u.avatar_key,u.vip_level,
+      `SELECT u.id,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS public_id,
+              u.display_name,u.avatar_key,u.vip_level,
               MAX(a.created_at,b.created_at) AS created_at
          FROM user_follows a
          JOIN user_follows b
            ON b.follower_id=a.target_id
           AND b.target_id=a.follower_id
          JOIN users u ON u.id=a.target_id
+         LEFT JOIN owner_user_overrides io ON io.user_id=u.id
         WHERE a.follower_id=?
         ORDER BY created_at DESC
         LIMIT 1000`
