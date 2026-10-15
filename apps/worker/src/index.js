@@ -1215,6 +1215,7 @@ async function ensureImageTables(db) {
 }
 
 async function listRooms(db, viewerUserId) {
+  await ensureOwnerControlSchema(db);
   await ensureImageTables(db);
   await ensureRoomSettingsTable(db);
   await ensureVipSchema(db);
@@ -3636,6 +3637,7 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureLampSchema(db);
+    await ensureOwnerControlSchema(db);
     await ensureRoomSettingsTable(db);
     await ensureImageTables(db);
     const viewer = await db.prepare(
@@ -5315,6 +5317,7 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureUser(db, userId, String(body.display_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, userId);
+    await ensureOwnerControlSchema(db);
     await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
       `SELECT r.owner_user_id,r.locked,r.country_code,
@@ -5577,6 +5580,7 @@ async function handleApi(request, env, url) {
     if (request.method === "GET") {
       await ensureVipSchema(db);
       await ensureCosmeticsSchema(db);
+      await ensureOwnerControlSchema(db);
       await ensureRoomControlTables(db, roomId);
       const authError = await requireSession(request, env);
       if (authError) return authError;
@@ -5612,6 +5616,7 @@ async function handleApi(request, env, url) {
                 CASE WHEN cb.user_id IS NULL THEN 0 ELSE 1 END AS chat_banned
            FROM room_members m
            LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN rooms r ON r.id = m.room_id
            LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
