@@ -23,8 +23,11 @@
         <button class="nav-btn" data-view="policies">Policies</button>
         <button class="nav-btn" data-view="wallets">Wallets / Treasury</button>
         <button class="nav-btn" data-view="economy">Unique ID / Coin Rate</button>
+        <button class="nav-btn" data-view="vip">VIP Manager</button>
+        <button class="nav-btn" data-view="gifts">Gifts</button>
+        <button class="nav-btn" data-view="assets">Entries / Frames</button>
         <button class="nav-btn" data-view="store">App Store</button>
-        <button class="nav-btn" data-view="catalog">VIP / Gifts / Assets</button>
+        <button class="nav-btn" data-view="catalog">Advanced Catalog</button>
         <button class="nav-btn" data-view="settings">Master Switches</button>
         <button class="nav-btn" data-view="announcements">Announcements</button>
         <button class="nav-btn" data-view="support">VIP Support</button>
@@ -274,6 +277,69 @@
           </div>
         </section>
 
+
+        <section class="view" data-view-panel="vip">
+          <article class="panel">
+            <div class="panel-head"><div><h2>VIP1–VIP18 Manager</h2><p>Edit the actual level-up rule consumed by DarkVibeX: required EXP, maintenance EXP, validity, entry and frame. Levels remain fixed to VIP1–VIP18.</p></div><button id="reloadVipRules" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>VIP level<input id="vipRuleLevel" type="number" min="1" max="18" value="1" /></label>
+              <label>Display name<input id="vipRuleName" value="VIP 1" /></label>
+              <label>Upgrade EXP<input id="vipRuleUpgradeExp" type="number" min="0" step="1" /></label>
+              <label>Maintenance EXP<input id="vipRuleMaintainExp" type="number" min="0" step="1" /></label>
+              <label>Validity days<input id="vipRuleValidityDays" type="number" min="1" max="3650" value="30" /></label>
+              <label>Entry / vehicle ID<input id="vipRuleEntryId" placeholder="Optional store item ID" /></label>
+              <label>Frame ID<input id="vipRuleFrameId" placeholder="Optional frame item ID" /></label>
+              <label class="check"><input id="vipRuleEnabled" type="checkbox" checked /> Level enabled</label>
+            </div>
+            <div class="action-row"><button id="saveVipRule" class="primary">Save VIP Rule</button><button id="resetVipRule" class="secondary">Reset Selected Level to Base</button></div>
+          </article>
+          <article class="panel"><div class="panel-head"><div><h2>VIP Rules</h2><p>Changing these values changes backend VIP leveling/renewal logic.</p></div></div><div id="vipRuleList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="gifts">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Gift Catalog</h2><p>Add/edit/remove, enable/disable and schedule DarkVibeX gifts. Lucky Gift is intentionally excluded.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>Gift ID<input id="giftId" placeholder="Unique gift ID" /></label>
+              <label>Name<input id="giftName" /></label>
+              <label>Coin price<input id="giftPrice" type="number" min="0" value="0" /></label>
+              <label>Minimum VIP<input id="giftVip" type="number" min="0" max="18" value="0" /></label>
+              <label>Emoji<input id="giftEmoji" placeholder="Optional" /></label>
+              <label>Category<input id="giftCategory" placeholder="normal / exclusive / custom" /></label>
+              <label>Asset / DP key<input id="giftAsset" placeholder="R2 / CDN / asset key" /></label>
+              <label>Sort order<input id="giftOrder" type="number" value="0" /></label>
+              <label>Start timestamp (ms)<input id="giftStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="giftEnd" type="number" /></label>
+              <label class="check"><input id="giftEnabled" type="checkbox" checked /> Enabled</label>
+              <label class="span-2">Description<textarea id="giftDescription" rows="3"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveGift" class="primary">Add / Save Gift</button><button id="clearGift" class="secondary">Clear</button></div>
+          </article>
+          <article class="panel"><div id="giftList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="assets">
+          <article class="panel">
+            <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Manage vehicles, entry effects, profile cards, rings, chat bubbles, profile backgrounds and frames used by the live app store.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>Asset type<select id="assetKind"><option value="vehicle">Vehicle</option><option value="entry">Entry effect</option><option value="frame">Frame</option><option value="profile_card">Profile card</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="profile_background">Profile background</option></select></label>
+              <label>Item ID<input id="assetId" placeholder="Unique item ID" /></label>
+              <label>Name<input id="assetName" /></label>
+              <label>Price in coins<input id="assetPrice" type="number" min="0" value="0" /></label>
+              <label>Minimum VIP<input id="assetVip" type="number" min="0" max="18" value="0" /></label>
+              <label>Validity days<input id="assetDuration" type="number" min="0" value="30" /></label>
+              <label>Tier<input id="assetTier" type="number" min="0" value="0" /></label>
+              <label>Sort order<input id="assetOrder" type="number" value="0" /></label>
+              <label>Asset / file key<input id="assetFileKey" placeholder="R2 / CDN / asset key" /></label>
+              <label>Start timestamp (ms)<input id="assetStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="assetEnd" type="number" /></label>
+              <label class="check"><input id="assetEnabled" type="checkbox" checked /> Enabled</label>
+              <label class="span-2">Description<textarea id="assetDescription" rows="3"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveAsset" class="primary">Add / Save Asset</button><button id="clearAsset" class="secondary">Clear</button></div>
+          </article>
+          <article class="panel"><div id="assetList" class="stack"></div></article>
+        </section>
 
         <section class="view" data-view-panel="store">
           <article class="panel">
