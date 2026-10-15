@@ -444,7 +444,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     final avatar = currentAvatar();
     final cover = _mediaProvider(media['cover']);
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Personal profile'),
         actions: [
