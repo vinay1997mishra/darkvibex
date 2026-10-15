@@ -533,6 +533,7 @@ async function effectiveCosmeticCatalog(db) {
   );
 }
 
+// CP ring presentation metadata is resolved here so every client screen shares one selected ring.
 async function cpStateWithRing(db, userId) {
   const cp = await cpState(db, userId);
   if (!cp) return null;
