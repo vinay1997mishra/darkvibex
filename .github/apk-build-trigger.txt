@@ -1,1 +1,1 @@
-Trigger DarkVibeX APK build after weekly sign-in reward receipt modal.
+Trigger DarkVibeX APK build after seven daily reward picture integration.
