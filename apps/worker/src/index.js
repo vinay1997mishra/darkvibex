@@ -1333,6 +1333,170 @@ async function ensureCustomGiftSchema(db) {
   ]);
 }
 
+const WEEKLY_SIGN_IN_REWARDS = Object.freeze([
+  70000,
+  90000,
+  100000,
+  120000,
+  150000,
+  180000,
+  250000,
+]);
+const WEEKLY_SIGN_IN_DAY_MS = 24 * 60 * 60 * 1000;
+
+function weeklySignInEpochDay(ts = now()) {
+  return Math.floor(Number(ts) / WEEKLY_SIGN_IN_DAY_MS);
+}
+
+async function ensureWeeklySignInSchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS weekly_signin_state (
+      user_id TEXT PRIMARY KEY,
+      streak_day INTEGER NOT NULL DEFAULT 0,
+      last_claim_epoch_day INTEGER NOT NULL DEFAULT -1,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS weekly_signin_claims (
+      user_id TEXT NOT NULL,
+      claim_epoch_day INTEGER NOT NULL,
+      day_number INTEGER NOT NULL,
+      reward INTEGER NOT NULL,
+      claim_key TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, claim_epoch_day),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_weekly_signin_claims_user_time ON weekly_signin_claims(user_id, created_at DESC)"
+    ),
+  ]);
+}
+
+async function weeklySignInStatus(db, userId, ts = now()) {
+  await ensureWeeklySignInSchema(db);
+  const today = weeklySignInEpochDay(ts);
+  const row = await db.prepare(
+    "SELECT streak_day,last_claim_epoch_day FROM weekly_signin_state WHERE user_id=? LIMIT 1"
+  ).bind(userId).first();
+
+  if (!row) {
+    return {
+      current_day: 1,
+      claimed_through: 0,
+      claimed_today: false,
+      can_claim: true,
+      rewards: WEEKLY_SIGN_IN_REWARDS,
+    };
+  }
+
+  const streakDay = Math.min(7, Math.max(1, Number(row.streak_day ?? 1)));
+  const lastClaimDay = Number(row.last_claim_epoch_day ?? -1);
+
+  if (lastClaimDay === today) {
+    return {
+      current_day: streakDay,
+      claimed_through: streakDay,
+      claimed_today: true,
+      can_claim: false,
+      rewards: WEEKLY_SIGN_IN_REWARDS,
+    };
+  }
+
+  if (lastClaimDay === today - 1) {
+    const cycleRestart = streakDay >= 7;
+    return {
+      current_day: cycleRestart ? 1 : streakDay + 1,
+      claimed_through: cycleRestart ? 0 : streakDay,
+      claimed_today: false,
+      can_claim: true,
+      rewards: WEEKLY_SIGN_IN_REWARDS,
+    };
+  }
+
+  return {
+    current_day: 1,
+    claimed_through: 0,
+    claimed_today: false,
+    can_claim: true,
+    rewards: WEEKLY_SIGN_IN_REWARDS,
+  };
+}
+
+async function claimWeeklySignIn(db, userId, ts = now()) {
+  await ensureWeeklySignInSchema(db);
+  await ensureWalletLedgerSchema(db);
+  const status = await weeklySignInStatus(db, userId, ts);
+  const today = weeklySignInEpochDay(ts);
+
+  if (status.claimed_today) {
+    const user = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+    return {
+      ok: true,
+      duplicate: true,
+      reward: 0,
+      coin_balance: Number(user?.coins ?? 0),
+      ...status,
+    };
+  }
+
+  const dayNumber = Number(status.current_day);
+  const reward = Number(WEEKLY_SIGN_IN_REWARDS[dayNumber - 1] ?? 0);
+  const claimKey = id();
+
+  await db.batch([
+    db.prepare(
+      `INSERT OR IGNORE INTO weekly_signin_claims(
+        user_id,claim_epoch_day,day_number,reward,claim_key,created_at
+      ) VALUES(?,?,?,?,?,?)`
+    ).bind(userId, today, dayNumber, reward, claimKey, ts),
+    db.prepare(
+      `INSERT OR REPLACE INTO weekly_signin_state(
+        user_id,streak_day,last_claim_epoch_day,updated_at
+      )
+      SELECT ?,?,?,?
+      WHERE EXISTS(
+        SELECT 1 FROM weekly_signin_claims WHERE claim_key=?
+      )`
+    ).bind(userId, dayNumber, today, ts, claimKey),
+    db.prepare(
+      `UPDATE users
+          SET coins=coins+?,updated_at=?
+        WHERE id=?
+          AND EXISTS(
+            SELECT 1 FROM weekly_signin_claims WHERE claim_key=?
+          )`
+    ).bind(reward, ts, userId, claimKey),
+    db.prepare(
+      `INSERT INTO wallet_ledger(
+        id,user_id,kind,amount,balance_after,reference_id,created_at
+      )
+      SELECT ?,u.id,'weekly_signin',?,u.coins,?,?
+        FROM users u
+       WHERE u.id=?
+         AND EXISTS(
+           SELECT 1 FROM weekly_signin_claims WHERE claim_key=?
+         )`
+    ).bind(id(), reward, `weekly-signin:${today}`, ts, userId, claimKey),
+  ]);
+
+  const claim = await db.prepare(
+    "SELECT claim_key,day_number,reward FROM weekly_signin_claims WHERE user_id=? AND claim_epoch_day=? LIMIT 1"
+  ).bind(userId, today).first();
+  const user = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+  const current = await weeklySignInStatus(db, userId, ts);
+  const ownClaim = String(claim?.claim_key ?? "") === claimKey;
+
+  return {
+    ok: true,
+    duplicate: !ownClaim,
+    reward: ownClaim ? Number(claim?.reward ?? reward) : 0,
+    claimed_day: Number(claim?.day_number ?? dayNumber),
+    coin_balance: Number(user?.coins ?? 0),
+    ...current,
+  };
+}
+
 async function walletChange(db, userId, amount, kind, referenceId = null) {
   const user = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
   if (!user) throw new Error("user_not_found");
@@ -6460,6 +6624,28 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, receiverId);
     const usage = await consumeFreeSayHi(db, userId, receiverId, body.message);
     return json({ ok: true, usage });
+  }
+
+  if (url.pathname === "/api/rewards/weekly-signin" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json({
+      ok: true,
+      ...(await weeklySignInStatus(db, userId, now())),
+    });
+  }
+
+  if (url.pathname === "/api/rewards/weekly-signin" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await claimWeeklySignIn(db, userId, now()));
   }
 
   if (url.pathname === "/api/wallet/coins/history" && request.method === "GET") {
