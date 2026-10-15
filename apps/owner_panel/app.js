@@ -545,7 +545,7 @@ async function applyRoleWallet(){
 }
 
 async function loadRooms(){
-  if(!can("rooms.read"))return;
+  if(!can("rooms.view"))return;
   const q=$("#roomSearch").value.trim();
   const d=await api("/api/owner/rooms?q="+encodeURIComponent(q));
   $("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.banned)?"banned":(Number(r.locked)?"banned":"active")}">${Number(r.banned)?"BANNED":(Number(r.locked)?"Locked":"Open")}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-live="${esc(r.id)}">Investigate</button><button class="${Number(r.banned)?"secondary":"danger"} mini" data-room-ban="${esc(r.id)}" data-banned="${Number(r.banned)}">${Number(r.banned)?"Unban":"Ban"}</button><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?"Unlock":"Lock"}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
@@ -584,7 +584,7 @@ async function saveOwnerRoomTheme(){
 }
 
 async function loadWallets(){
-  if(!can("treasury.read"))return;
+  if(!can("treasury.view"))return;
   const d=await api("/api/owner/treasury");
   state.treasury=d.treasury||{balance:0};
   $("#treasuryBalance").textContent=num(state.treasury.balance||0);
@@ -593,10 +593,10 @@ async function loadWallets(){
   const ownerOnly=state.actor?.role==="owner";
   $("#treasuryAdd").hidden=!ownerOnly;
   $("#treasuryDeduct").hidden=!ownerOnly;
-  $("#treasurySend").disabled=!can("treasury.write");
+  $("#treasurySend").disabled=!can("treasury.send");
 }
 async function treasuryAction(action){
-  if(!can("treasury.write"))return toast("Treasury write permission required",false);
+  if(!can("treasury.send"))return toast("Treasury write permission required",false);
   const amount=Number($("#treasuryAmount").value||0);
   if(!Number.isFinite(amount)||amount<=0)return toast("Enter a valid amount",false);
   const payload={action,amount,user_id:$("#treasuryUserId").value.trim(),note:$("#treasuryNote").value.trim()};
@@ -611,13 +611,13 @@ async function treasuryAction(action){
 
 
 async function loadEconomy(){
-  if(!can("economy.read"))return;
+  if(!can("economy.view"))return;
   const d=await api("/api/owner/economy");
   const rate=Number(d.coins_per_usd||5000000);
   $("#coinRateCoinsPerUsd").value=String(rate);
   renderCoinRate(rate,d.updated_at);
-  $("#saveCoinRate").disabled=!can("economy.write");
-  if(!can("users.read")){
+  $("#saveCoinRate").disabled=!can("economy.coin_rate.edit");
+  if(!can("users.search")){
     $("#economyUserSearch").disabled=true;
     $("#searchEconomyUsers").disabled=true;
     $("#economyUserResults").innerHTML=empty("Users read permission is required for Unique ID lookup.");
@@ -628,7 +628,7 @@ function renderCoinRate(rate,updatedAt){
   $("#coinRateSummary").textContent=`Current rate: $1 = ${num(rate)} coins · 1,000,000 coins ≈ $${perMillion.toFixed(4)}${updatedAt?" · Updated "+time(updatedAt):""}`;
 }
 async function searchEconomyUsers(){
-  if(!can("users.read"))return toast("Users read permission required",false);
+  if(!can("users.search"))return toast("Users read permission required",false);
   const q=$("#economyUserSearch").value.trim();
   if(!q)return toast("Enter a user name or ID",false);
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=30");
@@ -644,11 +644,11 @@ async function selectEconomyUser(id){
   const old=(d.user.old_public_ids||[]).map(x=>x.public_id).join(", ");
   $("#economySelectedUserMeta").textContent=`Internal ID ${d.user.id} · Current public ID ${d.user.public_id||"—"}${old?" · Old IDs: "+old:""}`;
   $("#economyPublicId").value=d.user.public_id||"";
-  $("#saveEconomyPublicId").disabled=!can("users.write");
+  $("#saveEconomyPublicId").disabled=!can("users.public_id.change");
 }
 async function saveEconomyPublicId(){
   if(!state.economyUser)return toast("Select a user first",false);
-  if(!can("users.write"))return toast("Users write permission required",false);
+  if(!can("users.public_id.change"))return toast("Users write permission required",false);
   const publicId=$("#economyPublicId").value.trim();
   if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Unique ID must be between 1000001 and 9999999",false);
   await api(`/api/owner/users/${encodeURIComponent(state.economyUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});
@@ -657,7 +657,7 @@ async function saveEconomyPublicId(){
   await searchEconomyUsers();
 }
 async function saveCoinRate(){
-  if(!can("economy.write"))return toast("Economy write permission required",false);
+  if(!can("economy.coin_rate.edit"))return toast("Economy write permission required",false);
   const rate=Number($("#coinRateCoinsPerUsd").value);
   if(!Number.isSafeInteger(rate)||rate<1)return toast("Enter a valid whole-number coin rate",false);
   const d=await api("/api/owner/economy",{method:"POST",body:JSON.stringify({coins_per_usd:rate})});
@@ -681,7 +681,7 @@ function clearStoreForm(){
   $("#storeEnabled").checked=true;
 }
 async function loadStore(){
-  if(!can("catalog.read"))return;
+  if(!can("catalog.view"))return;
   const kind=$("#storeKind").value.trim();
   if(!kind)return;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
@@ -720,7 +720,7 @@ function editStoreItem(id){
   $("#storeId").scrollIntoView({behavior:"smooth",block:"center"});
 }
 async function saveStoreItem(){
-  if(!can("catalog.write"))return toast("Store write permission required",false);
+  if(!can("catalog.save"))return toast("Store write permission required",false);
   const kind=$("#storeKind").value.trim();
   const itemId=$("#storeId").value.trim();
   const name=$("#storeName").value.trim()||itemId;
@@ -750,7 +750,7 @@ async function saveStoreItem(){
   await loadStore();
 }
 async function removeStoreItem(id){
-  if(!can("catalog.write"))return toast("Store write permission required",false);
+  if(!can("catalog.save"))return toast("Store write permission required",false);
   const kind=$("#storeKind").value.trim();
   if(!confirm("Remove this item from the app store?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});
@@ -771,7 +771,7 @@ function fillVipRuleForm(rule){
   $("#vipRuleEnabled").checked=Number(rule.enabled)!==0;
 }
 async function loadVipRules(){
-  if(!can("catalog.read"))return;
+  if(!can("catalog.view"))return;
   const d=await api("/api/owner/vip-rules");
   state.vipRules=d.levels||[];
   $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Level ${num(rule.level)} · upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}${rule.entry_id?" · entry "+esc(rule.entry_id):""}${rule.frame_id?" · frame "+esc(rule.frame_id):""}</div></div><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button></div></div>`).join(""):empty("No VIP rules");
@@ -780,7 +780,7 @@ async function loadVipRules(){
   if(selected)fillVipRuleForm(selected);
 }
 async function saveVipRule(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   const level=Number($("#vipRuleLevel").value);
   const upgrade=Number($("#vipRuleUpgradeExp").value);
   const maintain=Number($("#vipRuleMaintainExp").value);
@@ -798,7 +798,7 @@ async function saveVipRule(){
   await loadVipRules();
 }
 async function resetVipRule(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   const level=Number($("#vipRuleLevel").value);
   if(!Number.isSafeInteger(level)||level<1||level>18)return toast("Select VIP1–VIP18",false);
   if(!confirm("Reset VIP "+level+" to the DarkVibeX base rule?"))return;
@@ -813,7 +813,7 @@ function clearGiftForm(){
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
 }
 async function loadGifts(){
-  if(!can("catalog.read"))return;
+  if(!can("catalog.view"))return;
   const d=await api("/api/owner/store?kind=gift");
   state.giftItems=d.items||[];
   $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
@@ -832,7 +832,7 @@ function editGift(id){
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
 async function saveGift(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   const id=$("#giftId").value.trim(),name=$("#giftName").value.trim()||id;
   if(!id||!name)return toast("Gift ID and name are required",false);
   const starts=Number($("#giftStart").value||0)||null,ends=Number($("#giftEnd").value||0)||null;
@@ -844,7 +844,7 @@ async function saveGift(){
   toast("Gift saved to live catalog");clearGiftForm();await loadGifts();
 }
 async function removeGift(id){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   if(!confirm("Remove this gift from the app?"))return;
   await api("/api/owner/store/gift/"+encodeURIComponent(id),{method:"DELETE"});toast("Gift removed");await loadGifts();
 }
@@ -855,7 +855,7 @@ function clearAssetForm(){
   $("#assetEnabled").checked=true;$("#assetDescription").value="";
 }
 async function loadAssets(){
-  if(!can("catalog.read"))return;
+  if(!can("catalog.view"))return;
   const kind=$("#assetKind").value;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.assetItems=d.items||[];
@@ -875,7 +875,7 @@ function editAsset(id){
   $("#assetEnabled").checked=Number(item.enabled)!==0;$("#assetDescription").value=d.description||"";
 }
 async function saveAsset(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   const kind=$("#assetKind").value,id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
   if(!kind||!id||!name)return toast("Asset type, ID and name are required",false);
   const starts=Number($("#assetStart").value||0)||null,ends=Number($("#assetEnd").value||0)||null;
@@ -887,26 +887,26 @@ async function saveAsset(){
   toast("Asset saved to live store");clearAssetForm();await loadAssets();
 }
 async function removeAsset(id){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   const kind=$("#assetKind").value;if(!confirm("Remove this "+kind+" from the app?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});toast("Asset removed");await loadAssets();
 }
 
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
-async function loadCatalog(){if(!can("catalog.read"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
+async function loadCatalog(){if(!can("catalog.view"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
 async function saveCatalog(){const payload={kind:$("#catalogKind").value,id:$("#catalogId").value.trim()||undefined,name:$("#catalogName").value.trim(),price_coins:Number($("#catalogPrice").value||0),sort_order:Number($("#catalogOrder").value||0),enabled:$("#catalogEnabled").checked,data:{asset:$("#catalogAsset").value.trim(),level:$("#catalogLevel").value.trim(),description:$("#catalogDescription").value.trim()}};if(!payload.name)return toast('Enter a display name',false);await api('/api/owner/catalog',{method:'POST',body:JSON.stringify(payload)});toast('Content item saved');clearCatalogForm();await loadCatalog();}
 
 async function deleteCatalog(id){if(!confirm('Delete this content item?'))return;const kind=$("#catalogKind").value;await api(`/api/owner/catalog/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,{method:'DELETE'});toast('Content item deleted');loadCatalog();}
 
-async function loadSettings(){if(!can("settings.read"))return;const d=await api('/api/owner/settings');state.settings=new Map((d.settings||[]).map(s=>[s.key,s.value]));$("#featureSettings").innerHTML=Object.entries(featureLabels).map(([key,label])=>{const enabled=state.settings.get(key)?.enabled!==false;return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?'On':'Off'}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?'checked':''}></label>`}).join('');$$('[data-setting-toggle]').forEach(i=>i.onchange=()=>saveFeature(i.dataset.settingToggle,i.checked));const m=state.settings.get('maintenance')||{};$("#maintenanceEnabled").checked=!!m.enabled;$("#maintenanceMessage").value=m.message||"";}
+async function loadSettings(){if(!can("settings.view"))return;const d=await api('/api/owner/settings');state.settings=new Map((d.settings||[]).map(s=>[s.key,s.value]));$("#featureSettings").innerHTML=Object.entries(featureLabels).map(([key,label])=>{const enabled=state.settings.get(key)?.enabled!==false;return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?'On':'Off'}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?'checked':''}></label>`}).join('');$$('[data-setting-toggle]').forEach(i=>i.onchange=()=>saveFeature(i.dataset.settingToggle,i.checked));const m=state.settings.get('maintenance')||{};$("#maintenanceEnabled").checked=!!m.enabled;$("#maintenanceMessage").value=m.message||"";}
 async function saveFeature(key,enabled){await api('/api/owner/settings/'+encodeURIComponent(key),{method:'POST',body:JSON.stringify({value:{enabled}})});toast(featureLabels[key]+' '+(enabled?'enabled':'disabled'));}
 async function saveMaintenance(){await api('/api/owner/settings/maintenance',{method:'POST',body:JSON.stringify({value:{enabled:$("#maintenanceEnabled").checked,message:$("#maintenanceMessage").value.trim()}})});toast('Maintenance setting saved');}
 
 function localInputValue(ts){if(!ts)return "";const d=new Date(Number(ts));const pad=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function clearAnnouncementForm(){$("#announcementId").value="";$("#announcementTitle").value="";$("#announcementBody").value="";$("#announcementEnabled").checked=true;$("#announcementStart").value="";$("#announcementEnd").value="";}
 async function loadAnnouncements(){
-  if(!can("announcements.read"))return;
+  if(!can("announcements.view"))return;
   const d=await api("/api/owner/announcements");
   const rows=d.announcements||[];
   $("#announcementList").innerHTML=rows.length?rows.map(a=>{
@@ -931,7 +931,7 @@ async function saveAnnouncement(){
 }
 
 async function loadStaff(){
-  if(!can("staff.read"))return;
+  if(!can("staff.view"))return;
   if(!$("#staffPermissions").dataset.ready){
     $("#staffPermissions").innerHTML=staffPermissionOptions.map(([value,label])=>`<label class="permission-item"><input type="checkbox" value="${esc(value)}" /> <span>${esc(label)}</span></label>`).join("");
     $("#staffPermissions").dataset.ready="1";
@@ -996,7 +996,7 @@ function renderSelectedMessageUsers(){
   $("#selectedMessageUsers").textContent=`${state.messageSelected.size} selected`;
 }
 async function searchMessagingUsers(){
-  if(!can("users.read"))return toast("Users read permission required",false);
+  if(!can("users.search"))return toast("Users read permission required",false);
   const q=$("#messageUserSearch").value.trim();
   if(!q)return toast("Enter a user ID or name",false);
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=80");
@@ -1012,10 +1012,10 @@ async function searchMessagingUsers(){
   });
 }
 async function loadOwnerTags(){
-  if(!can("messaging.read"))return;
+  if(!can("tags.view"))return;
   const d=await api("/api/owner/tags");
   const rows=d.tags||[];
-  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.write")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
+  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.apply")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
   $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
 }
 async function loadMessaging(){
@@ -1023,7 +1023,7 @@ async function loadMessaging(){
   await loadOwnerTags();
 }
 async function sendOfficialMessage(allUsers=false){
-  if(!can("messaging.write"))return toast("Messaging write permission required",false);
+  if(!can(allUsers?"messaging.send.all":"messaging.send.selected"))return toast("Messaging write permission required",false);
   const text=$("#officialMessageBody").value.trim();
   if(!text)return toast("Write a message first",false);
   const ids=[...state.messageSelected.keys()];
@@ -1034,7 +1034,7 @@ async function sendOfficialMessage(allUsers=false){
   $("#officialMessageBody").value="";
 }
 async function applyOwnerTag(){
-  if(!can("tags.write"))return toast("Tags write permission required",false);
+  if(!can("tags.apply"))return toast("Tags write permission required",false);
   const ids=[...state.messageSelected.keys()];
   if(!ids.length)return toast("Select at least one user",false);
   const kind=$("#ownerTagKind").value;
@@ -1050,7 +1050,7 @@ async function applyOwnerTag(){
 }
 
 async function loadRolesPosts(){
-  if(!can("roles.read"))return;
+  if(!can("roles.view"))return;
   const kind=$("#rolePostKind").value;
   const d=await api("/api/owner/roles-posts?kind="+encodeURIComponent(kind));
   state.rolesPosts=d.items||[];
@@ -1059,7 +1059,7 @@ async function loadRolesPosts(){
   $$("[data-role-post-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this "+kind+"?"))return;await api("/api/owner/roles-posts/"+encodeURIComponent(b.dataset.rolePostDelete)+"?kind="+encodeURIComponent(kind),{method:"DELETE"});toast("Deleted");await loadRolesPosts();});
 }
 async function saveRolePost(){
-  if(!can("roles.write"))return toast("Roles write permission required",false);
+  if(!can("roles.save"))return toast("Roles write permission required",false);
   const kind=$("#rolePostKind").value;
   const name=$("#rolePostName").value.trim();
   if(!name)return toast("Name is required",false);
@@ -1069,7 +1069,7 @@ async function saveRolePost(){
 }
 
 async function loadBanners(){
-  if(!can("banners.read"))return;
+  if(!can("banners.view"))return;
   const d=await api("/api/owner/banners");
   state.banners=d.banners||[];
   $("#bannerList").innerHTML=state.banners.length?state.banners.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.asset_key||"")}${item.data?.link?" · "+esc(item.data.link):""}</div></div><div class="item-actions"><button class="secondary mini" data-banner-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-banner-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No banners configured");
@@ -1077,7 +1077,7 @@ async function loadBanners(){
   $$("[data-banner-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this banner?"))return;await api("/api/owner/banners/"+encodeURIComponent(b.dataset.bannerDelete),{method:"DELETE"});toast("Banner deleted");await loadBanners();});
 }
 async function saveBanner(){
-  if(!can("banners.write"))return toast("Banner write permission required",false);
+  if(!can("banners.save"))return toast("Banner write permission required",false);
   const name=$("#bannerName").value.trim();
   if(!name)return toast("Banner name is required",false);
   await api("/api/owner/banners",{method:"POST",body:JSON.stringify({id:$("#bannerId").value.trim()||undefined,name,asset_key:$("#bannerAsset").value.trim(),link:$("#bannerLink").value.trim(),starts_at:Number($("#bannerStart").value||0)||null,ends_at:Number($("#bannerEnd").value||0)||null,enabled:$("#bannerEnabled").checked})});
@@ -1086,7 +1086,7 @@ async function saveBanner(){
 }
 
 async function loadGames(){
-  if(!can("games.read"))return;
+  if(!can("games.view"))return;
   const userQuery=$("#gameInvestigationUser").value.trim();
   const d=await api("/api/owner/games"+(userQuery?"?user_id="+encodeURIComponent(userQuery):""));
   state.games=d.games||[];
@@ -1111,7 +1111,7 @@ async function loadGames(){
   }
 }
 async function saveGameConfig(){
-  if(!can("games.write"))return toast("Games write permission required",false);
+  if(!can("games.configure"))return toast("Games write permission required",false);
   const id=$("#gameConfigId").value.trim();
   if(!id)return toast("Game ID is required",false);
   const min=Number($("#gameMinBet").value||1),max=Number($("#gameMaxBet").value||1);
@@ -1122,7 +1122,7 @@ async function saveGameConfig(){
 }
 
 async function loadPolicies(){
-  if(!can("policies.read"))return;
+  if(!can("policies.view"))return;
   const d=await api("/api/owner/policies");
   state.policies=d.policies||[];
   $("#policyList").innerHTML=state.policies.length?state.policies.map(p=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(p.key)}</div><div class="item-meta">${esc(JSON.stringify(p.value))} · ${time(p.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-policy-edit="${esc(p.key)}">Edit</button><button class="danger mini" data-policy-delete="${esc(p.key)}">Delete</button></div></div></div>`).join(""):empty("No custom allowed policies");
@@ -1131,7 +1131,7 @@ async function loadPolicies(){
   await loadPricingOverrides();
 }
 async function savePolicy(){
-  if(!can("policies.write"))return toast("Policies write permission required",false);
+  if(!can("policies.save"))return toast("Policies write permission required",false);
   const key=$("#policyKey").value.trim();
   if(!key)return toast("Policy key is required",false);
   let value={};
@@ -1157,7 +1157,7 @@ function updatePricingFreeState(){
   if(gift)$("#pricingFree").checked=false;
 }
 async function loadPricingOverrides(){
-  if(!can("policies.read"))return;
+  if(!can("policies.view"))return;
   const user=$("#pricingUserId").value.trim();
   const kind=$("#pricingKind").value.trim();
   const query=new URLSearchParams();
@@ -1183,7 +1183,7 @@ async function loadPricingOverrides(){
     updatePricingFreeState();
   });
   $$("[data-pricing-delete-user]").forEach(b=>b.onclick=async()=>{
-    if(!can("policies.write"))return toast("Policies write permission required",false);
+    if(!can("policies.save"))return toast("Policies write permission required",false);
     if(!confirm("Remove this per-user pricing override?"))return;
     await api("/api/owner/pricing-overrides/"+encodeURIComponent(b.dataset.pricingDeleteUser)+"/"+encodeURIComponent(b.dataset.pricingDeleteKind)+"/"+encodeURIComponent(b.dataset.pricingDeleteItem),{method:"DELETE"});
     toast("Pricing override removed");
@@ -1191,7 +1191,7 @@ async function loadPricingOverrides(){
   });
 }
 async function savePricingOverride(){
-  if(!can("policies.write"))return toast("Policies write permission required",false);
+  if(!can("policies.save"))return toast("Policies write permission required",false);
   const userId=$("#pricingUserId").value.trim();
   const kind=$("#pricingKind").value.trim();
   const itemId=$("#pricingItemId").value.trim()||"*";
@@ -1210,7 +1210,7 @@ async function savePricingOverride(){
 }
 
 async function loadGlobalThemes(){
-  if(!can("catalog.read"))return;
+  if(!can("catalog.view"))return;
   const d=await api("/api/owner/store?kind=theme");
   state.globalThemes=d.items||[];
   $("#globalThemeList").innerHTML=state.globalThemes.length?state.globalThemes.map(item=>{
@@ -1227,7 +1227,7 @@ async function loadGlobalThemes(){
   $$("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
 }
 async function saveGlobalTheme(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("catalog.save"))return toast("Catalog write permission required",false);
   const id=$("#globalThemeId").value.trim(),name=$("#globalThemeName").value.trim(),asset=$("#globalThemeAsset").value.trim();
   if(!id||!name||!asset)return toast("Theme ID, name and asset are required",false);
   const permanent=$("#globalThemePermanent").checked;
@@ -1243,7 +1243,7 @@ async function saveGlobalTheme(){
 }
 
 async function loadAudit(){
-  if(!can("audit.read"))return;
+  if(!can("audit.view"))return;
   const d=await api("/api/owner/audit?limit=500");
   state.auditRows=d.audit||[];
   const canDelete=d.owner_can_delete===true||state.actor?.type==="owner";
