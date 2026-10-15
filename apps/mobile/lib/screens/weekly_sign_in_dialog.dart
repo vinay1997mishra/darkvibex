@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../ui/weekly_signin_panel_data.dart';
 
-Future<void?> showWeeklySignInDialog(
+Future<void> showWeeklySignInDialog(
   BuildContext context, {
   required AppState state,
-}) {
-  return showDialog<void>(
+}) async {
+  await showDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierColor: const Color(0xB300020C),
