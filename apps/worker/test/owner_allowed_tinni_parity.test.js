@@ -11,9 +11,12 @@ const appState = await readFile(new URL("../../mobile/lib/app/app_state.dart", i
 const profileScreen = await readFile(new URL("../../mobile/lib/screens/profile_screen.dart", import.meta.url), "utf8");
 const homeShell = await readFile(new URL("../../mobile/lib/screens/home_shell.dart", import.meta.url), "utf8");
 const socialStore = await readFile(new URL("../src/tinni_social.js", import.meta.url), "utf8");
+const vipStore = await readFile(new URL("../src/vip_store.js", import.meta.url), "utf8");
+const vipPolicy = await readFile(new URL("../src/vip_policy.js", import.meta.url), "utf8");
+const roleWallets = await readFile(new URL("../src/role_wallets.js", import.meta.url), "utf8");
 
 test("allowed Tinni Owner Panel modules are exposed without excluded hierarchy or verification views", () => {
-  for (const view of ["notifications","messaging","roles","banners","games","policies"]) {
+  for (const view of ["notifications","messaging","roles","banners","games","policies","vip","gifts","assets"]) {
     assert.match(panelHtml, new RegExp('data-view="' + view + '"'));
   }
   assert.doesNotMatch(panelHtml, /data-view="hierarchy"/);
@@ -118,4 +121,62 @@ test("scheduled Owner banners are app-facing and rendered on Party home", () => 
   assert.match(backendApi, /activeBanners/);
   assert.match(homeShell, /_OwnerBannerCard/);
   assert.match(homeShell, /ownerBanners/);
+});
+
+
+test("every explicit Owner Panel button and form control is wired in panel JS", () => {
+  const buttonIds=[...panelHtml.matchAll(/<button\b[^>]*\bid="([^"]+)"/g)].map((m)=>m[1]);
+  const formIds=[...panelHtml.matchAll(/<(?:input|select|textarea)\b[^>]*\bid="([^"]+)"/g)].map((m)=>m[1]);
+  for(const id of [...buttonIds,...formIds]){
+    assert.ok(
+      panelApp.includes("#"+id) || panelApp.includes('"'+id+'"') || panelApp.includes("'"+id+"'"),
+      "unwired control: "+id,
+    );
+  }
+});
+
+test("excluded modules have no Owner Panel view or action", () => {
+  assert.doesNotMatch(panelHtml, /data-view="hierarchy"/);
+  assert.doesNotMatch(panelHtml, /data-view="verification"/);
+  assert.doesNotMatch(panelHtml, /data-action="lucky-gift-config"/);
+  assert.doesNotMatch(panelApp, /lucky-gift-config/);
+});
+
+test("VIP manager controls the real VIP1-VIP18 leveling rules", () => {
+  assert.match(ownerApi, /async function handleVipRules/);
+  assert.match(ownerApi, /VIP_LEVELS/);
+  assert.match(panelApp, /async function loadVipRules/);
+  assert.match(panelApp, /async function saveVipRule/);
+  assert.match(vipStore, /export async function vipRuleForDb/);
+  assert.match(vipStore, /await vipRuleForDb\(db,level\+1\)/);
+  assert.match(vipStore, /next\.enabled===false/);
+  for(const threshold of ["25000000","100000000","220000000","400000000","500000000000"]){
+    assert.match(vipPolicy,new RegExp(threshold));
+  }
+});
+
+test("dedicated Gifts and Assets managers feed live scheduled catalogs", () => {
+  assert.match(panelApp, /async function loadGifts/);
+  assert.match(panelApp, /async function saveGift/);
+  assert.match(panelApp, /async function loadAssets/);
+  assert.match(panelApp, /async function saveAsset/);
+  assert.match(worker, /async function effectiveGiftCatalog/);
+  assert.match(worker, /async function effectiveCosmeticCatalog/);
+  assert.match(worker, /startsAt/);
+  assert.match(worker, /endsAt/);
+});
+
+test("normal wallet, role wallet and room bans are independently enforced", () => {
+  assert.match(worker, /owner_wallet_ban_guard/);
+  assert.match(worker, /wallet_banned/);
+  assert.match(ownerApi, /wallet_banned/);
+  assert.match(roleWallets, /role_wallet_banned/);
+  assert.match(ownerApi, /parts\[4\] === "ban"/);
+  assert.match(worker, /owner_room_controls/);
+  assert.match(worker, /room_banned/);
+});
+
+test("App Store supports multi-item edit and remove handlers", () => {
+  assert.match(panelApp, /\$\$\("\[data-store-edit\]"\)/);
+  assert.match(panelApp, /\$\$\("\[data-store-remove\]"\)/);
 });
