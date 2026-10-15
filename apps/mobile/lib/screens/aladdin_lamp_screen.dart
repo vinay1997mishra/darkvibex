@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_state.dart';
-import '../infra/backend_api.dart';
 
 class AladdinLampScreen extends StatefulWidget {
   const AladdinLampScreen({
@@ -250,25 +250,21 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
         widget.room.name +
         '" • Room ID ' +
         widget.room.id;
-    final fallbackLink = BackendApi.origin.isNotEmpty
-        ? BackendApi.origin +
-            '/?room_id=' +
-            Uri.encodeComponent(widget.room.id)
-        : 'https://darkvibex.app';
-    final uri = platform == 'facebook'
-        ? Uri.https(
-            'www.facebook.com',
-            '/sharer/sharer.php',
-            <String, String>{'u': fallbackLink},
-          )
-        : Uri.https(
-            'wa.me',
-            '/',
-            <String, String>{'text': text + '\n' + fallbackLink},
-          );
-    final opened =
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened) {
+
+    var shared = false;
+    if (platform == 'whatsapp') {
+      final uri = Uri.https(
+        'wa.me',
+        '/',
+        <String, String>{'text': text},
+      );
+      shared = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      await SharePlus.instance.share(ShareParams(text: text));
+      shared = true;
+    }
+
+    if (!shared) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -280,6 +276,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
       );
       return;
     }
+
     await widget.state.backend.recordAladdinShare(
       roomId: widget.room.id,
       userId: widget.state.userId,
