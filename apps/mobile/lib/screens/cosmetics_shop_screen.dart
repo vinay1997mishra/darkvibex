@@ -179,8 +179,12 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Confirm gift'),
         content: Text(
-          '${item['name']} costs ${item['price_coins']} coins and lasts '
-          '${item['duration_days'] ?? 30} days. Send to $recipient?',
+          (int.tryParse(item['price_coins']?.toString() ?? '') ?? 0) <= 0
+              ? '${item['name']} is free'
+                  '${(int.tryParse(item['duration_days']?.toString() ?? '') ?? 0) <= 0 ? ' and permanent' : ''}. '
+                  'Send to $recipient?'
+              : '${item['name']} costs ${item['price_coins']} coins and lasts '
+                  '${item['duration_days'] ?? 30} days. Send to $recipient?',
         ),
         actions: [
           TextButton(
@@ -466,6 +470,9 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         int.tryParse(item['min_vip_level']?.toString() ?? '') ?? 0;
     final tier =
         int.tryParse(item['tier']?.toString() ?? '') ?? requiredLevel;
+    final price = int.tryParse(item['price_coins']?.toString() ?? '') ?? 0;
+    final durationDays =
+        int.tryParse(item['duration_days']?.toString() ?? '') ?? 0;
     final canUse = requiredLevel <= 0 ||
         (widget.state.vipIsActive &&
             widget.state.vipLevel >= requiredLevel);
@@ -514,8 +521,8 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 const SizedBox(height: 3),
                 Text(
                   requiredLevel > 0
-                      ? 'VIP$requiredLevel • ${item['duration_days'] ?? 30} days'
-                      : '${item['duration_days'] ?? 30} days',
+                      ? 'VIP$requiredLevel • ${durationDays <= 0 ? 'Permanent' : '$durationDays days'}'
+                      : (durationDays <= 0 ? 'Permanent' : '$durationDays days'),
                   style: const TextStyle(
                     fontSize: 10,
                     color: Color(0xFFD0BBFF),
@@ -523,7 +530,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${item['price_coins'] ?? 0} coins',
+                  price <= 0 ? 'FREE' : '$price coins',
                   style: const TextStyle(
                     color: TinniPalette.gold,
                     fontWeight: FontWeight.w800,
@@ -556,7 +563,9 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                             ? FilledButton(
                                 onPressed:
                                     busy ? null : () => _buy(item),
-                                child: Text(busy ? '…' : 'Buy'),
+                                child: Text(
+                                  busy ? '…' : (price <= 0 ? 'Get Free' : 'Buy'),
+                                ),
                               )
                             : OutlinedButton(
                                 onPressed: null,
