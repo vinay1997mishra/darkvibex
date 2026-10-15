@@ -80,7 +80,7 @@ import {
 const corsHeaders = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "authorization,content-type,x-file-key",
+  "access-control-allow-headers": "authorization,content-type,x-file-key,x-device-id",
 };
 
 const json = (data, init = {}) =>
@@ -239,6 +239,48 @@ async function ownerSetting(db, key, fallback = {}) {
     if (String(error?.message ?? error).includes("no such table")) return fallback;
     throw error;
   }
+}
+
+async function ensureOwnerControlSchema(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
+      user_id TEXT PRIMARY KEY,
+      invisible_id INTEGER NOT NULL DEFAULT 0,
+      locked_room_bypass INTEGER NOT NULL DEFAULT 0,
+      wallet_frozen INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_device_bans (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT,
+      banned INTEGER NOT NULL DEFAULT 1,
+      note TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_notifications (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'platform',
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      user_id TEXT,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`),
+  ]);
+}
+
+async function ensureDeviceAllowed(db, deviceKey) {
+  const key=String(deviceKey ?? "").trim();
+  if(!key) return;
+  await ensureOwnerControlSchema(db);
+  const row=await db.prepare("SELECT banned FROM owner_device_bans WHERE device_key=? LIMIT 1").bind(key).first();
+  if(Number(row?.banned ?? 0)===1) throw new Error("device_banned");
+}
+
+async function ensureWalletAllowed(db, userId) {
+  await ensureOwnerControlSchema(db);
+  const row=await db.prepare("SELECT wallet_frozen FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first();
+  if(Number(row?.wallet_frozen ?? 0)===1) throw new Error("wallet_frozen");
 }
 
 async function ensureUserAllowed(db, userId, { checkMute = false } = {}) {
@@ -2612,6 +2654,14 @@ async function sendDirectMessagePush(
 async function handleApi(request, env, url) {
   const db = requireDb(env);
   const parts = url.pathname.split("/").filter(Boolean);
+  try {
+    await ensureDeviceAllowed(db, request.headers.get("x-device-id"));
+  } catch (error) {
+    if (String(error?.message ?? error)==="device_banned") {
+      return json({ok:false,error:"device_banned"},{status:403});
+    }
+    throw error;
+  }
 
   if (url.pathname === "/api/auth/config" && request.method === "GET") {
     return json({
@@ -2638,6 +2688,7 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     const token = String(body.token ?? "").trim();
     const platform = String(body.platform ?? "android").trim().slice(0, 24) || "android";
+    const deviceKey = String(body.device_key ?? request.headers.get("x-device-id") ?? token).trim().slice(0,500);
     const enabled = body.enabled !== false;
     if (!userId || token.length < 16 || token.length > 4096) {
       return json({ ok: false, error: "invalid_push_device" }, { status: 400 });
@@ -2645,17 +2696,24 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensurePushTables(db);
+    await ensureDeviceAllowed(db,deviceKey);
+    try {
+      const info=await db.prepare("PRAGMA table_info(push_devices)").all();
+      const cols=new Set((info.results ?? []).map(row=>String(row.name ?? "")));
+      if(!cols.has("device_key")) await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
+    } catch (_) {}
     if (enabled) {
       await db.batch([
         db.prepare(
-          `INSERT INTO push_devices(token,user_id,platform,enabled,updated_at)
-           VALUES(?,?,?,?,?)
+          `INSERT INTO push_devices(token,user_id,device_key,platform,enabled,updated_at)
+           VALUES(?,?,?,?,?,?)
            ON CONFLICT(token) DO UPDATE SET
              user_id=excluded.user_id,
+             device_key=excluded.device_key,
              platform=excluded.platform,
              enabled=excluded.enabled,
              updated_at=excluded.updated_at`
-        ).bind(token, userId, platform, 1, now()),
+        ).bind(token, userId, deviceKey, platform, 1, now()),
         db.prepare(
           `INSERT INTO push_preferences(user_id,message_enabled,updated_at)
            VALUES(?,1,?)
@@ -2983,7 +3041,12 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json(await submitFeedback(db, userId, body.category, body.message), { status: 201 });
+      const result=await submitFeedback(db, userId, body.category, body.message);
+      await ensureOwnerControlSchema(db);
+      await db.prepare(
+        "INSERT INTO owner_notifications(id,kind,title,body,user_id,read_at,created_at) VALUES(?,?,?,?,?,NULL,?)"
+      ).bind(id(),"complaint","User feedback / complaint",String(body.category ?? "Feedback")+": "+String(body.message ?? "").slice(0,1600),userId,now()).run();
+      return json(result, { status: 201 });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -3536,6 +3599,7 @@ async function handleApi(request, env, url) {
       if (!recipient) return json({ ok:false,error:"recipient_not_found" }, { status:404 });
     }
     await ensureUserAllowed(db,userId);
+    await ensureWalletAllowed(db,userId);
     if (recipientId !== userId) await ensureUserAllowed(db,recipientId);
     await ensureCosmeticsSchema(db);
     await ensureVipSchema(db);
@@ -5095,7 +5159,13 @@ async function handleApi(request, env, url) {
     if (roomBan && roomAccess.owner_user_id !== userId) {
       return json({ ok: false, error: "room_blocked" }, { status: 403 });
     }
-    if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId) {
+    let ownerLockedBypass=false;
+    try {
+      await ensureOwnerControlSchema(db);
+      const override=await db.prepare("SELECT locked_room_bypass FROM owner_user_overrides WHERE user_id=?").bind(userId).first();
+      ownerLockedBypass=Number(override?.locked_room_bypass ?? 0)===1;
+    } catch (_) {}
+    if (Number(roomAccess.locked) === 1 && roomAccess.owner_user_id !== userId && !ownerLockedBypass) {
       const expectedHash = String(roomAccess.lock_password_hash ?? "");
       const suppliedPassword = String(body.password ?? "").trim().slice(0, 64);
       if (!expectedHash) {
@@ -6642,6 +6712,7 @@ async function handleApi(request, env, url) {
     if(authError) return authError;
     await ensureUser(db,userId);
     await ensureUserAllowed(db,userId);
+    await ensureWalletAllowed(db,userId);
     try{
       const result=await purchaseUniqueId(db,userId,publicId,now());
       return json({
@@ -6808,6 +6879,7 @@ async function handleApi(request, env, url) {
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
+    await ensureWalletAllowed(db, sender);
     await ensureUserAllowed(db, receiver);
     const eventId = id();
     const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
