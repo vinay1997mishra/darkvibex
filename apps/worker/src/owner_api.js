@@ -176,6 +176,14 @@ async function ensureOwnerSchema(db) {
       FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (receiver_user_id) REFERENCES users(id) ON DELETE CASCADE
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS direct_message_images (
+      message_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (message_id) REFERENCES direct_messages(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_dm_sender_time ON direct_messages(sender_user_id, created_at DESC)"),
+
     db.prepare(`CREATE TABLE IF NOT EXISTS wallet_ledger (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -693,6 +701,148 @@ async function handleOverview(db, actor) {
   });
 }
 
+
+async function ownerMessageTableExists(db, name) {
+  const row=await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name=? LIMIT 1"
+  ).bind(name).first();
+  return Boolean(row);
+}
+
+async function ownerUserMessageInspection(db, actor, userId, url) {
+  if(actor.type!=="owner"){
+    return json({ok:false,error:"owner_only_message_inspection"},{status:403});
+  }
+  const user=await db.prepare(
+    "SELECT id,public_id,display_name,avatar_key FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  if(!user) return json({ok:false,error:"not_found"},{status:404});
+
+  const hasMessages=await ownerMessageTableExists(db,"direct_messages");
+  if(!hasMessages){
+    await audit(db,actor,"owner_message_inbox_view","user",userId,"message table empty");
+    return json({ok:true,user,conversations:[],messages:[],red_envelopes:[]});
+  }
+
+  const otherId=String(url.searchParams.get("other_user_id") ?? "").trim().slice(0,120);
+  const limit=clampInt(url.searchParams.get("limit"),1,1000,500);
+
+  if(!otherId){
+    const rows=await db.prepare(
+      `SELECT m.id,m.sender_user_id,m.receiver_user_id,m.text,m.created_at,m.read_at,
+              i.image_key,
+              s.public_id AS sender_public_id,s.display_name AS sender_name,s.avatar_key AS sender_avatar_key,
+              r.public_id AS receiver_public_id,r.display_name AS receiver_name,r.avatar_key AS receiver_avatar_key
+         FROM direct_messages m
+         LEFT JOIN direct_message_images i ON i.message_id=m.id
+         LEFT JOIN users s ON s.id=m.sender_user_id
+         LEFT JOIN users r ON r.id=m.receiver_user_id
+        WHERE m.sender_user_id=? OR m.receiver_user_id=?
+        ORDER BY m.created_at DESC
+        LIMIT 1000`
+    ).bind(userId,userId).all();
+
+    const byOther=new Map();
+    for(const row of rows.results ?? []){
+      const sent=String(row.sender_user_id)===userId;
+      const other=sent?String(row.receiver_user_id):String(row.sender_user_id);
+      if(!other) continue;
+      let entry=byOther.get(other);
+      if(!entry){
+        entry={
+          other_user_id:other,
+          other_public_id:sent?row.receiver_public_id:row.sender_public_id,
+          other_name:sent?row.receiver_name:row.sender_name,
+          other_avatar_key:sent?row.receiver_avatar_key:row.sender_avatar_key,
+          last_message_id:row.id,
+          preview:String(row.text ?? "") || (row.image_key ? "📷 Photo" : ""),
+          image_key:row.image_key ?? null,
+          created_at:Number(row.created_at ?? 0),
+          message_count:0,
+          unread_for_user:0,
+        };
+        byOther.set(other,entry);
+      }
+      entry.message_count+=1;
+      if(String(row.receiver_user_id)===userId && row.read_at==null) entry.unread_for_user+=1;
+    }
+    const conversations=[...byOther.values()].sort((a,b)=>b.created_at-a.created_at);
+    await audit(db,actor,"owner_message_inbox_view","user",userId,`conversations=${conversations.length}`);
+    return json({ok:true,user,conversations});
+  }
+
+  const other=await db.prepare(
+    "SELECT id,public_id,display_name,avatar_key FROM users WHERE id=? LIMIT 1"
+  ).bind(otherId).first();
+  if(!other) return json({ok:false,error:"other_user_not_found"},{status:404});
+
+  const rows=await db.prepare(
+    `SELECT m.id,m.sender_user_id,m.receiver_user_id,m.text,m.created_at,m.read_at,
+            i.image_key,
+            s.public_id AS sender_public_id,s.display_name AS sender_name,s.avatar_key AS sender_avatar_key,
+            r.public_id AS receiver_public_id,r.display_name AS receiver_name,r.avatar_key AS receiver_avatar_key
+       FROM direct_messages m
+       LEFT JOIN direct_message_images i ON i.message_id=m.id
+       LEFT JOIN users s ON s.id=m.sender_user_id
+       LEFT JOIN users r ON r.id=m.receiver_user_id
+      WHERE (m.sender_user_id=? AND m.receiver_user_id=?)
+         OR (m.sender_user_id=? AND m.receiver_user_id=?)
+      ORDER BY m.created_at DESC
+      LIMIT ?`
+  ).bind(userId,otherId,otherId,userId,limit).all();
+  const messages=(rows.results ?? []).reverse();
+
+  let redEnvelopes=[];
+  if(await ownerMessageTableExists(db,"inbox_red_envelopes")){
+    const envelopes=await db.prepare(
+      `SELECT id,sender_user_id,receiver_user_id,amount,status,created_at,expires_at,claimed_at
+         FROM inbox_red_envelopes
+        WHERE (sender_user_id=? AND receiver_user_id=?)
+           OR (sender_user_id=? AND receiver_user_id=?)
+        ORDER BY created_at ASC LIMIT 500`
+    ).bind(userId,otherId,otherId,userId).all();
+    redEnvelopes=envelopes.results ?? [];
+  }
+
+  await audit(
+    db,actor,"owner_message_thread_view","user",userId,
+    `other=${otherId}; messages=${messages.length}; red_pockets=${redEnvelopes.length}`
+  );
+  return json({
+    ok:true,
+    user,
+    other_user:other,
+    messages,
+    red_envelopes:redEnvelopes,
+    inspection_does_not_mark_read:true,
+  });
+}
+
+async function handleOwnerMessageMedia(request, env, db, actor, url) {
+  if(request.method!=="GET") return null;
+  if(actor.type!=="owner"){
+    return json({ok:false,error:"owner_only_message_inspection"},{status:403});
+  }
+  if(!env.FILES) return json({ok:false,error:"file_storage_not_bound"},{status:503});
+  const key=String(url.searchParams.get("key") ?? "").trim();
+  if(!/^messages\/[a-zA-Z0-9._/-]+\.(jpg|jpeg|png|webp)$/i.test(key)){
+    return json({ok:false,error:"invalid_message_image_key"},{status:400});
+  }
+  const object=await env.FILES.get(key);
+  if(!object) return json({ok:false,error:"file_not_found"},{status:404});
+  await audit(db,actor,"owner_message_media_view","message_image",key,"private message image viewed");
+  const ext=(key.split(".").pop() || "").toLowerCase();
+  const contentType=ext==="png"?"image/png":ext==="webp"?"image/webp":"image/jpeg";
+  return new Response(object.body,{
+    status:200,
+    headers:{
+      "content-type":contentType,
+      "cache-control":"private, no-store",
+      "content-disposition":"inline",
+    },
+  });
+}
+
 async function handleUsers(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "users.read");
@@ -717,6 +867,10 @@ async function handleUsers(request, db, actor, url, parts) {
     requirePermission(actor, "users.read");
     const user = await getUserDetails(db, userId);
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+
+  if (parts[4] === "messages" && request.method === "GET") {
+    return ownerUserMessageInspection(db,actor,userId,url);
   }
 
   if (parts[4] === "profile" && request.method === "POST") {
@@ -1942,7 +2096,8 @@ export async function handleOwnerApi(request, env, url) {
     if (url.pathname === "/api/owner/overview" && request.method === "GET") return handleOverview(db, actor);
 
     let response = null;
-    if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
+    if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
+    else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
     else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
     else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
