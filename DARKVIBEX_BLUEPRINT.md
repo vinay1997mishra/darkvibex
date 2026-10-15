@@ -37,6 +37,8 @@ DarkVibeX has a 7-day per-day login/sign-in reward cycle.
 - Use the DarkVibeX **blue–purple galaxy visual identity** for the sign-in experience.
 - Do not use the previously mocked orange/yellow + white theme as the final DarkVibeX design.
 - Show the weekly sign-in as a **floating modal** above the current app screen.
+- The approved weekly sign-in artwork is rendered directly; do **not** rebuild/recreate its visible card, button, colors, or layout in Flutter.
+- The visible `X` and gold `Sign in` button remain part of that artwork. Flutter adds **invisible hit areas only**, so tapping works without drawing a second/mismatched button over the picture.
 - The Sign in button must be clickable and the claimed day must show a clear **right/check mark**.
 - Coins remain **metallic gold**.
 - Day 7 may receive a stronger celebratory highlight while staying within the DarkVibeX galaxy theme.
