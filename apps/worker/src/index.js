@@ -4985,10 +4985,15 @@ async function handleApi(request, env, url) {
       } catch(error) {
         if(!String(error?.message ?? error).includes("no such table")) throw error;
       }
+      const actorRow=await db.prepare("SELECT role FROM users WHERE id=? LIMIT 1").bind(actorId).first();
+      const basePrice=String(actorRow?.role ?? "")==="platform_owner" ? 0 : 10000000;
+      const pricing=await ownerUserPricing(db,actorId,"room_theme","upload",basePrice,7);
       return json({
         ok:true,
-        user_price_coins:10000000,
-        user_duration_days:7,
+        user_price_coins:pricing.price_coins,
+        user_duration_days:pricing.duration_days,
+        user_free:pricing.free,
+        owner_price_override:pricing.overridden,
         themes:[...globalThemes,...(rows.results ?? [])],
       });
     }
@@ -5013,15 +5018,20 @@ async function handleApi(request, env, url) {
       ).bind(actorId).first();
       if (!actor) return json({ ok:false,error:"user_not_found" }, { status:404 });
       const platformOwner = String(actor.role ?? "") === "platform_owner";
-      const price = platformOwner ? 0 : 10000000;
+      await ensureWalletAllowed(db,actorId);
+      const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
+      const pricing=await ownerUserPricing(
+        db,actorId,"room_theme","upload",platformOwner?0:10000000,requestedDays,
+      );
+      const price=Number(pricing.price_coins ?? 0);
+      const effectiveDays=Number(pricing.duration_days ?? requestedDays);
       if (Number(actor.coins ?? 0) < price) {
         return json({ ok:false,error:"insufficient_coins",required_coins:price }, { status:409 });
       }
       const themeId = "room-theme-" + id();
       const ts = now();
-      const permanent = platformOwner && body.permanent === true;
-      const requestedDays = Math.max(1, Math.min(3650, Math.trunc(Number(body.duration_days ?? 7))));
-      const expiresAt = permanent ? null : ts + requestedDays * 86400000;
+      const permanent = (platformOwner && body.permanent === true) || effectiveDays===0;
+      const expiresAt = permanent ? null : ts + Math.max(1,effectiveDays) * 86400000;
       if (price > 0) {
         await db.batch([
           db.prepare(
@@ -5063,6 +5073,10 @@ async function handleApi(request, env, url) {
         ok:true,
         theme:created,
         coin_balance:Number(balance?.coins ?? 0),
+        price_coins:price,
+        duration_days:permanent?0:effectiveDays,
+        free:pricing.free,
+        owner_price_override:pricing.overridden,
       }, { status:201 });
     }
 
