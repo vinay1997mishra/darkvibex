@@ -25,20 +25,274 @@ const state = {
   auditRows: [],
   ownerMessageConversations: [],
   ownerMessageThreadOtherId: null,
+  staffEditingId: null,
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
-  ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
-  ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["economy.read","Economy: view coin rate / ID tools"],["economy.write","Economy: change coin rate"],
-  ["messaging.read","Messages/Tags: view"],["messaging.write","Official messages: send"],["tags.write","Tags/V Official: manage"],
-  ["users.device","Users: device ban"],["users.override","Users: invisible/bypass/freeze"],["wallet.freeze","Wallet security freeze"],
-  ["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],["rooms.live","Rooms: live users/seats"],["rooms.media","Rooms: DP/background"],["rooms.theme","Rooms: theme override"],
-  ["roles.read","Roles/Posts: view"],["roles.write","Roles/Posts: manage"],["banners.read","Banners: view"],["banners.write","Banners: manage"],
-  ["games.read","Games: view/stats"],["games.write","Games: manage"],["policies.read","Policies: view"],["policies.write","Policies: manage"],
-  ["catalog.read","VIP/Gifts/Assets: view"],["catalog.write","VIP/Gifts/Assets: edit"],["settings.read","Master switches: view"],["settings.write","Master switches: edit"],
-  ["announcements.read","Announcements: view"],["announcements.write","Announcements: publish"],["support.read","VIP support: view"],["support.write","VIP support: reply/close"],
-  ["staff.read","Custom panels: view"],["staff.write","Custom panels: manage"],["audit.read","Audit log"]
+  ["dashboard.view","Dashboard · view"],
+
+  ["users.search","Users · search/list"],
+  ["users.detail","Users · open Full ID View"],
+  ["users.name.edit","Users · change display name"],
+  ["users.role.edit","Users · change role"],
+  ["users.vip.edit","Users · change VIP level"],
+  ["users.public_id.change","Users · change 7-digit Public ID"],
+  ["users.moderation","Users · ban/suspend/moderation"],
+  ["users.wallet.adjust","Users · normal wallet coin/diamond adjustment"],
+  ["users.role_wallet.adjust","Users · Coin Seller/Merchant wallet balance"],
+  ["users.role_wallet.ban","Users · Coin Seller/Merchant wallet ban/unban"],
+  ["users.override.invisible","Users · Invisible ID"],
+  ["users.override.lock_bypass","Users · locked-room bypass"],
+  ["users.wallet.ban","Users · normal wallet ban/unban"],
+  ["users.wallet.freeze","Users · wallet security freeze"],
+  ["users.device.ban","Users · device ban/unban"],
+
+  ["treasury.view","Treasury · view balance/ledger"],
+  ["treasury.send","Treasury · send coins to user"],
+  ["economy.view","Economy · view coin rate"],
+  ["economy.coin_rate.edit","Economy · change coin rate"],
+
+  ["messaging.view","Official messaging · open page"],
+  ["messaging.send.selected","Official messaging · send to selected users"],
+  ["messaging.send.all","Official messaging · send to all users"],
+  ["tags.view","Tags / V Official · view"],
+  ["tags.apply","Tags / V Official · apply"],
+  ["tags.remove","Tags / V Official · remove"],
+
+  ["rooms.view","Rooms · search/list"],
+  ["rooms.edit","Rooms · edit name/seats"],
+  ["rooms.lock","Rooms · lock/unlock"],
+  ["rooms.delete","Rooms · remove room"],
+  ["rooms.ban","Rooms · ban/unban room"],
+  ["rooms.live","Rooms · live users/seats investigation"],
+  ["rooms.media","Rooms · DP/background override"],
+  ["rooms.theme","Rooms · per-room theme override"],
+  ["themes.global.view","Room Themes · view global themes"],
+  ["themes.global.save","Room Themes · add/edit global theme"],
+  ["themes.global.remove","Room Themes · remove global theme"],
+
+  ["roles.view","Roles/Posts · view"],
+  ["roles.save","Roles/Posts · add/edit"],
+  ["roles.delete","Roles/Posts · delete"],
+  ["banners.view","Banners · view"],
+  ["banners.save","Banners · add/edit"],
+  ["banners.delete","Banners · delete"],
+  ["games.view","Games · view/stats/investigation"],
+  ["games.configure","Games · enable/disable/bet limits"],
+
+  ["policies.view","Policies · view"],
+  ["policies.save","Policies · add/edit"],
+  ["policies.delete","Policies · delete"],
+  ["pricing.view","Per-user pricing · view"],
+  ["pricing.save","Per-user pricing · add/edit"],
+  ["pricing.delete","Per-user pricing · delete"],
+
+  ["vip.view","VIP Manager · view VIP1–VIP18 rules"],
+  ["vip.save","VIP Manager · edit rule"],
+  ["vip.reset","VIP Manager · reset rule"],
+  ["gifts.view","Gifts · view"],
+  ["gifts.save","Gifts · add/edit"],
+  ["gifts.remove","Gifts · remove"],
+  ["assets.view","Entries/Frames/Assets · view"],
+  ["assets.save","Entries/Frames/Assets · add/edit"],
+  ["assets.remove","Entries/Frames/Assets · remove"],
+  ["store.view","App Store · view"],
+  ["store.save","App Store · add/edit"],
+  ["store.remove","App Store · remove"],
+  ["catalog.view","Advanced Catalog · view"],
+  ["catalog.save","Advanced Catalog · add/edit"],
+  ["catalog.remove","Advanced Catalog · delete"],
+
+  ["settings.view","Master Switches · view"],
+  ["settings.feature.voice","Master Switch · Voice rooms"],
+  ["settings.feature.gifts","Master Switch · Gifts"],
+  ["settings.feature.games","Master Switch · Games"],
+  ["settings.feature.messages","Master Switch · Messages"],
+  ["settings.feature.room_creation","Master Switch · Room creation"],
+  ["settings.feature.aladdin_lamp","Master Switch · Aladdin's Lamp"],
+  ["settings.feature.red_pocket","Master Switch · Red Pocket / LP"],
+  ["settings.feature.friends_call","Master Switch · Friends call"],
+  ["settings.feature.visitors","Master Switch · Profile visitors"],
+  ["settings.maintenance","Maintenance · enable/message"],
+
+  ["announcements.view","Announcements · view"],
+  ["announcements.save","Announcements · add/edit"],
+  ["announcements.delete","Announcements · delete"],
+
+  ["support.view","VIP Support · view tickets/threads"],
+  ["support.reply","VIP Support · reply"],
+  ["support.close","VIP Support · close ticket"],
+
+  ["staff.view","Custom Staff Panels · view"],
+  ["staff.create","Custom Staff Panels · create"],
+  ["staff.permissions.edit","Custom Staff Panels · edit name/role/permissions"],
+  ["staff.toggle","Custom Staff Panels · enable/disable"],
+  ["staff.delete","Custom Staff Panels · delete"],
+
+  ["audit.view","Audit · view own panel audit"],
+  ["audit.export","Audit · export CSV"]
+];
+
+const frontendPermissionAliases = {
+  "dashboard.view":["dashboard"],
+  "users.search":["users.read"],"users.detail":["users.read"],
+  "users.name.edit":["users.write"],"users.role.edit":["users.write"],"users.vip.edit":["users.write"],"users.public_id.change":["users.write"],
+  "users.moderation":["users.moderate","users.write"],
+  "users.wallet.adjust":["wallet.write"],"users.role_wallet.adjust":["wallet.write"],"users.role_wallet.ban":["wallet.write"],
+  "users.override.invisible":["users.override"],"users.override.lock_bypass":["users.override"],
+  "users.wallet.ban":["users.override"],"users.wallet.freeze":["users.override","wallet.freeze"],"users.device.ban":["users.device"],
+  "treasury.view":["treasury.read"],"treasury.send":["treasury.write"],
+  "economy.view":["economy.read"],"economy.coin_rate.edit":["economy.write"],
+  "messaging.view":["messaging.read"],"messaging.send.selected":["messaging.write"],"messaging.send.all":["messaging.write"],
+  "tags.view":["messaging.read"],"tags.apply":["tags.write"],"tags.remove":["tags.write"],
+  "rooms.view":["rooms.read"],"rooms.edit":["rooms.write"],"rooms.lock":["rooms.write"],"rooms.delete":["rooms.write"],"rooms.ban":["rooms.write"],
+  "rooms.live":["rooms.live"],"rooms.media":["rooms.media"],"rooms.theme":["rooms.theme"],
+  "themes.global.view":["catalog.read"],"themes.global.save":["catalog.write"],"themes.global.remove":["catalog.write"],
+  "roles.view":["roles.read"],"roles.save":["roles.write"],"roles.delete":["roles.write"],
+  "banners.view":["banners.read"],"banners.save":["banners.write"],"banners.delete":["banners.write"],
+  "games.view":["games.read"],"games.configure":["games.write"],
+  "policies.view":["policies.read"],"policies.save":["policies.write"],"policies.delete":["policies.write"],
+  "pricing.view":["policies.read"],"pricing.save":["policies.write"],"pricing.delete":["policies.write"],
+  "vip.view":["catalog.read"],"vip.save":["catalog.write"],"vip.reset":["catalog.write"],
+  "gifts.view":["catalog.read"],"gifts.save":["catalog.write"],"gifts.remove":["catalog.write"],
+  "assets.view":["catalog.read"],"assets.save":["catalog.write"],"assets.remove":["catalog.write"],
+  "store.view":["catalog.read"],"store.save":["catalog.write"],"store.remove":["catalog.write"],
+  "catalog.view":["catalog.read"],"catalog.save":["catalog.write"],"catalog.remove":["catalog.write"],
+  "settings.view":["settings.read"],
+  "settings.feature.voice":["settings.write"],"settings.feature.gifts":["settings.write"],"settings.feature.games":["settings.write"],
+  "settings.feature.messages":["settings.write"],"settings.feature.room_creation":["settings.write"],"settings.feature.aladdin_lamp":["settings.write"],
+  "settings.feature.red_pocket":["settings.write"],"settings.feature.friends_call":["settings.write"],"settings.feature.visitors":["settings.write"],
+  "settings.maintenance":["settings.write"],
+  "announcements.view":["announcements.read"],"announcements.save":["announcements.write"],"announcements.delete":["announcements.write"],
+  "support.view":["support.read"],"support.reply":["support.write"],"support.close":["support.write"],
+  "staff.view":["staff.read"],"staff.create":["staff.write"],"staff.permissions.edit":["staff.write"],"staff.toggle":["staff.write"],"staff.delete":["staff.write"],
+  "audit.view":["audit.read"],"audit.export":["audit.read"]
+};
+
+const viewPermissionMap = {
+  overview:["dashboard.view"],
+  users:["users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change","users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban","users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban"],
+  notifications:[],
+  messaging:["messaging.view","messaging.send.selected","messaging.send.all","tags.view","tags.apply","tags.remove"],
+  rooms:["rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme","themes.global.view","themes.global.save","themes.global.remove"],
+  roles:["roles.view","roles.save","roles.delete"],
+  banners:["banners.view","banners.save","banners.delete"],
+  games:["games.view","games.configure"],
+  policies:["policies.view","policies.save","policies.delete","pricing.view","pricing.save","pricing.delete"],
+  wallets:["treasury.view","treasury.send"],
+  economy:["economy.view","economy.coin_rate.edit","users.search","users.detail","users.public_id.change"],
+  vip:["vip.view","vip.save","vip.reset"],
+  gifts:["gifts.view","gifts.save","gifts.remove"],
+  assets:["assets.view","assets.save","assets.remove"],
+  store:["store.view","store.save","store.remove"],
+  catalog:["catalog.view","catalog.save","catalog.remove"],
+  settings:["settings.view","settings.feature.voice","settings.feature.gifts","settings.feature.games","settings.feature.messages","settings.feature.room_creation","settings.feature.aladdin_lamp","settings.feature.red_pocket","settings.feature.friends_call","settings.feature.visitors","settings.maintenance"],
+  announcements:["announcements.view","announcements.save","announcements.delete"],
+  staff:["staff.view","staff.create","staff.permissions.edit","staff.toggle","staff.delete"],
+  support:["support.view","support.reply","support.close"],
+  audit:["audit.view","audit.export"]
+};
+
+const selectorPermissionRules = [
+  ["#userSearch",["users.search"],"self"],["#searchUsers",["users.search"],"self"],
+  ["#editUserName",["users.name.edit"],"label"],["#editUserRole",["users.role.edit"],"label"],["#editVip",["users.vip.edit"],"label"],
+  ["#saveUserProfile",["users.name.edit","users.role.edit","users.vip.edit"],"self"],
+  ["#editStatus",["users.moderation"],"label"],["#editNote",["users.moderation"],"label"],["#saveModeration",["users.moderation"],"self"],
+  ["#editPublicId",["users.public_id.change"],"label"],["#savePublicId",["users.public_id.change"],"self"],
+  ["#coinDelta",["users.wallet.adjust"],"label"],["#diamondDelta",["users.wallet.adjust"],"label"],["#applyWallet",["users.wallet.adjust"],"self"],
+  ["#roleWalletType",["users.role_wallet.adjust","users.role_wallet.ban"],"label"],["#roleCoinDelta",["users.role_wallet.adjust"],"label"],
+  ["#roleWalletBanned",["users.role_wallet.ban"],"label"],["#applyRoleWallet",["users.role_wallet.adjust","users.role_wallet.ban"],"self"],
+  ["#userInvisibleId",["users.override.invisible"],"label"],["#userLockedBypass",["users.override.lock_bypass"],"label"],
+  ["#userWalletBanned",["users.wallet.ban"],"label"],["#userWalletFrozen",["users.wallet.freeze"],"label"],
+  ["#saveUserOverrides",["users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze"],"self"],
+
+  ["#roomSearch",["rooms.view"],"self"],["#searchRooms",["rooms.view"],"self"],
+  ["#ownerRoomDpKey",["rooms.media"],"label"],["#ownerRoomBackgroundKey",["rooms.media"],"label"],["#saveOwnerRoomMedia",["rooms.media"],"self"],
+  ["#ownerRoomThemeId",["rooms.theme"],"label"],["#saveOwnerRoomTheme",["rooms.theme"],"self"],
+  ["#reloadGlobalThemes",["themes.global.view"],"self"],
+  ["#globalThemeId",["themes.global.save"],"label"],["#globalThemeName",["themes.global.save"],"label"],["#globalThemeAsset",["themes.global.save"],"label"],
+  ["#globalThemeStart",["themes.global.save"],"label"],["#globalThemeEnd",["themes.global.save"],"label"],["#globalThemePermanent",["themes.global.save"],"label"],
+  ["#globalThemeEnabled",["themes.global.save"],"label"],["#saveGlobalTheme",["themes.global.save"],"self"],
+
+  ["#messageUserSearch",["users.search"],"self"],["#searchMessageUsers",["users.search"],"self"],
+  ["#officialMessageBody",["messaging.send.selected","messaging.send.all"],"label"],["#sendOfficialSelected",["messaging.send.selected"],"self"],["#sendOfficialAll",["messaging.send.all"],"self"],
+  ["#ownerTagName",["tags.apply"],"label"],["#ownerTagColor",["tags.apply"],"label"],["#ownerTagDesignation",["tags.apply"],"label"],["#ownerTagKind",["tags.apply"],"label"],["#applyOwnerTag",["tags.apply"],"self"],
+
+  ["#rolePostKind",["roles.view","roles.save","roles.delete"],"label"],["#rolePostId",["roles.save"],"label"],["#rolePostName",["roles.save"],"label"],
+  ["#rolePostOrder",["roles.save"],"label"],["#rolePostEnabled",["roles.save"],"label"],["#rolePostDetails",["roles.save"],"label"],["#saveRolePost",["roles.save"],"self"],["#reloadRolesPosts",["roles.view"],"self"],
+
+  ["#bannerId",["banners.save"],"label"],["#bannerName",["banners.save"],"label"],["#bannerAsset",["banners.save"],"label"],["#bannerLink",["banners.save"],"label"],
+  ["#bannerStart",["banners.save"],"label"],["#bannerEnd",["banners.save"],"label"],["#bannerEnabled",["banners.save"],"label"],["#saveBanner",["banners.save"],"self"],["#reloadBanners",["banners.view"],"self"],
+
+  ["#gameConfigId",["games.configure"],"label"],["#gameConfigName",["games.configure"],"label"],["#gameMinBet",["games.configure"],"label"],["#gameMaxBet",["games.configure"],"label"],
+  ["#gameEnabled",["games.configure"],"label"],["#saveGameConfig",["games.configure"],"self"],["#reloadGames",["games.view"],"self"],["#gameInvestigationUser",["games.view"],"label"],["#loadGameInvestigation",["games.view"],"self"],
+
+  ["#policyKey",["policies.save"],"label"],["#policyValue",["policies.save"],"label"],["#savePolicy",["policies.save"],"self"],["#reloadPolicies",["policies.view"],"self"],
+  ["#pricingUserId",["pricing.view","pricing.save"],"label"],["#pricingKind",["pricing.view","pricing.save"],"label"],["#pricingItemId",["pricing.save"],"label"],
+  ["#pricingPrice",["pricing.save"],"label"],["#pricingDuration",["pricing.save"],"label"],["#pricingFree",["pricing.save"],"label"],["#savePricingOverride",["pricing.save"],"self"],
+  ["#clearPricingOverride",["pricing.save"],"self"],["#reloadPricingOverrides",["pricing.view"],"self"],
+
+  ["#treasuryAmount",["treasury.send"],"label"],["#treasuryUserId",["treasury.send"],"label"],["#treasuryNote",["treasury.send"],"label"],["#treasurySend",["treasury.send"],"self"],["#reloadTreasury",["treasury.view"],"self"],
+
+  ["#economyUserSearch",["users.search"],"self"],["#searchEconomyUsers",["users.search"],"self"],["#economyPublicId",["users.public_id.change"],"label"],["#saveEconomyPublicId",["users.public_id.change"],"self"],
+  ["#coinRateCoinsPerUsd",["economy.coin_rate.edit"],"label"],["#saveCoinRate",["economy.coin_rate.edit"],"self"],
+
+  ["#reloadVipRules",["vip.view"],"self"],["#vipRuleLevel",["vip.save"],"label"],["#vipRuleName",["vip.save"],"label"],["#vipRuleUpgradeExp",["vip.save"],"label"],
+  ["#vipRuleMaintainExp",["vip.save"],"label"],["#vipRuleValidityDays",["vip.save"],"label"],["#vipRuleEntryId",["vip.save"],"label"],["#vipRuleFrameId",["vip.save"],"label"],
+  ["#vipRuleEnabled",["vip.save"],"label"],["#saveVipRule",["vip.save"],"self"],["#resetVipRule",["vip.reset"],"self"],
+
+  ["#reloadGifts",["gifts.view"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
+  ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
+  ["#giftEnd",["gifts.save"],"label"],["#giftEnabled",["gifts.save"],"label"],["#giftDescription",["gifts.save"],"label"],["#saveGift",["gifts.save"],"self"],["#clearGift",["gifts.save"],"self"],
+
+  ["#reloadAssets",["assets.view"],"self"],["#assetKind",["assets.view","assets.save","assets.remove"],"label"],["#assetId",["assets.save"],"label"],["#assetName",["assets.save"],"label"],
+  ["#assetPrice",["assets.save"],"label"],["#assetVip",["assets.save"],"label"],["#assetDuration",["assets.save"],"label"],["#assetTier",["assets.save"],"label"],["#assetOrder",["assets.save"],"label"],
+  ["#assetFileKey",["assets.save"],"label"],["#assetStart",["assets.save"],"label"],["#assetEnd",["assets.save"],"label"],["#assetEnabled",["assets.save"],"label"],["#assetDescription",["assets.save"],"label"],
+  ["#saveAsset",["assets.save"],"self"],["#clearAsset",["assets.save"],"self"],
+
+  ["#reloadStore",["store.view"],"self"],["#storeKind",["store.view","store.save","store.remove"],"label"],["#storeId",["store.save"],"label"],["#storeName",["store.save"],"label"],
+  ["#storePrice",["store.save"],"label"],["#storeVip",["store.save"],"label"],["#storeDuration",["store.save"],"label"],["#storeTier",["store.save"],"label"],["#storeOrder",["store.save"],"label"],
+  ["#storeAsset",["store.save"],"label"],["#storeEmoji",["store.save"],"label"],["#storeCategory",["store.save"],"label"],["#storeEnabled",["store.save"],"label"],["#storeDescription",["store.save"],"label"],
+  ["#saveStoreItem",["store.save"],"self"],["#clearStoreItem",["store.save"],"self"],
+
+  ["#catalogKind",["catalog.view","catalog.save","catalog.remove"],"label"],["#catalogId",["catalog.save"],"label"],["#catalogName",["catalog.save"],"label"],["#catalogPrice",["catalog.save"],"label"],
+  ["#catalogOrder",["catalog.save"],"label"],["#catalogAsset",["catalog.save"],"label"],["#catalogLevel",["catalog.save"],"label"],["#catalogEnabled",["catalog.save"],"label"],["#catalogDescription",["catalog.save"],"label"],
+  ["#saveCatalog",["catalog.save"],"self"],["#clearCatalog",["catalog.save"],"self"],["#reloadCatalog",["catalog.view"],"self"],
+
+  ["#maintenanceEnabled",["settings.maintenance"],"label"],["#maintenanceMessage",["settings.maintenance"],"label"],["#saveMaintenance",["settings.maintenance"],"self"],
+
+  ["#announcementTitle",["announcements.save"],"label"],["#announcementEnabled",["announcements.save"],"label"],["#announcementStart",["announcements.save"],"label"],
+  ["#announcementEnd",["announcements.save"],"label"],["#announcementBody",["announcements.save"],"label"],["#saveAnnouncement",["announcements.save"],"self"],["#clearAnnouncement",["announcements.save"],"self"],
+
+  ["#supportStatus",["support.view"],"label"],["#supportReply",["support.reply"],"label"],["#sendSupportReply",["support.reply"],"self"],["#closeSupportTicket",["support.close"],"self"],
+
+  ["#staffName",["staff.create","staff.permissions.edit"],"label"],["#staffRole",["staff.create","staff.permissions.edit"],"label"],["#clearPermissions",["staff.create","staff.permissions.edit"],"self"],
+  ["#createStaff",["staff.create","staff.permissions.edit"],"self"],["#cancelStaffEdit",["staff.permissions.edit"],"self"],
+
+  ["#reloadAudit",["audit.view"],"self"],["#exportAudit",["audit.export"],"self"]
+];
+
+const dynamicPermissionRules = [
+  ["[data-user-open]",["users.detail"]],
+  ["[data-device-key]",["users.device.ban"]],
+  ["[data-room-live]",["rooms.live"]],["[data-room-ban]",["rooms.ban"]],["[data-room-lock]",["rooms.lock"]],["[data-room-edit]",["rooms.edit"]],["[data-room-delete]",["rooms.delete"]],
+  ["[data-global-theme-edit]",["themes.global.save"]],["[data-global-theme-remove]",["themes.global.remove"]],
+  ["[data-tag-user]",["tags.remove"]],
+  ["[data-role-post-edit]",["roles.save"]],["[data-role-post-delete]",["roles.delete"]],
+  ["[data-banner-edit]",["banners.save"]],["[data-banner-delete]",["banners.delete"]],
+  ["[data-game-edit]",["games.configure"]],
+  ["[data-policy-edit]",["policies.save"]],["[data-policy-delete]",["policies.delete"]],
+  ["[data-pricing-edit-user]",["pricing.save"]],["[data-pricing-delete-user]",["pricing.delete"]],
+  ["[data-economy-user]",["users.detail"]],
+  ["[data-vip-rule-edit]",["vip.save"]],
+  ["[data-gift-edit]",["gifts.save"]],["[data-gift-remove]",["gifts.remove"]],
+  ["[data-asset-edit]",["assets.save"]],["[data-asset-remove]",["assets.remove"]],
+  ["[data-store-edit]",["store.save"]],["[data-store-remove]",["store.remove"]],
+  ["[data-catalog-edit]",["catalog.save"]],["[data-catalog-delete]",["catalog.remove"]],
+  ["[data-ann-edit]",["announcements.save"]],["[data-ann-delete]",["announcements.delete"]],
+  ["[data-staff-edit]",["staff.permissions.edit"]],["[data-staff-toggle]",["staff.toggle"]],["[data-staff-delete]",["staff.delete"]],
+  ["[data-ticket-open]",["support.view"]]
 ];
 
 function authHeaders(){return {authorization:"Bearer "+state.token,"content-type":"application/json"};}
@@ -60,14 +314,46 @@ function esc(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&l
 function num(v){return Number(v||0).toLocaleString();}
 function time(v){if(!v)return "—";return new Date(Number(v)).toLocaleString();}
 function duration(v){const ms=Math.max(0,Number(v||0));const total=Math.floor(ms/1000);const h=Math.floor(total/3600);const m=Math.floor((total%3600)/60);const sec=total%60;return h>0?`${h}h ${m}m`:m>0?`${m}m ${sec}s`:`${sec}s`;}
-function can(p){return (!!state.actor&&(state.actor.permissions||[]).includes("*"))||(state.actor?.permissions||[]).includes(p);}
+function can(p){
+  if(!state.actor)return false;
+  const permissions=state.actor.permissions||[];
+  if(state.actor.type==="owner"||permissions.includes("*"))return true;
+  if(permissions.includes(p))return true;
+  return (frontendPermissionAliases[p]||[]).some(alias=>permissions.includes(alias));
+}
+function canAny(list){return (list||[]).some(can);}
 function empty(text){return `<div class="empty">${esc(text)}</div>`;}
 function toast(message,good=true){const el=$("#toast");el.textContent=message;el.className="toast "+(good?"good":"bad");el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600);}
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
+
+function permissionTarget(element,mode){
+  if(mode==="label")return element.closest("label")||element;
+  return element;
+}
+function setPermissionVisibility(selector,permissions,mode="self"){
+  document.querySelectorAll(selector).forEach(element=>{
+    permissionTarget(element,mode).hidden=!canAny(permissions);
+  });
+}
+function applyActionPermissions(){
+  selectorPermissionRules.forEach(([selector,permissions,mode])=>setPermissionVisibility(selector,permissions,mode));
+  dynamicPermissionRules.forEach(([selector,permissions])=>setPermissionVisibility(selector,permissions,"self"));
+  document.querySelectorAll("[data-setting-toggle]").forEach(element=>{
+    const key=String(element.dataset.settingToggle||"");
+    element.closest("label").hidden=!can("settings."+key);
+  });
+  if($("#clearAudit"))$("#clearAudit").hidden=state.actor?.type!=="owner";
+  if($("#ownerPrivateMessages"))$("#ownerPrivateMessages").hidden=state.actor?.type!=="owner";
+}
 function applyPermissions(){
-  const map={overview:"dashboard",users:"users.read",notifications:"notifications.read",messaging:"messaging.read",rooms:"rooms.read",roles:"roles.read",banners:"banners.read",games:"games.read",policies:"policies.read",wallets:"treasury.read",economy:"economy.read",vip:"catalog.read",gifts:"catalog.read",assets:"catalog.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
-  $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=(btn.dataset.view==="notifications"&&state.actor?.type!=="owner")||(!!p&&!can(p));});
+  $$(".nav-btn").forEach(btn=>{
+    const view=btn.dataset.view;
+    const ownerOnly=view==="notifications";
+    const allowed=ownerOnly ? state.actor?.type==="owner" : canAny(viewPermissionMap[view]||[]);
+    btn.hidden=!allowed;
+  });
+  applyActionPermissions();
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
 async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
@@ -88,8 +374,9 @@ async function loadOverview(){
   $("#overviewAudit").innerHTML=(d.audit||[]).length?(d.audit||[]).map(a=>`<div class="item-card"><div class="item-title">${esc(a.action.replaceAll('_',' '))}</div><div class="item-meta">${esc(a.target_type)} ${esc(a.target_id)} · ${esc(a.summary||'')}<br>${time(a.created_at)}</div></div>`).join(""):empty("No owner activity yet");
 }
 
-async function loadUsers(){if(!can("users.read"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$$('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
+async function loadUsers(){if(!can("users.search"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$$('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
 async function openUser(id){
+  if(!can("users.detail"))return toast("Full ID View permission required",false);
   const d=await api("/api/owner/users/"+encodeURIComponent(id));
   const u=d.user;
   state.selectedUser=u;
@@ -232,14 +519,33 @@ async function openOwnerMessageImage(key){
 }
 
 function renderLedger(rows){$("#walletLedger").innerHTML=rows.length?`<div class="small-table">${rows.map(r=>`<div class="ledger-row"><span>${time(r.created_at)}</span><span>${esc(r.kind.replaceAll('_',' '))}</span><b>${Number(r.amount)>0?'+':''}${num(r.amount)} → ${num(r.balance_after)}</b></div>`).join("")}</div>`:empty("No coin ledger entries");}
-async function saveUserProfile(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/profile`,{method:"POST",body:JSON.stringify({display_name:$("#editUserName").value,role:$("#editUserRole").value,vip_level:Number($("#editVip").value||0)})});toast("User profile saved");await openUser(state.selectedUser.id);await loadUsers();}
-async function saveModeration(){if(!state.selectedUser)return;await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
-async function savePublicId(){if(!state.selectedUser)return;const publicId=$("#editPublicId").value.trim();if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Public ID must be between 1000001 and 9999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
-async function applyWallet(){if(!state.selectedUser)return;const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
-async function applyRoleWallet(){if(!state.selectedUser)return;const walletType=$("#roleWalletType").value;const delta=Number($("#roleCoinDelta").value||0);if(!walletType)return toast("Select Coin Seller or Merchant wallet",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({role_wallet_type:walletType,role_coin_delta:delta,role_wallet_banned:$("#roleWalletBanned").checked})});toast("Role wallet balance/status updated");await openUser(state.selectedUser.id);await loadUsers();}
+async function saveUserProfile(){
+  if(!state.selectedUser)return;
+  const payload={};
+  if(can("users.name.edit"))payload.display_name=$("#editUserName").value;
+  if(can("users.role.edit"))payload.role=$("#editUserRole").value;
+  if(can("users.vip.edit"))payload.vip_level=Number($("#editVip").value||0);
+  if(!Object.keys(payload).length)return toast("No profile edit permission selected",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/profile`,{method:"POST",body:JSON.stringify(payload)});
+  toast("User profile saved");await openUser(state.selectedUser.id);if(can("users.search"))await loadUsers();
+}
+async function saveModeration(){if(!state.selectedUser)return;if(!can("users.moderation"))return toast("Moderation permission required",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
+async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim();if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Public ID must be between 1000001 and 9999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
+async function applyWallet(){if(!state.selectedUser)return;if(!can("users.wallet.adjust"))return toast("Wallet adjustment permission required",false);const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
+async function applyRoleWallet(){
+  if(!state.selectedUser)return;
+  const walletType=$("#roleWalletType").value;
+  if(!walletType)return toast("Select Coin Seller or Merchant wallet",false);
+  const payload={role_wallet_type:walletType};
+  if(can("users.role_wallet.adjust"))payload.role_coin_delta=Number($("#roleCoinDelta").value||0);
+  if(can("users.role_wallet.ban"))payload.role_wallet_banned=$("#roleWalletBanned").checked;
+  if(!Object.prototype.hasOwnProperty.call(payload,"role_coin_delta")&&!Object.prototype.hasOwnProperty.call(payload,"role_wallet_banned"))return toast("No role-wallet permission selected",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify(payload)});
+  toast("Role wallet balance/status updated");await openUser(state.selectedUser.id);if(can("users.search"))await loadUsers();
+}
 
 async function loadRooms(){
-  if(!can("rooms.read"))return;
+  if(!can("rooms.view"))return;
   const q=$("#roomSearch").value.trim();
   const d=await api("/api/owner/rooms?q="+encodeURIComponent(q));
   $("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.banned)?"banned":(Number(r.locked)?"banned":"active")}">${Number(r.banned)?"BANNED":(Number(r.locked)?"Locked":"Open")}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-live="${esc(r.id)}">Investigate</button><button class="${Number(r.banned)?"secondary":"danger"} mini" data-room-ban="${esc(r.id)}" data-banned="${Number(r.banned)}">${Number(r.banned)?"Unban":"Ban"}</button><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?"Unlock":"Lock"}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
@@ -278,7 +584,7 @@ async function saveOwnerRoomTheme(){
 }
 
 async function loadWallets(){
-  if(!can("treasury.read"))return;
+  if(!can("treasury.view"))return;
   const d=await api("/api/owner/treasury");
   state.treasury=d.treasury||{balance:0};
   $("#treasuryBalance").textContent=num(state.treasury.balance||0);
@@ -287,10 +593,10 @@ async function loadWallets(){
   const ownerOnly=state.actor?.role==="owner";
   $("#treasuryAdd").hidden=!ownerOnly;
   $("#treasuryDeduct").hidden=!ownerOnly;
-  $("#treasurySend").disabled=!can("treasury.write");
+  $("#treasurySend").disabled=!can("treasury.send");
 }
 async function treasuryAction(action){
-  if(!can("treasury.write"))return toast("Treasury write permission required",false);
+  if(!can("treasury.send"))return toast("Treasury write permission required",false);
   const amount=Number($("#treasuryAmount").value||0);
   if(!Number.isFinite(amount)||amount<=0)return toast("Enter a valid amount",false);
   const payload={action,amount,user_id:$("#treasuryUserId").value.trim(),note:$("#treasuryNote").value.trim()};
@@ -305,13 +611,13 @@ async function treasuryAction(action){
 
 
 async function loadEconomy(){
-  if(!can("economy.read"))return;
+  if(!can("economy.view"))return;
   const d=await api("/api/owner/economy");
   const rate=Number(d.coins_per_usd||5000000);
   $("#coinRateCoinsPerUsd").value=String(rate);
   renderCoinRate(rate,d.updated_at);
-  $("#saveCoinRate").disabled=!can("economy.write");
-  if(!can("users.read")){
+  $("#saveCoinRate").disabled=!can("economy.coin_rate.edit");
+  if(!can("users.search")){
     $("#economyUserSearch").disabled=true;
     $("#searchEconomyUsers").disabled=true;
     $("#economyUserResults").innerHTML=empty("Users read permission is required for Unique ID lookup.");
@@ -322,7 +628,7 @@ function renderCoinRate(rate,updatedAt){
   $("#coinRateSummary").textContent=`Current rate: $1 = ${num(rate)} coins · 1,000,000 coins ≈ $${perMillion.toFixed(4)}${updatedAt?" · Updated "+time(updatedAt):""}`;
 }
 async function searchEconomyUsers(){
-  if(!can("users.read"))return toast("Users read permission required",false);
+  if(!can("users.search"))return toast("Users read permission required",false);
   const q=$("#economyUserSearch").value.trim();
   if(!q)return toast("Enter a user name or ID",false);
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=30");
@@ -338,11 +644,11 @@ async function selectEconomyUser(id){
   const old=(d.user.old_public_ids||[]).map(x=>x.public_id).join(", ");
   $("#economySelectedUserMeta").textContent=`Internal ID ${d.user.id} · Current public ID ${d.user.public_id||"—"}${old?" · Old IDs: "+old:""}`;
   $("#economyPublicId").value=d.user.public_id||"";
-  $("#saveEconomyPublicId").disabled=!can("users.write");
+  $("#saveEconomyPublicId").disabled=!can("users.public_id.change");
 }
 async function saveEconomyPublicId(){
   if(!state.economyUser)return toast("Select a user first",false);
-  if(!can("users.write"))return toast("Users write permission required",false);
+  if(!can("users.public_id.change"))return toast("Users write permission required",false);
   const publicId=$("#economyPublicId").value.trim();
   if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Unique ID must be between 1000001 and 9999999",false);
   await api(`/api/owner/users/${encodeURIComponent(state.economyUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});
@@ -351,7 +657,7 @@ async function saveEconomyPublicId(){
   await searchEconomyUsers();
 }
 async function saveCoinRate(){
-  if(!can("economy.write"))return toast("Economy write permission required",false);
+  if(!can("economy.coin_rate.edit"))return toast("Economy write permission required",false);
   const rate=Number($("#coinRateCoinsPerUsd").value);
   if(!Number.isSafeInteger(rate)||rate<1)return toast("Enter a valid whole-number coin rate",false);
   const d=await api("/api/owner/economy",{method:"POST",body:JSON.stringify({coins_per_usd:rate})});
@@ -375,7 +681,7 @@ function clearStoreForm(){
   $("#storeEnabled").checked=true;
 }
 async function loadStore(){
-  if(!can("catalog.read"))return;
+  if(!can("store.view"))return;
   const kind=$("#storeKind").value.trim();
   if(!kind)return;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
@@ -414,7 +720,7 @@ function editStoreItem(id){
   $("#storeId").scrollIntoView({behavior:"smooth",block:"center"});
 }
 async function saveStoreItem(){
-  if(!can("catalog.write"))return toast("Store write permission required",false);
+  if(!can("store.save"))return toast("Store save permission required",false);
   const kind=$("#storeKind").value.trim();
   const itemId=$("#storeId").value.trim();
   const name=$("#storeName").value.trim()||itemId;
@@ -444,7 +750,7 @@ async function saveStoreItem(){
   await loadStore();
 }
 async function removeStoreItem(id){
-  if(!can("catalog.write"))return toast("Store write permission required",false);
+  if(!can("store.remove"))return toast("Store remove permission required",false);
   const kind=$("#storeKind").value.trim();
   if(!confirm("Remove this item from the app store?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});
@@ -465,7 +771,7 @@ function fillVipRuleForm(rule){
   $("#vipRuleEnabled").checked=Number(rule.enabled)!==0;
 }
 async function loadVipRules(){
-  if(!can("catalog.read"))return;
+  if(!can("vip.view"))return;
   const d=await api("/api/owner/vip-rules");
   state.vipRules=d.levels||[];
   $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Level ${num(rule.level)} · upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}${rule.entry_id?" · entry "+esc(rule.entry_id):""}${rule.frame_id?" · frame "+esc(rule.frame_id):""}</div></div><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button></div></div>`).join(""):empty("No VIP rules");
@@ -474,7 +780,7 @@ async function loadVipRules(){
   if(selected)fillVipRuleForm(selected);
 }
 async function saveVipRule(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("vip.save"))return toast("VIP save permission required",false);
   const level=Number($("#vipRuleLevel").value);
   const upgrade=Number($("#vipRuleUpgradeExp").value);
   const maintain=Number($("#vipRuleMaintainExp").value);
@@ -492,7 +798,7 @@ async function saveVipRule(){
   await loadVipRules();
 }
 async function resetVipRule(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("vip.reset"))return toast("VIP reset permission required",false);
   const level=Number($("#vipRuleLevel").value);
   if(!Number.isSafeInteger(level)||level<1||level>18)return toast("Select VIP1–VIP18",false);
   if(!confirm("Reset VIP "+level+" to the DarkVibeX base rule?"))return;
@@ -507,7 +813,7 @@ function clearGiftForm(){
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
 }
 async function loadGifts(){
-  if(!can("catalog.read"))return;
+  if(!can("gifts.view"))return;
   const d=await api("/api/owner/store?kind=gift");
   state.giftItems=d.items||[];
   $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
@@ -526,7 +832,7 @@ function editGift(id){
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
 async function saveGift(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("gifts.save"))return toast("Gift save permission required",false);
   const id=$("#giftId").value.trim(),name=$("#giftName").value.trim()||id;
   if(!id||!name)return toast("Gift ID and name are required",false);
   const starts=Number($("#giftStart").value||0)||null,ends=Number($("#giftEnd").value||0)||null;
@@ -538,7 +844,7 @@ async function saveGift(){
   toast("Gift saved to live catalog");clearGiftForm();await loadGifts();
 }
 async function removeGift(id){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("gifts.remove"))return toast("Gift remove permission required",false);
   if(!confirm("Remove this gift from the app?"))return;
   await api("/api/owner/store/gift/"+encodeURIComponent(id),{method:"DELETE"});toast("Gift removed");await loadGifts();
 }
@@ -549,7 +855,7 @@ function clearAssetForm(){
   $("#assetEnabled").checked=true;$("#assetDescription").value="";
 }
 async function loadAssets(){
-  if(!can("catalog.read"))return;
+  if(!can("assets.view"))return;
   const kind=$("#assetKind").value;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.assetItems=d.items||[];
@@ -569,7 +875,7 @@ function editAsset(id){
   $("#assetEnabled").checked=Number(item.enabled)!==0;$("#assetDescription").value=d.description||"";
 }
 async function saveAsset(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("assets.save"))return toast("Asset save permission required",false);
   const kind=$("#assetKind").value,id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
   if(!kind||!id||!name)return toast("Asset type, ID and name are required",false);
   const starts=Number($("#assetStart").value||0)||null,ends=Number($("#assetEnd").value||0)||null;
@@ -581,26 +887,50 @@ async function saveAsset(){
   toast("Asset saved to live store");clearAssetForm();await loadAssets();
 }
 async function removeAsset(id){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("assets.remove"))return toast("Asset remove permission required",false);
   const kind=$("#assetKind").value;if(!confirm("Remove this "+kind+" from the app?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});toast("Asset removed");await loadAssets();
 }
 
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
-async function loadCatalog(){if(!can("catalog.read"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
+async function loadCatalog(){if(!can("catalog.view"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
 async function saveCatalog(){const payload={kind:$("#catalogKind").value,id:$("#catalogId").value.trim()||undefined,name:$("#catalogName").value.trim(),price_coins:Number($("#catalogPrice").value||0),sort_order:Number($("#catalogOrder").value||0),enabled:$("#catalogEnabled").checked,data:{asset:$("#catalogAsset").value.trim(),level:$("#catalogLevel").value.trim(),description:$("#catalogDescription").value.trim()}};if(!payload.name)return toast('Enter a display name',false);await api('/api/owner/catalog',{method:'POST',body:JSON.stringify(payload)});toast('Content item saved');clearCatalogForm();await loadCatalog();}
 
 async function deleteCatalog(id){if(!confirm('Delete this content item?'))return;const kind=$("#catalogKind").value;await api(`/api/owner/catalog/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,{method:'DELETE'});toast('Content item deleted');loadCatalog();}
 
-async function loadSettings(){if(!can("settings.read"))return;const d=await api('/api/owner/settings');state.settings=new Map((d.settings||[]).map(s=>[s.key,s.value]));$("#featureSettings").innerHTML=Object.entries(featureLabels).map(([key,label])=>{const enabled=state.settings.get(key)?.enabled!==false;return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?'On':'Off'}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?'checked':''}></label>`}).join('');$$('[data-setting-toggle]').forEach(i=>i.onchange=()=>saveFeature(i.dataset.settingToggle,i.checked));const m=state.settings.get('maintenance')||{};$("#maintenanceEnabled").checked=!!m.enabled;$("#maintenanceMessage").value=m.message||"";}
-async function saveFeature(key,enabled){await api('/api/owner/settings/'+encodeURIComponent(key),{method:'POST',body:JSON.stringify({value:{enabled}})});toast(featureLabels[key]+' '+(enabled?'enabled':'disabled'));}
-async function saveMaintenance(){await api('/api/owner/settings/maintenance',{method:'POST',body:JSON.stringify({value:{enabled:$("#maintenanceEnabled").checked,message:$("#maintenanceMessage").value.trim()}})});toast('Maintenance setting saved');}
+async function loadSettings(){
+  if(!canAny(viewPermissionMap.settings))return;
+  const d=await api("/api/owner/settings");
+  state.settings=new Map((d.settings||[]).map(row=>[row.key,row.value]));
+  const mayViewAll=can("settings.view");
+  $("#featureSettings").innerHTML=Object.entries(featureLabels).filter(([key])=>mayViewAll||can("settings."+key)).map(([key,label])=>{
+    const enabled=state.settings.get(key)?.enabled!==false;
+    const editable=can("settings."+key);
+    return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?"On":"Off"}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?"checked":""} ${editable?"":"disabled"}></label>`;
+  }).join("")||empty("No settings functions selected");
+  $$("[data-setting-toggle]").forEach(input=>input.onchange=()=>saveFeature(input.dataset.settingToggle,input.checked));
+  const maintenance=state.settings.get("maintenance")||{};
+  $("#maintenanceEnabled").checked=!!maintenance.enabled;
+  $("#maintenanceMessage").value=maintenance.message||"";
+  applyActionPermissions();
+}
+async function saveFeature(key,enabled){
+  const permission="settings."+String(key||"");
+  if(!can(permission))return toast("This setting permission is not selected",false);
+  await api("/api/owner/settings/"+encodeURIComponent(key),{method:"POST",body:JSON.stringify({value:{enabled}})});
+  toast(featureLabels[key]+" "+(enabled?"enabled":"disabled"));
+}
+async function saveMaintenance(){
+  if(!can("settings.maintenance"))return toast("Maintenance permission required",false);
+  await api("/api/owner/settings/maintenance",{method:"POST",body:JSON.stringify({value:{enabled:$("#maintenanceEnabled").checked,message:$("#maintenanceMessage").value.trim()}})});
+  toast("Maintenance setting saved");
+}
 
 function localInputValue(ts){if(!ts)return "";const d=new Date(Number(ts));const pad=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function clearAnnouncementForm(){$("#announcementId").value="";$("#announcementTitle").value="";$("#announcementBody").value="";$("#announcementEnabled").checked=true;$("#announcementStart").value="";$("#announcementEnd").value="";}
 async function loadAnnouncements(){
-  if(!can("announcements.read"))return;
+  if(!can("announcements.view"))return;
   const d=await api("/api/owner/announcements");
   const rows=d.announcements||[];
   $("#announcementList").innerHTML=rows.length?rows.map(a=>{
@@ -624,52 +954,121 @@ async function saveAnnouncement(){
   clearAnnouncementForm();toast("Announcement saved");await loadAnnouncements();
 }
 
+function renderStaffPermissionEditor(selected=[]){
+  const selectedSet=new Set((selected||[]).map(String));
+  const available=staffPermissionOptions.filter(([value])=>state.actor?.type==="owner"||can(value));
+  $("#staffPermissions").innerHTML=available.map(([value,label])=>
+    `<label class="permission-item"><input type="checkbox" value="${esc(value)}" ${selectedSet.has(value)?"checked":""} /> <span>${esc(label)}</span></label>`
+  ).join("")||empty("No assignable functions for this panel.");
+  $("#staffPermissions").dataset.ready="1";
+}
+function cancelStaffEdit(){
+  state.staffEditingId=null;
+  $("#staffName").value="";
+  $("#staffRole").value="manager";
+  renderStaffPermissionEditor([]);
+  $("#createStaff").textContent="Create Custom Panel Access";
+  $("#cancelStaffEdit").hidden=true;
+  applyActionPermissions();
+}
 async function loadStaff(){
-  if(!can("staff.read"))return;
-  if(!$("#staffPermissions").dataset.ready){
-    $("#staffPermissions").innerHTML=staffPermissionOptions.map(([value,label])=>`<label class="permission-item"><input type="checkbox" value="${esc(value)}" /> <span>${esc(label)}</span></label>`).join("");
-    $("#staffPermissions").dataset.ready="1";
+  renderStaffPermissionEditor(
+    state.staffEditingId
+      ? $$("#staffPermissions input:checked").map(x=>x.value)
+      : []
+  );
+  if(!can("staff.view")){
+    $("#staffList").innerHTML=empty("Staff list permission is not selected for this panel.");
+    applyActionPermissions();
+    return;
   }
-  const d=await api('/api/owner/staff');
-  $("#staffList").innerHTML=(d.staff||[]).length?d.staff.map(s=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(s.display_name)} <span class="pill ${Number(s.enabled)?'active':'banned'}">${Number(s.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">${esc(s.role.replaceAll('_',' '))} · last used ${time(s.last_used_at)}<br>${(s.permissions||[]).length?esc((s.permissions||[]).join(', ')):'Role defaults'}</div></div><div class="item-actions">${can('staff.write')?`<button class="secondary mini" data-staff-edit="${esc(s.id)}">Permissions</button><button class="secondary mini" data-staff-toggle="${esc(s.id)}" data-enabled="${Number(s.enabled)}">${Number(s.enabled)?'Disable':'Enable'}</button><button class="danger mini" data-staff-delete="${esc(s.id)}">Delete</button>`:''}</div></div></div>`).join(''):empty('No custom panels created');
-  $$('[data-staff-edit]').forEach(b=>b.onclick=async()=>{
-    const item=(d.staff||[]).find(x=>x.id===b.dataset.staffEdit); if(!item)return;
-    const current=new Set(item.permissions||[]);
-    const raw=prompt("Comma-separated permissions. Use * for full access.",[...current].join(", "));
-    if(raw===null)return;
-    const permissions=raw.split(",").map(x=>x.trim()).filter(Boolean);
-    await api('/api/owner/staff/'+encodeURIComponent(item.id),{method:'POST',body:JSON.stringify({permissions})});
-    toast('Custom panel permissions updated');loadStaff();
+  const d=await api("/api/owner/staff");
+  const rows=d.staff||[];
+  $("#staffList").innerHTML=rows.length?rows.map(item=>{
+    const permissions=item.permissions||[];
+    const actions=[];
+    if(can("staff.permissions.edit"))actions.push(`<button class="secondary mini" data-staff-edit="${esc(item.id)}">Edit Functions</button>`);
+    if(can("staff.toggle"))actions.push(`<button class="secondary mini" data-staff-toggle="${esc(item.id)}" data-enabled="${Number(item.enabled)}">${Number(item.enabled)?"Disable":"Enable"}</button>`);
+    if(can("staff.delete"))actions.push(`<button class="danger mini" data-staff-delete="${esc(item.id)}">Delete</button>`);
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.display_name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.role.replaceAll("_"," "))} · last used ${time(item.last_used_at)}<br>${permissions.length?esc(permissions.join(", ")):"No functions selected"}</div></div><div class="item-actions">${actions.join("")}</div></div></div>`;
+  }).join(""):empty("No custom panels created");
+
+  $$("[data-staff-edit]").forEach(b=>b.onclick=()=>{
+    const item=rows.find(x=>x.id===b.dataset.staffEdit);
+    if(!item)return;
+    if(!can("staff.permissions.edit"))return toast("Staff permission-edit access required",false);
+    state.staffEditingId=item.id;
+    $("#staffName").value=item.display_name||"";
+    $("#staffRole").value=item.role||"manager";
+    renderStaffPermissionEditor(item.permissions||[]);
+    $("#createStaff").textContent="Save Staff Panel";
+    $("#cancelStaffEdit").hidden=false;
+    $("#staffName").scrollIntoView({behavior:"smooth",block:"center"});
+    applyActionPermissions();
   });
-  $$('[data-staff-toggle]').forEach(b=>b.onclick=async()=>{await api('/api/owner/staff/'+encodeURIComponent(b.dataset.staffToggle),{method:'POST',body:JSON.stringify({enabled:!Number(b.dataset.enabled)})});toast('Staff access updated');loadStaff();});
-  $$('[data-staff-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this staff access?'))return;await api('/api/owner/staff/'+encodeURIComponent(b.dataset.staffDelete),{method:'DELETE'});toast('Staff access deleted');loadStaff();});
+  $$("[data-staff-toggle]").forEach(b=>b.onclick=async()=>{
+    if(!can("staff.toggle"))return toast("Staff enable/disable permission required",false);
+    await api("/api/owner/staff/"+encodeURIComponent(b.dataset.staffToggle),{method:"POST",body:JSON.stringify({enabled:!Number(b.dataset.enabled)})});
+    toast("Staff access updated");
+    await loadStaff();
+  });
+  $$("[data-staff-delete]").forEach(b=>b.onclick=async()=>{
+    if(!can("staff.delete"))return toast("Staff delete permission required",false);
+    if(!confirm("Delete this staff access?"))return;
+    await api("/api/owner/staff/"+encodeURIComponent(b.dataset.staffDelete),{method:"DELETE"});
+    toast("Staff access deleted");
+    if(state.staffEditingId===b.dataset.staffDelete)cancelStaffEdit();
+    await loadStaff();
+  });
+  applyActionPermissions();
 }
 
-async function loadSupport(){if(!can('support.read'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
-async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.write');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.write');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.write');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
-async function sendSupportReply(){if(!state.selectedTicket)return;const message=$("#supportReply").value.trim();if(!message)return toast('Write a reply first',false);await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/reply`,{method:'POST',body:JSON.stringify({message})});$("#supportReply").value='';toast('Reply sent');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
-async function closeSupportTicket(){if(!state.selectedTicket)return;if(!confirm('Close this VIP support ticket?'))return;await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/close`,{method:'POST',body:'{}'});toast('Ticket closed');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
-async function createStaff(){if(!can('staff.write'))return toast('Only owner or authorized super admin can create staff access',false);const name=$("#staffName").value.trim();if(!name)return toast('Enter staff name',false);const permissions=$$("#staffPermissions input:checked").map(x=>x.value);const payload={display_name:name,role:$("#staffRole").value};if(permissions.length)payload.permissions=permissions;const d=await api('/api/owner/staff',{method:'POST',body:JSON.stringify(payload)});$("#staffName").value='';$$("#staffPermissions input").forEach(x=>x.checked=false);const box=$("#newStaffToken");box.hidden=false;box.innerHTML=`<b>One-time access token</b><br>${esc(d.token)}<br><small>Save it securely now. It cannot be viewed again from this panel.</small>`;toast('Custom panel access created');loadStaff();}
+async function createStaff(){
+  const editing=Boolean(state.staffEditingId);
+  if(editing&&!can("staff.permissions.edit"))return toast("Staff permission-edit access required",false);
+  if(!editing&&!can("staff.create"))return toast("Staff create permission required",false);
+  const name=$("#staffName").value.trim();
+  if(!name)return toast("Enter staff name",false);
+  const permissions=$$("#staffPermissions input:checked").map(x=>x.value);
+  const payload={display_name:name,role:$("#staffRole").value,permissions};
+  if(editing){
+    await api("/api/owner/staff/"+encodeURIComponent(state.staffEditingId),{method:"POST",body:JSON.stringify(payload)});
+    toast("Staff panel functions updated");
+    cancelStaffEdit();
+    await loadStaff();
+    return;
+  }
+  const d=await api("/api/owner/staff",{method:"POST",body:JSON.stringify(payload)});
+  const box=$("#newStaffToken");
+  box.hidden=false;
+  box.innerHTML=`<b>One-time access token</b><br>${esc(d.token)}<br><small>Save it securely now. It cannot be viewed again from this panel.</small>`;
+  toast(permissions.length?"Custom panel created with selected functions":"Custom panel created with zero functions");
+  cancelStaffEdit();
+  await loadStaff();
+}
 
+async function loadSupport(){if(!can('support.view'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
+async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.close');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
+async function sendSupportReply(){if(!state.selectedTicket)return;if(!can('support.reply'))return toast('Support reply permission required',false);const message=$("#supportReply").value.trim();if(!message)return toast('Write a reply first',false);await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/reply`,{method:'POST',body:JSON.stringify({message})});$("#supportReply").value='';toast('Reply sent');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
+async function closeSupportTicket(){if(!state.selectedTicket)return;if(!can('support.close'))return toast('Support close permission required',false);if(!confirm('Close this VIP support ticket?'))return;await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/close`,{method:'POST',body:'{}'});toast('Ticket closed');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
 
 async function saveUserOverrides(){
   if(!state.selectedUser)return toast("Select a user first",false);
-  if(!can("users.override"))return toast("User override permission required",false);
+  const payload={};
+  if(can("users.override.invisible"))payload.invisible_id=$("#userInvisibleId").checked;
+  if(can("users.override.lock_bypass"))payload.locked_room_bypass=$("#userLockedBypass").checked;
+  if(can("users.wallet.ban"))payload.wallet_banned=$("#userWalletBanned").checked;
+  if(can("users.wallet.freeze"))payload.wallet_frozen=$("#userWalletFrozen").checked;
+  if(!Object.keys(payload).length)return toast("No Owner override permission selected",false);
   await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/owner-overrides`,{
-    method:"POST",
-    body:JSON.stringify({
-      invisible_id:$("#userInvisibleId").checked,
-      locked_room_bypass:$("#userLockedBypass").checked,
-      wallet_banned:$("#userWalletBanned").checked,
-      wallet_frozen:$("#userWalletFrozen").checked,
-    }),
+    method:"POST",body:JSON.stringify(payload),
   });
   toast("Owner overrides saved");
   await openUser(state.selectedUser.id);
 }
 async function toggleDeviceBan(deviceKey,currentlyBanned){
   if(!state.selectedUser)return;
-  if(!can("users.device"))return toast("Device-ban permission required",false);
+  if(!can("users.device.ban"))return toast("Device-ban permission required",false);
   await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/device-ban`,{
     method:"POST",
     body:JSON.stringify({device_key:deviceKey,banned:!currentlyBanned}),
@@ -691,7 +1090,7 @@ function renderSelectedMessageUsers(){
   $("#selectedMessageUsers").textContent=`${state.messageSelected.size} selected`;
 }
 async function searchMessagingUsers(){
-  if(!can("users.read"))return toast("Users read permission required",false);
+  if(!can("users.search"))return toast("Users read permission required",false);
   const q=$("#messageUserSearch").value.trim();
   if(!q)return toast("Enter a user ID or name",false);
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=80");
@@ -707,18 +1106,18 @@ async function searchMessagingUsers(){
   });
 }
 async function loadOwnerTags(){
-  if(!can("messaging.read"))return;
+  if(!can("tags.view"))return;
   const d=await api("/api/owner/tags");
   const rows=d.tags||[];
-  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.write")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
-  $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
+  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.remove")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
+  $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
 }
 async function loadMessaging(){
   renderSelectedMessageUsers();
   await loadOwnerTags();
 }
 async function sendOfficialMessage(allUsers=false){
-  if(!can("messaging.write"))return toast("Messaging write permission required",false);
+  if(!can(allUsers?"messaging.send.all":"messaging.send.selected"))return toast("Messaging write permission required",false);
   const text=$("#officialMessageBody").value.trim();
   if(!text)return toast("Write a message first",false);
   const ids=[...state.messageSelected.keys()];
@@ -729,7 +1128,7 @@ async function sendOfficialMessage(allUsers=false){
   $("#officialMessageBody").value="";
 }
 async function applyOwnerTag(){
-  if(!can("tags.write"))return toast("Tags write permission required",false);
+  if(!can("tags.apply"))return toast("Tags write permission required",false);
   const ids=[...state.messageSelected.keys()];
   if(!ids.length)return toast("Select at least one user",false);
   const kind=$("#ownerTagKind").value;
@@ -745,7 +1144,7 @@ async function applyOwnerTag(){
 }
 
 async function loadRolesPosts(){
-  if(!can("roles.read"))return;
+  if(!can("roles.view"))return;
   const kind=$("#rolePostKind").value;
   const d=await api("/api/owner/roles-posts?kind="+encodeURIComponent(kind));
   state.rolesPosts=d.items||[];
@@ -754,7 +1153,7 @@ async function loadRolesPosts(){
   $$("[data-role-post-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this "+kind+"?"))return;await api("/api/owner/roles-posts/"+encodeURIComponent(b.dataset.rolePostDelete)+"?kind="+encodeURIComponent(kind),{method:"DELETE"});toast("Deleted");await loadRolesPosts();});
 }
 async function saveRolePost(){
-  if(!can("roles.write"))return toast("Roles write permission required",false);
+  if(!can("roles.save"))return toast("Roles write permission required",false);
   const kind=$("#rolePostKind").value;
   const name=$("#rolePostName").value.trim();
   if(!name)return toast("Name is required",false);
@@ -764,7 +1163,7 @@ async function saveRolePost(){
 }
 
 async function loadBanners(){
-  if(!can("banners.read"))return;
+  if(!can("banners.view"))return;
   const d=await api("/api/owner/banners");
   state.banners=d.banners||[];
   $("#bannerList").innerHTML=state.banners.length?state.banners.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.asset_key||"")}${item.data?.link?" · "+esc(item.data.link):""}</div></div><div class="item-actions"><button class="secondary mini" data-banner-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-banner-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No banners configured");
@@ -772,7 +1171,7 @@ async function loadBanners(){
   $$("[data-banner-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this banner?"))return;await api("/api/owner/banners/"+encodeURIComponent(b.dataset.bannerDelete),{method:"DELETE"});toast("Banner deleted");await loadBanners();});
 }
 async function saveBanner(){
-  if(!can("banners.write"))return toast("Banner write permission required",false);
+  if(!can("banners.save"))return toast("Banner write permission required",false);
   const name=$("#bannerName").value.trim();
   if(!name)return toast("Banner name is required",false);
   await api("/api/owner/banners",{method:"POST",body:JSON.stringify({id:$("#bannerId").value.trim()||undefined,name,asset_key:$("#bannerAsset").value.trim(),link:$("#bannerLink").value.trim(),starts_at:Number($("#bannerStart").value||0)||null,ends_at:Number($("#bannerEnd").value||0)||null,enabled:$("#bannerEnabled").checked})});
@@ -781,7 +1180,7 @@ async function saveBanner(){
 }
 
 async function loadGames(){
-  if(!can("games.read"))return;
+  if(!can("games.view"))return;
   const userQuery=$("#gameInvestigationUser").value.trim();
   const d=await api("/api/owner/games"+(userQuery?"?user_id="+encodeURIComponent(userQuery):""));
   state.games=d.games||[];
@@ -806,7 +1205,7 @@ async function loadGames(){
   }
 }
 async function saveGameConfig(){
-  if(!can("games.write"))return toast("Games write permission required",false);
+  if(!can("games.configure"))return toast("Games write permission required",false);
   const id=$("#gameConfigId").value.trim();
   if(!id)return toast("Game ID is required",false);
   const min=Number($("#gameMinBet").value||1),max=Number($("#gameMaxBet").value||1);
@@ -817,7 +1216,7 @@ async function saveGameConfig(){
 }
 
 async function loadPolicies(){
-  if(!can("policies.read"))return;
+  if(!can("policies.view"))return;
   const d=await api("/api/owner/policies");
   state.policies=d.policies||[];
   $("#policyList").innerHTML=state.policies.length?state.policies.map(p=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(p.key)}</div><div class="item-meta">${esc(JSON.stringify(p.value))} · ${time(p.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-policy-edit="${esc(p.key)}">Edit</button><button class="danger mini" data-policy-delete="${esc(p.key)}">Delete</button></div></div></div>`).join(""):empty("No custom allowed policies");
@@ -826,7 +1225,7 @@ async function loadPolicies(){
   await loadPricingOverrides();
 }
 async function savePolicy(){
-  if(!can("policies.write"))return toast("Policies write permission required",false);
+  if(!can("policies.save"))return toast("Policies write permission required",false);
   const key=$("#policyKey").value.trim();
   if(!key)return toast("Policy key is required",false);
   let value={};
@@ -852,7 +1251,7 @@ function updatePricingFreeState(){
   if(gift)$("#pricingFree").checked=false;
 }
 async function loadPricingOverrides(){
-  if(!can("policies.read"))return;
+  if(!can("pricing.view"))return;
   const user=$("#pricingUserId").value.trim();
   const kind=$("#pricingKind").value.trim();
   const query=new URLSearchParams();
@@ -878,7 +1277,7 @@ async function loadPricingOverrides(){
     updatePricingFreeState();
   });
   $$("[data-pricing-delete-user]").forEach(b=>b.onclick=async()=>{
-    if(!can("policies.write"))return toast("Policies write permission required",false);
+    if(!can("policies.save"))return toast("Policies write permission required",false);
     if(!confirm("Remove this per-user pricing override?"))return;
     await api("/api/owner/pricing-overrides/"+encodeURIComponent(b.dataset.pricingDeleteUser)+"/"+encodeURIComponent(b.dataset.pricingDeleteKind)+"/"+encodeURIComponent(b.dataset.pricingDeleteItem),{method:"DELETE"});
     toast("Pricing override removed");
@@ -886,7 +1285,7 @@ async function loadPricingOverrides(){
   });
 }
 async function savePricingOverride(){
-  if(!can("policies.write"))return toast("Policies write permission required",false);
+  if(!can("policies.save"))return toast("Policies write permission required",false);
   const userId=$("#pricingUserId").value.trim();
   const kind=$("#pricingKind").value.trim();
   const itemId=$("#pricingItemId").value.trim()||"*";
@@ -905,7 +1304,7 @@ async function savePricingOverride(){
 }
 
 async function loadGlobalThemes(){
-  if(!can("catalog.read"))return;
+  if(!can("themes.global.view"))return;
   const d=await api("/api/owner/store?kind=theme");
   state.globalThemes=d.items||[];
   $("#globalThemeList").innerHTML=state.globalThemes.length?state.globalThemes.map(item=>{
@@ -922,7 +1321,7 @@ async function loadGlobalThemes(){
   $$("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
 }
 async function saveGlobalTheme(){
-  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!can("themes.global.save"))return toast("Global theme save permission required",false);
   const id=$("#globalThemeId").value.trim(),name=$("#globalThemeName").value.trim(),asset=$("#globalThemeAsset").value.trim();
   if(!id||!name||!asset)return toast("Theme ID, name and asset are required",false);
   const permanent=$("#globalThemePermanent").checked;
@@ -938,7 +1337,7 @@ async function saveGlobalTheme(){
 }
 
 async function loadAudit(){
-  if(!can("audit.read"))return;
+  if(!can("audit.view"))return;
   const d=await api("/api/owner/audit?limit=500");
   state.auditRows=d.audit||[];
   const canDelete=d.owner_can_delete===true||state.actor?.type==="owner";
@@ -947,6 +1346,7 @@ async function loadAudit(){
   $$("[data-audit-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this audit record?"))return;await api("/api/owner/audit/"+encodeURIComponent(b.dataset.auditDelete),{method:"DELETE"});toast("Audit record deleted");await loadAudit();});
 }
 function exportAuditCsv(){
+  if(!can("audit.export"))return toast("Audit export permission required",false);
   const rows=state.auditRows||[];
   const quote=value=>'"'+String(value??"").replaceAll('"','""')+'"';
   const lines=[["Date","Panel Type","Panel ID","Action","Target Type","Target ID","Details"].map(quote).join(",")];
@@ -990,7 +1390,9 @@ $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.mes
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
-$("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};
+$("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};$("#cancelStaffEdit").onclick=cancelStaffEdit;
 $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));$("#sendSupportReply").onclick=()=>sendSupportReply().catch(e=>toast(e.message,false));$("#closeSupportTicket").onclick=()=>closeSupportTicket().catch(e=>toast(e.message,false));
 
+const permissionObserver=new MutationObserver(()=>applyActionPermissions());
+permissionObserver.observe(document.body,{childList:true,subtree:true});
 if(state.token){connect();}else{showApp(false);}

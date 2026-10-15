@@ -59,32 +59,165 @@ function clampInt(value, min, max, fallback = min) {
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 }
 
-function defaultPermissions(role) {
-  if (role === "super_admin") return ["*"];
-  if (role === "admin") {
-    return [
-      "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
-      "treasury.read", "economy.read",
-      "support.read", "support.write",
-      "messaging.read", "messaging.write", "tags.write",
-      "users.device", "users.override", "wallet.freeze",
-      "rooms.read", "rooms.write", "rooms.live", "rooms.media", "rooms.theme",
-      "roles.read", "roles.write", "banners.read", "banners.write",
-      "games.read", "games.write", "policies.read", "policies.write",
-      "catalog.read", "catalog.write",
-      "settings.read", "settings.write", "announcements.read", "announcements.write",
-      "staff.read", "audit.read",
-    ];
+const STAFF_ASSIGNABLE_PERMISSIONS = new Set([
+  "dashboard.view",
+  "users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change",
+  "users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban",
+  "users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban",
+  "treasury.view","treasury.send",
+  "economy.view","economy.coin_rate.edit",
+  "messaging.view","messaging.send.selected","messaging.send.all",
+  "tags.view","tags.apply","tags.remove",
+  "rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme",
+  "themes.global.view","themes.global.save","themes.global.remove",
+  "roles.view","roles.save","roles.delete",
+  "banners.view","banners.save","banners.delete",
+  "games.view","games.configure",
+  "policies.view","policies.save","policies.delete",
+  "pricing.view","pricing.save","pricing.delete",
+  "vip.view","vip.save","vip.reset",
+  "gifts.view","gifts.save","gifts.remove",
+  "assets.view","assets.save","assets.remove",
+  "store.view","store.save","store.remove",
+  "catalog.view","catalog.save","catalog.remove",
+  "settings.view","settings.feature.voice","settings.feature.gifts","settings.feature.games",
+  "settings.feature.messages","settings.feature.room_creation","settings.feature.aladdin_lamp",
+  "settings.feature.red_pocket","settings.feature.friends_call","settings.feature.visitors","settings.maintenance",
+  "announcements.view","announcements.save","announcements.delete",
+  "support.view","support.reply","support.close",
+  "staff.view","staff.create","staff.permissions.edit","staff.toggle","staff.delete",
+  "audit.view","audit.export"
+]);
+
+const PERMISSION_ALIASES = {
+  "dashboard.view":["dashboard"],
+  "users.search":["users.read"],
+  "users.detail":["users.read"],
+  "users.name.edit":["users.write"],
+  "users.role.edit":["users.write"],
+  "users.vip.edit":["users.write"],
+  "users.public_id.change":["users.write"],
+  "users.moderation":["users.moderate","users.write"],
+  "users.wallet.adjust":["wallet.write"],
+  "users.role_wallet.adjust":["wallet.write"],
+  "users.role_wallet.ban":["wallet.write"],
+  "users.override.invisible":["users.override"],
+  "users.override.lock_bypass":["users.override"],
+  "users.wallet.ban":["users.override"],
+  "users.wallet.freeze":["users.override","wallet.freeze"],
+  "users.device.ban":["users.device"],
+  "treasury.view":["treasury.read"],
+  "treasury.send":["treasury.write"],
+  "economy.view":["economy.read"],
+  "economy.coin_rate.edit":["economy.write"],
+  "messaging.view":["messaging.read"],
+  "messaging.send.selected":["messaging.write"],
+  "messaging.send.all":["messaging.write"],
+  "tags.view":["messaging.read"],
+  "tags.apply":["tags.write"],
+  "tags.remove":["tags.write"],
+  "rooms.view":["rooms.read"],
+  "rooms.edit":["rooms.write"],
+  "rooms.lock":["rooms.write"],
+  "rooms.delete":["rooms.write"],
+  "rooms.ban":["rooms.write"],
+  "rooms.live":["rooms.live"],
+  "rooms.media":["rooms.media"],
+  "rooms.theme":["rooms.theme"],
+  "themes.global.view":["catalog.read"],
+  "themes.global.save":["catalog.write"],
+  "themes.global.remove":["catalog.write"],
+  "roles.view":["roles.read"],
+  "roles.save":["roles.write"],
+  "roles.delete":["roles.write"],
+  "banners.view":["banners.read"],
+  "banners.save":["banners.write"],
+  "banners.delete":["banners.write"],
+  "games.view":["games.read"],
+  "games.configure":["games.write"],
+  "policies.view":["policies.read"],
+  "policies.save":["policies.write"],
+  "policies.delete":["policies.write"],
+  "pricing.view":["policies.read"],
+  "pricing.save":["policies.write"],
+  "pricing.delete":["policies.write"],
+  "vip.view":["catalog.read"],
+  "vip.save":["catalog.write"],
+  "vip.reset":["catalog.write"],
+  "gifts.view":["catalog.read"],
+  "gifts.save":["catalog.write"],
+  "gifts.remove":["catalog.write"],
+  "assets.view":["catalog.read"],
+  "assets.save":["catalog.write"],
+  "assets.remove":["catalog.write"],
+  "store.view":["catalog.read"],
+  "store.save":["catalog.write"],
+  "store.remove":["catalog.write"],
+  "catalog.view":["catalog.read"],
+  "catalog.save":["catalog.write"],
+  "catalog.remove":["catalog.write"],
+  "settings.view":["settings.read"],
+  "settings.feature.voice":["settings.write"],
+  "settings.feature.gifts":["settings.write"],
+  "settings.feature.games":["settings.write"],
+  "settings.feature.messages":["settings.write"],
+  "settings.feature.room_creation":["settings.write"],
+  "settings.feature.aladdin_lamp":["settings.write"],
+  "settings.feature.red_pocket":["settings.write"],
+  "settings.feature.friends_call":["settings.write"],
+  "settings.feature.visitors":["settings.write"],
+  "settings.maintenance":["settings.write"],
+  "announcements.view":["announcements.read"],
+  "announcements.save":["announcements.write"],
+  "announcements.delete":["announcements.write"],
+  "support.view":["support.read"],
+  "support.reply":["support.write"],
+  "support.close":["support.write"],
+  "staff.view":["staff.read"],
+  "staff.create":["staff.write"],
+  "staff.permissions.edit":["staff.write"],
+  "staff.toggle":["staff.write"],
+  "staff.delete":["staff.write"],
+  "audit.view":["audit.read"],
+  "audit.export":["audit.read"]
+};
+
+function permissionAliases(permission){
+  return PERMISSION_ALIASES[permission] ?? [];
+}
+
+function can(actor, permission) {
+  if (!actor) return false;
+  if (actor.type === "owner" || actor.permissions.includes("*")) return true;
+  if (actor.permissions.includes(permission)) return true;
+  return permissionAliases(permission).some((legacy) => actor.permissions.includes(legacy));
+}
+
+function requirePermission(actor, permission) {
+  if (!can(actor, permission)) {
+    const error = new Error("forbidden");
+    error.status = 403;
+    throw error;
   }
-  if (role === "manager") {
-    return [
-      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "rooms.live",
-      "messaging.read", "roles.read", "banners.read", "games.read", "policies.read",
-      "catalog.read", "catalog.write", "settings.read", "announcements.read", "announcements.write",
-      "audit.read",
-    ];
+}
+
+function sanitizeStaffPermissions(actor, input) {
+  const requested = Array.isArray(input) ? [...new Set(input.map(String))] : [];
+  const invalid = requested.filter((permission) => !STAFF_ASSIGNABLE_PERMISSIONS.has(permission));
+  if (invalid.length) {
+    const error = new Error("invalid_staff_permission");
+    error.status = 400;
+    throw error;
   }
-  return ["dashboard", "users.read", "users.moderate", "rooms.read", "rooms.write", "audit.read"];
+  if (actor.type !== "owner") {
+    const elevated = requested.filter((permission) => !can(actor, permission));
+    if (elevated.length) {
+      const error = new Error("cannot_grant_unowned_permission");
+      error.status = 403;
+      throw error;
+    }
+  }
+  return requested;
 }
 
 async function ownerVipRule(db,level){
@@ -105,18 +238,6 @@ async function ownerVipRule(db,level){
     };
   }catch(error){
     if(String(error?.message ?? error).includes("no such table"))return {...base,enabled:true,name:"VIP "+level};
-    throw error;
-  }
-}
-
-function can(actor, permission) {
-  return actor.permissions.includes("*") || actor.permissions.includes(permission);
-}
-
-function requirePermission(actor, permission) {
-  if (!can(actor, permission)) {
-    const error = new Error("forbidden");
-    error.status = 403;
     throw error;
   }
 }
@@ -505,7 +626,7 @@ async function authenticate(request, env, db) {
   if (!staff) return null;
 
   const explicit = safeParse(staff.permissions_json, []);
-  const permissions = Array.isArray(explicit) && explicit.length ? explicit.map(String) : defaultPermissions(staff.role);
+  const permissions = Array.isArray(explicit) ? explicit.map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission) || permission === "*") : [];
   await db.prepare("UPDATE owner_staff SET last_used_at = ?, updated_at = ? WHERE id = ?")
     .bind(now(), now(), staff.id).run();
   return { type: "staff", id: staff.id, name: staff.display_name, role: staff.role, permissions };
@@ -670,7 +791,7 @@ async function listRooms(db, query = "") {
 }
 
 async function handleOverview(db, actor) {
-  requirePermission(actor, "dashboard");
+  requirePermission(actor, "dashboard.view");
   const auditPromise=actor.type==="owner"
     ? db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all()
     : db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit WHERE actor_type='staff' AND actor_id=? ORDER BY created_at DESC LIMIT 12").bind(actor.id).all();
@@ -845,7 +966,7 @@ async function handleOwnerMessageMedia(request, env, db, actor, url) {
 
 async function handleUsers(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "users.read");
+    requirePermission(actor, "users.search");
     const query = String(url.searchParams.get("q") ?? "").trim();
     const limit = clampInt(url.searchParams.get("limit"), 1, 200, 100);
     const pattern = `%${query}%`;
@@ -864,7 +985,7 @@ async function handleUsers(request, db, actor, url, parts) {
   if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
 
   if (parts.length === 4 && request.method === "GET") {
-    requirePermission(actor, "users.read");
+    requirePermission(actor, "users.detail");
     const user = await getUserDetails(db, userId);
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
   }
@@ -874,8 +995,21 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "profile" && request.method === "POST") {
-    requirePermission(actor, "users.write");
     const body = await bodyJson(request);
+    const profileFields = [];
+    if (Object.prototype.hasOwnProperty.call(body,"display_name")) {
+      requirePermission(actor,"users.name.edit");
+      profileFields.push("display_name");
+    }
+    if (Object.prototype.hasOwnProperty.call(body,"role")) {
+      requirePermission(actor,"users.role.edit");
+      profileFields.push("role");
+    }
+    if (Object.prototype.hasOwnProperty.call(body,"vip_level")) {
+      requirePermission(actor,"users.vip.edit");
+      profileFields.push("vip_level");
+    }
+    if (!profileFields.length) return json({ok:false,error:"no_profile_fields_allowed"},{status:400});
     const current = await db.prepare("SELECT id, display_name, role, vip_level FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 60);
@@ -912,7 +1046,7 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "public-id" && request.method === "POST") {
-    requirePermission(actor, "users.write");
+    requirePermission(actor, "users.public_id.change");
     const body = await bodyJson(request);
     const requested = String(body.public_id ?? "").trim();
     if (!/^\d{7}$/.test(requested) || Number(requested) < 1000001) {
@@ -953,8 +1087,20 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "wallet" && request.method === "POST") {
-    requirePermission(actor, "wallet.write");
     const body = await bodyJson(request);
+    const requestedCoinDelta=Number(body.coin_delta ?? 0);
+    const requestedDiamondDelta=Number(body.diamond_delta ?? 0);
+    const requestedRoleDelta=Number(body.role_coin_delta ?? 0);
+    const hasRoleType=String(body.role_wallet_type ?? "").trim()!=="";
+    const changesNormal=requestedCoinDelta!==0 || requestedDiamondDelta!==0;
+    const changesRole=hasRoleType && requestedRoleDelta!==0;
+    const changesRoleStatus=hasRoleType && Object.prototype.hasOwnProperty.call(body,"role_wallet_banned");
+    if(changesNormal) requirePermission(actor,"users.wallet.adjust");
+    if(changesRole) requirePermission(actor,"users.role_wallet.adjust");
+    if(changesRoleStatus) requirePermission(actor,"users.role_wallet.ban");
+    if(!changesNormal && !changesRole && !changesRoleStatus){
+      return json({ok:false,error:"no_wallet_change_requested"},{status:400});
+    }
     const current = await db.prepare("SELECT role,coins,diamonds FROM users WHERE id=?")
       .bind(userId).first();
     if (!current) return json({ ok:false,error:"not_found" }, { status:404 });
@@ -1025,7 +1171,7 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
-    if (!can(actor, "users.moderate") && !can(actor, "users.write")) requirePermission(actor, "users.moderate");
+    requirePermission(actor,"users.moderation");
     const body = await bodyJson(request);
     const status = ["active", "suspended", "banned"].includes(String(body.status)) ? String(body.status) : "active";
     const mutedUntil = body.muted_until == null ? null : Math.max(0, Number(body.muted_until) || 0);
@@ -1042,14 +1188,29 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "owner-overrides" && request.method === "POST") {
-    requirePermission(actor, "users.override");
     const body = await bodyJson(request);
-    const invisible = body.invisible_id === true ? 1 : 0;
-    const bypass = body.locked_room_bypass === true ? 1 : 0;
-    const frozen = body.wallet_frozen === true ? 1 : 0;
-    const walletBanned = body.wallet_banned === true ? 1 : 0;
+    const requested = {
+      invisible_id:Object.prototype.hasOwnProperty.call(body,"invisible_id"),
+      locked_room_bypass:Object.prototype.hasOwnProperty.call(body,"locked_room_bypass"),
+      wallet_banned:Object.prototype.hasOwnProperty.call(body,"wallet_banned"),
+      wallet_frozen:Object.prototype.hasOwnProperty.call(body,"wallet_frozen"),
+    };
+    if(requested.invisible_id) requirePermission(actor,"users.override.invisible");
+    if(requested.locked_room_bypass) requirePermission(actor,"users.override.lock_bypass");
+    if(requested.wallet_banned) requirePermission(actor,"users.wallet.ban");
+    if(requested.wallet_frozen) requirePermission(actor,"users.wallet.freeze");
+    if(!Object.values(requested).some(Boolean)){
+      return json({ok:false,error:"no_override_change_requested"},{status:400});
+    }
     const exists = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
     if (!exists) return json({ok:false,error:"not_found"},{status:404});
+    const current=await db.prepare(
+      "SELECT invisible_id,locked_room_bypass,wallet_banned,wallet_frozen FROM owner_user_overrides WHERE user_id=?"
+    ).bind(userId).first();
+    const invisible=requested.invisible_id ? (body.invisible_id===true?1:0) : Number(current?.invisible_id ?? 0);
+    const bypass=requested.locked_room_bypass ? (body.locked_room_bypass===true?1:0) : Number(current?.locked_room_bypass ?? 0);
+    const walletBanned=requested.wallet_banned ? (body.wallet_banned===true?1:0) : Number(current?.wallet_banned ?? 0);
+    const frozen=requested.wallet_frozen ? (body.wallet_frozen===true?1:0) : Number(current?.wallet_frozen ?? 0);
     await db.prepare(
       `INSERT INTO owner_user_overrides(user_id,invisible_id,locked_room_bypass,wallet_frozen,wallet_banned,updated_at)
        VALUES(?,?,?,?,?,?)
@@ -1057,12 +1218,13 @@ async function handleUsers(request, db, actor, url, parts) {
          locked_room_bypass=excluded.locked_room_bypass,wallet_frozen=excluded.wallet_frozen,
          wallet_banned=excluded.wallet_banned,updated_at=excluded.updated_at`
     ).bind(userId,invisible,bypass,frozen,walletBanned,now()).run();
-    await audit(db,actor,"user_owner_overrides","user",userId,`invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}; wallet_banned=${walletBanned}`);
+    await audit(db,actor,"user_owner_overrides","user",userId,
+      `invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}; wallet_banned=${walletBanned}`);
     return json({ok:true,user:await getUserDetails(db,userId)});
   }
 
   if (parts[4] === "device-ban" && request.method === "POST") {
-    requirePermission(actor, "users.device");
+    requirePermission(actor, "users.device.ban");
     const body = await bodyJson(request);
     const deviceKey = String(body.device_key ?? body.token ?? "").trim().slice(0,500);
     if (!deviceKey) return json({ok:false,error:"device_key_required"},{status:400});
@@ -1085,15 +1247,19 @@ async function handleUsers(request, db, actor, url, parts) {
 
 async function handleRooms(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "rooms.read");
+    requirePermission(actor, "rooms.view");
     return json({ ok: true, rooms: await listRooms(db, url.searchParams.get("q") ?? "") });
   }
   const roomId = decodeURIComponent(parts[3] ?? "");
   if (!roomId) return json({ ok: false, error: "room_id_required" }, { status: 400 });
 
   if (parts.length === 4 && request.method === "POST") {
-    requirePermission(actor, "rooms.write");
     const body = await bodyJson(request);
+    const editsRoom=Object.prototype.hasOwnProperty.call(body,"name") || Object.prototype.hasOwnProperty.call(body,"seat_count");
+    const editsLock=Object.prototype.hasOwnProperty.call(body,"locked");
+    if(editsRoom) requirePermission(actor,"rooms.edit");
+    if(editsLock) requirePermission(actor,"rooms.lock");
+    if(!editsRoom && !editsLock) return json({ok:false,error:"no_room_change_requested"},{status:400});
     const room = await db.prepare("SELECT id, name, seat_count, locked FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.name == null ? room.name : String(body.name).trim().slice(0, 80) || room.name;
@@ -1106,7 +1272,7 @@ async function handleRooms(request, db, actor, url, parts) {
   }
 
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "rooms.write");
+    requirePermission(actor, "rooms.delete");
     await db.prepare("DELETE FROM owner_room_controls WHERE room_id = ?").bind(roomId).run();
     await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
@@ -1114,7 +1280,7 @@ async function handleRooms(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "ban" && request.method === "POST") {
-    requirePermission(actor,"rooms.write");
+    requirePermission(actor,"rooms.ban");
     const body=await bodyJson(request);
     const exists=await db.prepare("SELECT id FROM rooms WHERE id=?").bind(roomId).first();
     if(!exists)return json({ok:false,error:"not_found"},{status:404});
@@ -1206,7 +1372,7 @@ async function handleEconomy(request, db, actor) {
   const key = "economy.coin_rate";
   const fallback = 5000000;
   if (request.method === "GET") {
-    requirePermission(actor, "economy.read");
+    requirePermission(actor, "economy.view");
     const row = await db.prepare("SELECT value_json, updated_at FROM owner_settings WHERE key = ?").bind(key).first();
     const value = safeParse(row?.value_json, {});
     const parsed = Number(value?.coins_per_usd);
@@ -1215,7 +1381,7 @@ async function handleEconomy(request, db, actor) {
   }
   if (request.method !== "POST") return null;
 
-  requirePermission(actor, "economy.write");
+  requirePermission(actor, "economy.coin_rate.edit");
   const body = await bodyJson(request);
   const coinsPerUsd = Number(body.coins_per_usd);
   if (!Number.isSafeInteger(coinsPerUsd) || coinsPerUsd < 1 || coinsPerUsd > 900000000000000) {
@@ -1237,13 +1403,42 @@ async function handleEconomy(request, db, actor) {
 
 async function handleSettings(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "settings.read");
+    const settingPermissions={
+      "feature.voice":"settings.feature.voice",
+      "feature.gifts":"settings.feature.gifts",
+      "feature.games":"settings.feature.games",
+      "feature.messages":"settings.feature.messages",
+      "feature.room_creation":"settings.feature.room_creation",
+      "feature.aladdin_lamp":"settings.feature.aladdin_lamp",
+      "feature.red_pocket":"settings.feature.red_pocket",
+      "feature.friends_call":"settings.feature.friends_call",
+      "feature.visitors":"settings.feature.visitors",
+      "maintenance":"settings.maintenance",
+    };
+    const mayViewAll=can(actor,"settings.view");
+    const selectedKeys=Object.entries(settingPermissions).filter(([,permission])=>can(actor,permission)).map(([key])=>key);
+    if(!mayViewAll&&!selectedKeys.length)requirePermission(actor,"settings.view");
     const rows = await db.prepare("SELECT key, value_json, updated_at FROM owner_settings ORDER BY key ASC").all();
-    return json({ ok: true, settings: (rows.results ?? []).map((row) => ({ ...row, value: safeParse(row.value_json, {}) })) });
+    const visible=(rows.results ?? []).filter((row)=>mayViewAll||selectedKeys.includes(String(row.key)));
+    return json({ ok: true, settings: visible.map((row) => ({ ...row, value: safeParse(row.value_json, {}) })) });
   }
   if (parts.length === 4 && request.method === "POST") {
-    requirePermission(actor, "settings.write");
     const key = decodeURIComponent(parts[3]).trim().slice(0, 100);
+    const permissionByKey={
+      "feature.voice":"settings.feature.voice",
+      "feature.gifts":"settings.feature.gifts",
+      "feature.games":"settings.feature.games",
+      "feature.messages":"settings.feature.messages",
+      "feature.room_creation":"settings.feature.room_creation",
+      "feature.aladdin_lamp":"settings.feature.aladdin_lamp",
+      "feature.red_pocket":"settings.feature.red_pocket",
+      "feature.friends_call":"settings.feature.friends_call",
+      "feature.visitors":"settings.feature.visitors",
+      "maintenance":"settings.maintenance",
+    };
+    const settingPermission=permissionByKey[key];
+    if(!settingPermission)return json({ok:false,error:"setting_not_assignable"},{status:403});
+    requirePermission(actor,settingPermission);
     const body = await bodyJson(request);
     const value = body.value ?? {};
     await db.prepare(
@@ -1300,8 +1495,8 @@ async function handleNotifications(request, db, actor, parts) {
 
 async function handleMessaging(request, db, actor, url, parts) {
   if(parts[2]==="messages" && request.method==="POST"){
-    requirePermission(actor,"messaging.write");
     const body=await bodyJson(request);
+    requirePermission(actor,body.all_users===true?"messaging.send.all":"messaging.send.selected");
     const message=String(body.text ?? "").trim().slice(0,2000);
     if(!message) return json({ok:false,error:"message_required"},{status:400});
     let recipients=[];
@@ -1321,7 +1516,7 @@ async function handleMessaging(request, db, actor, url, parts) {
     return json({ok:true,sent:recipients.length});
   }
   if(parts[2]==="tags" && request.method==="POST"){
-    requirePermission(actor,"tags.write");
+    requirePermission(actor,"tags.apply");
     const body=await bodyJson(request);
     const userIds=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
     const name=String(body.name ?? "").trim().slice(0,60);
@@ -1345,7 +1540,7 @@ async function handleMessaging(request, db, actor, url, parts) {
     return json({ok:true,tagged:userIds.length,name,tag_id:tagId});
   }
   if(parts[2]==="tags" && request.method==="GET"){
-    requirePermission(actor,"messaging.read");
+    requirePermission(actor,"tags.view");
     const kind=String(url.searchParams.get("kind") ?? "").trim();
     const rows=await db.prepare(
       `SELECT t.user_id,t.tag_id,t.name,t.color,t.kind,t.designation,t.background_color,t.updated_at,
@@ -1358,7 +1553,7 @@ async function handleMessaging(request, db, actor, url, parts) {
   const userId=decodeURIComponent(parts[3] ?? "");
   const tagId=decodeURIComponent(parts[4] ?? "");
   if(parts[2]==="tags" && userId && tagId && request.method==="DELETE"){
-    requirePermission(actor,"tags.write");
+    requirePermission(actor,"tags.remove");
     await db.prepare("DELETE FROM owner_user_tags WHERE user_id=? AND tag_id=?").bind(userId,tagId).run();
     await audit(db,actor,"tag_remove","user",userId,tagId);
     return json({ok:true});
@@ -1367,15 +1562,16 @@ async function handleMessaging(request, db, actor, url, parts) {
 }
 
 async function handleRolesPosts(request, db, actor, url, parts) {
-  requirePermission(actor, request.method==="GET" ? "roles.read" : "roles.write");
   const kind=String(url.searchParams.get("kind") ?? "role").trim()==="post"?"post":"role";
   if(parts.length===3 && request.method==="GET"){
+    requirePermission(actor,"roles.view");
     const rows=await db.prepare(
       "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind=? ORDER BY sort_order,updated_at DESC"
     ).bind(kind).all();
     return json({ok:true,kind,items:(rows.results ?? []).map(parseStoreRow)});
   }
   if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"roles.save");
     const body=await bodyJson(request);
     const itemId=String(body.id ?? id()).trim().slice(0,100);
     const name=String(body.name ?? "").trim().slice(0,100);
@@ -1391,6 +1587,7 @@ async function handleRolesPosts(request, db, actor, url, parts) {
   }
   const itemId=decodeURIComponent(parts[3] ?? "");
   if(itemId && request.method==="DELETE"){
+    requirePermission(actor,"roles.delete");
     await db.prepare("DELETE FROM owner_catalog WHERE kind=? AND id=?").bind(kind,itemId).run();
     await audit(db,actor,"role_post_delete",kind,itemId,"deleted");
     return json({ok:true});
@@ -1399,14 +1596,15 @@ async function handleRolesPosts(request, db, actor, url, parts) {
 }
 
 async function handleBanners(request, db, actor, parts) {
-  requirePermission(actor, request.method==="GET" ? "banners.read" : "banners.write");
   if(parts.length===3 && request.method==="GET"){
+    requirePermission(actor,"banners.view");
     const rows=await db.prepare(
       "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='banner' ORDER BY sort_order,updated_at DESC"
     ).all();
     return json({ok:true,banners:(rows.results ?? []).map(parseStoreRow)});
   }
   if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"banners.save");
     const body=await bodyJson(request);
     const bannerId=String(body.id ?? id()).trim().slice(0,100);
     const name=String(body.name ?? "Banner").trim().slice(0,100);
@@ -1422,6 +1620,7 @@ async function handleBanners(request, db, actor, parts) {
   }
   const bannerId=decodeURIComponent(parts[3] ?? "");
   if(bannerId && request.method==="DELETE"){
+    requirePermission(actor,"banners.delete");
     await db.prepare("DELETE FROM owner_catalog WHERE kind='banner' AND id=?").bind(bannerId).run();
     await audit(db,actor,"banner_delete","banner",bannerId,"deleted");
     return json({ok:true});
@@ -1431,7 +1630,7 @@ async function handleBanners(request, db, actor, parts) {
 
 async function handleGamesOwner(request, db, actor, url) {
   if(request.method==="GET"){
-    requirePermission(actor,"games.read");
+    requirePermission(actor,"games.view");
     const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
     const [catalog,bets]=await Promise.all([
       db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='game_config' ORDER BY sort_order,updated_at DESC").all(),
@@ -1479,7 +1678,7 @@ async function handleGamesOwner(request, db, actor, url) {
     return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? [],user_investigation:userInvestigation,user_error:userError});
   }
   if(request.method==="POST"){
-    requirePermission(actor,"games.write");
+    requirePermission(actor,"games.configure");
     const body=await bodyJson(request);
     const gameId=String(body.id ?? "").trim().slice(0,100);
     if(!gameId) return json({ok:false,error:"game_id_required"},{status:400});
@@ -1507,7 +1706,7 @@ const OWNER_PRICE_KINDS=new Set([
 
 async function handlePricingOverrides(request, db, actor, url, parts) {
   if(request.method==="GET"){
-    requirePermission(actor,"policies.read");
+    requirePermission(actor,"pricing.view");
     const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
     const kind=String(url.searchParams.get("kind") ?? "").trim();
     let resolvedUserId=userQuery;
@@ -1527,7 +1726,7 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
     return json({ok:true,overrides:rows.results ?? []});
   }
   if(parts.length===3 && request.method==="POST"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"pricing.save");
     const body=await bodyJson(request);
     const userId=String(body.user_id ?? "").trim().slice(0,120);
     const kind=String(body.kind ?? "").trim().slice(0,60);
@@ -1562,7 +1761,7 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
     return json({ok:true,user_id:resolvedUserId,kind,item_id:itemId});
   }
   if(parts.length>=6 && request.method==="DELETE"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"pricing.delete");
     const userId=decodeURIComponent(parts[3] ?? "");
     const kind=decodeURIComponent(parts[4] ?? "");
     const itemId=decodeURIComponent(parts.slice(5).join("/") || "*");
@@ -1576,14 +1775,14 @@ async function handlePricingOverrides(request, db, actor, url, parts) {
 
 async function handlePoliciesOwner(request, db, actor, parts) {
   if(request.method==="GET"){
-    requirePermission(actor,"policies.read");
+    requirePermission(actor,"policies.view");
     const rows=await db.prepare(
       "SELECT key,value_json,updated_at FROM owner_settings WHERE key LIKE 'policy.%' OR key LIKE 'economy.%' ORDER BY key"
     ).all();
     return json({ok:true,policies:(rows.results ?? []).map(r=>({key:r.key,value:safeParse(r.value_json,{}),updated_at:r.updated_at}))});
   }
   if(request.method==="POST"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"policies.save");
     const body=await bodyJson(request);
     const key=String(body.key ?? "").trim().slice(0,100);
     if(!key || /agency|\bbd\b|host|guardian|verification/i.test(key)){
@@ -1599,7 +1798,7 @@ async function handlePoliciesOwner(request, db, actor, parts) {
   }
   const key=decodeURIComponent(parts[3] ?? "");
   if(key && request.method==="DELETE"){
-    requirePermission(actor,"policies.write");
+    requirePermission(actor,"policies.delete");
     const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
     await db.prepare("DELETE FROM owner_settings WHERE key=?").bind(fullKey).run();
     await audit(db,actor,"policy_delete","policy",fullKey,"deleted");
@@ -1611,7 +1810,7 @@ async function handlePoliciesOwner(request, db, actor, parts) {
 
 async function handleVipRules(request, db, actor, parts) {
   if (request.method === "GET") {
-    requirePermission(actor,"catalog.read");
+    requirePermission(actor,"vip.view");
     const overrides=await db.prepare(
       "SELECT id,name,enabled,json_data,updated_at FROM owner_catalog WHERE kind='vip_rule' ORDER BY CAST(id AS INTEGER) ASC"
     ).all();
@@ -1636,7 +1835,7 @@ async function handleVipRules(request, db, actor, parts) {
     return json({ok:true,levels});
   }
   if (request.method === "POST") {
-    requirePermission(actor,"catalog.write");
+    requirePermission(actor,"vip.save");
     const body=await bodyJson(request);
     const level=clampInt(body.level,1,18,0);
     if(level<1||level>18)return json({ok:false,error:"vip_level_must_be_1_to_18"},{status:400});
@@ -1668,7 +1867,7 @@ async function handleVipRules(request, db, actor, parts) {
   }
   const level=clampInt(decodeURIComponent(parts[3] ?? ""),1,18,0);
   if(level && request.method==="DELETE"){
-    requirePermission(actor,"catalog.write");
+    requirePermission(actor,"vip.reset");
     await db.prepare("DELETE FROM owner_catalog WHERE kind='vip_rule' AND id=?").bind(String(level)).run();
     await audit(db,actor,"vip_rule_reset","vip",String(level),"reset to base rule");
     return json({ok:true,level,reset:true});
@@ -1748,17 +1947,27 @@ async function effectiveOwnerStore(db, kind) {
   );
 }
 
+function storePermissionForKind(kind, action) {
+  const normalized=String(kind ?? "").trim();
+  if(normalized==="gift") return "gifts."+action;
+  if(normalized==="theme") return "themes.global."+action;
+  if(["frame","vehicle","entry","ring","bubble","profile_card","profile_background"].includes(normalized)) {
+    return "assets."+action;
+  }
+  return "store."+action;
+}
+
 async function handleStore(request, db, actor, url, parts) {
   if (parts.length===3 && request.method==="GET") {
-    requirePermission(actor,"catalog.read");
     const kind=String(url.searchParams.get("kind") ?? "").trim().slice(0,60);
     if(!kind) return json({ok:false,error:"kind_required"},{status:400});
+    requirePermission(actor,storePermissionForKind(kind,"view"));
     return json({ok:true,kind,items:await effectiveOwnerStore(db,kind)});
   }
   if (parts.length===3 && request.method==="POST") {
-    requirePermission(actor,"catalog.write");
     const body=await bodyJson(request);
     const kind=String(body.kind ?? "").trim().slice(0,60);
+    requirePermission(actor,storePermissionForKind(kind,"save"));
     const itemId=String(body.id ?? "").trim().slice(0,100);
     const name=String(body.name ?? itemId).trim().slice(0,120);
     if(!kind||!itemId||!name) return json({ok:false,error:"kind_id_name_required"},{status:400});
@@ -1781,9 +1990,9 @@ async function handleStore(request, db, actor, url, parts) {
     return json({ok:true,item:items.find(item=>item.id===itemId) ?? null});
   }
   if (parts.length===5 && request.method==="DELETE") {
-    requirePermission(actor,"catalog.write");
     const kind=decodeURIComponent(parts[3]);
     const itemId=decodeURIComponent(parts[4]);
+    requirePermission(actor,storePermissionForKind(kind,"remove"));
     const items=await effectiveOwnerStore(db,kind);
     const item=items.find(row=>row.id===itemId);
     if(!item) return json({ok:false,error:"not_found"},{status:404});
@@ -1800,7 +2009,7 @@ async function handleStore(request, db, actor, url, parts) {
 
 async function handleCatalog(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "catalog.read");
+    requirePermission(actor, "catalog.view");
     const filter = String(url.searchParams.get("kind") ?? "").trim();
     const rows = filter
       ? await db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind = ? ORDER BY sort_order ASC, updated_at DESC").bind(filter).all()
@@ -1808,7 +2017,7 @@ async function handleCatalog(request, db, actor, url, parts) {
     return json({ ok: true, items: (rows.results ?? []).map((row) => ({ ...row, data: safeParse(row.json_data, {}) })) });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "catalog.write");
+    requirePermission(actor, "catalog.save");
     const body = await bodyJson(request);
     const itemKind = String(body.kind ?? "").trim().slice(0, 60);
     const itemId = String(body.id ?? "").trim().slice(0, 100) || id();
@@ -1829,7 +2038,7 @@ async function handleCatalog(request, db, actor, url, parts) {
     return json({ ok: true, id: itemId });
   }
   if (parts.length === 5 && request.method === "DELETE") {
-    requirePermission(actor, "catalog.write");
+    requirePermission(actor, "catalog.remove");
     const itemKind = decodeURIComponent(parts[3]);
     const itemId = decodeURIComponent(parts[4]);
     await db.prepare("DELETE FROM owner_catalog WHERE kind = ? AND id = ?").bind(itemKind, itemId).run();
@@ -1841,14 +2050,14 @@ async function handleCatalog(request, db, actor, url, parts) {
 
 async function handleAnnouncements(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "announcements.read");
+    requirePermission(actor, "announcements.view");
     const rows = await db.prepare(
       "SELECT id,title,body,enabled,starts_at,ends_at,created_at,updated_at FROM owner_announcements ORDER BY updated_at DESC LIMIT 200"
     ).all();
     return json({ ok: true, announcements: rows.results ?? [] });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "announcements.write");
+    requirePermission(actor, "announcements.save");
     const body = await bodyJson(request);
     const announcementId = String(body.id ?? "").trim() || id();
     const title = String(body.title ?? "").trim().slice(0, 120);
@@ -1875,7 +2084,7 @@ async function handleAnnouncements(request, db, actor, parts) {
     return json({ ok: true, id: announcementId });
   }
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "announcements.write");
+    requirePermission(actor, "announcements.delete");
     const announcementId = decodeURIComponent(parts[3]);
     await db.prepare("DELETE FROM owner_announcements WHERE id = ?").bind(announcementId).run();
     await audit(db, actor, "announcement_delete", "announcement", announcementId, "announcement removed");
@@ -1886,14 +2095,14 @@ async function handleAnnouncements(request, db, actor, parts) {
 
 async function handleStaff(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "staff.read");
+    requirePermission(actor, "staff.view");
     const rows = await db.prepare(
       "SELECT id,display_name,role,permissions_json,enabled,created_at,updated_at,last_used_at FROM owner_staff ORDER BY created_at DESC"
     ).all();
     return json({ ok: true, staff: (rows.results ?? []).map((row) => ({ ...row, permissions: safeParse(row.permissions_json, []) })) });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "staff.write");
+    requirePermission(actor, "staff.create");
     const body = await bodyJson(request);
     const displayName = String(body.display_name ?? "").trim().slice(0, 80);
     const role = ["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : "manager";
@@ -1902,7 +2111,7 @@ async function handleStaff(request, db, actor, parts) {
     const raw = crypto.getRandomValues(new Uint8Array(24));
     const token = "dvx_" + [...raw].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     const tokenHash = await sha256Hex(token);
-    const permissions = Array.isArray(body.permissions) ? body.permissions.map(String) : defaultPermissions(role);
+    const permissions = sanitizeStaffPermissions(actor, body.permissions);
     const ts = now();
     await db.prepare(
       "INSERT INTO owner_staff (id,display_name,role,token_hash,permissions_json,enabled,created_at,updated_at,last_used_at) VALUES (?,?,?,?,?,1,?,?,NULL)"
@@ -1914,13 +2123,19 @@ async function handleStaff(request, db, actor, parts) {
   const staffId = decodeURIComponent(parts[3] ?? "");
   if (!staffId) return null;
   if (parts.length === 4 && request.method === "POST") {
-    requirePermission(actor, "staff.write");
     const body = await bodyJson(request);
+    const changesPermissions=Array.isArray(body.permissions) || body.display_name!=null || body.role!=null;
+    const changesEnabled=body.enabled!=null;
+    if(changesPermissions) requirePermission(actor,"staff.permissions.edit");
+    if(changesEnabled) requirePermission(actor,"staff.toggle");
+    if(!changesPermissions && !changesEnabled) return json({ok:false,error:"no_staff_change_requested"},{status:400});
     const current = await db.prepare("SELECT id,display_name,role,permissions_json,enabled FROM owner_staff WHERE id = ?").bind(staffId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const displayName = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 80) || current.display_name;
     const role = body.role == null ? current.role : (["super_admin", "admin", "manager", "moderator"].includes(String(body.role)) ? String(body.role) : current.role);
-    const permissions = Array.isArray(body.permissions) ? body.permissions.map(String) : safeParse(current.permissions_json, defaultPermissions(role));
+    const permissions = Array.isArray(body.permissions)
+      ? sanitizeStaffPermissions(actor, body.permissions)
+      : safeParse(current.permissions_json, []).map(String).filter((permission) => STAFF_ASSIGNABLE_PERMISSIONS.has(permission));
     const enabled = body.enabled == null ? Number(current.enabled) : (body.enabled === true ? 1 : 0);
     await db.prepare("UPDATE owner_staff SET display_name=?,role=?,permissions_json=?,enabled=?,updated_at=? WHERE id=?")
       .bind(displayName, role, JSON.stringify(permissions), enabled, now(), staffId).run();
@@ -1928,7 +2143,7 @@ async function handleStaff(request, db, actor, parts) {
     return json({ ok: true });
   }
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "staff.write");
+    requirePermission(actor, "staff.delete");
     if (actor.type === "staff" && actor.id === staffId) return json({ ok: false, error: "cannot_delete_current_staff" }, { status: 400 });
     await db.prepare("DELETE FROM owner_staff WHERE id = ?").bind(staffId).run();
     await audit(db, actor, "staff_delete", "staff", staffId, "staff removed");
@@ -1939,7 +2154,7 @@ async function handleStaff(request, db, actor, parts) {
 
 async function handleTreasury(request, db, actor) {
   if (request.method === "GET") {
-    requirePermission(actor, "treasury.read");
+    requirePermission(actor, "treasury.view");
     const row = await db.prepare("SELECT balance, updated_at FROM owner_treasury WHERE id = 'main'").first();
     const ledger = await db.prepare(
       "SELECT id, amount, balance_after, kind, target_user_id, actor_id, note, created_at FROM owner_treasury_ledger ORDER BY created_at DESC LIMIT 100"
@@ -1948,7 +2163,6 @@ async function handleTreasury(request, db, actor) {
   }
   if (request.method !== "POST") return null;
 
-  requirePermission(actor, "treasury.write");
   const body = await bodyJson(request);
   const action = String(body.action ?? "").trim().toLowerCase();
   const amount = clampInt(body.amount ?? 0, 1, 900000000000000, 0);
@@ -1974,6 +2188,7 @@ async function handleTreasury(request, db, actor) {
   }
 
   if (action === "send") {
+    requirePermission(actor,"treasury.send");
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const user = await db.prepare("SELECT id, coins FROM users WHERE id = ?").bind(userId).first();
@@ -1999,7 +2214,7 @@ async function handleTreasury(request, db, actor) {
 
 async function handleAudit(request, db, actor, url, parts) {
   if (request.method === "GET") {
-    requirePermission(actor, "audit.read");
+    requirePermission(actor, "audit.view");
     const limit = clampInt(url.searchParams.get("limit"), 1, 500, 100);
     const rows = actor.type==="owner"
       ? await db.prepare(
@@ -2029,7 +2244,7 @@ async function handleSupportTickets(request, db, actor, url, parts) {
   await ensureSupportSchema(db);
   const ticketId = parts[3] ? decodeURIComponent(parts[3]) : "";
   if (!ticketId && request.method === "GET") {
-    requirePermission(actor, "support.read");
+    requirePermission(actor, "support.view");
     const status = String(url.searchParams.get("status") ?? "all");
     const rows = await db.prepare(
       `SELECT t.id,t.user_id,t.subject,t.status,t.created_at,t.updated_at,
@@ -2049,12 +2264,12 @@ async function handleSupportTickets(request, db, actor, url, parts) {
   ).bind(ticketId).first();
   if (!ticket) return json({ ok: false, error: "not_found" }, { status: 404 });
   if (request.method === "GET" && parts.length === 4) {
-    requirePermission(actor, "support.read");
+    requirePermission(actor, "support.view");
     const rows = await db.prepare("SELECT id,sender_type,sender_id,body,created_at FROM vip_support_messages WHERE ticket_id=? ORDER BY created_at ASC LIMIT 500").bind(ticketId).all();
     return json({ ok: true, ticket, messages: rows.results ?? [] });
   }
   if (request.method === "POST" && parts[4] === "reply") {
-    requirePermission(actor, "support.write");
+    requirePermission(actor, "support.reply");
     if (ticket.status !== "open") return json({ ok: false, error: "ticket_closed" }, { status: 409 });
     const body = await bodyJson(request);
     const message = String(body.message ?? "").trim();
@@ -2068,7 +2283,7 @@ async function handleSupportTickets(request, db, actor, url, parts) {
     return json({ ok: true });
   }
   if (request.method === "POST" && parts[4] === "close") {
-    requirePermission(actor, "support.write");
+    requirePermission(actor, "support.close");
     const ts = now();
     await db.prepare("UPDATE vip_support_tickets SET status='closed',updated_at=? WHERE id=?").bind(ts, ticketId).run();
     await audit(db, actor, "support_close", "vip_support_ticket", ticketId, `closed for ${ticket.user_id}`);
