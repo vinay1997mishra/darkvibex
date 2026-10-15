@@ -347,7 +347,7 @@ function applyActionPermissions(){
   if($("#ownerPrivateMessages"))$("#ownerPrivateMessages").hidden=state.actor?.type!=="owner";
 }
 function applyPermissions(){
-  $(".nav-btn").forEach(btn=>{
+  $$(".nav-btn").forEach(btn=>{
     const view=btn.dataset.view;
     const ownerOnly=view==="notifications";
     const allowed=ownerOnly ? state.actor?.type==="owner" : canAny(viewPermissionMap[view]||[]);
@@ -909,7 +909,7 @@ async function loadSettings(){
     const editable=can("settings."+key);
     return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?"On":"Off"}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?"checked":""} ${editable?"":"disabled"}></label>`;
   }).join("")||empty("No settings functions selected");
-  $("[data-setting-toggle]").forEach(input=>input.onchange=()=>saveFeature(input.dataset.settingToggle,input.checked));
+  $$("[data-setting-toggle]").forEach(input=>input.onchange=()=>saveFeature(input.dataset.settingToggle,input.checked));
   const maintenance=state.settings.get("maintenance")||{};
   $("#maintenanceEnabled").checked=!!maintenance.enabled;
   $("#maintenanceMessage").value=maintenance.message||"";
@@ -1110,7 +1110,7 @@ async function loadOwnerTags(){
   const d=await api("/api/owner/tags");
   const rows=d.tags||[];
   $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.remove")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
-  $("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
+  $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
 }
 async function loadMessaging(){
   renderSelectedMessageUsers();
@@ -1390,7 +1390,7 @@ $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.mes
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
-$("#clearPermissions").onclick=()=>{$("#staffPermissions input").forEach(x=>x.checked=false);};$("#cancelStaffEdit").onclick=cancelStaffEdit;
+$("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};$("#cancelStaffEdit").onclick=cancelStaffEdit;
 $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));$("#sendSupportReply").onclick=()=>sendSupportReply().catch(e=>toast(e.message,false));$("#closeSupportTicket").onclick=()=>closeSupportTicket().catch(e=>toast(e.message,false));
 
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
