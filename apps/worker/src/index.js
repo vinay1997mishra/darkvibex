@@ -1290,7 +1290,12 @@ async function listRooms(db, viewerUserId) {
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
-      WHERE r.country_code = ? AND COALESCE(rc.banned,0)=0
+      WHERE r.country_code = ?
+        AND COALESCE(rc.banned,0)=0
+        AND EXISTS (
+          SELECT 1 FROM room_members visible_member
+           WHERE visible_member.room_id = r.id
+        )
       ORDER BY r.updated_at DESC
       LIMIT 100`
   ).bind(now(), viewerCountry).all();
@@ -3728,7 +3733,13 @@ async function handleApi(request, env, url) {
          LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
          LEFT JOIN room_images ri ON ri.room_id=r.id
          LEFT JOIN room_settings s ON s.room_id=r.id
-        WHERE rf.user_id=? AND r.country_code=? AND COALESCE(rc.banned,0)=0
+        WHERE rf.user_id=?
+          AND r.country_code=?
+          AND COALESCE(rc.banned,0)=0
+          AND EXISTS (
+            SELECT 1 FROM room_members visible_member
+             WHERE visible_member.room_id = r.id
+          )
         ORDER BY rf.updated_at DESC LIMIT 100`
     ).bind(userId,viewerCountry).all();
     const followedRooms = rows.results ?? [];
@@ -7122,7 +7133,12 @@ async function handleApi(request, env, url) {
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
            LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
-          WHERE r.country_code=? AND COALESCE(rc.banned,0)=0
+          WHERE r.country_code=?
+            AND COALESCE(rc.banned,0)=0
+            AND EXISTS (
+              SELECT 1 FROM room_members visible_member
+               WHERE visible_member.room_id = r.id
+            )
           ORDER BY score DESC, online DESC, r.updated_at DESC
           LIMIT 100`
       ).bind(cutoff,viewerCountry).all();
