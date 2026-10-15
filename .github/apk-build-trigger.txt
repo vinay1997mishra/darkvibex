@@ -1,1 +1,3 @@
-Trigger DarkVibeX APK rebuild after hidden Friend section analyzer fix.
+DarkVibeX APK build trigger
+Store cosmetic previews + CP jewelry rings + default free pricing
+Updated: 2026-10-16
