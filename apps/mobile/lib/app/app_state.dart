@@ -138,7 +138,30 @@ class AppState extends ChangeNotifier {
     const RoomSummary(id: '100003', name: 'Chill Zone', ownerName: 'Sara', ownerUserId: '92000003', online: 24, seatCount: 15),
   ];
 
+  RoomSummary? minimizedRoom;
+  VoidCallback? minimizedRoomResume;
+  Future<void> Function()? minimizedRoomClose;
+
   final List<DirectMessage> messages = <DirectMessage>[];
+
+  void showMinimizedRoom({
+    required RoomSummary room,
+    required VoidCallback onResume,
+    required Future<void> Function() onClose,
+  }) {
+    minimizedRoom = room;
+    minimizedRoomResume = onResume;
+    minimizedRoomClose = onClose;
+    notifyListeners();
+  }
+
+  void clearMinimizedRoom({String? roomId}) {
+    if (roomId != null && minimizedRoom?.id != roomId) return;
+    minimizedRoom = null;
+    minimizedRoomResume = null;
+    minimizedRoomClose = null;
+    notifyListeners();
+  }
 
   Future<void> initialize() async {
     isInitializing = true;
@@ -699,6 +722,9 @@ class AppState extends ChangeNotifier {
     genderChangeCount = 0;
     languagePreference.value = 'English';
     messages.clear();
+    minimizedRoom = null;
+    minimizedRoomResume = null;
+    minimizedRoomClose = null;
     coins = 2500000;
     diamonds = 120;
     idLevel = 0;
