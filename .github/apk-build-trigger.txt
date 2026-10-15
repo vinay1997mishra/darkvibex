@@ -1,1 +1,1 @@
-Trigger latest DarkVibeX APK build for weekly sign-in integration.
+Trigger latest DarkVibeX APK build after room presence fix.
