@@ -8,6 +8,9 @@ const panelHtml = await readFile(new URL("../../owner_panel/index.html", import.
 const panelApp = await readFile(new URL("../../owner_panel/app.js", import.meta.url), "utf8");
 const backendApi = await readFile(new URL("../../mobile/lib/infra/backend_api.dart", import.meta.url), "utf8");
 const appState = await readFile(new URL("../../mobile/lib/app/app_state.dart", import.meta.url), "utf8");
+const profileScreen = await readFile(new URL("../../mobile/lib/screens/profile_screen.dart", import.meta.url), "utf8");
+const homeShell = await readFile(new URL("../../mobile/lib/screens/home_shell.dart", import.meta.url), "utf8");
+const socialStore = await readFile(new URL("../src/tinni_social.js", import.meta.url), "utf8");
 
 test("allowed Tinni Owner Panel modules are exposed without excluded hierarchy or verification views", () => {
   for (const view of ["notifications","messaging","roles","banners","games","policies"]) {
@@ -90,4 +93,29 @@ test("owner tags and invisible ID reach the user profile response", () => {
   assert.match(worker, /user\.tags=ownerIdentity\.tags/);
   assert.match(worker, /user\.invisible_id=ownerIdentity\.invisible_id/);
   assert.match(worker, /user\.public_id=null/);
+});
+
+
+test("invisible IDs stay hidden across profile social friends and room surfaces", () => {
+  assert.match(worker, /THEN 'Hidden' ELSE u\.public_id/);
+  assert.match(worker, /owner_invisible_id/);
+  assert.match(socialStore, /THEN 'Hidden' ELSE u\.public_id/);
+  assert.match(profileScreen, /return 'Hidden'/);
+  assert.match(profileScreen, /_ownerTagWidgets/);
+});
+
+test("wallet freeze is global and device ban covers API boundary", () => {
+  assert.match(worker, /CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard/);
+  assert.match(worker, /SELECT RAISE\(ABORT,'wallet_frozen'\)/);
+  assert.match(ownerApi, /CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard/);
+  assert.match(worker, /requestDeviceKey/);
+  assert.match(worker, /x-device-id/);
+});
+
+test("scheduled Owner banners are app-facing and rendered on Party home", () => {
+  assert.match(worker, /url\.pathname === "\/api\/banners"/);
+  assert.match(worker, /kind='banner' AND enabled=1/);
+  assert.match(backendApi, /activeBanners/);
+  assert.match(homeShell, /_OwnerBannerCard/);
+  assert.match(homeShell, /ownerBanners/);
 });
