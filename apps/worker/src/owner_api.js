@@ -791,7 +791,7 @@ async function listRooms(db, query = "") {
 }
 
 async function handleOverview(db, actor) {
-  requirePermission(actor, "dashboard");
+  requirePermission(actor, "dashboard.view");
   const auditPromise=actor.type==="owner"
     ? db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit ORDER BY created_at DESC LIMIT 12").all()
     : db.prepare("SELECT actor_type, actor_id, action, target_type, target_id, summary, created_at FROM owner_audit WHERE actor_type='staff' AND actor_id=? ORDER BY created_at DESC LIMIT 12").bind(actor.id).all();
@@ -1247,15 +1247,19 @@ async function handleUsers(request, db, actor, url, parts) {
 
 async function handleRooms(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "rooms.read");
+    requirePermission(actor, "rooms.view");
     return json({ ok: true, rooms: await listRooms(db, url.searchParams.get("q") ?? "") });
   }
   const roomId = decodeURIComponent(parts[3] ?? "");
   if (!roomId) return json({ ok: false, error: "room_id_required" }, { status: 400 });
 
   if (parts.length === 4 && request.method === "POST") {
-    requirePermission(actor, "rooms.write");
     const body = await bodyJson(request);
+    const editsRoom=Object.prototype.hasOwnProperty.call(body,"name") || Object.prototype.hasOwnProperty.call(body,"seat_count");
+    const editsLock=Object.prototype.hasOwnProperty.call(body,"locked");
+    if(editsRoom) requirePermission(actor,"rooms.edit");
+    if(editsLock) requirePermission(actor,"rooms.lock");
+    if(!editsRoom && !editsLock) return json({ok:false,error:"no_room_change_requested"},{status:400});
     const room = await db.prepare("SELECT id, name, seat_count, locked FROM rooms WHERE id = ?").bind(roomId).first();
     if (!room) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.name == null ? room.name : String(body.name).trim().slice(0, 80) || room.name;
@@ -1268,7 +1272,7 @@ async function handleRooms(request, db, actor, url, parts) {
   }
 
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "rooms.write");
+    requirePermission(actor, "rooms.delete");
     await db.prepare("DELETE FROM owner_room_controls WHERE room_id = ?").bind(roomId).run();
     await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
@@ -1276,7 +1280,7 @@ async function handleRooms(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "ban" && request.method === "POST") {
-    requirePermission(actor,"rooms.write");
+    requirePermission(actor,"rooms.ban");
     const body=await bodyJson(request);
     const exists=await db.prepare("SELECT id FROM rooms WHERE id=?").bind(roomId).first();
     if(!exists)return json({ok:false,error:"not_found"},{status:404});
@@ -1368,7 +1372,7 @@ async function handleEconomy(request, db, actor) {
   const key = "economy.coin_rate";
   const fallback = 5000000;
   if (request.method === "GET") {
-    requirePermission(actor, "economy.read");
+    requirePermission(actor, "economy.view");
     const row = await db.prepare("SELECT value_json, updated_at FROM owner_settings WHERE key = ?").bind(key).first();
     const value = safeParse(row?.value_json, {});
     const parsed = Number(value?.coins_per_usd);
@@ -1377,7 +1381,7 @@ async function handleEconomy(request, db, actor) {
   }
   if (request.method !== "POST") return null;
 
-  requirePermission(actor, "economy.write");
+  requirePermission(actor, "economy.coin_rate.edit");
   const body = await bodyJson(request);
   const coinsPerUsd = Number(body.coins_per_usd);
   if (!Number.isSafeInteger(coinsPerUsd) || coinsPerUsd < 1 || coinsPerUsd > 900000000000000) {
@@ -1462,8 +1466,8 @@ async function handleNotifications(request, db, actor, parts) {
 
 async function handleMessaging(request, db, actor, url, parts) {
   if(parts[2]==="messages" && request.method==="POST"){
-    requirePermission(actor,"messaging.write");
     const body=await bodyJson(request);
+    requirePermission(actor,body.all_users===true?"messaging.send.all":"messaging.send.selected");
     const message=String(body.text ?? "").trim().slice(0,2000);
     if(!message) return json({ok:false,error:"message_required"},{status:400});
     let recipients=[];
@@ -1483,7 +1487,7 @@ async function handleMessaging(request, db, actor, url, parts) {
     return json({ok:true,sent:recipients.length});
   }
   if(parts[2]==="tags" && request.method==="POST"){
-    requirePermission(actor,"tags.write");
+    requirePermission(actor,"tags.apply");
     const body=await bodyJson(request);
     const userIds=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
     const name=String(body.name ?? "").trim().slice(0,60);
@@ -1507,7 +1511,7 @@ async function handleMessaging(request, db, actor, url, parts) {
     return json({ok:true,tagged:userIds.length,name,tag_id:tagId});
   }
   if(parts[2]==="tags" && request.method==="GET"){
-    requirePermission(actor,"messaging.read");
+    requirePermission(actor,"tags.view");
     const kind=String(url.searchParams.get("kind") ?? "").trim();
     const rows=await db.prepare(
       `SELECT t.user_id,t.tag_id,t.name,t.color,t.kind,t.designation,t.background_color,t.updated_at,
@@ -1520,7 +1524,7 @@ async function handleMessaging(request, db, actor, url, parts) {
   const userId=decodeURIComponent(parts[3] ?? "");
   const tagId=decodeURIComponent(parts[4] ?? "");
   if(parts[2]==="tags" && userId && tagId && request.method==="DELETE"){
-    requirePermission(actor,"tags.write");
+    requirePermission(actor,"tags.remove");
     await db.prepare("DELETE FROM owner_user_tags WHERE user_id=? AND tag_id=?").bind(userId,tagId).run();
     await audit(db,actor,"tag_remove","user",userId,tagId);
     return json({ok:true});
@@ -1529,15 +1533,16 @@ async function handleMessaging(request, db, actor, url, parts) {
 }
 
 async function handleRolesPosts(request, db, actor, url, parts) {
-  requirePermission(actor, request.method==="GET" ? "roles.read" : "roles.write");
   const kind=String(url.searchParams.get("kind") ?? "role").trim()==="post"?"post":"role";
   if(parts.length===3 && request.method==="GET"){
+    requirePermission(actor,"roles.view");
     const rows=await db.prepare(
       "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind=? ORDER BY sort_order,updated_at DESC"
     ).bind(kind).all();
     return json({ok:true,kind,items:(rows.results ?? []).map(parseStoreRow)});
   }
   if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"roles.save");
     const body=await bodyJson(request);
     const itemId=String(body.id ?? id()).trim().slice(0,100);
     const name=String(body.name ?? "").trim().slice(0,100);
@@ -1553,6 +1558,7 @@ async function handleRolesPosts(request, db, actor, url, parts) {
   }
   const itemId=decodeURIComponent(parts[3] ?? "");
   if(itemId && request.method==="DELETE"){
+    requirePermission(actor,"roles.delete");
     await db.prepare("DELETE FROM owner_catalog WHERE kind=? AND id=?").bind(kind,itemId).run();
     await audit(db,actor,"role_post_delete",kind,itemId,"deleted");
     return json({ok:true});
@@ -1561,14 +1567,15 @@ async function handleRolesPosts(request, db, actor, url, parts) {
 }
 
 async function handleBanners(request, db, actor, parts) {
-  requirePermission(actor, request.method==="GET" ? "banners.read" : "banners.write");
   if(parts.length===3 && request.method==="GET"){
+    requirePermission(actor,"banners.view");
     const rows=await db.prepare(
       "SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='banner' ORDER BY sort_order,updated_at DESC"
     ).all();
     return json({ok:true,banners:(rows.results ?? []).map(parseStoreRow)});
   }
   if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"banners.save");
     const body=await bodyJson(request);
     const bannerId=String(body.id ?? id()).trim().slice(0,100);
     const name=String(body.name ?? "Banner").trim().slice(0,100);
@@ -1584,6 +1591,7 @@ async function handleBanners(request, db, actor, parts) {
   }
   const bannerId=decodeURIComponent(parts[3] ?? "");
   if(bannerId && request.method==="DELETE"){
+    requirePermission(actor,"banners.delete");
     await db.prepare("DELETE FROM owner_catalog WHERE kind='banner' AND id=?").bind(bannerId).run();
     await audit(db,actor,"banner_delete","banner",bannerId,"deleted");
     return json({ok:true});
@@ -1593,7 +1601,7 @@ async function handleBanners(request, db, actor, parts) {
 
 async function handleGamesOwner(request, db, actor, url) {
   if(request.method==="GET"){
-    requirePermission(actor,"games.read");
+    requirePermission(actor,"games.view");
     const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
     const [catalog,bets]=await Promise.all([
       db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind='game_config' ORDER BY sort_order,updated_at DESC").all(),
@@ -1641,7 +1649,7 @@ async function handleGamesOwner(request, db, actor, url) {
     return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? [],user_investigation:userInvestigation,user_error:userError});
   }
   if(request.method==="POST"){
-    requirePermission(actor,"games.write");
+    requirePermission(actor,"games.configure");
     const body=await bodyJson(request);
     const gameId=String(body.id ?? "").trim().slice(0,100);
     if(!gameId) return json({ok:false,error:"game_id_required"},{status:400});
@@ -2003,14 +2011,14 @@ async function handleCatalog(request, db, actor, url, parts) {
 
 async function handleAnnouncements(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "announcements.read");
+    requirePermission(actor, "announcements.view");
     const rows = await db.prepare(
       "SELECT id,title,body,enabled,starts_at,ends_at,created_at,updated_at FROM owner_announcements ORDER BY updated_at DESC LIMIT 200"
     ).all();
     return json({ ok: true, announcements: rows.results ?? [] });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "announcements.write");
+    requirePermission(actor, "announcements.save");
     const body = await bodyJson(request);
     const announcementId = String(body.id ?? "").trim() || id();
     const title = String(body.title ?? "").trim().slice(0, 120);
@@ -2037,7 +2045,7 @@ async function handleAnnouncements(request, db, actor, parts) {
     return json({ ok: true, id: announcementId });
   }
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "announcements.write");
+    requirePermission(actor, "announcements.delete");
     const announcementId = decodeURIComponent(parts[3]);
     await db.prepare("DELETE FROM owner_announcements WHERE id = ?").bind(announcementId).run();
     await audit(db, actor, "announcement_delete", "announcement", announcementId, "announcement removed");
@@ -2163,7 +2171,7 @@ async function handleTreasury(request, db, actor) {
 
 async function handleAudit(request, db, actor, url, parts) {
   if (request.method === "GET") {
-    requirePermission(actor, "audit.read");
+    requirePermission(actor, "audit.view");
     const limit = clampInt(url.searchParams.get("limit"), 1, 500, 100);
     const rows = actor.type==="owner"
       ? await db.prepare(
@@ -2193,7 +2201,7 @@ async function handleSupportTickets(request, db, actor, url, parts) {
   await ensureSupportSchema(db);
   const ticketId = parts[3] ? decodeURIComponent(parts[3]) : "";
   if (!ticketId && request.method === "GET") {
-    requirePermission(actor, "support.read");
+    requirePermission(actor, "support.view");
     const status = String(url.searchParams.get("status") ?? "all");
     const rows = await db.prepare(
       `SELECT t.id,t.user_id,t.subject,t.status,t.created_at,t.updated_at,
@@ -2218,7 +2226,7 @@ async function handleSupportTickets(request, db, actor, url, parts) {
     return json({ ok: true, ticket, messages: rows.results ?? [] });
   }
   if (request.method === "POST" && parts[4] === "reply") {
-    requirePermission(actor, "support.write");
+    requirePermission(actor, "support.reply");
     if (ticket.status !== "open") return json({ ok: false, error: "ticket_closed" }, { status: 409 });
     const body = await bodyJson(request);
     const message = String(body.message ?? "").trim();
@@ -2232,7 +2240,7 @@ async function handleSupportTickets(request, db, actor, url, parts) {
     return json({ ok: true });
   }
   if (request.method === "POST" && parts[4] === "close") {
-    requirePermission(actor, "support.write");
+    requirePermission(actor, "support.close");
     const ts = now();
     await db.prepare("UPDATE vip_support_tickets SET status='closed',updated_at=? WHERE id=?").bind(ts, ticketId).run();
     await audit(db, actor, "support_close", "vip_support_ticket", ticketId, `closed for ${ticket.user_id}`);
