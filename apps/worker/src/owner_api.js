@@ -1506,7 +1506,13 @@ export async function handleOwnerApi(request, env, url) {
     let response = null;
     if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
+    else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
+    else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
+    else if (parts[2] === "roles-posts") response = await handleRolesPosts(request, db, actor, url, parts);
+    else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
+    else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor);
+    else if (parts[2] === "policies") response = await handlePoliciesOwner(request, db, actor, parts);
     else if (parts[2] === "economy") response = await handleEconomy(request, db, actor);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
     else if (parts[2] === "store") response = await handleStore(request, db, actor, url, parts);
