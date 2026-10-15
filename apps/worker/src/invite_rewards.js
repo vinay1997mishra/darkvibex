@@ -46,7 +46,8 @@ export async function ensureInviteRewardSchema(db) {
 }
 
 function normalizeCode(value) {
-  return String(value ?? "").trim();
+  const code = String(value ?? "").trim();
+  return /^[1-9]\d{6}$/.test(code) ? code : "";
 }
 
 async function inviteStats(db, inviterUserId) {
@@ -103,7 +104,7 @@ export async function bindInvitationCode(db, {
   // DarkVibeX public profile IDs are unique, so the inviter's public ID is
   // also the invitation code. This avoids a second identity/code system.
   const inviter = await db.prepare(
-    "SELECT id,display_name,avatar_key FROM users WHERE id=?"
+    "SELECT id,public_id,display_name,avatar_key FROM users WHERE public_id=? LIMIT 1"
   ).bind(code).first();
   if (!inviter) throw new Error("invitation_code_not_found");
   if (String(inviter.id) === String(inviteeUserId)) {
@@ -127,6 +128,13 @@ export async function inviteRewardSummary(db, userId) {
   await ensureInviteRewardSchema(db);
   const stats = await inviteStats(db, userId);
   const tier = tierFor(stats);
+  const owner = await db.prepare(
+    "SELECT public_id FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  const invitationCode = String(owner?.public_id ?? "").trim();
+  if (!/^[1-9]\d{6}$/.test(invitationCode)) {
+    throw new Error("public_invitation_id_missing");
+  }
   const binding = await db.prepare(`
     SELECT b.inviter_user_id,b.invitation_code,b.bound_at,
            u.display_name AS inviter_name,u.avatar_key AS inviter_avatar_key
@@ -151,7 +159,7 @@ export async function inviteRewardSummary(db, userId) {
   `).bind(userId).all();
 
   return {
-    invitation_code: String(userId),
+    invitation_code: invitationCode,
     coins_per_usd: COINS_PER_USD,
     invite_count: stats.inviteCount,
     invited_received_coins: stats.sourceCoins,
