@@ -1340,11 +1340,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   List<Map<String, dynamic>> medals = const <Map<String, dynamic>>[];
   Map<String, dynamic>? cp;
   Map<String, dynamic>? vs;
+  Map<String, dynamic>? currentRoom;
   Map<String, dynamic> intimacyCards = const <String, dynamic>{};
   bool loading = true;
   bool isFollowing = false;
   bool isMutual = false;
   bool followBusy = false;
+  bool blockBusy = false;
+  bool reportBusy = false;
   bool cpInviteBusy = false;
   bool intimacyCardBusy = false;
 
@@ -1364,6 +1367,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final rawUser = response?['user'];
     final loadedUser = rawUser is Map
         ? Map<String, dynamic>.from(rawUser)
+        : null;
+    final rawCurrentRoom = response?['current_room'];
+    final loadedCurrentRoom = rawCurrentRoom is Map
+        ? Map<String, dynamic>.from(rawCurrentRoom)
         : null;
     if (loadedUser == null) {
       if (!mounted) return;
@@ -1425,6 +1432,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       vs = rawVs?['vs'] is Map
           ? Map<String, dynamic>.from(rawVs!['vs'] as Map)
           : null;
+      currentRoom = loadedCurrentRoom;
       isFollowing = following;
       isMutual = friends.whereType<Map>().any(
             (row) => row['id']?.toString() == resolvedId,
@@ -1624,6 +1632,228 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           otherUserId: targetId,
           otherName: user?['display_name']?.toString() ?? 'User',
         ),
+      ),
+    );
+  }
+
+  Future<void> _reportUser() async {
+    if (isSelf || reportBusy) return;
+    const reasons = <String>[
+      'Harassment or abuse',
+      'Inappropriate content',
+      'Spam or scam',
+      'Fake profile',
+      'Safety concern',
+      'Other',
+    ];
+    var reason = reasons.first;
+    final detailsController = TextEditingController();
+    final report = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Report user'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: reason,
+                decoration: const InputDecoration(labelText: 'Reason'),
+                items: reasons
+                    .map(
+                      (item) => DropdownMenuItem<String>(
+                        value: item,
+                        child: Text(item),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => reason = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: detailsController,
+                maxLength: 500,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Details (optional)',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                <String, String>{
+                  'reason': reason,
+                  'details': detailsController.text.trim(),
+                },
+              ),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      ),
+    );
+    detailsController.dispose();
+    if (report == null || !mounted) return;
+
+    setState(() => reportBusy = true);
+    final details = report['details']?.trim() ?? '';
+    final message = StringBuffer()
+      ..writeln('Target user: $targetId')
+      ..writeln('Reason: ${report['reason'] ?? 'Other'}');
+    if (details.isNotEmpty) {
+      message.write('Details: $details');
+    }
+    final ok = await widget.state.backend.submitFeedback(
+      userId: widget.state.userId,
+      category: 'User report',
+      message: message.toString().trim(),
+    );
+    if (!mounted) return;
+    setState(() => reportBusy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? 'Report submitted' : 'Could not submit report',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _blockUser() async {
+    if (isSelf || blockBusy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Block this user?'),
+        content: const Text(
+          'They will be removed from your follow/friend connection and direct interactions will be blocked.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => blockBusy = true);
+    final ok = await widget.state.backend.setUserBlocked(
+      userId: widget.state.userId,
+      targetUserId: targetId,
+      blocked: true,
+    );
+    if (!mounted) return;
+    setState(() {
+      blockBusy = false;
+      if (ok) {
+        isFollowing = false;
+        isMutual = false;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'User blocked' : 'Could not block user'),
+      ),
+    );
+    if (ok && mounted) {
+      Navigator.maybePop(context);
+    }
+  }
+
+  Widget _profileMoreMenu() {
+    if (isSelf) return const SizedBox.shrink();
+    return PopupMenuButton<String>(
+      key: const Key('public-profile-more-menu'),
+      tooltip: 'More',
+      icon: const Icon(
+        Icons.more_horiz_rounded,
+        color: Colors.white,
+        size: 30,
+      ),
+      onSelected: (value) {
+        if (value == 'report') {
+          _reportUser();
+        } else if (value == 'block') {
+          _blockUser();
+        }
+      },
+      itemBuilder: (_) => const <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'report',
+          child: Row(
+            children: [
+              Icon(Icons.flag_outlined),
+              SizedBox(width: 10),
+              Text('Report'),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'block',
+          child: Row(
+            children: [
+              Icon(Icons.block_rounded),
+              SizedBox(width: 10),
+              Text('Block'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _roomOnlineChip() {
+    final room = currentRoom;
+    if (room == null) return const SizedBox.shrink();
+    return Container(
+      key: const Key('public-profile-room-online'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 7,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.graphic_eq_rounded,
+            size: 19,
+            color: Color(0xFF27C66B),
+          ),
+          SizedBox(width: 7),
+          Text(
+            'Room',
+            style: TextStyle(
+              color: Color(0xFF27C66B),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3888,6 +4118,18 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 ),
               ),
             ),
+            if (!isSelf)
+              Positioned(
+                top: 0,
+                right: 4,
+                child: _profileMoreMenu(),
+              ),
+            if (currentRoom != null)
+              Positioned(
+                top: 52,
+                right: 12,
+                child: _roomOnlineChip(),
+              ),
             Positioned(
               left: 20,
               right: 20,
