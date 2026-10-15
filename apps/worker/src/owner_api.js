@@ -381,6 +381,29 @@ async function ensureOwnerSchema(db) {
       await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
     }
   } catch (_) {}
+  try {
+    const roomSettingsInfo = await db.prepare("PRAGMA table_info(room_settings)").all();
+    const roomSettingsColumns = new Set((roomSettingsInfo.results ?? []).map((row) => String(row.name ?? "")));
+    const roomSettingsAdditions = [
+      ["announcement", "TEXT NOT NULL DEFAULT ''"],
+      ["theme_id", "TEXT NOT NULL DEFAULT 'dark'"],
+      ["group_pk_enabled", "INTEGER NOT NULL DEFAULT 0"],
+      ["welcome_image_key", "TEXT NOT NULL DEFAULT ''"],
+      ["party_mode", "TEXT NOT NULL DEFAULT 'Friends-making Party'"],
+      ["room_mode", "TEXT NOT NULL DEFAULT 'voice'"],
+      ["seat_theme_id", "TEXT NOT NULL DEFAULT 'royal-gold'"],
+      ["mic_mode", "TEXT NOT NULL DEFAULT 'free'"],
+      ["public_screen_enabled", "INTEGER NOT NULL DEFAULT 1"],
+      ["lock_password_hash", "TEXT NOT NULL DEFAULT ''"],
+      ["lock_password_code", "TEXT NOT NULL DEFAULT ''"],
+      ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
+    ];
+    for (const [name, definition] of roomSettingsAdditions) {
+      if (!roomSettingsColumns.has(name)) {
+        await db.prepare(`ALTER TABLE room_settings ADD COLUMN ${name} ${definition}`).run();
+      }
+    }
+  } catch (_) {}
   const userInfo = await db.prepare("PRAGMA table_info(users)").all();
   const userColumns = new Set((userInfo.results ?? []).map((row) => String(row.name ?? "")));
   if (!userColumns.has("public_id")) {
