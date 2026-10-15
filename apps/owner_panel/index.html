@@ -7,7 +7,7 @@
   <title>DarkVibeX Panel</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body>
+<body class="panel-locked">
   <div class="app-shell">
     <aside id="sidebar" class="sidebar" hidden>
       <div class="brand"><span class="brand-dot"></span><div><b>DARKVIBEX</b><small id="panelBrandLabel">DarkVibeX Panel</small></div></div>
@@ -44,19 +44,30 @@
       <section id="loginCard" class="login-wrap">
         <div class="login-card">
           <p class="eyebrow">DARKVIBEX CONTROL</p>
-          <h1 id="loginPanelTitle">DarkVibeX Panel</h1>
-          <div id="ownerGoogleLogin">
-            <p class="muted">Main Owner</p>
-            <div id="googleOwnerButton"></div>
-            <p id="googleOwnerStatus" class="status-line"></p>
+          <h1 id="loginPanelTitle">DarkVibeX Owner Panel</h1>
+
+          <div class="login-mode-switch" role="tablist" aria-label="Panel login type">
+            <button id="ownerLoginTab" class="login-mode-btn active" type="button" role="tab" aria-selected="true">Main Owner</button>
+            <button id="staffLoginTab" class="login-mode-btn" type="button" role="tab" aria-selected="false">Staff Panel</button>
           </div>
-          <hr />
-          <p class="muted">Staff members sign in with the Gmail ID and panel password created by the Main Owner. Do not use your real Gmail/Google account password here.</p>
-          <label>Gmail ID<input id="loginEmail" type="email" autocomplete="username" placeholder="staffname@gmail.com" /></label>
-          <label>Panel password<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter panel password" /></label>
-          <button id="connect" class="primary full">Login to panel</button>
-          <p class="muted" style="margin-top:12px">Main Owner signs in only with the authorized Google account. Staff panel passwords can only be changed by the Main Owner.</p>
-          <p id="loginStatus" class="status-line"></p>
+
+          <div id="ownerLoginPane">
+            <p class="muted">Main Owner signs in only with the authorized Google account.</p>
+            <div id="ownerGoogleLogin">
+              <div id="googleOwnerButton"></div>
+              <p class="muted login-help">Google account selection is required before Main Owner access is granted.</p>
+              <p id="googleOwnerStatus" class="status-line"></p>
+            </div>
+          </div>
+
+          <div id="staffLoginPane" hidden>
+            <p class="muted">Staff members sign in only with the Gmail ID and panel password created by the Main Owner. Google Sign-In is not available in Staff Panel login.</p>
+            <label>Gmail ID<input id="loginEmail" type="email" autocomplete="username" placeholder="staffname@gmail.com" /></label>
+            <label>Panel password<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter panel password" /></label>
+            <button id="connect" class="primary full">Login to Staff Panel</button>
+            <p class="muted" style="margin-top:12px">Use the panel password set by the Main Owner. Never enter the real Gmail/Google account password.</p>
+            <p id="loginStatus" class="status-line"></p>
+          </div>
         </div>
       </section>
 
