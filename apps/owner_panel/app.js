@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const $ = (s) => [...document.querySelectorAll(s)];
+const $all = (s) => [...document.querySelectorAll(s)];
 const initialLoginMode = new URLSearchParams(window.location.search).get("staff")==="1" ? "staff" : "owner";
 const state = {
   token: sessionStorage.getItem("dvxOwnerToken") || "",
@@ -363,10 +363,11 @@ function setLoginMode(mode,updateUrl=false){
 function applyPanelBranding(){
   const isOwner=state.actor?.type==="owner";
   const isStaff=state.actor?.type==="staff";
-  const title=isOwner
-    ?"DarkVibeX Owner Panel"
-    :isStaff
-      ?"DarkVibeX Staff Panel"
+  const authenticatedTitle=isOwner?"DarkVibeX Owner Panel":"DarkVibeX Panel";
+  const title=isStaff
+    ?"DarkVibeX Staff Panel"
+    :state.actor
+      ?authenticatedTitle
       :(state.loginMode==="staff"?"DarkVibeX Staff Panel":"DarkVibeX Owner Panel");
   document.title=title;
   if($("#panelBrandLabel"))$("#panelBrandLabel").textContent=title;
@@ -402,7 +403,7 @@ function applyActionPermissions(){
   if($("#staffCredentialHelp"))$("#staffCredentialHelp").hidden=!ownerCredentials;
 }
 function applyPermissions(){
-  $$(".nav-btn").forEach(btn=>{
+  $all(".nav-btn").forEach(btn=>{
     const view=btn.dataset.view;
     const ownerOnly=view==="notifications";
     const allowed=ownerOnly ? state.actor?.type==="owner" : canAny(viewPermissionMap[view]||[]);
@@ -410,7 +411,7 @@ function applyPermissions(){
   });
   applyActionPermissions();
 }
-function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
+function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$all('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$all('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
 async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
 async function connectWithToken(token){
@@ -425,7 +426,7 @@ async function connectWithToken(token){
     actorCard();
     applyPermissions();
     $("#loginStatus").textContent="";
-    const first=$$(".nav-btn").find(b=>!b.hidden);
+    const first=$all(".nav-btn").find(b=>!b.hidden);
     if(!first)throw new Error("no_panel_permissions");
     setView(first.dataset.view);
   }catch(e){
@@ -535,7 +536,7 @@ async function loadOverview(){
   $("#overviewAudit").innerHTML=(d.audit||[]).length?(d.audit||[]).map(a=>`<div class="item-card"><div class="item-title">${esc(a.action.replaceAll('_',' '))}</div><div class="item-meta">${esc(a.target_type)} ${esc(a.target_id)} · ${esc(a.summary||'')}<br>${time(a.created_at)}</div></div>`).join(""):empty("No owner activity yet");
 }
 
-async function loadUsers(){if(!can("users.search"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$$('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
+async function loadUsers(){if(!can("users.search"))return;const q=$("#userSearch").value.trim();const d=await api("/api/owner/users?q="+encodeURIComponent(q));$("#userList").innerHTML=(d.users||[]).length?d.users.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||'Unnamed user')} <span class="pill ${u.status==='banned'?'banned':'active'}">${esc(u.status)}</span></div><div class="item-meta">Public ID ${esc(u.public_id||'—')} · Internal ${esc(u.id)} · ${esc(u.role)} · VIP ${num(u.vip_level)}<br>${num(u.coins)} coins · ${num(u.diamonds)} diamonds</div></div><div class="item-actions"><button class="secondary mini" data-user-open="${esc(u.id)}">Manage</button></div></div></div>`).join(""):empty("No matching users");$all('[data-user-open]').forEach(b=>b.onclick=()=>openUser(b.dataset.userOpen));}
 async function openUser(id){
   if(!can("users.detail"))return toast("Full ID View permission required",false);
   const d=await api("/api/owner/users/"+encodeURIComponent(id));
@@ -600,7 +601,7 @@ async function openUser(id){
     const label=key.length>42?key.slice(0,20)+"…"+key.slice(-12):key;
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(device.platform||"device")} <span class="pill ${banned?"banned":"active"}">${banned?"Banned":"Allowed"}</span></div><div class="item-meta">${esc(label)} · ${time(device.updated_at)}${device.ban_note?" · "+esc(device.ban_note):""}</div></div><button class="${banned?"secondary":"danger"} mini" data-device-key="${esc(key)}" data-device-banned="${banned?1:0}">${banned?"Unban":"Ban"}</button></div></div>`;
   }).join(""):empty("No registered device yet");
-  $$("[data-device-key]").forEach(b=>b.onclick=()=>toggleDeviceBan(b.dataset.deviceKey,Number(b.dataset.deviceBanned)===1).catch(e=>toast(e.message,false)));
+  $all("[data-device-key]").forEach(b=>b.onclick=()=>toggleDeviceBan(b.dataset.deviceKey,Number(b.dataset.deviceBanned)===1).catch(e=>toast(e.message,false)));
   $("#userEditor").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
@@ -710,11 +711,11 @@ async function loadRooms(){
   const q=$("#roomSearch").value.trim();
   const d=await api("/api/owner/rooms?q="+encodeURIComponent(q));
   $("#roomList").innerHTML=(d.rooms||[]).length?d.rooms.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.name)} <span class="pill ${Number(r.banned)?"banned":(Number(r.locked)?"banned":"active")}">${Number(r.banned)?"BANNED":(Number(r.locked)?"Locked":"Open")}</span></div><div class="item-meta">ID ${esc(r.id)} · Owner ${esc(r.owner_name||r.owner_user_id)} · ${num(r.online)} online · ${num(r.seat_count)} seats</div></div><div class="item-actions"><button class="secondary mini" data-room-live="${esc(r.id)}">Investigate</button><button class="${Number(r.banned)?"secondary":"danger"} mini" data-room-ban="${esc(r.id)}" data-banned="${Number(r.banned)}">${Number(r.banned)?"Unban":"Ban"}</button><button class="secondary mini" data-room-lock="${esc(r.id)}" data-locked="${Number(r.locked)}">${Number(r.locked)?"Unlock":"Lock"}</button><button class="secondary mini" data-room-edit="${esc(r.id)}" data-name="${esc(r.name)}" data-seats="${num(r.seat_count)}">Edit</button><button class="danger mini" data-room-delete="${esc(r.id)}">Remove</button></div></div></div>`).join(""):empty("No matching rooms");
-  $$("[data-room-live]").forEach(b=>b.onclick=()=>openRoomInvestigation(b.dataset.roomLive).catch(e=>toast(e.message,false)));
-  $$("[data-room-ban]").forEach(b=>b.onclick=async()=>{const isBanned=Number(b.dataset.banned)===1;if(!isBanned&&!confirm("Ban this room and remove all current members?"))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomBan)+"/ban",{method:"POST",body:JSON.stringify({banned:!isBanned})});toast(isBanned?"Room unbanned":"Room banned");await loadRooms();});
-  $$("[data-room-lock]").forEach(b=>b.onclick=async()=>{await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomLock),{method:"POST",body:JSON.stringify({locked:!Number(b.dataset.locked)})});toast("Room lock updated");loadRooms();});
-  $$("[data-room-edit]").forEach(b=>b.onclick=async()=>{const name=prompt("Room name",b.dataset.name);if(name===null)return;const seats=prompt("Seat count (8–42)",b.dataset.seats);if(seats===null)return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomEdit),{method:"POST",body:JSON.stringify({name,seat_count:Number(seats)})});toast("Room updated");loadRooms();});
-  $$("[data-room-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this room? This deletes the room and its current room records."))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomDelete),{method:"DELETE"});toast("Room removed");loadRooms();});
+  $all("[data-room-live]").forEach(b=>b.onclick=()=>openRoomInvestigation(b.dataset.roomLive).catch(e=>toast(e.message,false)));
+  $all("[data-room-ban]").forEach(b=>b.onclick=async()=>{const isBanned=Number(b.dataset.banned)===1;if(!isBanned&&!confirm("Ban this room and remove all current members?"))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomBan)+"/ban",{method:"POST",body:JSON.stringify({banned:!isBanned})});toast(isBanned?"Room unbanned":"Room banned");await loadRooms();});
+  $all("[data-room-lock]").forEach(b=>b.onclick=async()=>{await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomLock),{method:"POST",body:JSON.stringify({locked:!Number(b.dataset.locked)})});toast("Room lock updated");loadRooms();});
+  $all("[data-room-edit]").forEach(b=>b.onclick=async()=>{const name=prompt("Room name",b.dataset.name);if(name===null)return;const seats=prompt("Seat count (8–42)",b.dataset.seats);if(seats===null)return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomEdit),{method:"POST",body:JSON.stringify({name,seat_count:Number(seats)})});toast("Room updated");loadRooms();});
+  $all("[data-room-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this room? This deletes the room and its current room records."))return;await api("/api/owner/rooms/"+encodeURIComponent(b.dataset.roomDelete),{method:"DELETE"});toast("Room removed");loadRooms();});
 }
 async function openRoomInvestigation(roomId){
   if(!can("rooms.live"))return toast("Room live permission required",false);
@@ -795,7 +796,7 @@ async function searchEconomyUsers(){
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=30");
   const rows=d.users||[];
   $("#economyUserResults").innerHTML=rows.length?rows.map(u=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||"Unnamed user")}</div><div class="item-meta">Public ID ${esc(u.public_id||"—")} · Internal ${esc(u.id)} · ${esc(u.role)}</div></div><button class="secondary mini" data-economy-user="${esc(u.id)}">Select</button></div></div>`).join(""):empty("No matching users");
-  $$("[data-economy-user]").forEach(b=>b.onclick=()=>selectEconomyUser(b.dataset.economyUser).catch(e=>toast(e.message,false)));
+  $all("[data-economy-user]").forEach(b=>b.onclick=()=>selectEconomyUser(b.dataset.economyUser).catch(e=>toast(e.message,false)));
 }
 async function selectEconomyUser(id){
   const d=await api("/api/owner/users/"+encodeURIComponent(id));
@@ -859,8 +860,8 @@ async function loadStore(){
     ].join(" · ");
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?'active':'banned'}">${enabled?'Enabled':'Removed'}</span></div><div class="item-meta">${meta}<br>${esc(data.description||data.asset_key||data.asset||data.emoji||'')}</div></div><div class="item-actions"><button class="secondary mini" data-store-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-store-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No items in this store category");
-  $$("[data-store-edit]").forEach(b=>b.onclick=()=>editStoreItem(b.dataset.storeEdit));
-  $$("[data-store-remove]").forEach(b=>b.onclick=()=>removeStoreItem(b.dataset.storeRemove).catch(e=>toast(e.message,false)));
+  $all("[data-store-edit]").forEach(b=>b.onclick=()=>editStoreItem(b.dataset.storeEdit));
+  $all("[data-store-remove]").forEach(b=>b.onclick=()=>removeStoreItem(b.dataset.storeRemove).catch(e=>toast(e.message,false)));
 }
 function editStoreItem(id){
   const item=state.storeItems.find(x=>x.id===id);
@@ -936,7 +937,7 @@ async function loadVipRules(){
   const d=await api("/api/owner/vip-rules");
   state.vipRules=d.levels||[];
   $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Level ${num(rule.level)} · upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}${rule.entry_id?" · entry "+esc(rule.entry_id):""}${rule.frame_id?" · frame "+esc(rule.frame_id):""}</div></div><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button></div></div>`).join(""):empty("No VIP rules");
-  $$("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
+  $all("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
   const selected=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value||1))||state.vipRules[0];
   if(selected)fillVipRuleForm(selected);
 }
@@ -1017,8 +1018,8 @@ async function loadGifts(){
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No gifts");
-  $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
-  $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
+  $all("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
+  $all("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
 }
 function editGift(id){
   const item=state.giftItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
@@ -1060,8 +1061,8 @@ async function loadAssets(){
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">${esc(kind)} · ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??0)} · ${num(data.duration_days??0)} days · tier ${num(data.tier??0)}${windowText}<br>${esc(data.description||data.asset_key||"")}</div></div><div class="item-actions"><button class="secondary mini" data-asset-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-asset-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No assets in this type");
-  $$("[data-asset-edit]").forEach(b=>b.onclick=()=>editAsset(b.dataset.assetEdit));
-  $$("[data-asset-remove]").forEach(b=>b.onclick=()=>removeAsset(b.dataset.assetRemove).catch(e=>toast(e.message,false)));
+  $all("[data-asset-edit]").forEach(b=>b.onclick=()=>editAsset(b.dataset.assetEdit));
+  $all("[data-asset-remove]").forEach(b=>b.onclick=()=>removeAsset(b.dataset.assetRemove).catch(e=>toast(e.message,false)));
 }
 function editAsset(id){
   const item=state.assetItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
@@ -1089,7 +1090,7 @@ async function removeAsset(id){
 }
 
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
-async function loadCatalog(){if(!can("catalog.view"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
+async function loadCatalog(){if(!can("catalog.view"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$all('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$all('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
 async function saveCatalog(){const payload={kind:$("#catalogKind").value,id:$("#catalogId").value.trim()||undefined,name:$("#catalogName").value.trim(),price_coins:Number($("#catalogPrice").value||0),sort_order:Number($("#catalogOrder").value||0),enabled:$("#catalogEnabled").checked,data:{asset:$("#catalogAsset").value.trim(),level:$("#catalogLevel").value.trim(),description:$("#catalogDescription").value.trim()}};if(!payload.name)return toast('Enter a display name',false);await api('/api/owner/catalog',{method:'POST',body:JSON.stringify(payload)});toast('Content item saved');clearCatalogForm();await loadCatalog();}
 
@@ -1105,7 +1106,7 @@ async function loadSettings(){
     const editable=can("settings."+key);
     return `<label class="toggle-card"><span><b>${esc(label)}</b><small class="muted"> ${enabled?"On":"Off"}</small></span><input type="checkbox" data-setting-toggle="${esc(key)}" ${enabled?"checked":""} ${editable?"":"disabled"}></label>`;
   }).join("")||empty("No settings functions selected");
-  $$("[data-setting-toggle]").forEach(input=>input.onchange=()=>saveFeature(input.dataset.settingToggle,input.checked));
+  $all("[data-setting-toggle]").forEach(input=>input.onchange=()=>saveFeature(input.dataset.settingToggle,input.checked));
   const maintenance=state.settings.get("maintenance")||{};
   $("#maintenanceEnabled").checked=!!maintenance.enabled;
   $("#maintenanceMessage").value=maintenance.message||"";
@@ -1133,12 +1134,12 @@ async function loadAnnouncements(){
     const windowText=(a.starts_at||a.ends_at)?` · ${a.starts_at?time(a.starts_at):"now"} → ${a.ends_at?time(a.ends_at):"no end"}`:"";
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(a.title)} <span class="pill ${Number(a.enabled)?"active":"banned"}">${Number(a.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(a.body)}${windowText}</div></div><div class="item-actions"><button class="secondary mini" data-ann-edit="${esc(a.id)}">Edit</button><button class="danger mini" data-ann-delete="${esc(a.id)}">Delete</button></div></div></div>`;
   }).join(""):empty("No announcements");
-  $$("[data-ann-edit]").forEach(b=>b.onclick=()=>{
+  $all("[data-ann-edit]").forEach(b=>b.onclick=()=>{
     const a=rows.find(x=>x.id===b.dataset.annEdit);if(!a)return;
     $("#announcementId").value=a.id||"";$("#announcementTitle").value=a.title||"";$("#announcementBody").value=a.body||"";
     $("#announcementEnabled").checked=Number(a.enabled)!==0;$("#announcementStart").value=localInputValue(a.starts_at);$("#announcementEnd").value=localInputValue(a.ends_at);
   });
-  $$("[data-ann-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this announcement?"))return;await api("/api/owner/announcements/"+encodeURIComponent(b.dataset.annDelete),{method:"DELETE"});toast("Announcement deleted");await loadAnnouncements();});
+  $all("[data-ann-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this announcement?"))return;await api("/api/owner/announcements/"+encodeURIComponent(b.dataset.annDelete),{method:"DELETE"});toast("Announcement deleted");await loadAnnouncements();});
 }
 async function saveAnnouncement(){
   const startRaw=$("#announcementStart").value,endRaw=$("#announcementEnd").value;
@@ -1174,7 +1175,7 @@ function cancelStaffEdit(){
 async function loadStaff(){
   renderStaffPermissionEditor(
     state.staffEditingId
-      ? $$("#staffPermissions input:checked").map(x=>x.value)
+      ? $all("#staffPermissions input:checked").map(x=>x.value)
       : []
   );
   if(!can("staff.view")){
@@ -1195,7 +1196,7 @@ async function loadStaff(){
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.display_name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.role.replaceAll("_"," "))}${gmail} · last used ${time(item.last_used_at)}<br>${permissions.length?esc(permissions.join(", ")):"No functions selected"}</div></div><div class="item-actions">${actions.join("")}</div></div></div>`;
   }).join(""):empty("No custom panels created");
 
-  $$("[data-staff-edit]").forEach(b=>b.onclick=()=>{
+  $all("[data-staff-edit]").forEach(b=>b.onclick=()=>{
     const item=rows.find(x=>x.id===b.dataset.staffEdit);
     if(!item)return;
     if(!can("staff.permissions.edit"))return toast("Staff permission-edit access required",false);
@@ -1213,13 +1214,13 @@ async function loadStaff(){
     $("#staffName").scrollIntoView({behavior:"smooth",block:"center"});
     applyActionPermissions();
   });
-  $$("[data-staff-toggle]").forEach(b=>b.onclick=async()=>{
+  $all("[data-staff-toggle]").forEach(b=>b.onclick=async()=>{
     if(!can("staff.toggle"))return toast("Staff enable/disable permission required",false);
     await api("/api/owner/staff/"+encodeURIComponent(b.dataset.staffToggle),{method:"POST",body:JSON.stringify({enabled:!Number(b.dataset.enabled)})});
     toast("Staff access updated");
     await loadStaff();
   });
-  $$("[data-staff-delete]").forEach(b=>b.onclick=async()=>{
+  $all("[data-staff-delete]").forEach(b=>b.onclick=async()=>{
     if(!can("staff.delete"))return toast("Staff delete permission required",false);
     if(!confirm("Delete this staff access?"))return;
     await api("/api/owner/staff/"+encodeURIComponent(b.dataset.staffDelete),{method:"DELETE"});
@@ -1240,7 +1241,7 @@ async function createStaff(){
 
   const name=$("#staffName").value.trim();
   if(!name)return toast("Enter staff name",false);
-  const permissions=$$("#staffPermissions input:checked").map(x=>x.value);
+  const permissions=$all("#staffPermissions input:checked").map(x=>x.value);
   const payload={display_name:name,role:$("#staffRole").value,permissions};
 
   if(state.actor?.type==="owner"){
@@ -1287,7 +1288,7 @@ async function createStaff(){
   await loadStaff();
 }
 
-async function loadSupport(){if(!can('support.view'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
+async function loadSupport(){if(!can('support.view'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$all('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
 async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.close');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
 async function sendSupportReply(){if(!state.selectedTicket)return;if(!can('support.reply'))return toast('Support reply permission required',false);const message=$("#supportReply").value.trim();if(!message)return toast('Write a reply first',false);await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/reply`,{method:'POST',body:JSON.stringify({message})});$("#supportReply").value='';toast('Reply sent');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
 async function closeSupportTicket(){if(!state.selectedTicket)return;if(!can('support.close'))return toast('Support close permission required',false);if(!confirm('Close this VIP support ticket?'))return;await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/close`,{method:'POST',body:'{}'});toast('Ticket closed');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
@@ -1322,8 +1323,8 @@ async function loadNotifications(){
   const d=await api("/api/owner/notifications");
   const rows=d.notifications||[];
   $("#notificationList").innerHTML=rows.length?rows.map(n=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(n.title)} <span class="pill ${n.read_at?"active":"banned"}">${n.read_at?"Read":"Unread"}</span></div><div class="item-meta">${esc(n.kind)}${n.user_id?" · user "+esc(n.user_id):""} · ${time(n.created_at)}<br>${esc(n.body)}</div></div><div class="item-actions">${!n.read_at&&can("notifications.write")?`<button class="secondary mini" data-notification-read="${esc(n.id)}">Mark read</button>`:""}${can("notifications.write")?`<button class="danger mini" data-notification-delete="${esc(n.id)}">Delete</button>`:""}</div></div></div>`).join(""):empty("No owner notifications");
-  $$("[data-notification-read]").forEach(b=>b.onclick=async()=>{await api("/api/owner/notifications/"+encodeURIComponent(b.dataset.notificationRead)+"/read",{method:"POST",body:"{}"});await loadNotifications();});
-  $$("[data-notification-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this notification?"))return;await api("/api/owner/notifications/"+encodeURIComponent(b.dataset.notificationDelete),{method:"DELETE"});await loadNotifications();});
+  $all("[data-notification-read]").forEach(b=>b.onclick=async()=>{await api("/api/owner/notifications/"+encodeURIComponent(b.dataset.notificationRead)+"/read",{method:"POST",body:"{}"});await loadNotifications();});
+  $all("[data-notification-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this notification?"))return;await api("/api/owner/notifications/"+encodeURIComponent(b.dataset.notificationDelete),{method:"DELETE"});await loadNotifications();});
 }
 
 function renderSelectedMessageUsers(){
@@ -1336,7 +1337,7 @@ async function searchMessagingUsers(){
   const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=80");
   const rows=(d.users||[]).filter(u=>u.id!=="darkvibex_official");
   $("#messageUserResults").innerHTML=rows.length?rows.map(u=>`<label class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||"User")}</div><div class="item-meta">Public ID ${esc(u.public_id||"—")} · Internal ${esc(u.id)}</div></div><input type="checkbox" data-message-user="${esc(u.id)}" ${state.messageSelected.has(String(u.id))?"checked":""}></div></label>`).join(""):empty("No matching users");
-  $$("[data-message-user]").forEach(box=>box.onchange=()=>{
+  $all("[data-message-user]").forEach(box=>box.onchange=()=>{
     const id=String(box.dataset.messageUser);
     if(box.checked){
       const u=rows.find(x=>String(x.id)===id);
@@ -1350,7 +1351,7 @@ async function loadOwnerTags(){
   const d=await api("/api/owner/tags");
   const rows=d.tags||[];
   $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.remove")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
-  $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
+  $all("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
 }
 async function loadMessaging(){
   renderSelectedMessageUsers();
@@ -1389,8 +1390,8 @@ async function loadRolesPosts(){
   const d=await api("/api/owner/roles-posts?kind="+encodeURIComponent(kind));
   state.rolesPosts=d.items||[];
   $("#rolePostList").innerHTML=state.rolesPosts.length?state.rolesPosts.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.details||"")}</div></div><div class="item-actions"><button class="secondary mini" data-role-post-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-role-post-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No roles/posts configured");
-  $$("[data-role-post-edit]").forEach(b=>b.onclick=()=>{const item=state.rolesPosts.find(x=>x.id===b.dataset.rolePostEdit);if(!item)return;$("#rolePostId").value=item.id;$("#rolePostName").value=item.name||"";$("#rolePostOrder").value=Number(item.sort_order||0);$("#rolePostEnabled").checked=Number(item.enabled)!==0;$("#rolePostDetails").value=item.data?.details||"";});
-  $$("[data-role-post-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this "+kind+"?"))return;await api("/api/owner/roles-posts/"+encodeURIComponent(b.dataset.rolePostDelete)+"?kind="+encodeURIComponent(kind),{method:"DELETE"});toast("Deleted");await loadRolesPosts();});
+  $all("[data-role-post-edit]").forEach(b=>b.onclick=()=>{const item=state.rolesPosts.find(x=>x.id===b.dataset.rolePostEdit);if(!item)return;$("#rolePostId").value=item.id;$("#rolePostName").value=item.name||"";$("#rolePostOrder").value=Number(item.sort_order||0);$("#rolePostEnabled").checked=Number(item.enabled)!==0;$("#rolePostDetails").value=item.data?.details||"";});
+  $all("[data-role-post-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this "+kind+"?"))return;await api("/api/owner/roles-posts/"+encodeURIComponent(b.dataset.rolePostDelete)+"?kind="+encodeURIComponent(kind),{method:"DELETE"});toast("Deleted");await loadRolesPosts();});
 }
 async function saveRolePost(){
   if(!can("roles.save"))return toast("Roles write permission required",false);
@@ -1407,8 +1408,8 @@ async function loadBanners(){
   const d=await api("/api/owner/banners");
   state.banners=d.banners||[];
   $("#bannerList").innerHTML=state.banners.length?state.banners.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.asset_key||"")}${item.data?.link?" · "+esc(item.data.link):""}</div></div><div class="item-actions"><button class="secondary mini" data-banner-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-banner-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No banners configured");
-  $$("[data-banner-edit]").forEach(b=>b.onclick=()=>{const x=state.banners.find(i=>i.id===b.dataset.bannerEdit);if(!x)return;$("#bannerId").value=x.id;$("#bannerName").value=x.name||"";$("#bannerAsset").value=x.data?.asset_key||"";$("#bannerLink").value=x.data?.link||"";$("#bannerStart").value=x.data?.starts_at||"";$("#bannerEnd").value=x.data?.ends_at||"";$("#bannerEnabled").checked=Number(x.enabled)!==0;});
-  $$("[data-banner-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this banner?"))return;await api("/api/owner/banners/"+encodeURIComponent(b.dataset.bannerDelete),{method:"DELETE"});toast("Banner deleted");await loadBanners();});
+  $all("[data-banner-edit]").forEach(b=>b.onclick=()=>{const x=state.banners.find(i=>i.id===b.dataset.bannerEdit);if(!x)return;$("#bannerId").value=x.id;$("#bannerName").value=x.name||"";$("#bannerAsset").value=x.data?.asset_key||"";$("#bannerLink").value=x.data?.link||"";$("#bannerStart").value=x.data?.starts_at||"";$("#bannerEnd").value=x.data?.ends_at||"";$("#bannerEnabled").checked=Number(x.enabled)!==0;});
+  $all("[data-banner-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this banner?"))return;await api("/api/owner/banners/"+encodeURIComponent(b.dataset.bannerDelete),{method:"DELETE"});toast("Banner deleted");await loadBanners();});
 }
 async function saveBanner(){
   if(!can("banners.save"))return toast("Banner write permission required",false);
@@ -1426,7 +1427,7 @@ async function loadGames(){
   state.games=d.games||[];
   $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No game overrides configured");
   $("#gameStats").innerHTML=(d.stats||[]).length?(d.stats||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · wagered ${num(x.wagered)} · payout ${num(x.payout)} · house result ${num(x.house_result)}</div></div>`).join(""):empty("No game-bet statistics yet");
-  $$("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
+  $all("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
   if(!userQuery){
     $("#gameUserStats").innerHTML=empty("Enter a user ID to investigate betting history");
   }else if(d.user_error==="user_not_found"){
@@ -1460,8 +1461,8 @@ async function loadPolicies(){
   const d=await api("/api/owner/policies");
   state.policies=d.policies||[];
   $("#policyList").innerHTML=state.policies.length?state.policies.map(p=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(p.key)}</div><div class="item-meta">${esc(JSON.stringify(p.value))} · ${time(p.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-policy-edit="${esc(p.key)}">Edit</button><button class="danger mini" data-policy-delete="${esc(p.key)}">Delete</button></div></div></div>`).join(""):empty("No custom allowed policies");
-  $$("[data-policy-edit]").forEach(b=>b.onclick=()=>{const p=state.policies.find(x=>x.key===b.dataset.policyEdit);if(!p)return;$("#policyKey").value=p.key.replace(/^policy\./,"");$("#policyValue").value=JSON.stringify(p.value,null,2);});
-  $$("[data-policy-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this policy?"))return;await api("/api/owner/policies/"+encodeURIComponent(b.dataset.policyDelete),{method:"DELETE"});toast("Policy deleted");await loadPolicies();});
+  $all("[data-policy-edit]").forEach(b=>b.onclick=()=>{const p=state.policies.find(x=>x.key===b.dataset.policyEdit);if(!p)return;$("#policyKey").value=p.key.replace(/^policy\./,"");$("#policyValue").value=JSON.stringify(p.value,null,2);});
+  $all("[data-policy-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this policy?"))return;await api("/api/owner/policies/"+encodeURIComponent(b.dataset.policyDelete),{method:"DELETE"});toast("Policy deleted");await loadPolicies();});
   await loadPricingOverrides();
 }
 async function savePolicy(){
@@ -1505,7 +1506,7 @@ async function loadPricingOverrides(){
     const days=row.duration_days==null?"base validity":(Number(row.duration_days)===0?"permanent":num(row.duration_days)+" days");
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(row.display_name||row.public_id||row.user_id)} · ${esc(row.kind)} · ${esc(row.item_id)}</div><div class="item-meta">User ${esc(row.public_id||row.user_id)} · ${esc(price)} · ${esc(days)} · ${time(row.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-pricing-edit-user="${esc(row.user_id)}" data-pricing-kind="${esc(row.kind)}" data-pricing-item="${esc(row.item_id)}">Edit</button><button class="danger mini" data-pricing-delete-user="${esc(row.user_id)}" data-pricing-delete-kind="${esc(row.kind)}" data-pricing-delete-item="${esc(row.item_id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No per-user pricing overrides for this filter");
-  $$("[data-pricing-edit-user]").forEach(b=>b.onclick=()=>{
+  $all("[data-pricing-edit-user]").forEach(b=>b.onclick=()=>{
     const row=state.pricingOverrides.find(x=>String(x.user_id)===b.dataset.pricingEditUser&&String(x.kind)===b.dataset.pricingKind&&String(x.item_id)===b.dataset.pricingItem);
     if(!row)return;
     $("#pricingUserId").value=row.public_id||row.user_id;
@@ -1516,7 +1517,7 @@ async function loadPricingOverrides(){
     $("#pricingFree").checked=Number(row.free||0)===1;
     updatePricingFreeState();
   });
-  $$("[data-pricing-delete-user]").forEach(b=>b.onclick=async()=>{
+  $all("[data-pricing-delete-user]").forEach(b=>b.onclick=async()=>{
     if(!can("policies.save"))return toast("Policies write permission required",false);
     if(!confirm("Remove this per-user pricing override?"))return;
     await api("/api/owner/pricing-overrides/"+encodeURIComponent(b.dataset.pricingDeleteUser)+"/"+encodeURIComponent(b.dataset.pricingDeleteKind)+"/"+encodeURIComponent(b.dataset.pricingDeleteItem),{method:"DELETE"});
@@ -1723,7 +1724,7 @@ async function loadGlobalThemes(){
     const sizeText=data.output_width&&data.output_height?" · "+num(data.output_width)+"×"+num(data.output_height):"";
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(data.asset_key||data.asset||"")}${sizeText} · ${data.permanent?"Permanent":((data.starts_at?time(data.starts_at):"Now")+" → "+(data.ends_at?time(data.ends_at):"No end"))}</div></div><div class="item-actions"><button class="secondary mini" data-global-theme-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-global-theme-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No global room themes");
-  $$("[data-global-theme-edit]").forEach(b=>b.onclick=async()=>{
+  $all("[data-global-theme-edit]").forEach(b=>b.onclick=async()=>{
     const x=state.globalThemes.find(item=>item.id===b.dataset.globalThemeEdit);if(!x)return;
     const data=x.data||{};
     $("#globalThemeId").value=x.id;$("#globalThemeName").value=x.name||"";$("#globalThemeAsset").value=data.asset_key||data.asset||"";
@@ -1743,7 +1744,7 @@ async function loadGlobalThemes(){
       }
     }
   });
-  $$("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
+  $all("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
   applyActionPermissions();
 }
 async function saveGlobalTheme(){
@@ -1770,7 +1771,7 @@ async function loadAudit(){
   const canDelete=d.owner_can_delete===true||state.actor?.type==="owner";
   $("#clearAudit").hidden=!canDelete;
   $("#auditList").innerHTML=state.auditRows.length?`<div class="small-table">${state.auditRows.map(a=>`<div class="audit-row"><span>${time(a.created_at)}</span><span><b>${esc(a.action.replaceAll("_"," "))}</b><br><span class="muted">${esc(a.actor_type)} ${esc(a.actor_id)} → ${esc(a.target_type)} ${esc(a.target_id)}${a.summary?" · "+esc(a.summary):""}</span></span>${canDelete?`<button class="danger mini" data-audit-delete="${esc(a.id)}">Delete</button>`:""}</div>`).join("")}</div>`:empty("No audit records yet");
-  $$("[data-audit-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this audit record?"))return;await api("/api/owner/audit/"+encodeURIComponent(b.dataset.auditDelete),{method:"DELETE"});toast("Audit record deleted");await loadAudit();});
+  $all("[data-audit-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this audit record?"))return;await api("/api/owner/audit/"+encodeURIComponent(b.dataset.auditDelete),{method:"DELETE"});toast("Audit record deleted");await loadAudit();});
 }
 function exportAuditCsv(){
   if(!can("audit.export"))return toast("Audit export permission required",false);
@@ -1802,8 +1803,8 @@ $("#logout").onclick=()=>{
   setLoginMode(state.loginMode,true);
   $("#loginPassword").value="";
 };
-$$('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
+$all('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+$all('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
 $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
 $("#saveUserOverrides").onclick=()=>saveUserOverrides().catch(e=>toast(e.message,false));
@@ -1839,7 +1840,7 @@ $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.mes
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
-$("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};$("#cancelStaffEdit").onclick=cancelStaffEdit;
+$("#clearPermissions").onclick=()=>{$all("#staffPermissions input").forEach(x=>x.checked=false);};$("#cancelStaffEdit").onclick=cancelStaffEdit;
 $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));$("#sendSupportReply").onclick=()=>sendSupportReply().catch(e=>toast(e.message,false));$("#closeSupportTicket").onclick=()=>closeSupportTicket().catch(e=>toast(e.message,false));
 
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
