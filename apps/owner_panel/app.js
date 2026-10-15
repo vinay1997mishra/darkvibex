@@ -371,6 +371,172 @@ async function sendSupportReply(){if(!state.selectedTicket)return;const message=
 async function closeSupportTicket(){if(!state.selectedTicket)return;if(!confirm('Close this VIP support ticket?'))return;await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/close`,{method:'POST',body:'{}'});toast('Ticket closed');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
 async function createStaff(){if(!can('staff.write'))return toast('Only owner or authorized super admin can create staff access',false);const name=$("#staffName").value.trim();if(!name)return toast('Enter staff name',false);const permissions=$$("#staffPermissions input:checked").map(x=>x.value);const payload={display_name:name,role:$("#staffRole").value};if(permissions.length)payload.permissions=permissions;const d=await api('/api/owner/staff',{method:'POST',body:JSON.stringify(payload)});$("#staffName").value='';$$("#staffPermissions input").forEach(x=>x.checked=false);const box=$("#newStaffToken");box.hidden=false;box.innerHTML=`<b>One-time access token</b><br>${esc(d.token)}<br><small>Save it securely now. It cannot be viewed again from this panel.</small>`;toast('Custom panel access created');loadStaff();}
 
+
+async function saveUserOverrides(){
+  if(!state.selectedUser)return toast("Select a user first",false);
+  if(!can("users.override"))return toast("User override permission required",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/owner-overrides`,{
+    method:"POST",
+    body:JSON.stringify({
+      invisible_id:$("#userInvisibleId").checked,
+      locked_room_bypass:$("#userLockedBypass").checked,
+      wallet_frozen:$("#userWalletFrozen").checked,
+    }),
+  });
+  toast("Owner overrides saved");
+  await openUser(state.selectedUser.id);
+}
+async function toggleDeviceBan(deviceKey,currentlyBanned){
+  if(!state.selectedUser)return;
+  if(!can("users.device"))return toast("Device-ban permission required",false);
+  await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/device-ban`,{
+    method:"POST",
+    body:JSON.stringify({device_key:deviceKey,banned:!currentlyBanned}),
+  });
+  toast(currentlyBanned?"Device unbanned":"Device banned");
+  await openUser(state.selectedUser.id);
+}
+
+async function loadNotifications(){
+  if(!can("notifications.read"))return;
+  const d=await api("/api/owner/notifications");
+  const rows=d.notifications||[];
+  $("#notificationList").innerHTML=rows.length?rows.map(n=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(n.title)} <span class="pill ${n.read_at?"active":"banned"}">${n.read_at?"Read":"Unread"}</span></div><div class="item-meta">${esc(n.kind)}${n.user_id?" · user "+esc(n.user_id):""} · ${time(n.created_at)}<br>${esc(n.body)}</div></div><div class="item-actions">${!n.read_at&&can("notifications.write")?`<button class="secondary mini" data-notification-read="${esc(n.id)}">Mark read</button>`:""}${can("notifications.write")?`<button class="danger mini" data-notification-delete="${esc(n.id)}">Delete</button>`:""}</div></div></div>`).join(""):empty("No owner notifications");
+  $("[data-notification-read]").forEach(b=>b.onclick=async()=>{await api("/api/owner/notifications/"+encodeURIComponent(b.dataset.notificationRead)+"/read",{method:"POST",body:"{}"});await loadNotifications();});
+  $("[data-notification-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this notification?"))return;await api("/api/owner/notifications/"+encodeURIComponent(b.dataset.notificationDelete),{method:"DELETE"});await loadNotifications();});
+}
+
+function renderSelectedMessageUsers(){
+  $("#selectedMessageUsers").textContent=`${state.messageSelected.size} selected`;
+}
+async function searchMessagingUsers(){
+  if(!can("users.read"))return toast("Users read permission required",false);
+  const q=$("#messageUserSearch").value.trim();
+  if(!q)return toast("Enter a user ID or name",false);
+  const d=await api("/api/owner/users?q="+encodeURIComponent(q)+"&limit=80");
+  const rows=(d.users||[]).filter(u=>u.id!=="darkvibex_official");
+  $("#messageUserResults").innerHTML=rows.length?rows.map(u=>`<label class="item-card"><div class="item-main"><div><div class="item-title">${esc(u.display_name||"User")}</div><div class="item-meta">Public ID ${esc(u.public_id||"—")} · Internal ${esc(u.id)}</div></div><input type="checkbox" data-message-user="${esc(u.id)}" ${state.messageSelected.has(String(u.id))?"checked":""}></div></label>`).join(""):empty("No matching users");
+  $("[data-message-user]").forEach(box=>box.onchange=()=>{
+    const id=String(box.dataset.messageUser);
+    if(box.checked){
+      const u=rows.find(x=>String(x.id)===id);
+      state.messageSelected.set(id,u||{id});
+    }else state.messageSelected.delete(id);
+    renderSelectedMessageUsers();
+  });
+}
+async function loadOwnerTags(){
+  if(!can("messaging.read"))return;
+  const d=await api("/api/owner/tags");
+  const rows=d.tags||[];
+  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.write")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
+  $("[data-tag-user]").forEach(b=>b.onclick=async()=>{await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
+}
+async function loadMessaging(){
+  renderSelectedMessageUsers();
+  await loadOwnerTags();
+}
+async function sendOfficialMessage(allUsers=false){
+  if(!can("messaging.write"))return toast("Messaging write permission required",false);
+  const text=$("#officialMessageBody").value.trim();
+  if(!text)return toast("Write a message first",false);
+  const ids=[...state.messageSelected.keys()];
+  if(!allUsers&&!ids.length)return toast("Select at least one user",false);
+  if(allUsers&&!confirm("Send this DarkVibeX Official message to all users?"))return;
+  const d=await api("/api/owner/messages",{method:"POST",body:JSON.stringify({text,user_ids:ids,all_users:allUsers})});
+  toast(`Official message sent to ${num(d.sent||0)} users`);
+  $("#officialMessageBody").value="";
+}
+async function applyOwnerTag(){
+  if(!can("tags.write"))return toast("Tags write permission required",false);
+  const ids=[...state.messageSelected.keys()];
+  if(!ids.length)return toast("Select at least one user",false);
+  const kind=$("#ownerTagKind").value;
+  const designation=$("#ownerTagDesignation").value.trim();
+  let name=$("#ownerTagName").value.trim();
+  if(kind==="v_official"&&!designation)return toast("V Official designation is required",false);
+  if(kind==="v_official"&&!name)name="V Official";
+  if(!name)return toast("Tag name is required",false);
+  const color=$("#ownerTagColor").value;
+  const d=await api("/api/owner/tags",{method:"POST",body:JSON.stringify({user_ids:ids,name,color,kind,designation,background_color:color})});
+  toast(`${d.name||name} applied to ${num(d.tagged||0)} users`);
+  await loadOwnerTags();
+}
+
+async function loadRolesPosts(){
+  if(!can("roles.read"))return;
+  const kind=$("#rolePostKind").value;
+  const d=await api("/api/owner/roles-posts?kind="+encodeURIComponent(kind));
+  state.rolesPosts=d.items||[];
+  $("#rolePostList").innerHTML=state.rolesPosts.length?state.rolesPosts.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.details||"")}</div></div><div class="item-actions"><button class="secondary mini" data-role-post-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-role-post-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No roles/posts configured");
+  $("[data-role-post-edit]").forEach(b=>b.onclick=()=>{const item=state.rolesPosts.find(x=>x.id===b.dataset.rolePostEdit);if(!item)return;$("#rolePostId").value=item.id;$("#rolePostName").value=item.name||"";$("#rolePostOrder").value=Number(item.sort_order||0);$("#rolePostEnabled").checked=Number(item.enabled)!==0;$("#rolePostDetails").value=item.data?.details||"";});
+  $("[data-role-post-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this "+kind+"?"))return;await api("/api/owner/roles-posts/"+encodeURIComponent(b.dataset.rolePostDelete)+"?kind="+encodeURIComponent(kind),{method:"DELETE"});toast("Deleted");await loadRolesPosts();});
+}
+async function saveRolePost(){
+  if(!can("roles.write"))return toast("Roles write permission required",false);
+  const kind=$("#rolePostKind").value;
+  const name=$("#rolePostName").value.trim();
+  if(!name)return toast("Name is required",false);
+  await api("/api/owner/roles-posts?kind="+encodeURIComponent(kind),{method:"POST",body:JSON.stringify({id:$("#rolePostId").value.trim()||undefined,name,enabled:$("#rolePostEnabled").checked,sort_order:Number($("#rolePostOrder").value||0),data:{details:$("#rolePostDetails").value.trim()}})});
+  toast((kind==="post"?"Post":"Role")+" saved");
+  await loadRolesPosts();
+}
+
+async function loadBanners(){
+  if(!can("banners.read"))return;
+  const d=await api("/api/owner/banners");
+  state.banners=d.banners||[];
+  $("#bannerList").innerHTML=state.banners.length?state.banners.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.asset_key||"")}${item.data?.link?" · "+esc(item.data.link):""}</div></div><div class="item-actions"><button class="secondary mini" data-banner-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-banner-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No banners configured");
+  $("[data-banner-edit]").forEach(b=>b.onclick=()=>{const x=state.banners.find(i=>i.id===b.dataset.bannerEdit);if(!x)return;$("#bannerId").value=x.id;$("#bannerName").value=x.name||"";$("#bannerAsset").value=x.data?.asset_key||"";$("#bannerLink").value=x.data?.link||"";$("#bannerStart").value=x.data?.starts_at||"";$("#bannerEnd").value=x.data?.ends_at||"";$("#bannerEnabled").checked=Number(x.enabled)!==0;});
+  $("[data-banner-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this banner?"))return;await api("/api/owner/banners/"+encodeURIComponent(b.dataset.bannerDelete),{method:"DELETE"});toast("Banner deleted");await loadBanners();});
+}
+async function saveBanner(){
+  if(!can("banners.write"))return toast("Banner write permission required",false);
+  const name=$("#bannerName").value.trim();
+  if(!name)return toast("Banner name is required",false);
+  await api("/api/owner/banners",{method:"POST",body:JSON.stringify({id:$("#bannerId").value.trim()||undefined,name,asset_key:$("#bannerAsset").value.trim(),link:$("#bannerLink").value.trim(),starts_at:Number($("#bannerStart").value||0)||null,ends_at:Number($("#bannerEnd").value||0)||null,enabled:$("#bannerEnabled").checked})});
+  toast("Banner saved");
+  await loadBanners();
+}
+
+async function loadGames(){
+  if(!can("games.read"))return;
+  const d=await api("/api/owner/games");
+  state.games=d.games||[];
+  $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No game overrides configured");
+  $("#gameStats").innerHTML=(d.stats||[]).length?(d.stats||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · wagered ${num(x.wagered)} · payout ${num(x.payout)} · house result ${num(x.house_result)}</div></div>`).join(""):empty("No game-bet statistics yet");
+  $("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
+}
+async function saveGameConfig(){
+  if(!can("games.write"))return toast("Games write permission required",false);
+  const id=$("#gameConfigId").value.trim();
+  if(!id)return toast("Game ID is required",false);
+  const min=Number($("#gameMinBet").value||1),max=Number($("#gameMaxBet").value||1);
+  if(min<1||max<min)return toast("Bet limits are invalid",false);
+  await api("/api/owner/games",{method:"POST",body:JSON.stringify({id,name:$("#gameConfigName").value.trim()||id,min_bet:min,max_bet:max,enabled:$("#gameEnabled").checked})});
+  toast("Game config saved");
+  await loadGames();
+}
+
+async function loadPolicies(){
+  if(!can("policies.read"))return;
+  const d=await api("/api/owner/policies");
+  state.policies=d.policies||[];
+  $("#policyList").innerHTML=state.policies.length?state.policies.map(p=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(p.key)}</div><div class="item-meta">${esc(JSON.stringify(p.value))} · ${time(p.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-policy-edit="${esc(p.key)}">Edit</button><button class="danger mini" data-policy-delete="${esc(p.key)}">Delete</button></div></div></div>`).join(""):empty("No custom allowed policies");
+  $("[data-policy-edit]").forEach(b=>b.onclick=()=>{const p=state.policies.find(x=>x.key===b.dataset.policyEdit);if(!p)return;$("#policyKey").value=p.key.replace(/^policy\./,"");$("#policyValue").value=JSON.stringify(p.value,null,2);});
+  $("[data-policy-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this policy?"))return;await api("/api/owner/policies/"+encodeURIComponent(b.dataset.policyDelete),{method:"DELETE"});toast("Policy deleted");await loadPolicies();});
+}
+async function savePolicy(){
+  if(!can("policies.write"))return toast("Policies write permission required",false);
+  const key=$("#policyKey").value.trim();
+  if(!key)return toast("Policy key is required",false);
+  let value={};
+  try{value=JSON.parse($("#policyValue").value.trim()||"{}");}catch(_){return toast("Policy value must be valid JSON",false);}
+  await api("/api/owner/policies",{method:"POST",body:JSON.stringify({key,value})});
+  toast("Policy saved");
+  await loadPolicies();
+}
+
 async function loadAudit(){if(!can('audit.read'))return;const d=await api('/api/owner/audit?limit=200');$("#auditList").innerHTML=(d.audit||[]).length?`<div class="small-table">${d.audit.map(a=>`<div class="audit-row"><span>${time(a.created_at)}</span><span><b>${esc(a.action.replaceAll('_',' '))}</b><br><span class="muted">${esc(a.actor_type)} ${esc(a.actor_id)} → ${esc(a.target_type)} ${esc(a.target_id)}${a.summary?' · '+esc(a.summary):''}</span></span></div>`).join('')}</div>`:empty('No audit records yet');}
 
 $("#connect").onclick=connect;$("#token").addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
@@ -379,8 +545,19 @@ $$('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
 $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
+$("#saveUserOverrides").onclick=()=>saveUserOverrides().catch(e=>toast(e.message,false));
+$("#reloadNotifications").onclick=()=>loadNotifications().catch(e=>toast(e.message,false));
+$("#searchMessageUsers").onclick=()=>searchMessagingUsers().catch(e=>toast(e.message,false));$("#messageUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchMessagingUsers().catch(x=>toast(x.message,false));});
+$("#sendOfficialSelected").onclick=()=>sendOfficialMessage(false).catch(e=>toast(e.message,false));$("#sendOfficialAll").onclick=()=>sendOfficialMessage(true).catch(e=>toast(e.message,false));$("#applyOwnerTag").onclick=()=>applyOwnerTag().catch(e=>toast(e.message,false));
+
 $("#closeUser").onclick=()=>{$("#userEditor").hidden=true;state.selectedUser=null;};$("#saveUserProfile").onclick=()=>saveUserProfile().catch(e=>toast(e.message,false));$("#saveModeration").onclick=()=>saveModeration().catch(e=>toast(e.message,false));$("#savePublicId").onclick=()=>savePublicId().catch(e=>toast(e.message,false));$("#applyWallet").onclick=()=>applyWallet().catch(e=>toast(e.message,false));$("#applyRoleWallet").onclick=()=>applyRoleWallet().catch(e=>toast(e.message,false));$("#roleWalletType").onchange=()=>{$("#roleWalletBalance").textContent="Selected "+($("#roleWalletType").value||"role")+" wallet. Enter a coin change and apply.";};
 $("#searchRooms").onclick=()=>loadRooms().catch(e=>toast(e.message,false));$("#roomSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadRooms().catch(x=>toast(x.message,false));});
+$("#closeRoomInvestigation").onclick=()=>{$("#roomInvestigation").hidden=true;state.selectedRoomId=null;};$("#saveOwnerRoomMedia").onclick=()=>saveOwnerRoomMedia().catch(e=>toast(e.message,false));$("#saveOwnerRoomTheme").onclick=()=>saveOwnerRoomTheme().catch(e=>toast(e.message,false));
+$("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
+$("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));
+$("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));
+$("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));
+
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
