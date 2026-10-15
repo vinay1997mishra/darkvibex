@@ -1,1 +1,1 @@
-Trigger latest DarkVibeX APK build after room presence fix.
+Trigger DarkVibeX APK build after analyzer and test fixes.
