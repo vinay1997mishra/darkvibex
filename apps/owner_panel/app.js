@@ -1272,7 +1272,15 @@ async function createStaff(){
     return;
   }
 
-  const d=await api("/api/owner/staff",{method:"POST",body:JSON.stringify(payload)});
+  let d;
+  try{
+    d=await api("/api/owner/staff",{method:"POST",body:JSON.stringify(payload)});
+  }catch(e){
+    if(e.message==="staff_panel_limit_20_reached"){
+      return toast("Maximum 20 staff panels can be created.",false);
+    }
+    throw e;
+  }
   const box=$("#newStaffToken");
   const staffLoginUrl=new URL(window.location.pathname,window.location.origin);
   staffLoginUrl.searchParams.set("staff","1");
