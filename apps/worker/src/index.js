@@ -4789,11 +4789,39 @@ async function handleApi(request, env, url) {
           ORDER BY created_at DESC
           LIMIT 100`
       ).bind(roomId, now()).all();
+      let globalThemes=[];
+      try {
+        const globalRows=await db.prepare(
+          "SELECT id,name,json_data,updated_at FROM owner_catalog WHERE kind='theme' AND enabled=1 ORDER BY sort_order ASC,updated_at DESC LIMIT 100"
+        ).all();
+        const ts=now();
+        globalThemes=(globalRows.results ?? []).map(row=>{
+          let data={};
+          try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
+          return {
+            id:String(row.id),
+            name:String(row.name),
+            asset_key:String(data.asset_key ?? data.asset ?? ""),
+            price_coins:0,
+            created_at:Number(row.updated_at ?? ts),
+            expires_at:data.ends_at==null||Number(data.ends_at)===0?null:Number(data.ends_at),
+            starts_at:data.starts_at==null?null:Number(data.starts_at),
+            owner_global:true,
+            permanent:data.permanent===true || data.ends_at==null || Number(data.ends_at)===0,
+          };
+        }).filter(theme=>
+          theme.asset_key &&
+          (theme.starts_at==null || theme.starts_at<=ts) &&
+          (theme.expires_at==null || theme.expires_at>=ts)
+        );
+      } catch(error) {
+        if(!String(error?.message ?? error).includes("no such table")) throw error;
+      }
       return json({
         ok:true,
         user_price_coins:10000000,
         user_duration_days:7,
-        themes:rows.results ?? [],
+        themes:[...globalThemes,...(rows.results ?? [])],
       });
     }
 
