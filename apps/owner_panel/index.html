@@ -452,9 +452,16 @@
 
         <section class="view" data-view-panel="announcements">
           <article class="panel">
-            <div class="panel-head"><div><h2>Announcements</h2><p>Create in-app notices for all DarkVibeX users.</p></div></div>
-            <div class="form-grid"><label>Title<input id="announcementTitle" /></label><label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label><label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label></div>
-            <button id="saveAnnouncement" class="primary">Publish announcement</button>
+            <div class="panel-head"><div><h2>Announcements</h2><p>Create, edit, enable/disable and schedule in-app notices for all DarkVibeX users.</p></div></div>
+            <input id="announcementId" type="hidden" />
+            <div class="form-grid">
+              <label>Title<input id="announcementTitle" /></label>
+              <label class="check"><input id="announcementEnabled" type="checkbox" checked /> Enabled</label>
+              <label>Start date/time<input id="announcementStart" type="datetime-local" /></label>
+              <label>End / auto-remove date/time<input id="announcementEnd" type="datetime-local" /></label>
+              <label class="span-2">Message<textarea id="announcementBody" rows="4"></textarea></label>
+            </div>
+            <div class="action-row"><button id="saveAnnouncement" class="primary">Add / Save Announcement</button><button id="clearAnnouncement" class="secondary">Clear</button></div>
           </article>
           <article class="panel"><div id="announcementList" class="stack"></div></article>
         </section>
