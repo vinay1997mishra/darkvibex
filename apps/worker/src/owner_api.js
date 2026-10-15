@@ -1211,10 +1211,10 @@ async function handleGiftMediaUpload(request, env, db, actor) {
     return json({ ok: false, error: "gift_video_mp4_required" }, { status: 400 });
   }
 
-  const maxBytes = 20 * 1024 * 1024;
+  const maxBytes = 11 * 1024 * 1024;
   const declared = Number(request.headers.get("content-length") ?? 0);
   if (declared > maxBytes) {
-    return json({ ok: false, error: "gift_video_too_large" }, { status: 413 });
+    return json({ ok: false, error: "gift_video_max_11mb" }, { status: 413 });
   }
 
   const body = new Uint8Array(await request.arrayBuffer());
