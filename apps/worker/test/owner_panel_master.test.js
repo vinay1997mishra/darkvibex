@@ -34,3 +34,16 @@ test("owner panel manages public IDs and dedicated seller/merchant wallets", () 
   assert.match(panelApp, /savePublicId/);
   assert.match(panelApp, /applyRoleWallet/);
 });
+
+
+test("owner panel exposes dedicated unique-ID and master coin-rate controls", () => {
+  assert.match(panelHtml, /data-view="economy"/);
+  assert.match(panelHtml, /id="economyPublicId"/);
+  assert.match(panelHtml, /id="coinRateCoinsPerUsd"/);
+  assert.match(panelApp, /saveEconomyPublicId/);
+  assert.match(panelApp, /saveCoinRate/);
+  assert.match(ownerApi, /handleEconomy/);
+  assert.match(ownerApi, /economy\.coin_rate/);
+  assert.match(ownerApi, /coin_rate_update/);
+  assert.match(ownerApi, /invalid_coins_per_usd/);
+});
