@@ -299,7 +299,10 @@ function authHeaders(){return {authorization:"Bearer "+state.token,"content-type
 async function api(path, options={}){
   const res=await fetch(path,{...options,headers:{...authHeaders(),...(options.headers||{})}});
   const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
-  if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
+  if(!res.ok) const uploadError=data.error==="gift_video_max_11mb"
+      ?"Gift video can be maximum 11 MB. Choose a smaller MP4 file."
+      :data.error;
+    throw new Error(uploadError||("HTTP "+res.status));
   return data;
 }
 async function apiBlob(path){
@@ -938,7 +941,7 @@ async function uploadGiftVideo(){
   if(!giftId)return toast("Enter Gift ID before uploading video",false);
   if(!file)return toast("Choose an MP4 gift video first",false);
   if(file.type!=="video/mp4"&&!/\.mp4$/i.test(file.name))return toast("Only MP4 gift video is supported",false);
-  if(file.size<=0||file.size>20*1024*1024)return toast("Gift video must be 20 MB or smaller",false);
+  if(file.size<=0||file.size>11*1024*1024)return toast("Gift video can be maximum 11 MB. Choose a smaller MP4 file.",false);
   $("#giftVideoStatus").textContent="Uploading to R2…";
   const res=await fetch("/api/owner/gift-media",{
     method:"PUT",
