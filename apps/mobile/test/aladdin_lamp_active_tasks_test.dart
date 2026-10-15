@@ -17,6 +17,6 @@ void main() {
     expect(source, contains("case 'mic_time':"));
     expect(source, contains("case 'host_mic':"));
     expect(source, contains('Timer.periodic('));
-    expect(source, contains('const Duration(seconds: 5)'));
+    expect(source, contains('const Duration(minutes: 1)'));
   });
 }
