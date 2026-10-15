@@ -1403,9 +1403,24 @@ async function handleEconomy(request, db, actor) {
 
 async function handleSettings(request, db, actor, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "settings.view");
+    const settingPermissions={
+      "feature.voice":"settings.feature.voice",
+      "feature.gifts":"settings.feature.gifts",
+      "feature.games":"settings.feature.games",
+      "feature.messages":"settings.feature.messages",
+      "feature.room_creation":"settings.feature.room_creation",
+      "feature.aladdin_lamp":"settings.feature.aladdin_lamp",
+      "feature.red_pocket":"settings.feature.red_pocket",
+      "feature.friends_call":"settings.feature.friends_call",
+      "feature.visitors":"settings.feature.visitors",
+      "maintenance":"settings.maintenance",
+    };
+    const mayViewAll=can(actor,"settings.view");
+    const selectedKeys=Object.entries(settingPermissions).filter(([,permission])=>can(actor,permission)).map(([key])=>key);
+    if(!mayViewAll&&!selectedKeys.length)requirePermission(actor,"settings.view");
     const rows = await db.prepare("SELECT key, value_json, updated_at FROM owner_settings ORDER BY key ASC").all();
-    return json({ ok: true, settings: (rows.results ?? []).map((row) => ({ ...row, value: safeParse(row.value_json, {}) })) });
+    const visible=(rows.results ?? []).filter((row)=>mayViewAll||selectedKeys.includes(String(row.key)));
+    return json({ ok: true, settings: visible.map((row) => ({ ...row, value: safeParse(row.value_json, {}) })) });
   }
   if (parts.length === 4 && request.method === "POST") {
     const key = decodeURIComponent(parts[3]).trim().slice(0, 100);
