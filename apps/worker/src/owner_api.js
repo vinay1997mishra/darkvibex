@@ -1279,14 +1279,22 @@ const OWNER_PRICE_KINDS=new Set([
 async function handlePricingOverrides(request, db, actor, url, parts) {
   if(request.method==="GET"){
     requirePermission(actor,"policies.read");
-    const userId=String(url.searchParams.get("user_id") ?? "").trim();
+    const userQuery=String(url.searchParams.get("user_id") ?? "").trim();
     const kind=String(url.searchParams.get("kind") ?? "").trim();
+    let resolvedUserId=userQuery;
+    if(userQuery){
+      const found=await db.prepare("SELECT id FROM users WHERE id=? OR public_id=? LIMIT 1").bind(userQuery,userQuery).first();
+      if(!found)return json({ok:true,overrides:[]});
+      resolvedUserId=String(found.id);
+    }
     const rows=await db.prepare(
-      `SELECT user_id,kind,item_id,price_coins,free,duration_days,updated_at
-         FROM owner_user_price_overrides
-        WHERE (?='' OR user_id=?) AND (?='' OR kind=?)
-        ORDER BY updated_at DESC LIMIT 500`
-    ).bind(userId,userId,kind,kind).all();
+      `SELECT o.user_id,o.kind,o.item_id,o.price_coins,o.free,o.duration_days,o.updated_at,
+              u.public_id,u.display_name
+         FROM owner_user_price_overrides o
+         LEFT JOIN users u ON u.id=o.user_id
+        WHERE (?='' OR o.user_id=?) AND (?='' OR o.kind=?)
+        ORDER BY o.updated_at DESC LIMIT 500`
+    ).bind(resolvedUserId,resolvedUserId,kind,kind).all();
     return json({ok:true,overrides:rows.results ?? []});
   }
   if(parts.length===3 && request.method==="POST"){
