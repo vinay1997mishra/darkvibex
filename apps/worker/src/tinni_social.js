@@ -3,6 +3,13 @@ const uid = (prefix = "") => prefix + crypto.randomUUID();
 
 export async function ensureTinniSocialSchema(db) {
   const statements = [
+    `CREATE TABLE IF NOT EXISTS owner_user_overrides (
+      user_id TEXT PRIMARY KEY,
+      invisible_id INTEGER NOT NULL DEFAULT 0,
+      locked_room_bypass INTEGER NOT NULL DEFAULT 0,
+      wallet_frozen INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    )`,
     `CREATE TABLE IF NOT EXISTS user_follows (
       follower_id TEXT NOT NULL,
       target_id TEXT NOT NULL,
@@ -332,12 +339,16 @@ export async function followStatus(db, followerId, targetId) {
 export async function listFollowers(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
-    `SELECT u.id,u.public_id,u.display_name,u.avatar_key,f.created_at,
+    `SELECT u.id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS public_id,
+            u.display_name,u.avatar_key,f.created_at,
             EXISTS(
               SELECT 1 FROM user_follows reverse_follow
                WHERE reverse_follow.follower_id=? AND reverse_follow.target_id=u.id
             ) AS mutual
-       FROM user_follows f JOIN users u ON u.id=f.follower_id
+       FROM user_follows f
+       JOIN users u ON u.id=f.follower_id
+       LEFT JOIN owner_user_overrides io ON io.user_id=u.id
       WHERE f.target_id=? ORDER BY f.created_at DESC LIMIT 300`
   ).bind(userId,userId).all();
   return (rows.results ?? []).map((row) => ({
@@ -349,12 +360,16 @@ export async function listFollowers(db, userId) {
 export async function listFollowing(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
-    `SELECT u.id,u.public_id,u.display_name,u.avatar_key,f.created_at,
+    `SELECT u.id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS public_id,
+            u.display_name,u.avatar_key,f.created_at,
             EXISTS(
               SELECT 1 FROM user_follows reverse_follow
                WHERE reverse_follow.follower_id=u.id AND reverse_follow.target_id=?
             ) AS mutual
-       FROM user_follows f JOIN users u ON u.id=f.target_id
+       FROM user_follows f
+       JOIN users u ON u.id=f.target_id
+       LEFT JOIN owner_user_overrides io ON io.user_id=u.id
       WHERE f.follower_id=? ORDER BY f.created_at DESC LIMIT 300`
   ).bind(userId,userId).all();
   return (rows.results ?? []).map((row) => ({
