@@ -14,6 +14,11 @@ import {
   transferRoleCoins,
 } from "./role_wallets.js";
 import {
+  bindInvitationCode,
+  inviteRewardSummary,
+  recordCoinSellerInviteCommission,
+} from "./invite_rewards.js";
+import {
   ensureTinniSocialSchema,
   profileStats,
   followUser,
@@ -6143,6 +6148,40 @@ async function handleApi(request, env, url) {
     }, { status: 201 });
   }
 
+  if (url.pathname === "/api/invite/summary" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    try {
+      const summary = await inviteRewardSummary(db, userId);
+      return json({ ok: true, ...summary });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/invite/bind" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const invitationCode = String(body.invitation_code ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    try {
+      const binding = await bindInvitationCode(db, {
+        inviteeUserId: userId,
+        invitationCode,
+        ts: now(),
+      });
+      return json({ ok: true, binding });
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      const status = ["invitation_code_not_found","cannot_invite_self"].includes(code) ? 400 : 409;
+      return json({ ok: false, error: code }, { status });
+    }
+  }
+
   if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
@@ -6602,10 +6641,25 @@ async function handleApi(request, env, url) {
         ts:now(),
       });
       let vipAward=null;
+      let inviteCommission=null;
       if(walletType==="coin_seller"){
         vipAward=await awardSellerVipExp(db,receiverId,amount,now());
+        try {
+          inviteCommission=await recordCoinSellerInviteCommission(db,{
+            inviteeUserId:receiverId,
+            sourceTransferId:result.transfer_id,
+            sourceCoins:amount,
+            ts:now(),
+          });
+        } catch (error) {
+          console.error("DarkVibeX invite commission failed", {
+            receiverId,
+            transferId: result.transfer_id,
+            error: String(error?.message ?? error),
+          });
+        }
       }
-      return json({ok:true,...result,vip_award:vipAward});
+      return json({ok:true,...result,vip_award:vipAward,invite_commission:inviteCommission});
     }catch(error){
       const code=String(error?.message ?? error);
       const status=["invalid_wallet_credential","wallet_credential_not_set"].includes(code)?403:400;
@@ -6635,8 +6689,24 @@ async function handleApi(request, env, url) {
         credentialHash:hash,
         ts:now(),
       });
-      const vipAward=await awardSellerVipExp(db,receiverId,Number(body.coins ?? 0),now());
-      return json({ok:true,...result,vip_award:vipAward});
+      const sellerCoins=Number(body.coins ?? 0);
+      const vipAward=await awardSellerVipExp(db,receiverId,sellerCoins,now());
+      let inviteCommission=null;
+      try {
+        inviteCommission=await recordCoinSellerInviteCommission(db,{
+          inviteeUserId:receiverId,
+          sourceTransferId:result.transfer_id,
+          sourceCoins:sellerCoins,
+          ts:now(),
+        });
+      } catch (error) {
+        console.error("DarkVibeX invite commission failed", {
+          receiverId,
+          transferId: result.transfer_id,
+          error: String(error?.message ?? error),
+        });
+      }
+      return json({ok:true,...result,vip_award:vipAward,invite_commission:inviteCommission});
     }catch(error){
       const code=String(error?.message ?? error);
       return json({ok:false,error:code},{status:400});
