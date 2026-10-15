@@ -18,8 +18,11 @@ const state = {
   games: [],
   policies: [],
   globalThemes: [],
+  vipRules: [],
+  giftItems: [],
+  assetItems: [],
 };
-const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",store:"App Store",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
+const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
   ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
@@ -51,11 +54,11 @@ function toast(message,good=true){const el=$("#toast");el.textContent=message;el
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
 function applyPermissions(){
-  const map={overview:"dashboard",users:"users.read",notifications:"notifications.read",messaging:"messaging.read",rooms:"rooms.read",roles:"roles.read",banners:"banners.read",games:"games.read",policies:"policies.read",wallets:"treasury.read",economy:"economy.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
+  const map={overview:"dashboard",users:"users.read",notifications:"notifications.read",messaging:"messaging.read",rooms:"rooms.read",roles:"roles.read",banners:"banners.read",games:"games.read",policies:"policies.read",wallets:"treasury.read",economy:"economy.read",vip:"catalog.read",gifts:"catalog.read",assets:"catalog.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
   $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=!!p&&!can(p);});
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
-async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
+async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
 async function connect(){
   state.token=$("#token").value.trim()||state.token;if(!state.token)return;
@@ -334,6 +337,140 @@ async function removeStoreItem(id){
   await loadStore();
 }
 
+
+function fillVipRuleForm(rule){
+  if(!rule)return;
+  $("#vipRuleLevel").value=Number(rule.level||1);
+  $("#vipRuleName").value=rule.name||("VIP "+Number(rule.level||1));
+  $("#vipRuleUpgradeExp").value=Number(rule.upgrade_exp||0);
+  $("#vipRuleMaintainExp").value=Number(rule.maintain_exp||0);
+  $("#vipRuleValidityDays").value=Number(rule.validity_days||30);
+  $("#vipRuleEntryId").value=rule.entry_id||"";
+  $("#vipRuleFrameId").value=rule.frame_id||"";
+  $("#vipRuleEnabled").checked=Number(rule.enabled)!==0;
+}
+async function loadVipRules(){
+  if(!can("catalog.read"))return;
+  const d=await api("/api/owner/vip-rules");
+  state.vipRules=d.levels||[];
+  $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Level ${num(rule.level)} · upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}${rule.entry_id?" · entry "+esc(rule.entry_id):""}${rule.frame_id?" · frame "+esc(rule.frame_id):""}</div></div><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button></div></div>`).join(""):empty("No VIP rules");
+  $("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
+  const selected=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value||1))||state.vipRules[0];
+  if(selected)fillVipRuleForm(selected);
+}
+async function saveVipRule(){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  const level=Number($("#vipRuleLevel").value);
+  const upgrade=Number($("#vipRuleUpgradeExp").value);
+  const maintain=Number($("#vipRuleMaintainExp").value);
+  const days=Number($("#vipRuleValidityDays").value);
+  if(!Number.isSafeInteger(level)||level<1||level>18)return toast("VIP level must be 1–18",false);
+  if(!Number.isSafeInteger(upgrade)||upgrade<0)return toast("Upgrade EXP is invalid",false);
+  if(!Number.isSafeInteger(maintain)||maintain<0)return toast("Maintenance EXP is invalid",false);
+  if(!Number.isSafeInteger(days)||days<1)return toast("Validity days are invalid",false);
+  await api("/api/owner/vip-rules",{method:"POST",body:JSON.stringify({
+    level,name:$("#vipRuleName").value.trim()||("VIP "+level),upgrade_exp:upgrade,maintain_exp:maintain,
+    validity_days:days,entry_id:$("#vipRuleEntryId").value.trim(),frame_id:$("#vipRuleFrameId").value.trim(),
+    enabled:$("#vipRuleEnabled").checked
+  })});
+  toast("VIP rule saved and active in leveling logic");
+  await loadVipRules();
+}
+async function resetVipRule(){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  const level=Number($("#vipRuleLevel").value);
+  if(!Number.isSafeInteger(level)||level<1||level>18)return toast("Select VIP1–VIP18",false);
+  if(!confirm("Reset VIP "+level+" to the DarkVibeX base rule?"))return;
+  await api("/api/owner/vip-rules/"+level,{method:"DELETE"});
+  toast("VIP rule reset to base");
+  await loadVipRules();
+}
+
+function clearGiftForm(){
+  $("#giftId").value="";$("#giftName").value="";$("#giftPrice").value=0;$("#giftVip").value=0;
+  $("#giftEmoji").value="";$("#giftCategory").value="";$("#giftAsset").value="";$("#giftOrder").value=0;
+  $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
+}
+async function loadGifts(){
+  if(!can("catalog.read"))return;
+  const d=await api("/api/owner/store?kind=gift");
+  state.giftItems=d.items||[];
+  $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
+    const data=item.data||{},enabled=Number(item.enabled)!==0;
+    const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+  }).join(""):empty("No gifts");
+  $("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
+  $("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
+}
+function editGift(id){
+  const item=state.giftItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
+  $("#giftId").value=item.id||"";$("#giftName").value=item.name||"";$("#giftPrice").value=Number(item.price_coins||0);
+  $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=d.category||"";
+  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftOrder").value=Number(item.sort_order||0);
+  $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
+}
+async function saveGift(){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  const id=$("#giftId").value.trim(),name=$("#giftName").value.trim()||id;
+  if(!id||!name)return toast("Gift ID and name are required",false);
+  const starts=Number($("#giftStart").value||0)||null,ends=Number($("#giftEnd").value||0)||null;
+  if(starts&&ends&&ends<=starts)return toast("Gift end time must be after start time",false);
+  await api("/api/owner/store",{method:"POST",body:JSON.stringify({
+    kind:"gift",id,name,price_coins:Number($("#giftPrice").value||0),sort_order:Number($("#giftOrder").value||0),enabled:$("#giftEnabled").checked,
+    data:{min_vip_level:Number($("#giftVip").value||0),vip_level:Number($("#giftVip").value||0),emoji:$("#giftEmoji").value.trim(),category:$("#giftCategory").value.trim(),asset_key:$("#giftAsset").value.trim(),asset:$("#giftAsset").value.trim(),description:$("#giftDescription").value.trim(),starts_at:starts,ends_at:ends}
+  })});
+  toast("Gift saved to live catalog");clearGiftForm();await loadGifts();
+}
+async function removeGift(id){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  if(!confirm("Remove this gift from the app?"))return;
+  await api("/api/owner/store/gift/"+encodeURIComponent(id),{method:"DELETE"});toast("Gift removed");await loadGifts();
+}
+
+function clearAssetForm(){
+  $("#assetId").value="";$("#assetName").value="";$("#assetPrice").value=0;$("#assetVip").value=0;$("#assetDuration").value=30;
+  $("#assetTier").value=0;$("#assetOrder").value=0;$("#assetFileKey").value="";$("#assetStart").value="";$("#assetEnd").value="";
+  $("#assetEnabled").checked=true;$("#assetDescription").value="";
+}
+async function loadAssets(){
+  if(!can("catalog.read"))return;
+  const kind=$("#assetKind").value;
+  const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
+  state.assetItems=d.items||[];
+  $("#assetList").innerHTML=state.assetItems.length?state.assetItems.map(item=>{
+    const data=item.data||{},enabled=Number(item.enabled)!==0;
+    const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">${esc(kind)} · ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??0)} · ${num(data.duration_days??0)} days · tier ${num(data.tier??0)}${windowText}<br>${esc(data.description||data.asset_key||"")}</div></div><div class="item-actions"><button class="secondary mini" data-asset-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-asset-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+  }).join(""):empty("No assets in this type");
+  $("[data-asset-edit]").forEach(b=>b.onclick=()=>editAsset(b.dataset.assetEdit));
+  $("[data-asset-remove]").forEach(b=>b.onclick=()=>removeAsset(b.dataset.assetRemove).catch(e=>toast(e.message,false)));
+}
+function editAsset(id){
+  const item=state.assetItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
+  $("#assetId").value=item.id||"";$("#assetName").value=item.name||"";$("#assetPrice").value=Number(item.price_coins||0);
+  $("#assetVip").value=Number(d.min_vip_level??d.vip_level??0);$("#assetDuration").value=Number(d.duration_days??30);$("#assetTier").value=Number(d.tier??0);
+  $("#assetOrder").value=Number(item.sort_order||0);$("#assetFileKey").value=d.asset_key||d.asset||"";$("#assetStart").value=d.starts_at||"";$("#assetEnd").value=d.ends_at||"";
+  $("#assetEnabled").checked=Number(item.enabled)!==0;$("#assetDescription").value=d.description||"";
+}
+async function saveAsset(){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  const kind=$("#assetKind").value,id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
+  if(!kind||!id||!name)return toast("Asset type, ID and name are required",false);
+  const starts=Number($("#assetStart").value||0)||null,ends=Number($("#assetEnd").value||0)||null;
+  if(starts&&ends&&ends<=starts)return toast("Asset end time must be after start time",false);
+  await api("/api/owner/store",{method:"POST",body:JSON.stringify({
+    kind,id,name,price_coins:Number($("#assetPrice").value||0),sort_order:Number($("#assetOrder").value||0),enabled:$("#assetEnabled").checked,
+    data:{min_vip_level:Number($("#assetVip").value||0),vip_level:Number($("#assetVip").value||0),duration_days:Number($("#assetDuration").value||0),tier:Number($("#assetTier").value||0),asset_key:$("#assetFileKey").value.trim(),asset:$("#assetFileKey").value.trim(),description:$("#assetDescription").value.trim(),starts_at:starts,ends_at:ends}
+  })});
+  toast("Asset saved to live store");clearAssetForm();await loadAssets();
+}
+async function removeAsset(id){
+  if(!can("catalog.write"))return toast("Catalog write permission required",false);
+  const kind=$("#assetKind").value;if(!confirm("Remove this "+kind+" from the app?"))return;
+  await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});toast("Asset removed");await loadAssets();
+}
+
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
 async function loadCatalog(){if(!can("catalog.read"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
@@ -600,6 +737,9 @@ $("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#s
 $("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));
 
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
+$("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value));if(rule)fillVipRuleForm(rule);};$("#reloadVipRules").onclick=()=>loadVipRules().catch(e=>toast(e.message,false));$("#saveVipRule").onclick=()=>saveVipRule().catch(e=>toast(e.message,false));$("#resetVipRule").onclick=()=>resetVipRule().catch(e=>toast(e.message,false));
+$("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
+$("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));
