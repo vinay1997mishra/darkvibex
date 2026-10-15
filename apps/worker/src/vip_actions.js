@@ -35,6 +35,15 @@ export async function changeVipUniqueId(db,userId,requestedId,ts=Date.now()){
     if(String(error?.message ?? error)==="custom_id_taken") throw error;
     if(!String(error?.message ?? error).includes("no such table")) throw error;
   }
+  try{
+    const purchaseOwner=await db.prepare(
+      "SELECT buyer_user_id FROM unique_id_purchases WHERE public_id=? AND buyer_user_id<>? LIMIT 1"
+    ).bind(customId,userId).first();
+    if(purchaseOwner) throw new Error("custom_id_taken");
+  }catch(error){
+    if(String(error?.message ?? error)==="custom_id_taken") throw error;
+    if(!String(error?.message ?? error).includes("no such table")) throw error;
+  }
 
   const previousAt=Number(row.last_id_change_at??0);
   const previousLevel=Number(row.id_change_level??0);
