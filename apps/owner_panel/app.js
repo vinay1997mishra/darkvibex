@@ -18,6 +18,8 @@ const state = {
   games: [],
   policies: [],
   globalThemes: [],
+  themeCropImage: null,
+  themeCropObjectUrl: null,
   vipRules: [],
   giftItems: [],
   assetItems: [],
@@ -211,9 +213,12 @@ const selectorPermissionRules = [
   ["#ownerRoomDpKey",["rooms.media"],"label"],["#ownerRoomBackgroundKey",["rooms.media"],"label"],["#saveOwnerRoomMedia",["rooms.media"],"self"],
   ["#ownerRoomThemeId",["rooms.theme"],"label"],["#saveOwnerRoomTheme",["rooms.theme"],"self"],
   ["#reloadGlobalThemes",["themes.global.view"],"self"],
-  ["#globalThemeId",["themes.global.save"],"label"],["#globalThemeName",["themes.global.save"],"label"],["#globalThemeAsset",["themes.global.save"],"label"],
+  ["#globalThemeId",["themes.global.save"],"label"],["#globalThemeName",["themes.global.save"],"label"],["#globalThemeFile",["themes.global.save"],"label"],
+  ["#globalThemeWidth",["themes.global.save"],"label"],["#globalThemeHeight",["themes.global.save"],"label"],["#globalThemeZoom",["themes.global.save"],"label"],
+  ["#globalThemeCropX",["themes.global.save"],"label"],["#globalThemeCropY",["themes.global.save"],"label"],["#globalThemeAsset",["themes.global.save"],"label"],
+  ["#globalThemeCropCanvas",["themes.global.save"],"self"],["#resetGlobalThemeCrop",["themes.global.save"],"self"],["#uploadGlobalThemeImage",["themes.global.save"],"self"],
   ["#globalThemeStart",["themes.global.save"],"label"],["#globalThemeEnd",["themes.global.save"],"label"],["#globalThemePermanent",["themes.global.save"],"label"],
-  ["#globalThemeEnabled",["themes.global.save"],"label"],["#saveGlobalTheme",["themes.global.save"],"self"],
+  ["#globalThemeEnabled",["themes.global.save"],"label"],["#saveGlobalTheme",["themes.global.save"],"self"],["#clearGlobalTheme",["themes.global.save"],"self"],
 
   ["#messageUserSearch",["users.search"],"self"],["#searchMessageUsers",["users.search"],"self"],
   ["#officialMessageBody",["messaging.send.selected","messaging.send.all"],"label"],["#sendOfficialSelected",["messaging.send.selected"],"self"],["#sendOfficialAll",["messaging.send.all"],"self"],
@@ -1498,34 +1503,221 @@ async function savePricingOverride(){
   await loadPricingOverrides();
 }
 
+function globalThemeOutputSize(){
+  const width=Number($("#globalThemeWidth").value||1080);
+  const height=Number($("#globalThemeHeight").value||1920);
+  if(!Number.isSafeInteger(width)||width<320||width>2160)throw new Error("Theme width must be 320–2160 px");
+  if(!Number.isSafeInteger(height)||height<320||height>3840)throw new Error("Theme height must be 320–3840 px");
+  return {width,height};
+}
+
+function drawThemeCover(ctx,img,width,height,zoom,cropX,cropY){
+  const imageWidth=Number(img.naturalWidth||img.width||0);
+  const imageHeight=Number(img.naturalHeight||img.height||0);
+  if(!imageWidth||!imageHeight)return;
+  const cover=Math.max(width/imageWidth,height/imageHeight);
+  const scale=cover*Math.max(1,Number(zoom||1));
+  const drawWidth=imageWidth*scale;
+  const drawHeight=imageHeight*scale;
+  const overflowX=Math.max(0,drawWidth-width);
+  const overflowY=Math.max(0,drawHeight-height);
+  const x=-overflowX*(Math.max(0,Math.min(100,Number(cropX||50)))/100);
+  const y=-overflowY*(Math.max(0,Math.min(100,Number(cropY||50)))/100);
+  ctx.drawImage(img,x,y,drawWidth,drawHeight);
+}
+
+function drawGlobalThemeCropPreview(){
+  const canvas=$("#globalThemeCropCanvas");
+  if(!canvas)return;
+  let size;
+  try{size=globalThemeOutputSize();}catch(_){size={width:1080,height:1920};}
+  const ratio=size.width/size.height;
+  let previewWidth=ratio>=1?480:Math.max(180,Math.round(480*ratio));
+  let previewHeight=ratio>=1?Math.max(180,Math.round(480/ratio)):480;
+  canvas.width=previewWidth;
+  canvas.height=previewHeight;
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,previewWidth,previewHeight);
+  ctx.fillStyle="#0b0c12";
+  ctx.fillRect(0,0,previewWidth,previewHeight);
+  if(!state.themeCropImage){
+    ctx.fillStyle="rgba(255,255,255,.62)";
+    ctx.font="14px sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText("Choose a theme image",previewWidth/2,previewHeight/2);
+    return;
+  }
+  drawThemeCover(
+    ctx,
+    state.themeCropImage,
+    previewWidth,
+    previewHeight,
+    Number($("#globalThemeZoom").value||1),
+    Number($("#globalThemeCropX").value||50),
+    Number($("#globalThemeCropY").value||50)
+  );
+}
+
+function clearThemeCropImage(){
+  if(state.themeCropObjectUrl){
+    URL.revokeObjectURL(state.themeCropObjectUrl);
+    state.themeCropObjectUrl=null;
+  }
+  state.themeCropImage=null;
+}
+
+async function setThemeCropImageFromSource(src,{objectUrl=false}={}){
+  clearThemeCropImage();
+  if(objectUrl)state.themeCropObjectUrl=src;
+  const image=new Image();
+  await new Promise((resolve,reject)=>{
+    image.onload=resolve;
+    image.onerror=()=>reject(new Error("Theme image could not be opened"));
+    image.src=src;
+  });
+  state.themeCropImage=image;
+  drawGlobalThemeCropPreview();
+}
+
+async function chooseGlobalThemeImage(){
+  const file=$("#globalThemeFile").files?.[0];
+  if(!file)return;
+  if(!["image/jpeg","image/png","image/webp"].includes(file.type)) {
+    $("#globalThemeFile").value="";
+    throw new Error("Choose a JPG, PNG or WebP theme image");
+  }
+  if(file.size<=0||file.size>15*1024*1024){
+    $("#globalThemeFile").value="";
+    throw new Error("Theme source image can be maximum 15 MB");
+  }
+  $("#globalThemeUploadStatus").textContent=file.name+" · "+Math.round(file.size/1024)+" KB";
+  const url=URL.createObjectURL(file);
+  await setThemeCropImageFromSource(url,{objectUrl:true});
+}
+
+function resetGlobalThemeCrop(){
+  $("#globalThemeZoom").value="1";
+  $("#globalThemeCropX").value="50";
+  $("#globalThemeCropY").value="50";
+  drawGlobalThemeCropPreview();
+}
+
+async function croppedGlobalThemeBlob(){
+  const img=state.themeCropImage;
+  if(!img)throw new Error("Choose a theme image first");
+  const {width,height}=globalThemeOutputSize();
+  const canvas=document.createElement("canvas");
+  canvas.width=width;
+  canvas.height=height;
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#000";
+  ctx.fillRect(0,0,width,height);
+  drawThemeCover(
+    ctx,img,width,height,
+    Number($("#globalThemeZoom").value||1),
+    Number($("#globalThemeCropX").value||50),
+    Number($("#globalThemeCropY").value||50)
+  );
+  for(const quality of [0.92,0.85,0.75,0.65]){
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/webp",quality));
+    if(blob&&blob.size>0&&blob.size<=8*1024*1024)return blob;
+  }
+  throw new Error("Cropped theme is still over 8 MB. Use a smaller output size.");
+}
+
+async function uploadGlobalThemeImage(){
+  if(!can("themes.global.save"))return toast("Global theme save permission required",false);
+  const themeId=$("#globalThemeId").value.trim();
+  if(!themeId)return toast("Enter Theme ID before uploading image",false);
+  $("#globalThemeUploadStatus").textContent="Cropping and uploading…";
+  const blob=await croppedGlobalThemeBlob();
+  const res=await fetch("/api/owner/theme-media",{
+    method:"PUT",
+    headers:{
+      authorization:"Bearer "+state.token,
+      "content-type":"image/webp",
+      "x-theme-id":themeId
+    },
+    body:blob
+  });
+  const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
+  if(!res.ok||!data.ok){
+    const message=data.error==="theme_image_max_8mb"
+      ?"Cropped theme image can be maximum 8 MB."
+      :data.error==="theme_image_type_invalid"
+        ?"Theme image must be JPG, PNG or WebP."
+        :data.error==="theme_image_invalid"
+          ?"Theme image file is invalid."
+          :data.error;
+    $("#globalThemeUploadStatus").textContent="";
+    throw new Error(message||("HTTP "+res.status));
+  }
+  $("#globalThemeAsset").value=String(data.key||"");
+  const {width,height}=globalThemeOutputSize();
+  $("#globalThemeUploadStatus").textContent="Uploaded "+width+"×"+height+" to R2. Save theme to publish.";
+  toast("Cropped theme image uploaded to R2");
+}
+
+function clearGlobalThemeForm(){
+  $("#globalThemeId").value="";
+  $("#globalThemeName").value="";
+  $("#globalThemeFile").value="";
+  $("#globalThemeAsset").value="";
+  $("#globalThemeWidth").value="1080";
+  $("#globalThemeHeight").value="1920";
+  $("#globalThemeStart").value="";
+  $("#globalThemeEnd").value="";
+  $("#globalThemePermanent").checked=false;
+  $("#globalThemeEnabled").checked=true;
+  $("#globalThemeUploadStatus").textContent="";
+  clearThemeCropImage();
+  resetGlobalThemeCrop();
+}
+
 async function loadGlobalThemes(){
   if(!can("themes.global.view"))return;
   const d=await api("/api/owner/store?kind=theme");
   state.globalThemes=d.items||[];
   $("#globalThemeList").innerHTML=state.globalThemes.length?state.globalThemes.map(item=>{
     const data=item.data||{};
-    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(data.asset_key||data.asset||"")} · ${data.permanent?"Permanent":((data.starts_at?time(data.starts_at):"Now")+" → "+(data.ends_at?time(data.ends_at):"No end"))}</div></div><div class="item-actions"><button class="secondary mini" data-global-theme-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-global-theme-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+    const sizeText=data.output_width&&data.output_height?" · "+num(data.output_width)+"×"+num(data.output_height):"";
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(data.asset_key||data.asset||"")}${sizeText} · ${data.permanent?"Permanent":((data.starts_at?time(data.starts_at):"Now")+" → "+(data.ends_at?time(data.ends_at):"No end"))}</div></div><div class="item-actions"><button class="secondary mini" data-global-theme-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-global-theme-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No global room themes");
-  $$("[data-global-theme-edit]").forEach(b=>b.onclick=()=>{
+  $$("[data-global-theme-edit]").forEach(b=>b.onclick=async()=>{
     const x=state.globalThemes.find(item=>item.id===b.dataset.globalThemeEdit);if(!x)return;
     const data=x.data||{};
     $("#globalThemeId").value=x.id;$("#globalThemeName").value=x.name||"";$("#globalThemeAsset").value=data.asset_key||data.asset||"";
+    $("#globalThemeWidth").value=Number(data.output_width||1080);$("#globalThemeHeight").value=Number(data.output_height||1920);
     $("#globalThemeStart").value=data.starts_at||"";$("#globalThemeEnd").value=data.ends_at||"";
     $("#globalThemePermanent").checked=data.permanent===true||!data.ends_at;$("#globalThemeEnabled").checked=Number(x.enabled)!==0;
+    $("#globalThemeFile").value="";$("#globalThemeUploadStatus").textContent="";
+    resetGlobalThemeCrop();
+    const key=data.asset_key||data.asset||"";
+    if(key){
+      try{
+        await setThemeCropImageFromSource("/api/files?key="+encodeURIComponent(key));
+        $("#globalThemeUploadStatus").textContent="Current theme loaded. Adjust size/crop and upload again to replace it.";
+      }catch(_){
+        clearThemeCropImage();
+        drawGlobalThemeCropPreview();
+      }
+    }
   });
   $$("[data-global-theme-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this global room theme?"))return;await api("/api/owner/store/theme/"+encodeURIComponent(b.dataset.globalThemeRemove),{method:"DELETE"});toast("Global theme removed");await loadGlobalThemes();});
+  applyActionPermissions();
 }
 async function saveGlobalTheme(){
   if(!can("themes.global.save"))return toast("Global theme save permission required",false);
   const id=$("#globalThemeId").value.trim(),name=$("#globalThemeName").value.trim(),asset=$("#globalThemeAsset").value.trim();
-  if(!id||!name||!asset)return toast("Theme ID, name and asset are required",false);
+  if(!id||!name||!asset)return toast("Theme ID, name and cropped image are required",false);
   const permanent=$("#globalThemePermanent").checked;
   const starts=Number($("#globalThemeStart").value||0)||null;
   const ends=permanent?null:(Number($("#globalThemeEnd").value||0)||null);
   if(!permanent&&starts&&ends&&ends<=starts)return toast("End time must be after start time",false);
+  const {width,height}=globalThemeOutputSize();
   await api("/api/owner/store",{method:"POST",body:JSON.stringify({
     kind:"theme",id,name,price_coins:0,sort_order:0,enabled:$("#globalThemeEnabled").checked,
-    data:{asset_key:asset,asset,starts_at:starts,ends_at:ends,permanent}
+    data:{asset_key:asset,asset,starts_at:starts,ends_at:ends,permanent,output_width:width,output_height:height}
   })});
   toast("Global room theme saved");
   await loadGlobalThemes();
@@ -1582,6 +1774,13 @@ $("#closeUser").onclick=()=>{$("#userEditor").hidden=true;state.selectedUser=nul
 $("#searchRooms").onclick=()=>loadRooms().catch(e=>toast(e.message,false));$("#roomSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadRooms().catch(x=>toast(x.message,false));});
 $("#closeRoomInvestigation").onclick=()=>{$("#roomInvestigation").hidden=true;state.selectedRoomId=null;};$("#saveOwnerRoomMedia").onclick=()=>saveOwnerRoomMedia().catch(e=>toast(e.message,false));$("#saveOwnerRoomTheme").onclick=()=>saveOwnerRoomTheme().catch(e=>toast(e.message,false));
 $("#reloadGlobalThemes").onclick=()=>loadGlobalThemes().catch(e=>toast(e.message,false));$("#saveGlobalTheme").onclick=()=>saveGlobalTheme().catch(e=>toast(e.message,false));
+$("#globalThemeFile").onchange=()=>chooseGlobalThemeImage().catch(e=>toast(e.message,false));
+$("#globalThemeWidth").oninput=drawGlobalThemeCropPreview;$("#globalThemeHeight").oninput=drawGlobalThemeCropPreview;
+$("#globalThemeZoom").oninput=drawGlobalThemeCropPreview;$("#globalThemeCropX").oninput=drawGlobalThemeCropPreview;$("#globalThemeCropY").oninput=drawGlobalThemeCropPreview;
+$("#resetGlobalThemeCrop").onclick=resetGlobalThemeCrop;
+$("#uploadGlobalThemeImage").onclick=()=>uploadGlobalThemeImage().catch(e=>toast(e.message,false));
+$("#clearGlobalTheme").onclick=clearGlobalThemeForm;
+drawGlobalThemeCropPreview();
 
 $("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
 $("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));
