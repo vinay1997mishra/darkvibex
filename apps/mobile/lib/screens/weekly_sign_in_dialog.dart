@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 
-Future<void> showWeeklySignInDialog(
+Future<void?> showWeeklySignInDialog(
   BuildContext context, {
   required AppState state,
 }) {
