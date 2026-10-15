@@ -19,6 +19,7 @@ import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
+import '../widgets/gift_media_preview.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
@@ -1569,6 +1570,8 @@ class _RoomScreenState extends State<RoomScreen> {
                       final name = item['name']?.toString() ?? 'Gift';
                       final giftAssetKey =
                           item['asset_key']?.toString().trim() ?? '';
+                      final giftVideoKey =
+                          item['video_key']?.toString().trim() ?? '';
                       return InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: () => Navigator.pop(sheetContext, item),
@@ -1618,38 +1621,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                         ],
                                       ),
                                       child: ClipOval(
-                                        child: giftAssetKey.isNotEmpty
-                                            ? Image.network(
-                                                widget.state.backend
-                                                    .fileUrl(giftAssetKey),
-                                                headers: widget.state.backend
-                                                    .fileHeaders,
-                                                fit: BoxFit.cover,
-                                                errorBuilder:
-                                                    (context, error, stack) =>
-                                                        Container(
-                                                  alignment: Alignment.center,
-                                                  color:
-                                                      const Color(0xFF21183F),
-                                                  child: Text(
-                                                    emoji,
-                                                    style: const TextStyle(
-                                                      fontSize: 32,
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                            : Container(
-                                                alignment: Alignment.center,
-                                                color:
-                                                    const Color(0xFF21183F),
-                                                child: Text(
-                                                  emoji,
-                                                  style: const TextStyle(
-                                                    fontSize: 32,
-                                                  ),
-                                                ),
-                                              ),
+                                        child: GiftMediaPreview(
+                                          backend: widget.state.backend,
+                                          videoKey: giftVideoKey,
+                                          assetKey: giftAssetKey,
+                                          emoji: emoji,
+                                        ),
                                       ),
                                     ),
                                     if (vipLevel > 0)
