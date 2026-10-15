@@ -66,7 +66,7 @@ class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
   Widget build(BuildContext context) {
     final gifts = _walletRows(data['gifts']);
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Coins History')),
       body: TinniBackground(
         child: loading
@@ -204,7 +204,7 @@ class _SellerReceivedCoinsScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text('Coins Received')),
         body: TinniBackground(
           child: loading
@@ -352,7 +352,7 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
     final conversions = _walletRows(data['conversions']);
     final gifts = _walletRows(data['gifts']);
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Diamonds')),
       body: TinniBackground(
         child: loading
@@ -722,7 +722,7 @@ class _RoleWalletDetailScreenState
   Widget build(BuildContext context) {
     final transactions = _walletRows(wallet['transactions']);
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(title),
         actions: [
