@@ -20,6 +20,7 @@ dependencies:
   url_launcher: ^6.3.1
   share_plus: ^13.3.1
   video_player: ^2.10.1
+  flutter_svg: ^2.2.1
 
 dev_dependencies:
   flutter_test:
@@ -35,3 +36,6 @@ flutter:
     - assets/images/friend_lock_card_ref.webp
     - assets/images/friend_add_card_ref.webp
     - assets/images/darkvibex_global_bg.webp
+    - assets/images/ring_heart.svg
+    - assets/images/ring_crystal.svg
+    - assets/images/ring_royal.svg
