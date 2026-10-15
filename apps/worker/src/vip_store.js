@@ -3,6 +3,36 @@ import { vipCapabilities, vipRule } from "./vip_policy.js";
 const DAY_MS=86400000;
 const parsed=(value)=>{try{return JSON.parse(String(value??"{}"))||{};}catch(_){return {};}};
 
+export async function vipRuleForDb(db,level){
+  const base=vipRule(level);
+  if(!base) return null;
+  try{
+    const row=await db.prepare(
+      "SELECT enabled,name,json_data FROM owner_catalog WHERE kind='vip_rule' AND id=? LIMIT 1"
+    ).bind(String(level)).first();
+    if(!row) return {...base,enabled:true,name:"VIP "+level};
+    const data=parsed(row.json_data);
+    const upgrade=Number(data.upgrade_exp ?? data.upgrade ?? base.upgrade);
+    const maintain=Number(data.maintain_exp ?? data.maintain ?? base.maintain);
+    const days=Number(data.validity_days ?? data.days ?? base.days);
+    return {
+      ...base,
+      enabled:Number(row.enabled ?? 1)!==0,
+      name:String(row.name ?? ("VIP "+level)),
+      upgrade:Number.isSafeInteger(upgrade)&&upgrade>=0?upgrade:base.upgrade,
+      maintain:Number.isSafeInteger(maintain)&&maintain>=0?maintain:base.maintain,
+      days:Number.isSafeInteger(days)&&days>=1&&days<=3650?days:base.days,
+      entry_id:String(data.entry_id ?? ""),
+      frame_id:String(data.frame_id ?? ""),
+    };
+  }catch(error){
+    if(String(error?.message ?? error).includes("no such table")){
+      return {...base,enabled:true,name:"VIP "+level};
+    }
+    throw error;
+  }
+}
+
 export async function ensureVipSchema(db){
   await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
   try {
@@ -32,7 +62,7 @@ async function ensureRow(db,userId,ts=Date.now()){
   const user=await db.prepare("SELECT vip_level FROM users WHERE id=?").bind(userId).first();
   if(!user) throw new Error("user_not_found");
   const seed=Math.max(0,Math.min(18,Number(user.vip_level??0)));
-  const rule=vipRule(seed);
+  const rule=await vipRuleForDb(db,seed);
   const until=seed>0?ts+Number(rule?.days??30)*DAY_MS:null;
   await db.prepare("INSERT INTO user_vip (user_id,level,exp_balance,total_received_coins,active_until,custom_id,last_id_change_at,id_change_level,preferences_json,free_say_hi_used,free_say_hi_cycle,created_at,updated_at) VALUES (?,?,0,0,?,NULL,NULL,0,'{}',0,'',?,?) ON CONFLICT(user_id) DO NOTHING")
     .bind(userId,seed,until,ts,ts).run();
@@ -51,7 +81,7 @@ async function settle(db,row,ts=Date.now()){
   let until=row.active_until==null?null:Number(row.active_until);
   if(level<=0||until==null||until>ts) return row;
   const before=level;
-  const rule=vipRule(level);
+  const rule=await vipRuleForDb(db,level);
   const maintain=Number(rule?.maintain??0);
   if(maintain>0&&exp>=maintain){
     exp-=maintain;
@@ -61,7 +91,7 @@ async function settle(db,row,ts=Date.now()){
     await logEvent(db,row.user_id,"maintain",0,-maintain,before,before,ts);
   }else{
     level=Math.max(0,level-1);
-    const next=vipRule(level);
+    const next=await vipRuleForDb(db,level);
     until=level>0?ts+Number(next?.days??30)*DAY_MS:null;
     await db.batch([
       db.prepare("UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?").bind(level,until,String(until??""),ts,row.user_id),
@@ -115,8 +145,8 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   exp+=awarded;
   total+=coins;
   while(level<18){
-    const next=vipRule(level+1);
-    if(!next||exp<next.upgrade) break;
+    const next=await vipRuleForDb(db,level+1);
+    if(!next||next.enabled===false||exp<next.upgrade) break;
     // Every VIP tier starts from zero; excess EXP is not carried forward.
     exp=0;
     level+=1;
