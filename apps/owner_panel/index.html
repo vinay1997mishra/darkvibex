@@ -474,7 +474,13 @@
         </section>
 
         <section class="view" data-view-panel="audit">
-          <article class="panel"><div class="panel-head"><div><h2>Audit history</h2><p>Permanent record of owner and staff changes.</p></div><button id="reloadAudit" class="secondary">Reload</button></div><div id="auditList" class="stack"></div></article>
+          <article class="panel">
+            <div class="panel-head">
+              <div><h2>Audit history</h2><p>Main Owner sees all records. Staff panels see only their own activity.</p></div>
+              <div class="action-row"><button id="exportAudit" class="secondary">Export CSV</button><button id="clearAudit" class="danger">Delete All</button><button id="reloadAudit" class="secondary">Reload</button></div>
+            </div>
+            <div id="auditList" class="stack"></div>
+          </article>
         </section>
       </section>
     </main>
