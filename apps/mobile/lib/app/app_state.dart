@@ -471,13 +471,11 @@ class AppState extends ChangeNotifier {
 
     return switch (error.code) {
       GoogleSignInExceptionCode.canceled =>
-        'Google account was selected, but Android could not complete sign-in. '
-        'Check the Android OAuth credential for package com.darkvibex.app and '
-        'release SHA-1 15:43:D7:77:7C:86:A8:1B:79:6C:A4:22:23:77:B1:DA:4E:53:A8:BF$detail',
+        'Google Login could not be completed. Please try again$detail',
       GoogleSignInExceptionCode.clientConfigurationError =>
-        'Google Login Android OAuth configuration does not match this app build$detail',
+        'Google Login is temporarily unavailable. Please try again later$detail',
       GoogleSignInExceptionCode.providerConfigurationError =>
-        'Google Sign-In service is unavailable or misconfigured on this device$detail',
+        'Google Login is temporarily unavailable on this device$detail',
       GoogleSignInExceptionCode.interrupted =>
         'Google Login was interrupted before it could finish$detail',
       GoogleSignInExceptionCode.uiUnavailable =>
