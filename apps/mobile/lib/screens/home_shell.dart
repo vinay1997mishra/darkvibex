@@ -14,6 +14,7 @@ import 'ranking_screen.dart';
 import 'gifts_screen.dart';
 import 'vip_screen.dart';
 import 'room_screen.dart';
+import 'weekly_sign_in_dialog.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -36,6 +37,51 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int index = 0;
   final Set<int> visited = <int>{0};
+  bool _weeklyDialogScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.addListener(_weeklyStateChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleWeeklySignIn();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state == widget.state) return;
+    oldWidget.state.removeListener(_weeklyStateChanged);
+    widget.state.addListener(_weeklyStateChanged);
+    _weeklyDialogScheduled = false;
+    _scheduleWeeklySignIn();
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_weeklyStateChanged);
+    super.dispose();
+  }
+
+  void _weeklyStateChanged() {
+    if (!mounted) return;
+    _scheduleWeeklySignIn();
+  }
+
+  void _scheduleWeeklySignIn() {
+    if (!mounted ||
+        _weeklyDialogScheduled ||
+        !widget.state.weeklySignInReady ||
+        widget.state.weeklySignInClaimedToday) {
+      return;
+    }
+    _weeklyDialogScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showWeeklySignInDialog(context, state: widget.state);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
