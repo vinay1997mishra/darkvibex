@@ -266,7 +266,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
   Widget build(BuildContext context) {
     final products = _visibleItems;
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Store',
