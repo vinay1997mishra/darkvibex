@@ -10,8 +10,9 @@ const state = {
   selectedTicket: null,
   treasury: null,
   economyUser: null,
+  storeItems: [],
 };
-const viewTitles = {overview:"Dashboard",users:"Users",rooms:"Rooms",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
+const viewTitles = {overview:"Dashboard",users:"Users",rooms:"Rooms",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",store:"App Store",catalog:"VIP / Gifts / Assets",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
   ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
@@ -37,11 +38,11 @@ function toast(message,good=true){const el=$("#toast");el.textContent=message;el
 function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
 function applyPermissions(){
-  const map={overview:"dashboard",users:"users.read",rooms:"rooms.read",wallets:"treasury.read",economy:"economy.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
+  const map={overview:"dashboard",users:"users.read",rooms:"rooms.read",wallets:"treasury.read",economy:"economy.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
   $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=!!p&&!can(p);});
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
-async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="rooms")return loadRooms();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
+async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="rooms")return loadRooms();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
 async function connect(){
   state.token=$("#token").value.trim()||state.token;if(!state.token)return;
@@ -156,6 +157,99 @@ async function saveCoinRate(){
   toast("Coin price updated");
 }
 
+
+function clearStoreForm(){
+  $("#storeId").value="";
+  $("#storeName").value="";
+  $("#storePrice").value=0;
+  $("#storeVip").value=0;
+  $("#storeDuration").value=$("#storeKind").value==="unique_id"?0:30;
+  $("#storeTier").value=0;
+  $("#storeOrder").value=0;
+  $("#storeAsset").value="";
+  $("#storeEmoji").value="";
+  $("#storeCategory").value="";
+  $("#storeDescription").value="";
+  $("#storeEnabled").checked=true;
+}
+async function loadStore(){
+  if(!can("catalog.read"))return;
+  const kind=$("#storeKind").value.trim();
+  if(!kind)return;
+  const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
+  state.storeItems=d.items||[];
+  $("#storeList").innerHTML=state.storeItems.length?state.storeItems.map(item=>{
+    const data=item.data||{};
+    const enabled=Number(item.enabled)!==0;
+    const meta=[
+      `ID ${esc(item.id)}`,
+      `${num(item.price_coins)} coins`,
+      `VIP ${num(data.min_vip_level??data.vip_level??0)}`,
+      `${num(data.duration_days??0)} days`,
+      esc(item.source||"custom"),
+    ].join(" · ");
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?'active':'banned'}">${enabled?'Enabled':'Removed'}</span></div><div class="item-meta">${meta}<br>${esc(data.description||data.asset_key||data.asset||data.emoji||'')}</div></div><div class="item-actions"><button class="secondary mini" data-store-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-store-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+  }).join(""):empty("No items in this store category");
+  $("[data-store-edit]").forEach(b=>b.onclick=()=>editStoreItem(b.dataset.storeEdit));
+  $("[data-store-remove]").forEach(b=>b.onclick=()=>removeStoreItem(b.dataset.storeRemove).catch(e=>toast(e.message,false)));
+}
+function editStoreItem(id){
+  const item=state.storeItems.find(x=>x.id===id);
+  if(!item)return;
+  const data=item.data||{};
+  $("#storeId").value=item.id||"";
+  $("#storeName").value=item.name||"";
+  $("#storePrice").value=Number(item.price_coins||0);
+  $("#storeVip").value=Number(data.min_vip_level??data.vip_level??0);
+  $("#storeDuration").value=Number(data.duration_days??0);
+  $("#storeTier").value=Number(data.tier??0);
+  $("#storeOrder").value=Number(item.sort_order||0);
+  $("#storeAsset").value=data.asset_key||data.asset||"";
+  $("#storeEmoji").value=data.emoji||"";
+  $("#storeCategory").value=data.category||"";
+  $("#storeDescription").value=data.description||"";
+  $("#storeEnabled").checked=Number(item.enabled)!==0;
+  $("#storeId").scrollIntoView({behavior:"smooth",block:"center"});
+}
+async function saveStoreItem(){
+  if(!can("catalog.write"))return toast("Store write permission required",false);
+  const kind=$("#storeKind").value.trim();
+  const itemId=$("#storeId").value.trim();
+  const name=$("#storeName").value.trim()||itemId;
+  if(!kind||!itemId||!name)return toast("Category, item ID and name are required",false);
+  const payload={
+    kind,
+    id:itemId,
+    name,
+    price_coins:Number($("#storePrice").value||0),
+    sort_order:Number($("#storeOrder").value||0),
+    enabled:$("#storeEnabled").checked,
+    data:{
+      min_vip_level:Number($("#storeVip").value||0),
+      vip_level:Number($("#storeVip").value||0),
+      duration_days:Number($("#storeDuration").value||0),
+      tier:Number($("#storeTier").value||0),
+      asset_key:$("#storeAsset").value.trim(),
+      asset:$("#storeAsset").value.trim(),
+      emoji:$("#storeEmoji").value.trim(),
+      category:$("#storeCategory").value.trim(),
+      description:$("#storeDescription").value.trim(),
+    },
+  };
+  await api("/api/owner/store",{method:"POST",body:JSON.stringify(payload)});
+  toast("App Store item saved");
+  clearStoreForm();
+  await loadStore();
+}
+async function removeStoreItem(id){
+  if(!can("catalog.write"))return toast("Store write permission required",false);
+  const kind=$("#storeKind").value.trim();
+  if(!confirm("Remove this item from the app store?"))return;
+  await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});
+  toast("Item removed from app store");
+  await loadStore();
+}
+
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
 async function loadCatalog(){if(!can("catalog.read"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
@@ -208,6 +302,7 @@ $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#u
 $("#closeUser").onclick=()=>{$("#userEditor").hidden=true;state.selectedUser=null;};$("#saveUserProfile").onclick=()=>saveUserProfile().catch(e=>toast(e.message,false));$("#saveModeration").onclick=()=>saveModeration().catch(e=>toast(e.message,false));$("#savePublicId").onclick=()=>savePublicId().catch(e=>toast(e.message,false));$("#applyWallet").onclick=()=>applyWallet().catch(e=>toast(e.message,false));$("#applyRoleWallet").onclick=()=>applyRoleWallet().catch(e=>toast(e.message,false));$("#roleWalletType").onchange=()=>{$("#roleWalletBalance").textContent="Selected "+($("#roleWalletType").value||"role")+" wallet. Enter a coin change and apply.";};
 $("#searchRooms").onclick=()=>loadRooms().catch(e=>toast(e.message,false));$("#roomSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadRooms().catch(x=>toast(x.message,false));});
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
+$("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));
 $("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};
