@@ -449,8 +449,8 @@ async function handleUsers(request, db, actor, url, parts) {
     requirePermission(actor, "users.write");
     const body = await bodyJson(request);
     const requested = String(body.public_id ?? "").trim();
-    if (!/^[1-9]\d{6}$/.test(requested)) {
-      return json({ ok: false, error: "public_id_must_be_7_digits" }, { status: 400 });
+    if (!/^\d{7}$/.test(requested) || Number(requested) < 1000001) {
+      return json({ ok: false, error: "public_id_must_be_1000001_to_9999999" }, { status: 400 });
     }
     const current = await db.prepare("SELECT public_id FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
