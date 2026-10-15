@@ -3771,7 +3771,21 @@ async function handleApi(request, env, url) {
     await ensureUser(db, userId);
     await ensureCosmeticsSchema(db);
     const owned = await ownedCosmetics(db, userId, now());
-    return json({ ok: true, items: await effectiveCosmeticCatalog(db), owned });
+    const pricedItems=[];
+    for(const item of await effectiveCosmeticCatalog(db)){
+      const pricing=await ownerUserPricing(
+        db,userId,String(item.kind ?? ""),String(item.id ?? ""),
+        Number(item.price_coins ?? 0),Number(item.duration_days ?? 0),
+      );
+      pricedItems.push({
+        ...item,
+        price_coins:pricing.price_coins,
+        duration_days:pricing.duration_days,
+        owner_price_override:pricing.overridden,
+        owner_free:pricing.free,
+      });
+    }
+    return json({ ok: true, items: pricedItems, owned });
   }
 
   if (url.pathname === "/api/cosmetics/purchase" && request.method === "POST") {
@@ -3805,8 +3819,14 @@ async function handleApi(request, env, url) {
       }, { status:403 });
     }
 
-    const expiresAt = Number(product.duration_days ?? 0) > 0
-      ? ts + Number(product.duration_days) * 86400000
+    const pricing=await ownerUserPricing(
+      db,userId,String(product.kind ?? ""),itemId,
+      Number(product.price_coins ?? 0),Number(product.duration_days ?? 0),
+    );
+    const effectivePrice=Number(pricing.price_coins ?? 0);
+    const effectiveDuration=Number(pricing.duration_days ?? product.duration_days ?? 0);
+    const expiresAt = effectiveDuration > 0
+      ? ts + effectiveDuration * 86400000
       : 4102444800000;
     const legacy = cosmeticUsesLegacyTable(product.kind);
     const table = legacy ? "user_cosmetics" : "user_props";
@@ -3815,11 +3835,13 @@ async function handleApi(request, env, url) {
     ).bind(recipientId,itemId,ts).first();
     if (owned) return json({ ok:false,error:"already_owned" }, { status:409 });
 
-    const debit = await db.prepare(
-      "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
-    ).bind(product.price_coins,ts,userId,product.price_coins).run();
-    if (Number(debit.meta?.changes ?? 0) !== 1) {
-      return json({ ok:false,error:"insufficient_coins" }, { status:400 });
+    if(effectivePrice>0){
+      const debit = await db.prepare(
+        "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+      ).bind(effectivePrice,ts,userId,effectivePrice).run();
+      if (Number(debit.meta?.changes ?? 0) !== 1) {
+        return json({ ok:false,error:"insufficient_coins" }, { status:400 });
+      }
     }
 
     try {
@@ -3837,7 +3859,7 @@ async function handleApi(request, env, url) {
         id(),
         userId,
         recipientId===userId ? "cosmetic_purchase" : "cosmetic_gift",
-        -Number(product.price_coins),
+        -effectivePrice,
         Number(wallet?.coins ?? 0),
         itemId,
         ts,
@@ -3847,12 +3869,17 @@ async function handleApi(request, env, url) {
         item_id:itemId,
         kind:product.kind,
         coin_balance:Number(wallet?.coins ?? 0),
+        price_coins:effectivePrice,
+        free:pricing.free,
+        owner_price_override:pricing.overridden,
         expires_at:expiresAt,
         recipient_user_id:recipientId,
       });
     } catch (error) {
-      await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
-        .bind(product.price_coins,now(),userId).run();
+      if(effectivePrice>0){
+        await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+          .bind(effectivePrice,now(),userId).run();
+      }
       throw error;
     }
   }
