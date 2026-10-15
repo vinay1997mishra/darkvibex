@@ -219,9 +219,22 @@
         </section>
 
         <section class="view" data-view-panel="policies">
-          <article class="panel"><div class="panel-head"><div><h2>Allowed Policies</h2><p>Economy/app rules only. Agency, BD, Host, Guardian and verification policies are blocked.</p></div><button id="reloadPolicies" class="secondary">Reload</button></div>
+          <article class="panel"><div class="panel-head"><div><h2>Allowed Policies</h2><p>Economy/app rules only. Excluded hierarchy and verification modules are blocked.</p></div><button id="reloadPolicies" class="secondary">Reload</button></div>
             <div class="form-grid"><label>Policy key<input id="policyKey" placeholder="e.g. red_pocket.max_claim" /></label><label class="span-2">JSON value<textarea id="policyValue" rows="4" placeholder='{"enabled":true}'></textarea></label></div>
             <button id="savePolicy" class="primary">Save Policy</button><div id="policyList" class="stack"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Per-user Price / Free / Validity</h2><p>Override live store pricing for a specific user and item, or use * to apply to every item of that type. Gifts support custom price but not zero-cost/free accounting.</p></div><button id="reloadPricingOverrides" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label>User internal/public ID<input id="pricingUserId" placeholder="User ID or 7-digit public ID" /></label>
+              <label>Type<select id="pricingKind"><option value="frame">Frame</option><option value="vehicle">Vehicle</option><option value="entry">Entry effect</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="profile_card">Profile card</option><option value="profile_background">Profile background</option><option value="theme">Theme store item</option><option value="gift">Gift</option><option value="unique_id">Unique ID</option><option value="room_theme">Room theme upload</option></select></label>
+              <label>Item ID<input id="pricingItemId" value="*" placeholder="* or specific item ID" /></label>
+              <label>Price coins<input id="pricingPrice" type="number" min="0" placeholder="Blank = base price" /></label>
+              <label>Validity days<input id="pricingDuration" type="number" min="0" max="3650" placeholder="Blank = base validity; 0 = permanent" /></label>
+              <label class="check"><input id="pricingFree" type="checkbox" /> Free for this user</label>
+            </div>
+            <div class="action-row"><button id="savePricingOverride" class="primary">Save Override</button><button id="clearPricingOverride" class="secondary">Clear Form</button></div>
+            <div id="pricingOverrideList" class="stack"></div>
           </article>
         </section>
 
