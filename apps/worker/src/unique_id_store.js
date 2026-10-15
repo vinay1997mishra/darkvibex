@@ -122,7 +122,7 @@ export async function uniqueIdCatalog(db, ts=Date.now()) {
   return result.sort((a,b)=>a.public_id.length-b.public_id.length || Number(a.public_id)-Number(b.public_id));
 }
 
-export async function purchaseUniqueId(db,userId,publicId,ts=Date.now()) {
+export async function purchaseUniqueId(db,userId,publicId,ts=Date.now(),pricing=null) {
   await ensureUniqueIdStoreSchema(db);
   await getVipStatus(db,userId,ts);
   const requested=String(publicId ?? "").trim();
@@ -135,8 +135,12 @@ export async function purchaseUniqueId(db,userId,publicId,ts=Date.now()) {
   if(!baseItem && !override) throw new Error("unique_id_not_available");
   if(await idOwnedByAnotherUser(db,requested,userId,ts)) throw new Error("unique_id_taken");
 
-  const price=Number(override?.price_coins ?? baseItem?.price_coins ?? 0);
-  const duration=Number(override?.data?.duration_days ?? baseItem?.duration_days ?? 0);
+  const basePrice=Number(override?.price_coins ?? baseItem?.price_coins ?? 0);
+  const baseDuration=Number(override?.data?.duration_days ?? baseItem?.duration_days ?? 0);
+  const price=pricing?.price_coins==null ? basePrice : Number(pricing.price_coins);
+  const duration=pricing?.duration_days==null ? baseDuration : Number(pricing.duration_days);
+  if(!Number.isSafeInteger(price)||price<0) throw new Error("invalid_unique_id_price");
+  if(!Number.isSafeInteger(duration)||duration<0) throw new Error("invalid_unique_id_duration");
   const expiresAt=duration>0 ? ts+duration*86400000 : null;
   const debit=await db.prepare(
     "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
