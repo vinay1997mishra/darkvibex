@@ -1,1 +1,1 @@
-Trigger DarkVibeX APK build after CP/VS circle shell fix.
+Trigger DarkVibeX APK build after weekly sign-in reward receipt modal.
