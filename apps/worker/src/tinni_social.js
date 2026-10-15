@@ -340,7 +340,7 @@ export async function listFollowers(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
     `SELECT u.id,
-            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS public_id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
             u.display_name,u.avatar_key,f.created_at,
             EXISTS(
               SELECT 1 FROM user_follows reverse_follow
@@ -361,7 +361,7 @@ export async function listFollowing(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
     `SELECT u.id,
-            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN '' ELSE u.public_id END AS public_id,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
             u.display_name,u.avatar_key,f.created_at,
             EXISTS(
               SELECT 1 FROM user_follows reverse_follow
