@@ -293,16 +293,6 @@ async function ensureOwnerControlSchema(db) {
       read_at INTEGER,
       created_at INTEGER NOT NULL
     )`),
-    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_ban_guard
-      BEFORE UPDATE OF coins, diamonds ON users
-      WHEN (NEW.coins <> OLD.coins OR NEW.diamonds <> OLD.diamonds)
-       AND EXISTS(
-         SELECT 1 FROM owner_user_overrides o
-          WHERE o.user_id=OLD.id AND o.wallet_banned=1
-       )
-      BEGIN
-        SELECT RAISE(ABORT,'wallet_banned');
-      END`),
     db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
       BEFORE UPDATE OF coins ON users
       WHEN NEW.coins < OLD.coins
@@ -329,6 +319,16 @@ async function ensureOwnerControlSchema(db) {
   try {
     await db.prepare("ALTER TABLE owner_user_overrides ADD COLUMN wallet_banned INTEGER NOT NULL DEFAULT 0").run();
   } catch (_) {}
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_ban_guard
+    BEFORE UPDATE OF coins, diamonds ON users
+    WHEN (NEW.coins <> OLD.coins OR NEW.diamonds <> OLD.diamonds)
+     AND EXISTS(
+       SELECT 1 FROM owner_user_overrides o
+        WHERE o.user_id=OLD.id AND o.wallet_banned=1
+     )
+    BEGIN
+      SELECT RAISE(ABORT,'wallet_banned');
+    END`).run();
 }
 
 async function ensureDeviceAllowed(db, deviceKey) {
