@@ -46,4 +46,5 @@ test("owner panel exposes dedicated unique-ID and master coin-rate controls", ()
   assert.match(ownerApi, /economy\.coin_rate/);
   assert.match(ownerApi, /coin_rate_update/);
   assert.match(ownerApi, /invalid_coins_per_usd/);
+  assert.match(ownerApi, /public_id_reserved_by_history/);
 });
