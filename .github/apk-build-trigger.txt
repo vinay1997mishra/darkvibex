@@ -1,1 +1,1 @@
-Trigger DarkVibeX APK build after direct CP/VS artwork, dynamic DP/name/ID overlays, and hidden Friend section.
+Trigger DarkVibeX APK rebuild after hidden Friend section analyzer fix.
