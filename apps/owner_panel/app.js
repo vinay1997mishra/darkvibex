@@ -1,8 +1,10 @@
 const $ = (s) => document.querySelector(s);
-const $$ = (s) => [...document.querySelectorAll(s)];
+const $ = (s) => [...document.querySelectorAll(s)];
+const initialLoginMode = new URLSearchParams(window.location.search).get("staff")==="1" ? "staff" : "owner";
 const state = {
   token: sessionStorage.getItem("dvxOwnerToken") || "",
   actor: null,
+  loginMode: initialLoginMode,
   view: "overview",
   selectedUser: null,
   settings: new Map(),
@@ -329,13 +331,46 @@ function can(p){
 function canAny(list){return (list||[]).some(can);}
 function empty(text){return `<div class="empty">${esc(text)}</div>`;}
 function toast(message,good=true){const el=$("#toast");el.textContent=message;el.className="toast "+(good?"good":"bad");el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600);}
-function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#sidebar").hidden=!on;}
+function showApp(on){
+  document.body.classList.toggle("panel-locked",!on);
+  $("#loginCard").hidden=on;
+  $("#workspace").hidden=!on;
+  $("#sidebar").hidden=!on;
+}
+function setLoginMode(mode,updateUrl=false){
+  state.loginMode=mode==="staff"?"staff":"owner";
+  const staff=state.loginMode==="staff";
+  if($("#ownerLoginPane"))$("#ownerLoginPane").hidden=staff;
+  if($("#staffLoginPane"))$("#staffLoginPane").hidden=!staff;
+  if($("#ownerLoginTab")){
+    $("#ownerLoginTab").classList.toggle("active",!staff);
+    $("#ownerLoginTab").setAttribute("aria-selected",String(!staff));
+  }
+  if($("#staffLoginTab")){
+    $("#staffLoginTab").classList.toggle("active",staff);
+    $("#staffLoginTab").setAttribute("aria-selected",String(staff));
+  }
+  if(updateUrl){
+    const url=new URL(window.location.href);
+    if(staff)url.searchParams.set("staff","1");else url.searchParams.delete("staff");
+    history.replaceState(null,"",url);
+  }
+  if($("#loginStatus"))$("#loginStatus").textContent="";
+  if($("#googleOwnerStatus"))$("#googleOwnerStatus").textContent="";
+  applyPanelBranding();
+  if(!staff&&!state.actor)initOwnerGoogleLogin();
+}
 function applyPanelBranding(){
   const isOwner=state.actor?.type==="owner";
-  const title=isOwner?"DarkVibeX Owner Panel":"DarkVibeX Panel";
+  const isStaff=state.actor?.type==="staff";
+  const title=isOwner
+    ?"DarkVibeX Owner Panel"
+    :isStaff
+      ?"DarkVibeX Staff Panel"
+      :(state.loginMode==="staff"?"DarkVibeX Staff Panel":"DarkVibeX Owner Panel");
   document.title=title;
   if($("#panelBrandLabel"))$("#panelBrandLabel").textContent=title;
-  if($("#loginPanelTitle")&&!state.actor)$("#loginPanelTitle").textContent="DarkVibeX Panel";
+  if($("#loginPanelTitle")&&!state.actor)$("#loginPanelTitle").textContent=title;
 }
 function actorCard(){
   if(!state.actor)return;
@@ -454,7 +489,7 @@ async function handleOwnerGoogleCredential(response){
 }
 
 async function initOwnerGoogleLogin(attempt=0){
-  if(state.actor)return;
+  if(state.actor||state.loginMode!=="owner")return;
   const googleApi=window.google?.accounts?.id;
   if(!googleApi){
     if(attempt<40)setTimeout(()=>initOwnerGoogleLogin(attempt+1),250);
@@ -468,10 +503,13 @@ async function initOwnerGoogleLogin(attempt=0){
       $("#googleOwnerStatus").textContent="Google Login is temporarily unavailable.";
       return;
     }
+    googleApi.disableAutoSelect();
     googleApi.initialize({
       client_id:clientId,
       callback:handleOwnerGoogleCredential,
       auto_select:false,
+      use_fedcm_for_button:true,
+      button_auto_select:false,
       cancel_on_tap_outside:true
     });
     const target=$("#googleOwnerButton");
@@ -481,7 +519,7 @@ async function initOwnerGoogleLogin(attempt=0){
       size:"large",
       type:"standard",
       shape:"pill",
-      text:"continue_with",
+      text:"signin_with",
       width:320
     });
   }catch(_){
@@ -1235,8 +1273,10 @@ async function createStaff(){
 
   const d=await api("/api/owner/staff",{method:"POST",body:JSON.stringify(payload)});
   const box=$("#newStaffToken");
+  const staffLoginUrl=new URL(window.location.pathname,window.location.origin);
+  staffLoginUrl.searchParams.set("staff","1");
   box.hidden=false;
-  box.innerHTML=`<b>Staff login ready</b><br>Gmail: ${esc(d.staff?.email||payload.email)}<br><small>The staff member logs in with this Gmail ID and the panel password you set. Their real Gmail password is never used.</small>`;
+  box.innerHTML=`<b>Staff login ready</b><br>Gmail: ${esc(d.staff?.email||payload.email)}<br>Staff Panel: <a href="${esc(staffLoginUrl.toString())}" target="_blank" rel="noopener">${esc(staffLoginUrl.toString())}</a><br><small>Staff login uses only this Gmail ID and the panel password set by the Main Owner. Google Sign-In is not shown in Staff Panel mode.</small>`;
   $("#staffPassword").value="";
   toast(permissions.length?"Custom staff panel created":"Custom staff panel created with zero functions");
   state.staffEditingId=null;
@@ -1747,17 +1787,20 @@ async function clearAudit(){
   await api("/api/owner/audit",{method:"DELETE"});toast("All audit records deleted");await loadAudit();
 }
 
+$("#ownerLoginTab").onclick=()=>setLoginMode("owner",true);
+$("#staffLoginTab").onclick=()=>setLoginMode("staff",true);
 $("#connect").onclick=()=>connect().catch(e=>$("#loginStatus").textContent=e.message);
 $("#loginEmail").addEventListener("keydown",e=>{if(e.key==="Enter")$("#loginPassword").focus();});
 $("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter")connect().catch(x=>$("#loginStatus").textContent=x.message);});
 $("#logout").onclick=()=>{
+  const previousType=state.actor?.type;
   state.token="";
   state.actor=null;
+  state.loginMode=previousType==="staff"?"staff":"owner";
   sessionStorage.removeItem("dvxOwnerToken");
   showApp(false);
-  applyPanelBranding();
+  setLoginMode(state.loginMode,true);
   $("#loginPassword").value="";
-  initOwnerGoogleLogin();
 };
 $$('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
@@ -1801,10 +1844,8 @@ $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));
 
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
 permissionObserver.observe(document.body,{childList:true,subtree:true});
-applyPanelBranding();
+showApp(false);
+setLoginMode(state.loginMode,false);
 if(state.token){
   connectWithToken(state.token);
-}else{
-  showApp(false);
-  initOwnerGoogleLogin();
 }
