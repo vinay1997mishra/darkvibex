@@ -6644,17 +6644,21 @@ async function handleApi(request, env, url) {
       let inviteCommission=null;
       if(walletType==="coin_seller"){
         vipAward=await awardSellerVipExp(db,receiverId,amount,now());
+      }
+      if(walletType==="coin_seller" || walletType==="merchant"){
         try {
           inviteCommission=await recordCoinSellerInviteCommission(db,{
             inviteeUserId:receiverId,
             sourceTransferId:result.transfer_id,
             sourceCoins:amount,
+            sourceWalletType:walletType,
             ts:now(),
           });
         } catch (error) {
           console.error("DarkVibeX invite commission failed", {
             receiverId,
             transferId: result.transfer_id,
+            walletType,
             error: String(error?.message ?? error),
           });
         }
@@ -6697,6 +6701,7 @@ async function handleApi(request, env, url) {
           inviteeUserId:receiverId,
           sourceTransferId:result.transfer_id,
           sourceCoins:sellerCoins,
+          sourceWalletType:"coin_seller",
           ts:now(),
         });
       } catch (error) {
