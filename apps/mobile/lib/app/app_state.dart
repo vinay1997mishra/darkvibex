@@ -105,6 +105,7 @@ class AppState extends ChangeNotifier {
   int weeklySignInDay = 1;
   int weeklySignInClaimedThrough = 0;
   int weeklySignInLastReward = 0;
+  int weeklySignInLastClaimedDay = 0;
   String? weeklySignInError;
   int idLevel = 0;
   int idLevelExp = 0;
@@ -760,6 +761,7 @@ class AppState extends ChangeNotifier {
     weeklySignInDay = 1;
     weeklySignInClaimedThrough = 0;
     weeklySignInLastReward = 0;
+    weeklySignInLastClaimedDay = 0;
     weeklySignInError = null;
     idLevel = 0;
     idLevelExp = 0;
@@ -842,6 +844,7 @@ class AppState extends ChangeNotifier {
         weeklySignInClaimedToday) {
       return false;
     }
+    final requestedDay = weeklySignInDay;
     weeklySignInLoading = true;
     weeklySignInError = null;
     notifyListeners();
@@ -856,6 +859,11 @@ class AppState extends ChangeNotifier {
       }
       weeklySignInLastReward =
           int.tryParse(value?['reward']?.toString() ?? '') ?? 0;
+      weeklySignInLastClaimedDay =
+          (int.tryParse(value?['claimed_day']?.toString() ?? '') ??
+                  requestedDay)
+              .clamp(1, 7)
+              .toInt();
       final balance =
           int.tryParse(value?['coin_balance']?.toString() ?? '');
       if (balance != null) coins = balance;
