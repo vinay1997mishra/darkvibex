@@ -18,16 +18,24 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
     assert.ok(!ids.has(item.id), `duplicate cosmetic ${item.id}`);
     ids.add(item.id);
     assert.ok(allowedKinds.has(item.kind), `unsupported cosmetic kind ${item.kind}`);
-    assert.ok(Number.isSafeInteger(item.price_coins) && item.price_coins > 0);
+    assert.ok(Number.isSafeInteger(item.price_coins) && item.price_coins >= 0);
     assert.ok(
       Number.isSafeInteger(item.min_vip_level) &&
         item.min_vip_level >= 0 &&
         item.min_vip_level <= 18,
     );
-    assert.equal(item.duration_days, 30);
+    assert.ok(item.duration_days === 0 || item.duration_days === 30);
   }
 
-  assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "frame").length, 4);
+  assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "frame").length, 16);
+  const freeFrames = COSMETIC_CATALOG.filter(
+    (item) => item.kind === "frame" && item.price_coins === 0,
+  );
+  assert.equal(freeFrames.length, 12);
+  for (const frame of freeFrames) {
+    assert.equal(frame.min_vip_level, 0);
+    assert.equal(frame.duration_days, 0);
+  }
   assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "vehicle").length, 4);
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_card"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "ring"));
