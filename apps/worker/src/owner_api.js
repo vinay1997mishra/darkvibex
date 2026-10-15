@@ -297,6 +297,13 @@ async function ensureOwnerSchema(db) {
       invisible_id INTEGER NOT NULL DEFAULT 0 CHECK(invisible_id IN (0,1)),
       locked_room_bypass INTEGER NOT NULL DEFAULT 0 CHECK(locked_room_bypass IN (0,1)),
       wallet_frozen INTEGER NOT NULL DEFAULT 0 CHECK(wallet_frozen IN (0,1)),
+      wallet_banned INTEGER NOT NULL DEFAULT 0 CHECK(wallet_banned IN (0,1)),
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_room_controls (
+      room_id TEXT PRIMARY KEY,
+      banned INTEGER NOT NULL DEFAULT 0 CHECK(banned IN (0,1)),
+      note TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_device_bans (
@@ -326,6 +333,16 @@ async function ensureOwnerSchema(db) {
       PRIMARY KEY(user_id,tag_id)
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_tags_kind ON owner_user_tags(kind,designation,updated_at DESC)"),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_ban_guard
+      BEFORE UPDATE OF coins, diamonds ON users
+      WHEN (NEW.coins <> OLD.coins OR NEW.diamonds <> OLD.diamonds)
+       AND EXISTS(
+         SELECT 1 FROM owner_user_overrides o
+          WHERE o.user_id=OLD.id AND o.wallet_banned=1
+       )
+      BEGIN
+        SELECT RAISE(ABORT,'wallet_banned');
+      END`),
     db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
       BEFORE UPDATE OF coins ON users
       WHEN NEW.coins < OLD.coins
@@ -380,6 +397,13 @@ async function ensureOwnerSchema(db) {
       VALUES('darkvibex_official',NULL,'DarkVibeX Official','platform_owner',0,0,0,?,?)`).bind(now(),now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('maintenance', '{\"enabled\":false,\"message\":\"\"}', ?)").bind(now()),
   ]);
+  try {
+    const overrideInfo=await db.prepare("PRAGMA table_info(owner_user_overrides)").all();
+    const overrideColumns=new Set((overrideInfo.results ?? []).map(row=>String(row.name ?? "")));
+    if(!overrideColumns.has("wallet_banned")){
+      await db.prepare("ALTER TABLE owner_user_overrides ADD COLUMN wallet_banned INTEGER NOT NULL DEFAULT 0").run();
+    }
+  } catch (_) {}
   try {
     const pushInfo = await db.prepare("PRAGMA table_info(push_devices)").all();
     const pushColumns = new Set((pushInfo.results ?? []).map((row) => String(row.name ?? "")));
@@ -474,7 +498,7 @@ async function getUserDetails(db, userId) {
     "SELECT public_id, changed_at, changed_by FROM owner_public_id_history WHERE user_id = ? ORDER BY changed_at DESC LIMIT 25"
   ).bind(userId).all();
   const overrides = await db.prepare(
-    "SELECT invisible_id,locked_room_bypass,wallet_frozen,updated_at FROM owner_user_overrides WHERE user_id=?"
+    "SELECT invisible_id,locked_room_bypass,wallet_frozen,wallet_banned,updated_at FROM owner_user_overrides WHERE user_id=?"
   ).bind(userId).first();
   const devices = await db.prepare(
     `SELECT d.device_key,
@@ -516,7 +540,7 @@ async function getUserDetails(db, userId) {
     role_wallets,
     old_public_ids: oldIds.results ?? [],
     current_room: room ?? null,
-    owner_overrides: overrides ?? {invisible_id:0,locked_room_bypass:0,wallet_frozen:0},
+    owner_overrides: overrides ?? {invisible_id:0,locked_room_bypass:0,wallet_frozen:0,wallet_banned:0},
     devices: devices.results ?? [],
     tags: tags.results ?? [],
   };
@@ -527,10 +551,12 @@ async function listRooms(db, query = "") {
   const pattern = `%${q}%`;
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.created_at, r.updated_at,
+            COALESCE(rc.banned,0) AS banned,
             COALESCE(u.display_name, '') AS owner_name,
             (SELECT COUNT(*) FROM room_members m WHERE m.room_id = r.id) AS online
        FROM rooms r
        LEFT JOIN users u ON u.id = r.owner_user_id
+       LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
       WHERE (? = '' OR r.id LIKE ? OR r.name LIKE ? OR r.owner_user_id LIKE ? OR u.display_name LIKE ?)
       ORDER BY r.updated_at DESC LIMIT 200`
   ).bind(q, pattern, pattern, pattern, pattern).all();
@@ -754,15 +780,17 @@ async function handleUsers(request, db, actor, url, parts) {
     const invisible = body.invisible_id === true ? 1 : 0;
     const bypass = body.locked_room_bypass === true ? 1 : 0;
     const frozen = body.wallet_frozen === true ? 1 : 0;
+    const walletBanned = body.wallet_banned === true ? 1 : 0;
     const exists = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
     if (!exists) return json({ok:false,error:"not_found"},{status:404});
     await db.prepare(
-      `INSERT INTO owner_user_overrides(user_id,invisible_id,locked_room_bypass,wallet_frozen,updated_at)
-       VALUES(?,?,?,?,?)
+      `INSERT INTO owner_user_overrides(user_id,invisible_id,locked_room_bypass,wallet_frozen,wallet_banned,updated_at)
+       VALUES(?,?,?,?,?,?)
        ON CONFLICT(user_id) DO UPDATE SET invisible_id=excluded.invisible_id,
-         locked_room_bypass=excluded.locked_room_bypass,wallet_frozen=excluded.wallet_frozen,updated_at=excluded.updated_at`
-    ).bind(userId,invisible,bypass,frozen,now()).run();
-    await audit(db,actor,"user_owner_overrides","user",userId,`invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}`);
+         locked_room_bypass=excluded.locked_room_bypass,wallet_frozen=excluded.wallet_frozen,
+         wallet_banned=excluded.wallet_banned,updated_at=excluded.updated_at`
+    ).bind(userId,invisible,bypass,frozen,walletBanned,now()).run();
+    await audit(db,actor,"user_owner_overrides","user",userId,`invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}; wallet_banned=${walletBanned}`);
     return json({ok:true,user:await getUserDetails(db,userId)});
   }
 
@@ -815,6 +843,22 @@ async function handleRooms(request, db, actor, url, parts) {
     await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
     return json({ ok: true });
+  }
+
+  if (parts[4] === "ban" && request.method === "POST") {
+    requirePermission(actor,"rooms.write");
+    const body=await bodyJson(request);
+    const exists=await db.prepare("SELECT id FROM rooms WHERE id=?").bind(roomId).first();
+    if(!exists)return json({ok:false,error:"not_found"},{status:404});
+    const banned=body.banned===false?0:1;
+    const note=String(body.note ?? "").trim().slice(0,300);
+    await db.prepare(
+      `INSERT INTO owner_room_controls(room_id,banned,note,updated_at) VALUES(?,?,?,?)
+       ON CONFLICT(room_id) DO UPDATE SET banned=excluded.banned,note=excluded.note,updated_at=excluded.updated_at`
+    ).bind(roomId,banned,note,now()).run();
+    if(banned) await db.prepare("DELETE FROM room_members WHERE room_id=?").bind(roomId).run();
+    await audit(db,actor,banned?"room_ban":"room_unban","room",roomId,note);
+    return json({ok:true,banned:Boolean(banned)});
   }
 
   if (parts[4] === "live" && request.method === "GET") {
