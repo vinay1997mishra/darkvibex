@@ -64,15 +64,22 @@ function defaultPermissions(role) {
       "dashboard", "users.read", "users.write", "users.moderate", "wallet.write",
       "treasury.read", "economy.read",
       "support.read", "support.write",
-      "rooms.read", "rooms.write", "catalog.read", "catalog.write",
+      "notifications.read", "notifications.write",
+      "messaging.read", "messaging.write", "tags.write",
+      "users.device", "users.override", "wallet.freeze",
+      "rooms.read", "rooms.write", "rooms.live", "rooms.media", "rooms.theme",
+      "roles.read", "roles.write", "banners.read", "banners.write",
+      "games.read", "games.write", "policies.read", "policies.write",
+      "catalog.read", "catalog.write",
       "settings.read", "settings.write", "announcements.read", "announcements.write",
       "staff.read", "audit.read",
     ];
   }
   if (role === "manager") {
     return [
-      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "catalog.read",
-      "catalog.write", "settings.read", "announcements.read", "announcements.write",
+      "dashboard", "users.read", "economy.read", "rooms.read", "rooms.write", "rooms.live",
+      "notifications.read", "messaging.read", "roles.read", "banners.read", "games.read", "policies.read",
+      "catalog.read", "catalog.write", "settings.read", "announcements.read", "announcements.write",
       "audit.read",
     ];
   }
@@ -275,8 +282,95 @@ async function ensureOwnerSchema(db) {
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.games', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.messages', '{\"enabled\":true}', ?)").bind(now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('feature.room_creation', '{\"enabled\":true}', ?)").bind(now()),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_notifications (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'platform',
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      user_id TEXT,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_notifications_time ON owner_notifications(created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
+      user_id TEXT PRIMARY KEY,
+      invisible_id INTEGER NOT NULL DEFAULT 0 CHECK(invisible_id IN (0,1)),
+      locked_room_bypass INTEGER NOT NULL DEFAULT 0 CHECK(locked_room_bypass IN (0,1)),
+      wallet_frozen INTEGER NOT NULL DEFAULT 0 CHECK(wallet_frozen IN (0,1)),
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_device_bans (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT,
+      banned INTEGER NOT NULL DEFAULT 1 CHECK(banned IN (0,1)),
+      note TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_device_bans_user ON owner_device_bans(user_id,updated_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_tags (
+      user_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#FFD54F',
+      kind TEXT NOT NULL DEFAULT 'custom',
+      designation TEXT NOT NULL DEFAULT '',
+      background_color TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,tag_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_tags_kind ON owner_user_tags(kind,designation,updated_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_images (
+      room_id TEXT PRIMARY KEY,
+      image_key TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_settings (
+      room_id TEXT PRIMARY KEY,
+      announcement TEXT NOT NULL DEFAULT '',
+      theme_id TEXT NOT NULL DEFAULT 'dark',
+      group_pk_enabled INTEGER NOT NULL DEFAULT 0,
+      welcome_image_key TEXT NOT NULL DEFAULT '',
+      party_mode TEXT NOT NULL DEFAULT 'Friends-making Party',
+      room_mode TEXT NOT NULL DEFAULT 'voice',
+      seat_theme_id TEXT NOT NULL DEFAULT 'royal-gold',
+      mic_mode TEXT NOT NULL DEFAULT 'free',
+      public_screen_enabled INTEGER NOT NULL DEFAULT 1,
+      lock_password_hash TEXT NOT NULL DEFAULT '',
+      lock_password_code TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS room_custom_themes (
+      id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL,
+      owner_user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      asset_key TEXT NOT NULL,
+      price_coins INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS push_devices (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      device_key TEXT NOT NULL DEFAULT '',
+      platform TEXT NOT NULL DEFAULT 'android',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_push_devices_owner_user ON push_devices(user_id,updated_at DESC)"),
+    db.prepare(`INSERT OR IGNORE INTO users
+      (id,public_id,display_name,role,coins,diamonds,vip_level,created_at,updated_at)
+      VALUES('darkvibex_official',NULL,'DarkVibeX Official','platform_owner',0,0,0,?,?)`).bind(now(),now()),
     db.prepare("INSERT OR IGNORE INTO owner_settings (key, value_json, updated_at) VALUES ('maintenance', '{\"enabled\":false,\"message\":\"\"}', ?)").bind(now()),
   ]);
+  try {
+    const pushInfo = await db.prepare("PRAGMA table_info(push_devices)").all();
+    const pushColumns = new Set((pushInfo.results ?? []).map((row) => String(row.name ?? "")));
+    if (!pushColumns.has("device_key")) {
+      await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
+    }
+  } catch (_) {}
   const userInfo = await db.prepare("PRAGMA table_info(users)").all();
   const userColumns = new Set((userInfo.results ?? []).map((row) => String(row.name ?? "")));
   if (!userColumns.has("public_id")) {
