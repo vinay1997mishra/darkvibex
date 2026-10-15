@@ -500,8 +500,32 @@ async function loadSettings(){if(!can("settings.read"))return;const d=await api(
 async function saveFeature(key,enabled){await api('/api/owner/settings/'+encodeURIComponent(key),{method:'POST',body:JSON.stringify({value:{enabled}})});toast(featureLabels[key]+' '+(enabled?'enabled':'disabled'));}
 async function saveMaintenance(){await api('/api/owner/settings/maintenance',{method:'POST',body:JSON.stringify({value:{enabled:$("#maintenanceEnabled").checked,message:$("#maintenanceMessage").value.trim()}})});toast('Maintenance setting saved');}
 
-async function loadAnnouncements(){if(!can("announcements.read"))return;const d=await api('/api/owner/announcements');$("#announcementList").innerHTML=(d.announcements||[]).length?d.announcements.map(a=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(a.title)} <span class="pill ${Number(a.enabled)?'active':'banned'}">${Number(a.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">${esc(a.body)}</div></div><button class="danger mini" data-ann-delete="${esc(a.id)}">Delete</button></div></div>`).join(''):empty('No announcements');$$('[data-ann-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this announcement?'))return;await api('/api/owner/announcements/'+encodeURIComponent(b.dataset.annDelete),{method:'DELETE'});toast('Announcement deleted');loadAnnouncements();});}
-async function saveAnnouncement(){const payload={title:$("#announcementTitle").value.trim(),body:$("#announcementBody").value.trim(),enabled:$("#announcementEnabled").checked};if(!payload.title||!payload.body)return toast('Title and message are required',false);await api('/api/owner/announcements',{method:'POST',body:JSON.stringify(payload)});$("#announcementTitle").value='';$("#announcementBody").value='';toast('Announcement published');loadAnnouncements();}
+function localInputValue(ts){if(!ts)return "";const d=new Date(Number(ts));const pad=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+function clearAnnouncementForm(){$("#announcementId").value="";$("#announcementTitle").value="";$("#announcementBody").value="";$("#announcementEnabled").checked=true;$("#announcementStart").value="";$("#announcementEnd").value="";}
+async function loadAnnouncements(){
+  if(!can("announcements.read"))return;
+  const d=await api("/api/owner/announcements");
+  const rows=d.announcements||[];
+  $("#announcementList").innerHTML=rows.length?rows.map(a=>{
+    const windowText=(a.starts_at||a.ends_at)?` · ${a.starts_at?time(a.starts_at):"now"} → ${a.ends_at?time(a.ends_at):"no end"}`:"";
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(a.title)} <span class="pill ${Number(a.enabled)?"active":"banned"}">${Number(a.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(a.body)}${windowText}</div></div><div class="item-actions"><button class="secondary mini" data-ann-edit="${esc(a.id)}">Edit</button><button class="danger mini" data-ann-delete="${esc(a.id)}">Delete</button></div></div></div>`;
+  }).join(""):empty("No announcements");
+  $("[data-ann-edit]").forEach(b=>b.onclick=()=>{
+    const a=rows.find(x=>x.id===b.dataset.annEdit);if(!a)return;
+    $("#announcementId").value=a.id||"";$("#announcementTitle").value=a.title||"";$("#announcementBody").value=a.body||"";
+    $("#announcementEnabled").checked=Number(a.enabled)!==0;$("#announcementStart").value=localInputValue(a.starts_at);$("#announcementEnd").value=localInputValue(a.ends_at);
+  });
+  $("[data-ann-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this announcement?"))return;await api("/api/owner/announcements/"+encodeURIComponent(b.dataset.annDelete),{method:"DELETE"});toast("Announcement deleted");await loadAnnouncements();});
+}
+async function saveAnnouncement(){
+  const startRaw=$("#announcementStart").value,endRaw=$("#announcementEnd").value;
+  const starts=startRaw?new Date(startRaw).getTime():null,ends=endRaw?new Date(endRaw).getTime():null;
+  if(starts!=null&&ends!=null&&ends<=starts)return toast("Announcement end must be after start",false);
+  const payload={id:$("#announcementId").value.trim()||undefined,title:$("#announcementTitle").value.trim(),body:$("#announcementBody").value.trim(),enabled:$("#announcementEnabled").checked,starts_at:starts,ends_at:ends};
+  if(!payload.title||!payload.body)return toast("Title and message are required",false);
+  await api("/api/owner/announcements",{method:"POST",body:JSON.stringify(payload)});
+  clearAnnouncementForm();toast("Announcement saved");await loadAnnouncements();
+}
 
 async function loadStaff(){
   if(!can("staff.read"))return;
@@ -849,7 +873,7 @@ $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));$("#s
 $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
-$("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
+$("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
 $("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};
 $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));$("#sendSupportReply").onclick=()=>sendSupportReply().catch(e=>toast(e.message,false));$("#closeSupportTicket").onclick=()=>closeSupportTicket().catch(e=>toast(e.message,false));
 
