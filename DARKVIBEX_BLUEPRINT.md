@@ -42,6 +42,7 @@ DarkVibeX has a 7-day per-day login/sign-in reward cycle.
 - The Sign in button must be clickable and the claimed day must show a clear **right/check mark**.
 - Coins remain **metallic gold**.
 - After a successful `Sign in` claim, show a **reward-received confirmation modal** stating the exact number of coins received and that they were added to the wallet. The confirmation modal must keep the DarkVibeX **blue–purple galaxy** background/style; do not copy the white/cyan reference theme.
+- The reward confirmation is now **seven separate approved picture receipts**, one for each Day 1–7 reward (70,000 / 90,000 / 100,000 / 120,000 / 150,000 / 180,000 / 250,000). The server-returned receipt day selects the matching picture. The visible `X` and `OK` remain part of each picture; Flutter adds invisible touch zones only. `OK` or `X` closes only the reward receipt panel.
 - Day 7 may receive a stronger celebratory highlight while staying within the DarkVibeX galaxy theme.
 
 ### Weekly sign-in behavior
@@ -50,6 +51,7 @@ DarkVibeX has a 7-day per-day login/sign-in reward cycle.
 - If the user misses a calendar day between claims, the streak resets and the next claim starts again from Day 1.
 - A reward can be claimed only once per calendar day.
 - Reward credit and streak state are server-authoritative.
+- Every user has an **independent sign-in cycle keyed by user ID**. A user with no prior claim starts at Day 1 on that user's first successful claim; another user's calendar/streak does not affect it.
 
 ## 3. Precedence rule
 When an older blueprint, mockup, note, or implementation conflicts with this file, the **latest confirmed DarkVibeX rule** takes precedence.
