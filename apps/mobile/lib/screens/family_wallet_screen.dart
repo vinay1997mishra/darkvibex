@@ -168,7 +168,7 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Family Wallet'),
         ),
