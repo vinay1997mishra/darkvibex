@@ -45,6 +45,12 @@
         <div class="login-card">
           <p class="eyebrow">DARKVIBEX CONTROL</p>
           <h1 id="loginPanelTitle">DarkVibeX Panel</h1>
+          <div id="ownerGoogleLogin">
+            <p class="muted">Main Owner</p>
+            <div id="googleOwnerButton"></div>
+            <p id="googleOwnerStatus" class="status-line"></p>
+          </div>
+          <hr />
           <p class="muted">Staff members sign in with the Gmail ID and panel password created by the Main Owner. Do not use your real Gmail/Google account password here.</p>
           <label>Gmail ID<input id="loginEmail" type="email" autocomplete="username" placeholder="staffname@gmail.com" /></label>
           <label>Panel password<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter panel password" /></label>
@@ -548,6 +554,7 @@
       </section>
     </main>
   </div>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>
