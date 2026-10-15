@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../ui/weekly_signin_panel_data.dart';
 
 Future<void?> showWeeklySignInDialog(
   BuildContext context, {
@@ -17,8 +18,6 @@ Future<void?> showWeeklySignInDialog(
 class _WeeklySignInDialog extends StatelessWidget {
   const _WeeklySignInDialog({required this.state});
 
-  static const String _panelAsset =
-      'assets/images/weekly_signin_panel.webp';
 
   final AppState state;
 
@@ -43,11 +42,12 @@ class _WeeklySignInDialog extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     Positioned.fill(
-                      child: Image.asset(
-                        _panelAsset,
+                      child: Image.memory(
+                        weeklySignInPanelBytes,
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.high,
                         isAntiAlias: true,
+                        gaplessPlayback: true,
                       ),
                     ),
 
