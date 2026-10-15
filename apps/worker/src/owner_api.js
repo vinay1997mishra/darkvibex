@@ -213,6 +213,17 @@ async function ensureOwnerSchema(db) {
       value_json TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_price_overrides (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      item_id TEXT NOT NULL DEFAULT '*',
+      price_coins INTEGER,
+      free INTEGER NOT NULL DEFAULT 0 CHECK(free IN (0,1)),
+      duration_days INTEGER,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id,kind,item_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_price_override_kind ON owner_user_price_overrides(kind,user_id,updated_at DESC)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_catalog (
       kind TEXT NOT NULL,
       id TEXT NOT NULL,
@@ -1259,6 +1270,70 @@ async function handleGamesOwner(request, db, actor) {
   return null;
 }
 
+
+const OWNER_PRICE_KINDS=new Set([
+  "gift","frame","vehicle","entry","ring","bubble","profile_card","profile_background",
+  "theme","unique_id","room_theme"
+]);
+
+async function handlePricingOverrides(request, db, actor, url, parts) {
+  if(request.method==="GET"){
+    requirePermission(actor,"policies.read");
+    const userId=String(url.searchParams.get("user_id") ?? "").trim();
+    const kind=String(url.searchParams.get("kind") ?? "").trim();
+    const rows=await db.prepare(
+      `SELECT user_id,kind,item_id,price_coins,free,duration_days,updated_at
+         FROM owner_user_price_overrides
+        WHERE (?='' OR user_id=?) AND (?='' OR kind=?)
+        ORDER BY updated_at DESC LIMIT 500`
+    ).bind(userId,userId,kind,kind).all();
+    return json({ok:true,overrides:rows.results ?? []});
+  }
+  if(parts.length===3 && request.method==="POST"){
+    requirePermission(actor,"policies.write");
+    const body=await bodyJson(request);
+    const userId=String(body.user_id ?? "").trim().slice(0,120);
+    const kind=String(body.kind ?? "").trim().slice(0,60);
+    const itemId=String(body.item_id ?? "*").trim().slice(0,120)||"*";
+    if(!userId)return json({ok:false,error:"user_id_required"},{status:400});
+    if(!OWNER_PRICE_KINDS.has(kind))return json({ok:false,error:"unsupported_price_override_kind"},{status:400});
+    const user=await db.prepare("SELECT id FROM users WHERE id=? OR public_id=? LIMIT 1").bind(userId,userId).first();
+    if(!user)return json({ok:false,error:"user_not_found"},{status:404});
+    const resolvedUserId=String(user.id);
+    const free=body.free===true?1:0;
+    const rawPrice=body.price_coins;
+    const price=rawPrice==null||rawPrice===""?null:Number(rawPrice);
+    const rawDuration=body.duration_days;
+    const duration=rawDuration==null||rawDuration===""?null:Number(rawDuration);
+    if(price!=null&&(!Number.isSafeInteger(price)||price<0||price>900000000000000)){
+      return json({ok:false,error:"invalid_override_price"},{status:400});
+    }
+    if(duration!=null&&(!Number.isSafeInteger(duration)||duration<0||duration>3650)){
+      return json({ok:false,error:"invalid_override_duration"},{status:400});
+    }
+    await db.prepare(
+      `INSERT INTO owner_user_price_overrides(user_id,kind,item_id,price_coins,free,duration_days,updated_at)
+       VALUES(?,?,?,?,?,?,?)
+       ON CONFLICT(user_id,kind,item_id) DO UPDATE SET price_coins=excluded.price_coins,
+         free=excluded.free,duration_days=excluded.duration_days,updated_at=excluded.updated_at`
+    ).bind(resolvedUserId,kind,itemId,price,free,duration,now()).run();
+    await audit(db,actor,"user_price_override","user",resolvedUserId,
+      `kind=${kind}; item=${itemId}; price=${price}; free=${free}; days=${duration}`);
+    return json({ok:true,user_id:resolvedUserId,kind,item_id:itemId});
+  }
+  if(parts.length>=6 && request.method==="DELETE"){
+    requirePermission(actor,"policies.write");
+    const userId=decodeURIComponent(parts[3] ?? "");
+    const kind=decodeURIComponent(parts[4] ?? "");
+    const itemId=decodeURIComponent(parts.slice(5).join("/") || "*");
+    await db.prepare("DELETE FROM owner_user_price_overrides WHERE user_id=? AND kind=? AND item_id=?")
+      .bind(userId,kind,itemId).run();
+    await audit(db,actor,"user_price_override_remove","user",userId,`kind=${kind}; item=${itemId}`);
+    return json({ok:true});
+  }
+  return null;
+}
+
 async function handlePoliciesOwner(request, db, actor, parts) {
   if(request.method==="GET"){
     requirePermission(actor,"policies.read");
@@ -1784,6 +1859,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
     else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor);
     else if (parts[2] === "policies") response = await handlePoliciesOwner(request, db, actor, parts);
+    else if (parts[2] === "pricing-overrides") response = await handlePricingOverrides(request, db, actor, url, parts);
     else if (parts[2] === "vip-rules") response = await handleVipRules(request, db, actor, parts);
     else if (parts[2] === "economy") response = await handleEconomy(request, db, actor);
     else if (parts[2] === "settings") response = await handleSettings(request, db, actor, parts);
