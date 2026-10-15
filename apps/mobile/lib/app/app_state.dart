@@ -96,7 +96,7 @@ class AppState extends ChangeNotifier {
   String? authError;
   String? _googleWebClientId;
 
-  int coins = 2500000;
+  int coins = 0;
   int diamonds = 120;
   int idLevel = 0;
   int idLevelExp = 0;
@@ -743,7 +743,7 @@ class AppState extends ChangeNotifier {
     minimizedRoom = null;
     minimizedRoomResume = null;
     minimizedRoomClose = null;
-    coins = 2500000;
+    coins = 0;
     diamonds = 120;
     idLevel = 0;
     idLevelExp = 0;
