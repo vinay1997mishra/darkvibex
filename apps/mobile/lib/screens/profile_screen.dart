@@ -3715,13 +3715,22 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       data['ring_id']?.toString().isNotEmpty == true)
                     Positioned(
                       key: const Key('profile-intimacy-cp-ring'),
-                      left: w * .5 - w * .07,
-                      top: h * .30,
-                      width: w * .14,
-                      height: w * .14,
+                      left: w * .5 - w * .10,
+                      top: h * .25,
+                      width: w * .20,
+                      height: w * .20,
                       child: JewelryRingPreview(
                         styleId: data['ring_id'].toString(),
-                        size: w * .14,
+                        size: w * .20,
+                        imageProvider:
+                            data['ring_asset_key']?.toString().isNotEmpty == true
+                                ? NetworkImage(
+                                    widget.state.backend.fileUrl(
+                                      data['ring_asset_key'].toString(),
+                                    ),
+                                    headers: widget.state.backend.fileHeaders,
+                                  )
+                                : null,
                       ),
                     ),
                   Positioned(
