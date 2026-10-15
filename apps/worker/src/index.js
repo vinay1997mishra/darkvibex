@@ -266,6 +266,16 @@ async function ensureOwnerControlSchema(db) {
       read_at INTEGER,
       created_at INTEGER NOT NULL
     )`),
+    db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
+      BEFORE UPDATE OF coins ON users
+      WHEN NEW.coins < OLD.coins
+       AND EXISTS(
+         SELECT 1 FROM owner_user_overrides o
+          WHERE o.user_id=OLD.id AND o.wallet_frozen=1
+       )
+      BEGIN
+        SELECT RAISE(ABORT,'wallet_frozen');
+      END`),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_tags (
       user_id TEXT NOT NULL,
       tag_id TEXT NOT NULL,
@@ -7778,6 +7788,18 @@ export default {
     }
 
     try {
+      const requestDeviceKey=String(request.headers.get("x-device-id") ?? "").trim();
+      if(requestDeviceKey){
+        const requestDb=requireDb(env);
+        try {
+          await ensureDeviceAllowed(requestDb,requestDeviceKey);
+        } catch(error) {
+          if(String(error?.message ?? error)==="device_banned"){
+            return json({ok:false,error:"device_banned"},{status:403});
+          }
+          throw error;
+        }
+      }
       if (url.pathname === "/api/files" && request.method === "GET") {
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
