@@ -53,7 +53,7 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Stack(
           children: [
