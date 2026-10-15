@@ -113,7 +113,7 @@ class SharingScreen extends StatelessWidget {
 
     return Scaffold(
       key: const Key('sharing-screen'),
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Share',
