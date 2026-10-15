@@ -55,12 +55,7 @@
           <label>Gmail ID<input id="loginEmail" type="email" autocomplete="username" placeholder="staffname@gmail.com" /></label>
           <label>Panel password<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter panel password" /></label>
           <button id="connect" class="primary full">Login to panel</button>
-          <details id="ownerRecovery" style="margin-top:14px">
-            <summary class="muted">Main Owner recovery access</summary>
-            <p class="muted">Use the private Owner access key only when owner Gmail login has not been configured yet.</p>
-            <label>Owner access key<input id="token" type="password" autocomplete="off" placeholder="Private owner key" /></label>
-            <button id="connectToken" class="secondary full" type="button">Unlock as Main Owner</button>
-          </details>
+          <p class="muted" style="margin-top:12px">Main Owner signs in only with the authorized Google account. Staff panel passwords can only be changed by the Main Owner.</p>
           <p id="loginStatus" class="status-line"></p>
         </div>
       </section>
