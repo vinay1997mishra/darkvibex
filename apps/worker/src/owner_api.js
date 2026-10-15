@@ -10,7 +10,7 @@ import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 const corsHeaders = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "authorization,content-type,x-file-key",
+  "access-control-allow-headers": "authorization,content-type,x-file-key,x-gift-id",
 };
 
 const json = (data, init = {}) =>
@@ -1186,6 +1186,66 @@ async function ownerUserMessageInspection(db, actor, userId, url) {
   });
 }
 
+async function handleGiftMediaUpload(request, env, db, actor) {
+  if (request.method !== "PUT") return null;
+  requirePermission(actor, "gifts.save");
+  if (!env.FILES) {
+    return json({ ok: false, error: "file_storage_not_bound" }, { status: 503 });
+  }
+
+  const giftId = String(request.headers.get("x-gift-id") ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  if (!giftId) {
+    return json({ ok: false, error: "gift_id_required" }, { status: 400 });
+  }
+
+  const type = String(request.headers.get("content-type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (type !== "video/mp4") {
+    return json({ ok: false, error: "gift_video_mp4_required" }, { status: 400 });
+  }
+
+  const maxBytes = 20 * 1024 * 1024;
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) {
+    return json({ ok: false, error: "gift_video_too_large" }, { status: 413 });
+  }
+
+  const body = new Uint8Array(await request.arrayBuffer());
+  if (!body.length || body.length > maxBytes) {
+    return json({ ok: false, error: "gift_video_too_large" }, { status: 413 });
+  }
+  const isMp4 =
+    body.length >= 12 &&
+    String.fromCharCode(...body.slice(4, 8)) === "ftyp";
+  if (!isMp4) {
+    return json({ ok: false, error: "gift_video_invalid" }, { status: 400 });
+  }
+
+  const key =
+    "custom-gifts/owner-panel/" +
+    giftId +
+    "/video-" +
+    now() +
+    "-" +
+    randomHex(6) +
+    ".mp4";
+  await env.FILES.put(key, body, {
+    httpMetadata: {
+      contentType: "video/mp4",
+      cacheControl: "public, max-age=3600",
+    },
+  });
+  await audit(db, actor, "gift_video_upload", "gift", giftId, key);
+  return json({ ok: true, key }, { status: 201 });
+}
+
 async function handleOwnerMessageMedia(request, env, db, actor, url) {
   if(request.method!=="GET") return null;
   if(actor.type!=="owner"){
@@ -2134,6 +2194,7 @@ function baseStoreItems(kind) {
         vip_level:Number(item.vip_level ?? 0),
         category:String(item.category ?? "normal"),
         asset_key:String(item.asset_key ?? ""),
+        video_key:String(item.video_key ?? ""),
         duration_days:0,
         tier:0,
       },
@@ -2648,7 +2709,8 @@ export async function handleOwnerApi(request, env, url) {
     if (url.pathname === "/api/owner/overview" && request.method === "GET") return handleOverview(db, actor);
 
     let response = null;
-    if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
+    if (parts[2] === "gift-media") response = await handleGiftMediaUpload(request, env, db, actor);
+    else if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
     else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
     else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
