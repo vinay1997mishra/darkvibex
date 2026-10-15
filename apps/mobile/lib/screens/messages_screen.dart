@@ -402,7 +402,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
     return Scaffold(
       key: const Key('room-standalone-messages'),
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Messages',
@@ -447,7 +447,7 @@ class _SystemFeedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: TinniPalette.black,
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: Text(title)),
         body: TinniBackground(
           child: rows.isEmpty
