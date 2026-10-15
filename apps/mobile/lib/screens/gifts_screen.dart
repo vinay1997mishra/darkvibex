@@ -256,7 +256,7 @@ class _GiftsScreenState extends State<GiftsScreen> {
   Widget build(BuildContext context) {
     final rows = visibleGifts;
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Gift Festival',
