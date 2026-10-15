@@ -27,7 +27,6 @@ const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","fe
 const staffPermissionOptions = [
   ["dashboard","Dashboard"],["users.read","Users: view/search"],["users.write","Users: edit profile/VIP/role"],["users.moderate","Users: ban/suspend/moderate"],["wallet.write","User wallets"],
   ["treasury.read","Owner Treasury: view"],["treasury.write","Owner Treasury: distribute"],["economy.read","Economy: view coin rate / ID tools"],["economy.write","Economy: change coin rate"],
-  ["notifications.read","Notifications: view"],["notifications.write","Notifications: manage"],
   ["messaging.read","Messages/Tags: view"],["messaging.write","Official messages: send"],["tags.write","Tags/V Official: manage"],
   ["users.device","Users: device ban"],["users.override","Users: invisible/bypass/freeze"],["wallet.freeze","Wallet security freeze"],
   ["rooms.read","Rooms: view"],["rooms.write","Rooms: edit/remove"],["rooms.live","Rooms: live users/seats"],["rooms.media","Rooms: DP/background"],["rooms.theme","Rooms: theme override"],
@@ -56,7 +55,7 @@ function showApp(on){$("#loginCard").hidden=on;$("#workspace").hidden=!on;$("#si
 function actorCard(){if(!state.actor)return;$("#actorCard").innerHTML=`<b>${esc(state.actor.name||"Authorized user")}</b><span>${esc(state.actor.role||"")}</span>`;}
 function applyPermissions(){
   const map={overview:"dashboard",users:"users.read",notifications:"notifications.read",messaging:"messaging.read",rooms:"rooms.read",roles:"roles.read",banners:"banners.read",games:"games.read",policies:"policies.read",wallets:"treasury.read",economy:"economy.read",vip:"catalog.read",gifts:"catalog.read",assets:"catalog.read",store:"catalog.read",catalog:"catalog.read",settings:"settings.read",announcements:"announcements.read",staff:"staff.read",support:"support.read",audit:"audit.read"};
-  $$(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=!!p&&!can(p);});
+  $(".nav-btn").forEach(btn=>{const p=map[btn.dataset.view];btn.hidden=(btn.dataset.view==="notifications"&&state.actor?.type!=="owner")||(!!p&&!can(p));});
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
 async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
@@ -730,7 +729,28 @@ async function saveGlobalTheme(){
   await loadGlobalThemes();
 }
 
-async function loadAudit(){if(!can('audit.read'))return;const d=await api('/api/owner/audit?limit=200');$("#auditList").innerHTML=(d.audit||[]).length?`<div class="small-table">${d.audit.map(a=>`<div class="audit-row"><span>${time(a.created_at)}</span><span><b>${esc(a.action.replaceAll('_',' '))}</b><br><span class="muted">${esc(a.actor_type)} ${esc(a.actor_id)} → ${esc(a.target_type)} ${esc(a.target_id)}${a.summary?' · '+esc(a.summary):''}</span></span></div>`).join('')}</div>`:empty('No audit records yet');}
+async function loadAudit(){
+  if(!can("audit.read"))return;
+  const d=await api("/api/owner/audit?limit=500");
+  state.auditRows=d.audit||[];
+  const canDelete=d.owner_can_delete===true||state.actor?.type==="owner";
+  $("#clearAudit").hidden=!canDelete;
+  $("#auditList").innerHTML=state.auditRows.length?`<div class="small-table">${state.auditRows.map(a=>`<div class="audit-row"><span>${time(a.created_at)}</span><span><b>${esc(a.action.replaceAll("_"," "))}</b><br><span class="muted">${esc(a.actor_type)} ${esc(a.actor_id)} → ${esc(a.target_type)} ${esc(a.target_id)}${a.summary?" · "+esc(a.summary):""}</span></span>${canDelete?`<button class="danger mini" data-audit-delete="${esc(a.id)}">Delete</button>`:""}</div>`).join("")}</div>`:empty("No audit records yet");
+  $("[data-audit-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this audit record?"))return;await api("/api/owner/audit/"+encodeURIComponent(b.dataset.auditDelete),{method:"DELETE"});toast("Audit record deleted");await loadAudit();});
+}
+function exportAuditCsv(){
+  const rows=state.auditRows||[];
+  const quote=value=>'"'+String(value??"").replaceAll('"','""')+'"';
+  const lines=[["Date","Panel Type","Panel ID","Action","Target Type","Target ID","Details"].map(quote).join(",")];
+  for(const a of rows)lines.push([new Date(Number(a.created_at||0)).toISOString(),a.actor_type,a.actor_id,a.action,a.target_type,a.target_id,a.summary].map(quote).join(","));
+  const blob=new Blob([lines.join("\n")],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download="darkvibex-owner-audit.csv";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+}
+async function clearAudit(){
+  if(state.actor?.type!=="owner")return toast("Only the main Owner can delete audit records",false);
+  if(!confirm("Delete ALL audit records?"))return;
+  await api("/api/owner/audit",{method:"DELETE"});toast("All audit records deleted");await loadAudit();
+}
 
 $("#connect").onclick=connect;$("#token").addEventListener('keydown',e=>{if(e.key==='Enter')connect();});
 $("#logout").onclick=()=>{state.token='';state.actor=null;sessionStorage.removeItem('dvxOwnerToken');showApp(false);$("#token").value='';};
@@ -759,7 +779,7 @@ $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));$("#s
 $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
-$("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));
+$("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
 $("#clearPermissions").onclick=()=>{$$("#staffPermissions input").forEach(x=>x.checked=false);};
 $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));$("#sendSupportReply").onclick=()=>sendSupportReply().catch(e=>toast(e.message,false));$("#closeSupportTicket").onclick=()=>closeSupportTicket().catch(e=>toast(e.message,false));
 
