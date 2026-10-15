@@ -966,7 +966,7 @@ async function handleOwnerMessageMedia(request, env, db, actor, url) {
 
 async function handleUsers(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
-    requirePermission(actor, "users.read");
+    requirePermission(actor, "users.search");
     const query = String(url.searchParams.get("q") ?? "").trim();
     const limit = clampInt(url.searchParams.get("limit"), 1, 200, 100);
     const pattern = `%${query}%`;
@@ -985,7 +985,7 @@ async function handleUsers(request, db, actor, url, parts) {
   if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
 
   if (parts.length === 4 && request.method === "GET") {
-    requirePermission(actor, "users.read");
+    requirePermission(actor, "users.detail");
     const user = await getUserDetails(db, userId);
     return user ? json({ ok: true, user }) : json({ ok: false, error: "not_found" }, { status: 404 });
   }
@@ -995,8 +995,21 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "profile" && request.method === "POST") {
-    requirePermission(actor, "users.write");
     const body = await bodyJson(request);
+    const profileFields = [];
+    if (Object.prototype.hasOwnProperty.call(body,"display_name")) {
+      requirePermission(actor,"users.name.edit");
+      profileFields.push("display_name");
+    }
+    if (Object.prototype.hasOwnProperty.call(body,"role")) {
+      requirePermission(actor,"users.role.edit");
+      profileFields.push("role");
+    }
+    if (Object.prototype.hasOwnProperty.call(body,"vip_level")) {
+      requirePermission(actor,"users.vip.edit");
+      profileFields.push("vip_level");
+    }
+    if (!profileFields.length) return json({ok:false,error:"no_profile_fields_allowed"},{status:400});
     const current = await db.prepare("SELECT id, display_name, role, vip_level FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 60);
@@ -1033,7 +1046,7 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "public-id" && request.method === "POST") {
-    requirePermission(actor, "users.write");
+    requirePermission(actor, "users.public_id.change");
     const body = await bodyJson(request);
     const requested = String(body.public_id ?? "").trim();
     if (!/^\d{7}$/.test(requested) || Number(requested) < 1000001) {
@@ -1074,8 +1087,20 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "wallet" && request.method === "POST") {
-    requirePermission(actor, "wallet.write");
     const body = await bodyJson(request);
+    const requestedCoinDelta=Number(body.coin_delta ?? 0);
+    const requestedDiamondDelta=Number(body.diamond_delta ?? 0);
+    const requestedRoleDelta=Number(body.role_coin_delta ?? 0);
+    const hasRoleType=String(body.role_wallet_type ?? "").trim()!=="";
+    const changesNormal=requestedCoinDelta!==0 || requestedDiamondDelta!==0;
+    const changesRole=hasRoleType && requestedRoleDelta!==0;
+    const changesRoleStatus=hasRoleType && Object.prototype.hasOwnProperty.call(body,"role_wallet_banned");
+    if(changesNormal) requirePermission(actor,"users.wallet.adjust");
+    if(changesRole) requirePermission(actor,"users.role_wallet.adjust");
+    if(changesRoleStatus) requirePermission(actor,"users.role_wallet.ban");
+    if(!changesNormal && !changesRole && !changesRoleStatus){
+      return json({ok:false,error:"no_wallet_change_requested"},{status:400});
+    }
     const current = await db.prepare("SELECT role,coins,diamonds FROM users WHERE id=?")
       .bind(userId).first();
     if (!current) return json({ ok:false,error:"not_found" }, { status:404 });
@@ -1146,7 +1171,7 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
-    if (!can(actor, "users.moderate") && !can(actor, "users.write")) requirePermission(actor, "users.moderate");
+    requirePermission(actor,"users.moderation");
     const body = await bodyJson(request);
     const status = ["active", "suspended", "banned"].includes(String(body.status)) ? String(body.status) : "active";
     const mutedUntil = body.muted_until == null ? null : Math.max(0, Number(body.muted_until) || 0);
@@ -1163,14 +1188,29 @@ async function handleUsers(request, db, actor, url, parts) {
   }
 
   if (parts[4] === "owner-overrides" && request.method === "POST") {
-    requirePermission(actor, "users.override");
     const body = await bodyJson(request);
-    const invisible = body.invisible_id === true ? 1 : 0;
-    const bypass = body.locked_room_bypass === true ? 1 : 0;
-    const frozen = body.wallet_frozen === true ? 1 : 0;
-    const walletBanned = body.wallet_banned === true ? 1 : 0;
+    const requested = {
+      invisible_id:Object.prototype.hasOwnProperty.call(body,"invisible_id"),
+      locked_room_bypass:Object.prototype.hasOwnProperty.call(body,"locked_room_bypass"),
+      wallet_banned:Object.prototype.hasOwnProperty.call(body,"wallet_banned"),
+      wallet_frozen:Object.prototype.hasOwnProperty.call(body,"wallet_frozen"),
+    };
+    if(requested.invisible_id) requirePermission(actor,"users.override.invisible");
+    if(requested.locked_room_bypass) requirePermission(actor,"users.override.lock_bypass");
+    if(requested.wallet_banned) requirePermission(actor,"users.wallet.ban");
+    if(requested.wallet_frozen) requirePermission(actor,"users.wallet.freeze");
+    if(!Object.values(requested).some(Boolean)){
+      return json({ok:false,error:"no_override_change_requested"},{status:400});
+    }
     const exists = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
     if (!exists) return json({ok:false,error:"not_found"},{status:404});
+    const current=await db.prepare(
+      "SELECT invisible_id,locked_room_bypass,wallet_banned,wallet_frozen FROM owner_user_overrides WHERE user_id=?"
+    ).bind(userId).first();
+    const invisible=requested.invisible_id ? (body.invisible_id===true?1:0) : Number(current?.invisible_id ?? 0);
+    const bypass=requested.locked_room_bypass ? (body.locked_room_bypass===true?1:0) : Number(current?.locked_room_bypass ?? 0);
+    const walletBanned=requested.wallet_banned ? (body.wallet_banned===true?1:0) : Number(current?.wallet_banned ?? 0);
+    const frozen=requested.wallet_frozen ? (body.wallet_frozen===true?1:0) : Number(current?.wallet_frozen ?? 0);
     await db.prepare(
       `INSERT INTO owner_user_overrides(user_id,invisible_id,locked_room_bypass,wallet_frozen,wallet_banned,updated_at)
        VALUES(?,?,?,?,?,?)
@@ -1178,12 +1218,13 @@ async function handleUsers(request, db, actor, url, parts) {
          locked_room_bypass=excluded.locked_room_bypass,wallet_frozen=excluded.wallet_frozen,
          wallet_banned=excluded.wallet_banned,updated_at=excluded.updated_at`
     ).bind(userId,invisible,bypass,frozen,walletBanned,now()).run();
-    await audit(db,actor,"user_owner_overrides","user",userId,`invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}; wallet_banned=${walletBanned}`);
+    await audit(db,actor,"user_owner_overrides","user",userId,
+      `invisible=${invisible}; bypass=${bypass}; wallet_frozen=${frozen}; wallet_banned=${walletBanned}`);
     return json({ok:true,user:await getUserDetails(db,userId)});
   }
 
   if (parts[4] === "device-ban" && request.method === "POST") {
-    requirePermission(actor, "users.device");
+    requirePermission(actor, "users.device.ban");
     const body = await bodyJson(request);
     const deviceKey = String(body.device_key ?? body.token ?? "").trim().slice(0,500);
     if (!deviceKey) return json({ok:false,error:"device_key_required"},{status:400});
