@@ -14,6 +14,7 @@ const socialStore = await readFile(new URL("../src/tinni_social.js", import.meta
 const vipStore = await readFile(new URL("../src/vip_store.js", import.meta.url), "utf8");
 const vipPolicy = await readFile(new URL("../src/vip_policy.js", import.meta.url), "utf8");
 const roleWallets = await readFile(new URL("../src/role_wallets.js", import.meta.url), "utf8");
+const uniqueIdStore = await readFile(new URL("../src/unique_id_store.js", import.meta.url), "utf8");
 
 test("allowed Tinni Owner Panel modules are exposed without excluded hierarchy or verification views", () => {
   for (const view of ["notifications","messaging","roles","banners","games","policies","vip","gifts","assets"]) {
@@ -179,4 +180,82 @@ test("normal wallet, role wallet and room bans are independently enforced", () =
 test("App Store supports multi-item edit and remove handlers", () => {
   assert.match(panelApp, /\$\$\("\[data-store-edit\]"\)/);
   assert.match(panelApp, /\$\$\("\[data-store-remove\]"\)/);
+});
+
+
+test("Owner Panel has no single-element selector used as a multi-element forEach", () => {
+  const bad=[...panelApp.matchAll(/(?<!\$)\$\(([^)]*)\)\.forEach/g)].map((m)=>m[0]);
+  assert.deepEqual(bad,[]);
+});
+
+test("per-user price free and validity policies are live-backed", () => {
+  assert.match(ownerApi,/CREATE TABLE IF NOT EXISTS owner_user_price_overrides/);
+  assert.match(ownerApi,/async function handlePricingOverrides/);
+  assert.match(panelApp,/async function loadPricingOverrides/);
+  assert.match(panelApp,/async function savePricingOverride/);
+  assert.match(worker,/async function ownerUserPricing/);
+  assert.match(worker,/owner_price_override:pricing\.overridden/);
+  assert.match(worker,/db,sender,"gift"/);
+  assert.match(worker,/db,userId,"unique_id"/);
+  assert.match(worker,/db,actorId,"room_theme","upload"/);
+  assert.match(uniqueIdStore,/pricing\?\.price_coins/);
+});
+
+test("all nine Master Feature Switches are seeded exposed and enforced", () => {
+  const keys=[
+    "feature.voice","feature.gifts","feature.games","feature.messages",
+    "feature.room_creation","feature.aladdin_lamp","feature.red_pocket",
+    "feature.friends_call","feature.visitors",
+  ];
+  for(const key of keys){
+    assert.match(ownerApi,new RegExp(key.replace(".","\\.")));
+    assert.match(worker,new RegExp(key.replace(".","\\.")));
+  }
+  assert.doesNotMatch(worker,/20261013_room_creation_repair/);
+  assert.match(worker,/red_pocket_disabled/);
+  assert.match(worker,/friends_call_disabled/);
+  assert.match(worker,/visitors_disabled/);
+});
+
+test("scheduled announcements support edit windows and automatic expiry", () => {
+  assert.match(ownerApi,/announcement_end_must_be_after_start/);
+  assert.match(panelHtml,/id="announcementStart"/);
+  assert.match(panelHtml,/id="announcementEnd"/);
+  assert.match(panelApp,/localInputValue/);
+  assert.match(panelApp,/clearAnnouncementForm/);
+});
+
+test("manual Owner VIP grants use the same enabled rule and validity as live leveling", () => {
+  assert.match(ownerApi,/async function ownerVipRule/);
+  assert.match(ownerApi,/vip_level_disabled/);
+  assert.match(ownerApi,/exp_balance=0/);
+  assert.match(ownerApi,/Number\(rule\.days/);
+});
+
+test("Games tab supports standalone user betting investigation", () => {
+  assert.match(ownerApi,/user_investigation/);
+  assert.match(ownerApi,/user_error/);
+  assert.match(panelHtml,/id="gameInvestigationUser"/);
+  assert.match(panelHtml,/id="gameUserStats"/);
+  assert.match(panelApp,/gameInvestigationUser/);
+  assert.match(panelApp,/Recent Bets/);
+});
+
+test("user investigation exposes sending receiving purchases value and game performance", () => {
+  for(const token of [
+    "sent_gift_coins","received_gift_coins","purchase_coins",
+    "wallet_usd","game_wagered","game_payout","game_house_result","online_duration_ms",
+  ]){
+    assert.match(ownerApi,new RegExp(token));
+  }
+  assert.match(panelHtml,/id="userInvestigation"/);
+  assert.match(panelApp,/Current room time/);
+});
+
+test("notifications are Owner-only and staff audit is scoped to its own panel", () => {
+  assert.match(ownerApi,/owner_only_notifications/);
+  assert.match(ownerApi,/owner_only_audit_delete/);
+  assert.match(ownerApi,/actor_type='staff' AND actor_id=\?/);
+  assert.match(panelApp,/state\.actor\?\.type!==\"owner\"/);
+  assert.match(panelApp,/exportAuditCsv/);
 });
