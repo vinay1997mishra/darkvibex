@@ -2738,9 +2738,9 @@ class _VsScreenState extends State<VsScreen> {
     final avatarKey = _rivalAvatarKey();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF05070B),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF05070B),
+        backgroundColor: Colors.transparent,
         title: const Text(
           'VS',
           style: TextStyle(
@@ -3285,9 +3285,9 @@ class _VsRankingScreenState extends State<VsRankingScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFF05070B),
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF05070B),
+          backgroundColor: Colors.transparent,
           title: const Text(
             'VS Ranking',
             style: TextStyle(color: Color(0xFFFF202D)),
