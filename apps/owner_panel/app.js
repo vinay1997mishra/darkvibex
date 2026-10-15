@@ -21,6 +21,8 @@ const state = {
   vipRules: [],
   giftItems: [],
   assetItems: [],
+  pricingOverrides: [],
+  auditRows: [],
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
@@ -683,6 +685,7 @@ async function loadPolicies(){
   $("#policyList").innerHTML=state.policies.length?state.policies.map(p=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(p.key)}</div><div class="item-meta">${esc(JSON.stringify(p.value))} · ${time(p.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-policy-edit="${esc(p.key)}">Edit</button><button class="danger mini" data-policy-delete="${esc(p.key)}">Delete</button></div></div></div>`).join(""):empty("No custom allowed policies");
   $("[data-policy-edit]").forEach(b=>b.onclick=()=>{const p=state.policies.find(x=>x.key===b.dataset.policyEdit);if(!p)return;$("#policyKey").value=p.key.replace(/^policy\./,"");$("#policyValue").value=JSON.stringify(p.value,null,2);});
   $("[data-policy-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this policy?"))return;await api("/api/owner/policies/"+encodeURIComponent(b.dataset.policyDelete),{method:"DELETE"});toast("Policy deleted");await loadPolicies();});
+  await loadPricingOverrides();
 }
 async function savePolicy(){
   if(!can("policies.write"))return toast("Policies write permission required",false);
@@ -695,6 +698,73 @@ async function savePolicy(){
   await loadPolicies();
 }
 
+
+
+function clearPricingOverride(){
+  $("#pricingUserId").value="";
+  $("#pricingItemId").value="*";
+  $("#pricingPrice").value="";
+  $("#pricingDuration").value="";
+  $("#pricingFree").checked=false;
+  updatePricingFreeState();
+}
+function updatePricingFreeState(){
+  const gift=$("#pricingKind").value==="gift";
+  $("#pricingFree").disabled=gift;
+  if(gift)$("#pricingFree").checked=false;
+}
+async function loadPricingOverrides(){
+  if(!can("policies.read"))return;
+  const user=$("#pricingUserId").value.trim();
+  const kind=$("#pricingKind").value.trim();
+  const query=new URLSearchParams();
+  if(user)query.set("user_id",user);
+  if(kind)query.set("kind",kind);
+  const d=await api("/api/owner/pricing-overrides?"+query.toString());
+  state.pricingOverrides=d.overrides||[];
+  $("#pricingOverrideList").innerHTML=state.pricingOverrides.length?state.pricingOverrides.map(row=>{
+    const free=Number(row.free||0)===1;
+    const price=free?"FREE":(row.price_coins==null?"base price":num(row.price_coins)+" coins");
+    const days=row.duration_days==null?"base validity":(Number(row.duration_days)===0?"permanent":num(row.duration_days)+" days");
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(row.display_name||row.public_id||row.user_id)} · ${esc(row.kind)} · ${esc(row.item_id)}</div><div class="item-meta">User ${esc(row.public_id||row.user_id)} · ${esc(price)} · ${esc(days)} · ${time(row.updated_at)}</div></div><div class="item-actions"><button class="secondary mini" data-pricing-edit-user="${esc(row.user_id)}" data-pricing-kind="${esc(row.kind)}" data-pricing-item="${esc(row.item_id)}">Edit</button><button class="danger mini" data-pricing-delete-user="${esc(row.user_id)}" data-pricing-delete-kind="${esc(row.kind)}" data-pricing-delete-item="${esc(row.item_id)}">Remove</button></div></div></div>`;
+  }).join(""):empty("No per-user pricing overrides for this filter");
+  $("[data-pricing-edit-user]").forEach(b=>b.onclick=()=>{
+    const row=state.pricingOverrides.find(x=>String(x.user_id)===b.dataset.pricingEditUser&&String(x.kind)===b.dataset.pricingKind&&String(x.item_id)===b.dataset.pricingItem);
+    if(!row)return;
+    $("#pricingUserId").value=row.public_id||row.user_id;
+    $("#pricingKind").value=row.kind;
+    $("#pricingItemId").value=row.item_id||"*";
+    $("#pricingPrice").value=row.price_coins==null?"":Number(row.price_coins);
+    $("#pricingDuration").value=row.duration_days==null?"":Number(row.duration_days);
+    $("#pricingFree").checked=Number(row.free||0)===1;
+    updatePricingFreeState();
+  });
+  $("[data-pricing-delete-user]").forEach(b=>b.onclick=async()=>{
+    if(!can("policies.write"))return toast("Policies write permission required",false);
+    if(!confirm("Remove this per-user pricing override?"))return;
+    await api("/api/owner/pricing-overrides/"+encodeURIComponent(b.dataset.pricingDeleteUser)+"/"+encodeURIComponent(b.dataset.pricingDeleteKind)+"/"+encodeURIComponent(b.dataset.pricingDeleteItem),{method:"DELETE"});
+    toast("Pricing override removed");
+    await loadPricingOverrides();
+  });
+}
+async function savePricingOverride(){
+  if(!can("policies.write"))return toast("Policies write permission required",false);
+  const userId=$("#pricingUserId").value.trim();
+  const kind=$("#pricingKind").value.trim();
+  const itemId=$("#pricingItemId").value.trim()||"*";
+  if(!userId)return toast("User ID is required",false);
+  const free=$("#pricingFree").checked;
+  if(kind==="gift"&&free)return toast("Gifts cannot be zero-cost; use a positive custom price",false);
+  const rawPrice=$("#pricingPrice").value.trim();
+  const rawDuration=$("#pricingDuration").value.trim();
+  const price=rawPrice===""?null:Number(rawPrice);
+  const days=rawDuration===""?null:Number(rawDuration);
+  if(price!=null&&(!Number.isSafeInteger(price)||price<0))return toast("Price must be a non-negative whole number",false);
+  if(days!=null&&(!Number.isSafeInteger(days)||days<0||days>3650))return toast("Validity must be 0–3650 days",false);
+  await api("/api/owner/pricing-overrides",{method:"POST",body:JSON.stringify({user_id:userId,kind,item_id:itemId,price_coins:price,free,duration_days:days})});
+  toast("Per-user pricing override saved");
+  await loadPricingOverrides();
+}
 
 async function loadGlobalThemes(){
   if(!can("catalog.read"))return;
@@ -771,7 +841,7 @@ $("#reloadGlobalThemes").onclick=()=>loadGlobalThemes().catch(e=>toast(e.message
 $("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
 $("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));
 $("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));
-$("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));
+$("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));$("#reloadPricingOverrides").onclick=()=>loadPricingOverrides().catch(e=>toast(e.message,false));$("#savePricingOverride").onclick=()=>savePricingOverride().catch(e=>toast(e.message,false));$("#clearPricingOverride").onclick=clearPricingOverride;$("#pricingKind").onchange=()=>{updatePricingFreeState();loadPricingOverrides().catch(e=>toast(e.message,false));};
 
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
 $("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value));if(rule)fillVipRuleForm(rule);};$("#reloadVipRules").onclick=()=>loadVipRules().catch(e=>toast(e.message,false));$("#saveVipRule").onclick=()=>saveVipRule().catch(e=>toast(e.message,false));$("#resetVipRule").onclick=()=>resetVipRule().catch(e=>toast(e.message,false));
