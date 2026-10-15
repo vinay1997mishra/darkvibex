@@ -98,6 +98,14 @@ class AppState extends ChangeNotifier {
 
   int coins = 0;
   int diamonds = 120;
+
+  bool weeklySignInReady = false;
+  bool weeklySignInLoading = false;
+  bool weeklySignInClaimedToday = false;
+  int weeklySignInDay = 1;
+  int weeklySignInClaimedThrough = 0;
+  int weeklySignInLastReward = 0;
+  String? weeklySignInError;
   int idLevel = 0;
   int idLevelExp = 0;
   int idLevelExpToNext = 10000;
@@ -616,6 +624,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _loadRemoteData() async {
     await refreshWallet(notify: false);
+    await refreshWeeklySignIn(notify: false);
     await refreshVip(notify: false);
     await refreshIdLevel(notify: false);
     await refreshCosmetics(notify: false);
@@ -745,6 +754,13 @@ class AppState extends ChangeNotifier {
     minimizedRoomClose = null;
     coins = 0;
     diamonds = 120;
+    weeklySignInReady = false;
+    weeklySignInLoading = false;
+    weeklySignInClaimedToday = false;
+    weeklySignInDay = 1;
+    weeklySignInClaimedThrough = 0;
+    weeklySignInLastReward = 0;
+    weeklySignInError = null;
     idLevel = 0;
     idLevelExp = 0;
     idLevelExpToNext = 10000;
@@ -784,6 +800,75 @@ class AppState extends ChangeNotifier {
         );
     }
     if (notify) notifyListeners();
+  }
+
+  void _applyWeeklySignInStatus(Map<String, dynamic>? value) {
+    if (value?['ok'] != true) {
+      weeklySignInReady = false;
+      weeklySignInError =
+          value?['error']?.toString() ?? 'Weekly sign-in is unavailable.';
+      return;
+    }
+    weeklySignInReady = true;
+    weeklySignInError = null;
+    weeklySignInDay =
+        (int.tryParse(value?['current_day']?.toString() ?? '') ?? 1)
+            .clamp(1, 7)
+            .toInt();
+    weeklySignInClaimedThrough =
+        (int.tryParse(value?['claimed_through']?.toString() ?? '') ?? 0)
+            .clamp(0, 7)
+            .toInt();
+    weeklySignInClaimedToday =
+        value?['claimed_today'] == true ||
+        value?['claimed_today']?.toString() == '1';
+  }
+
+  Future<void> refreshWeeklySignIn({bool notify = true}) async {
+    if (!backendConnected || !isAuthenticated) {
+      weeklySignInReady = false;
+      if (notify) notifyListeners();
+      return;
+    }
+    final value = await backend.weeklySignInStatus(userId: userId);
+    _applyWeeklySignInStatus(value);
+    if (notify) notifyListeners();
+  }
+
+  Future<bool> claimWeeklySignIn() async {
+    if (!backendConnected ||
+        !isAuthenticated ||
+        weeklySignInLoading ||
+        weeklySignInClaimedToday) {
+      return false;
+    }
+    weeklySignInLoading = true;
+    weeklySignInError = null;
+    notifyListeners();
+    try {
+      final value = await backend.claimWeeklySignIn(userId: userId);
+      if (value?['ok'] != true) {
+        weeklySignInError = switch (value?['error']?.toString()) {
+          'already_claimed_today' => 'Today\'s reward is already claimed.',
+          _ => 'Weekly sign-in reward could not be claimed.',
+        };
+        return false;
+      }
+      weeklySignInLastReward =
+          int.tryParse(value?['reward']?.toString() ?? '') ?? 0;
+      final balance =
+          int.tryParse(value?['coin_balance']?.toString() ?? '');
+      if (balance != null) coins = balance;
+      _applyWeeklySignInStatus(value);
+      await refreshWallet(notify: false);
+      return true;
+    } catch (_) {
+      weeklySignInError = 'Weekly sign-in reward could not be claimed.';
+      return false;
+    } finally {
+      weeklySignInLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> refreshCosmetics({bool notify = true}) async {
