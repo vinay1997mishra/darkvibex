@@ -382,7 +382,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     final winnings =
         int.tryParse(game['today_winnings']?.toString() ?? '') ?? 0;
     return Material(
-      color: const Color(0xFF260F17),
+      color: Colors.transparent,
       child: SafeArea(
         top: false,
         child: Column(
