@@ -451,7 +451,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final busy = state.signingIn || _savingProfile;
 
     return Scaffold(
-      backgroundColor: TinniPalette.black,
+      backgroundColor: Colors.transparent,
       body: TinniBackground(
         child: SafeArea(
           child: AnimatedBuilder(
