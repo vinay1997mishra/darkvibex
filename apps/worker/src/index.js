@@ -7111,14 +7111,24 @@ async function handleApi(request, env, url) {
       category: "custom",
       asset_key: row.asset_key,
     }));
-    return json({
-      ok: true,
-      gifts: [
-        ...(await effectiveGiftCatalog(db)).filter((gift) =>
-          Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
-        ...customRows,
-      ],
-    });
+    const available=[
+      ...(await effectiveGiftCatalog(db)).filter((gift) =>
+        Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
+      ...customRows,
+    ];
+    const priced=[];
+    for(const gift of available){
+      const pricing=await ownerUserPricing(
+        db,userId,"gift",String(gift.id ?? ""),Number(gift.coin_cost ?? 0),null,
+      );
+      const price=Math.max(1,Number(pricing.price_coins ?? gift.coin_cost ?? 0));
+      priced.push({
+        ...gift,
+        coin_cost:price,
+        owner_price_override:pricing.overridden,
+      });
+    }
+    return json({ ok: true, gifts: priced });
   }
 
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
@@ -7148,7 +7158,10 @@ async function handleApi(request, env, url) {
     if (requiredVip > 0 && (!vip.active || vip.level < requiredVip)) {
       return json({ ok: false, error: "vip_required" }, { status: 403 });
     }
-    const cost = Number(gift.coin_cost ?? 0);
+    const pricing=await ownerUserPricing(
+      db,sender,"gift",giftId,Number(gift.coin_cost ?? 0),null,
+    );
+    const cost = Number(pricing.price_coins ?? gift.coin_cost ?? 0);
     if (!Number.isSafeInteger(cost) || cost <= 0) {
       return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
     }
@@ -7170,10 +7183,6 @@ async function handleApi(request, env, url) {
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     let cpProgress = null;
     let vsProgress = null;
-    // DarkVibeX relation levels are partner-only, not gift-category-only.
-    // Any real gift sent directly between the active CP pair can advance CP,
-    // and any real gift sent directly between the active VS pair can advance VS.
-    // Third-party gifts never match the relationship pair and therefore add 0.
     if (giftId !== "cp-invite") {
       cpProgress = await recordCpGiftProgress(
         db,
@@ -7193,6 +7202,8 @@ async function handleApi(request, env, url) {
     return json({
       ok: true,
       event_id: eventId,
+      gift_cost:cost,
+      owner_price_override:pricing.overridden,
       sender_coin_balance: balance,
       cp_progress: Number(cpProgress?.progress ?? 0),
       cp_state: cpProgress?.cp ?? null,
