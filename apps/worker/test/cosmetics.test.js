@@ -47,7 +47,21 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "ring"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_background"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "entry"));
-  assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "bubble"));
+  const bubbles = COSMETIC_CATALOG.filter((item) => item.kind === "bubble");
+  assert.equal(bubbles.length, 8);
+  assert.deepEqual(
+    bubbles.map((item) => item.id),
+    [
+      "bubble-gold",
+      "bubble-heart",
+      "bubble-king",
+      "bubble-dream",
+      "bubble-nature",
+      "bubble-dragon",
+      "bubble-ice",
+      "bubble-sakura",
+    ],
+  );
   assert.equal(
     COSMETIC_CATALOG.find((item) => item.id === "vehicle_king").min_vip_level,
     18,
