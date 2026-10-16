@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
 import 'vip_screen.dart';
@@ -4260,8 +4261,53 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  List<Color> _profileCardColors(String? styleId) {
+    var level = 1;
+    if (styleId != null && styleId.startsWith('profile-vip-')) {
+      level = int.tryParse(styleId.substring('profile-vip-'.length)) ?? 1;
+    } else {
+      level = switch (styleId) {
+        'profile-card-pink-heart' => 2,
+        'profile-card-crystal-star' => 3,
+        'profile-card-vip-queen' => 14,
+        'profile-card-family-leader' => 5,
+        'profile-card-birthday' => 8,
+        'profile-card-winner' => 12,
+        _ => 1,
+      };
+    }
+    const palettes = <List<Color>>[
+      <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
+      <Color>[Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21)],
+      <Color>[Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24)],
+      <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF220B3D)],
+      <Color>[Color(0xFFD8FF9C), Color(0xFF267C2E), Color(0xFF0A1716)],
+      <Color>[Color(0xFFFF8A38), Color(0xFF9B210D), Color(0xFF150808)],
+      <Color>[Color(0xFFDBF7FF), Color(0xFF2468D8), Color(0xFF07152E)],
+      <Color>[Color(0xFFFFB6D9), Color(0xFFC42D72), Color(0xFF210A18)],
+      <Color>[Color(0xFFD7BDFF), Color(0xFF6332C4), Color(0xFF160B2A)],
+      <Color>[Color(0xFFB7F4FF), Color(0xFF1677B8), Color(0xFF06182A)],
+      <Color>[Color(0xFFFFB0B0), Color(0xFF9F1637), Color(0xFF21070D)],
+      <Color>[Color(0xFFFFD17A), Color(0xFFB94A0C), Color(0xFF2A1000)],
+      <Color>[Color(0xFFE2B5FF), Color(0xFF7028C4), Color(0xFF1C0930)],
+      <Color>[Color(0xFFFFF0A3), Color(0xFFC17A05), Color(0xFF2B1900)],
+      <Color>[Color(0xFFFFA8FF), Color(0xFF7131C7), Color(0xFF1A0730)],
+      <Color>[Color(0xFFB4F8FF), Color(0xFF007DAA), Color(0xFF041E2E)],
+      <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
+      <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
+    ];
+    return palettes[(level - 1).clamp(0, 17).toInt()];
+  }
+
   Widget _hero() {
     final value = user!;
+    final profileCardId = value['active_profile_card_id']?.toString();
+    final profileColors = _profileCardColors(profileCardId);
+    final hasProfileCard = profileCardId != null && profileCardId.isNotEmpty;
+    final profileLevel = profileCardId != null && profileCardId.startsWith('profile-vip-')
+        ? (int.tryParse(profileCardId.substring('profile-vip-'.length)) ?? 1).clamp(1, 18)
+        : 1;
+    final profileAsset = 'assets/vip18/profile_vip_${profileLevel.toString().padLeft(2, "0")}.svg';
     final avatarKey = value['avatar_key']?.toString() ?? '';
     final cpRelation = cp;
     final cpActive =
@@ -4274,20 +4320,33 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final gender = value['gender']?.toString().trim().toLowerCase() ?? '';
     return Container(
       height: 310,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF10101A),
-            Color(0xFF37275C),
-            Color(0xFF8B5D82),
-          ],
+          colors: hasProfileCard
+              ? <Color>[profileColors[0], profileColors[1], profileColors[2]]
+              : const <Color>[
+                  Color(0xFF10101A),
+                  Color(0xFF37275C),
+                  Color(0xFF8B5D82),
+                ],
         ),
+        border: hasProfileCard ? Border.all(color: profileColors[0], width: 2) : null,
+        boxShadow: hasProfileCard
+            ? <BoxShadow>[BoxShadow(color: profileColors[0].withValues(alpha: .36), blurRadius: 24, spreadRadius: 1)]
+            : null,
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Stack(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (hasProfileCard)
+            Positioned.fill(
+              child: SvgPicture.asset(profileAsset, fit: BoxFit.cover),
+            ),
+          SafeArea(
+            bottom: false,
+            child: Stack(
           children: [
             Positioned(
               top: 4,
@@ -4443,7 +4502,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
             ),
           ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }

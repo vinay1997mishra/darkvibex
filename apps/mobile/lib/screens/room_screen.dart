@@ -190,7 +190,9 @@ class _RoomScreenState extends State<RoomScreen> {
     for (final member in arrivals) {
       final level = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
       final invisible = member['invisible_entry'] == true || member['invisible_entry']?.toString() == '1';
-      if (level < 4 || invisible) continue;
+      final entryId = member['active_entry_id']?.toString() ?? '';
+      final hasVipNameplate = entryId.startsWith('entrance-vip-');
+      if (invisible || (!hasVipNameplate && level < 4)) continue;
       _showArrivalEffect(member);
     }
   }
@@ -6285,6 +6287,9 @@ class _RoomScreenState extends State<RoomScreen> {
                       ) ??
                       0;
                   final activeFrame = member?['active_frame_id']?.toString();
+                  final activeEntry = mine
+                      ? widget.state.activeCosmetic('entry')
+                      : member?['active_entry_id']?.toString();
                   final frameTier = switch (activeFrame) {
                     'frame_royal' => 1,
                     'frame_king' => 18,
@@ -6441,22 +6446,36 @@ class _RoomScreenState extends State<RoomScreen> {
                             ],
                           ),
                           SizedBox(height: compactSeats ? 1 : 3),
-                          Text(
-                            mine
-                                ? (widget.state.vipAnonymousEverywhere
-                                    ? 'Anonymous'
-                                    : widget.state.displayName)
-                                : (member?['display_name']?.toString() ??
-                                    'No.${seat + 1}'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize:
-                                  compactSeats ? 8 : (diameter < 48 ? 9 : 11),
-                              color: TinniPalette.cream,
+                          if (activeEntry != null &&
+                              activeEntry.startsWith('entrance-vip-'))
+                            EntranceNameplatePreview(
+                              compact: true,
+                              styleId: activeEntry,
+                              displayName: mine
+                                  ? (widget.state.vipAnonymousEverywhere
+                                      ? 'Anonymous'
+                                      : widget.state.displayName)
+                                  : (member?['display_name']?.toString() ??
+                                      'No.${seat + 1}'),
+                              vipLevel: vipLevel.clamp(1, 18).toInt(),
+                            )
+                          else
+                            Text(
+                              mine
+                                  ? (widget.state.vipAnonymousEverywhere
+                                      ? 'Anonymous'
+                                      : widget.state.displayName)
+                                  : (member?['display_name']?.toString() ??
+                                      'No.${seat + 1}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize:
+                                    compactSeats ? 8 : (diameter < 48 ? 9 : 11),
+                                color: TinniPalette.cream,
+                              ),
                             ),
-                          ),
                           if (mine &&
                               widget.state.hasVipPrivilege('mic_chair'))
                             const Icon(
@@ -6799,33 +6818,49 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
               ),
             ),
-          if (arrivalEffectMember != null && effectsEnabled && carEffectsEnabled)
+          if (arrivalEffectMember != null && effectsEnabled &&
+              (carEffectsEnabled ||
+                  (arrivalEffectMember?['active_entry_id']?.toString() ?? '')
+                      .startsWith('entrance-vip-')))
             Positioned.fill(
-              child: VehicleEntryEffect(
-                displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
-                    ? arrivalEffectMember!['display_name'].toString()
-                    : 'VIP member',
-                level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
-                showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
-                    arrivalEffectMember?['active_vehicle_id'] != null ||
-                    arrivalEffectMember?['active_entry_id'] != null,
-                customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
-                    arrivalEffectMember?['active_entry_id'] != null ||
-                    (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
-                vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
-                    ? arrivalEffectMember!['active_entry_id']
-                        .toString()
-                        .replaceAll('entry-', '')
-                        .replaceAll('-', ' ')
-                        .toUpperCase()
-                    : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
-                        'vehicle_king' => 'KING OF VIP',
-                        'vehicle_phoenix' => 'PHOENIX GT',
-                        'vehicle_royal' => 'ROYAL CHARIOT',
-                        'vehicle_spark' => 'STARLIGHT COUPE',
-                        _ => null,
-                      },
-              ),
+              child: ((arrivalEffectMember?['active_entry_id']?.toString() ?? '')
+                      .startsWith('entrance-vip-'))
+                  ? IgnorePointer(
+                      child: Center(
+                        child: EntranceNameplatePreview(
+                          styleId: arrivalEffectMember!['active_entry_id'].toString(),
+                          displayName: arrivalEffectMember?['display_name']?.toString() ?? 'VIP member',
+                          vipLevel: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 1)
+                              .clamp(1, 18)
+                              .toInt(),
+                        ),
+                      ),
+                    )
+                  : VehicleEntryEffect(
+                      displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
+                          ? arrivalEffectMember!['display_name'].toString()
+                          : 'VIP member',
+                      level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
+                      showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
+                          arrivalEffectMember?['active_vehicle_id'] != null ||
+                          arrivalEffectMember?['active_entry_id'] != null,
+                      customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
+                          arrivalEffectMember?['active_entry_id'] != null ||
+                          (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
+                      vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
+                          ? arrivalEffectMember!['active_entry_id']
+                              .toString()
+                              .replaceAll('entry-', '')
+                              .replaceAll('-', ' ')
+                              .toUpperCase()
+                          : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
+                              'vehicle_king' => 'KING OF VIP',
+                              'vehicle_phoenix' => 'PHOENIX GT',
+                              'vehicle_royal' => 'ROYAL CHARIOT',
+                              'vehicle_spark' => 'STARLIGHT COUPE',
+                              _ => null,
+                            },
+                    ),
             ),
         ],
       ),
