@@ -1301,7 +1301,7 @@ async function cleanupStaleRoomMembers(db, ts = now()) {
   return cutoff;
 }
 
-// Public lists hide empty rooms, but owners must always be able to recover/open their permanent room.
+// Public lists hide empty rooms; once created, an owner's permanent room always remains recoverable in My room.
 async function listRooms(db, viewerUserId) {
   await ensureOwnerControlSchema(db);
   await ensureImageTables(db);
