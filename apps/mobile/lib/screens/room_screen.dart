@@ -20,6 +20,7 @@ import '../room/ktv_service.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
+import '../widgets/cosmetic_store_previews.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
@@ -6475,54 +6476,64 @@ class _RoomScreenState extends State<RoomScreen> {
                             : message['active_bubble_id']?.toString();
                         final hasBubble =
                             bubbleId != null && bubbleId.isNotEmpty;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 5),
-                          child: Container(
-                            padding: hasBubble
-                                ? const EdgeInsets.symmetric(
-                                    horizontal: 9,
-                                    vertical: 6,
-                                  )
-                                : EdgeInsets.zero,
-                            decoration: hasBubble
-                                ? BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: <Color>[
-                                        Color(0x992A1538),
-                                        Color(0x995A2D65),
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: const Color(0xAAEE91FF),
-                                    ),
-                                  )
-                                : null,
-                            child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (text.isNotEmpty)
-                                Text('${name == null || name.isEmpty ? 'User' : name}: $text'),
-                              if (imageKey != null && imageKey.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4, left: 8),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.network(
-                                      widget.state.backend.fileUrl(imageKey),
+                        final messageContent = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (text.isNotEmpty)
+                              Text(
+                                '${name == null || name.isEmpty ? 'User' : name}: $text',
+                                style: TextStyle(
+                                  color: hasBubble ? Colors.white : null,
+                                  fontWeight:
+                                      hasBubble ? FontWeight.w600 : null,
+                                ),
+                              ),
+                            if (imageKey != null && imageKey.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    widget.state.backend.fileUrl(imageKey),
+                                    width: 210,
+                                    height: 160,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        const SizedBox(
                                       width: 210,
-                                      height: 160,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const SizedBox(
-                                        width: 210,
-                                        height: 64,
-                                        child: Center(child: Text('Photo unavailable')),
+                                      height: 64,
+                                      child: Center(
+                                        child: Text('Photo unavailable'),
                                       ),
                                     ),
                                   ),
                                 ),
-                            ],
-                          ),
+                              ),
+                          ],
+                        );
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: hasBubble
+                                ? StretchableCosmeticBubble(
+                                    styleId: bubbleId!,
+                                    maxWidth: 300,
+                                    minWidth: 96,
+                                    minHeight: 58,
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 32,
+                                      vertical: 18,
+                                    ),
+                                    child: messageContent,
+                                  )
+                                : ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 300),
+                                    child: messageContent,
+                                  ),
                           ),
                         );
                       },
