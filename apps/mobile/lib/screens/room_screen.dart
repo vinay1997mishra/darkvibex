@@ -6484,9 +6484,11 @@ class _RoomScreenState extends State<RoomScreen> {
                               Text(
                                 '${name == null || name.isEmpty ? 'User' : name}: $text',
                                 style: TextStyle(
-                                  color: hasBubble ? Colors.white : null,
+                                  color: hasBubble
+                                      ? const Color(0xFF241626)
+                                      : null,
                                   fontWeight:
-                                      hasBubble ? FontWeight.w600 : null,
+                                      hasBubble ? FontWeight.w700 : null,
                                 ),
                               ),
                             if (imageKey != null && imageKey.isNotEmpty)
