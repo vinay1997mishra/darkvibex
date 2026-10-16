@@ -1241,7 +1241,338 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
   final ImageProvider<Object>? avatar;
 
   List<Color> get _colors {
-    final vipMatch = RegExp(r'^profile-vip-(\\d{2})$').firstMatch(styleId);
+    final vipMatch = RegExp(r'^profile-vip-(\d{2}).firstMatch(styleId);
+    if (vipMatch != null) {
+      const palettes = <List<Color>>[
+        <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
+        <Color>[Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21)],
+        <Color>[Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24)],
+        <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF220B3D)],
+        <Color>[Color(0xFFD8FF9C), Color(0xFF267C2E), Color(0xFF0A1716)],
+        <Color>[Color(0xFFFF8A38), Color(0xFF9B210D), Color(0xFF150808)],
+        <Color>[Color(0xFFDBF7FF), Color(0xFF2468D8), Color(0xFF07152E)],
+        <Color>[Color(0xFFFFB6D9), Color(0xFFC42D72), Color(0xFF210A18)],
+        <Color>[Color(0xFFD7BDFF), Color(0xFF6332C4), Color(0xFF160B2A)],
+        <Color>[Color(0xFFB7F4FF), Color(0xFF1677B8), Color(0xFF06182A)],
+        <Color>[Color(0xFFFFB0B0), Color(0xFF9F1637), Color(0xFF21070D)],
+        <Color>[Color(0xFFFFD17A), Color(0xFFB94A0C), Color(0xFF2A1000)],
+        <Color>[Color(0xFFE2B5FF), Color(0xFF7028C4), Color(0xFF1C0930)],
+        <Color>[Color(0xFFFFF0A3), Color(0xFFC17A05), Color(0xFF2B1900)],
+        <Color>[Color(0xFFFFA8FF), Color(0xFF7131C7), Color(0xFF1A0730)],
+        <Color>[Color(0xFFB4F8FF), Color(0xFF007DAA), Color(0xFF041E2E)],
+        <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
+        <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
+      ];
+      final level = (int.tryParse(vipMatch.group(1) ?? '') ?? 1).clamp(1, 18);
+      return palettes[level - 1];
+    }
+    return switch (styleId) {
+      'profile-card-pink-heart' => const <Color>[
+        Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21),
+      ],
+      'profile-card-crystal-star' => const <Color>[
+        Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24),
+      ],
+      'profile-card-vip-queen' => const <Color>[
+        Color(0xFFFFB11B), Color(0xFF9B2CFF), Color(0xFF150C22),
+      ],
+      'profile-card-family-leader' => const <Color>[
+        Color(0xFF67D66F), Color(0xFF1B6652), Color(0xFF0A1716),
+      ],
+      'profile-card-birthday' => const <Color>[
+        Color(0xFFFF7DB6), Color(0xFF6957FF), Color(0xFF160D24),
+      ],
+      'profile-card-winner' => const <Color>[
+        Color(0xFFFFD36A), Color(0xFFFF6A2C), Color(0xFF1D0C12),
+      ],
+      _ => const <Color>[
+        Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18),
+      ],
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _colors;
+    return Container(
+      margin: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+        border: Border.all(color: colors.first.withValues(alpha: .9)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: colors.first.withValues(alpha: .28),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white70, width: 2),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: colors.first.withValues(alpha: .6),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              backgroundColor: Colors.black45,
+              backgroundImage: avatar,
+              child: avatar == null
+                  ? const Icon(Icons.person_rounded, color: Colors.white70)
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            displayName.isEmpty ? 'DarkVibeX' : displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(7),
+                  color: colors.first.withValues(alpha: .20),
+                  border: Border.all(color: colors.first),
+                ),
+                child: Text(
+                  'VIP$vipLevel',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  'ID $publicId',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.workspace_premium_rounded,
+                  color: Color(0xFFFFD36A), size: 13),
+              SizedBox(width: 4),
+              Icon(Icons.favorite_rounded,
+                  color: Color(0xFFFF79B0), size: 12),
+              SizedBox(width: 4),
+              Icon(Icons.auto_awesome_rounded,
+                  color: Color(0xFF78C8FF), size: 12),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+).firstMatch(styleId);
+    if (vipMatch != null) {
+      const palettes = <List<Color>>[
+        <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
+        <Color>[Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21)],
+        <Color>[Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24)],
+        <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF220B3D)],
+        <Color>[Color(0xFFD8FF9C), Color(0xFF267C2E), Color(0xFF0A1716)],
+        <Color>[Color(0xFFFF8A38), Color(0xFF9B210D), Color(0xFF150808)],
+        <Color>[Color(0xFFDBF7FF), Color(0xFF2468D8), Color(0xFF07152E)],
+        <Color>[Color(0xFFFFB6D9), Color(0xFFC42D72), Color(0xFF210A18)],
+        <Color>[Color(0xFFD7BDFF), Color(0xFF6332C4), Color(0xFF160B2A)],
+        <Color>[Color(0xFFB7F4FF), Color(0xFF1677B8), Color(0xFF06182A)],
+        <Color>[Color(0xFFFFB0B0), Color(0xFF9F1637), Color(0xFF21070D)],
+        <Color>[Color(0xFFFFD17A), Color(0xFFB94A0C), Color(0xFF2A1000)],
+        <Color>[Color(0xFFE2B5FF), Color(0xFF7028C4), Color(0xFF1C0930)],
+        <Color>[Color(0xFFFFF0A3), Color(0xFFC17A05), Color(0xFF2B1900)],
+        <Color>[Color(0xFFFFA8FF), Color(0xFF7131C7), Color(0xFF1A0730)],
+        <Color>[Color(0xFFB4F8FF), Color(0xFF007DAA), Color(0xFF041E2E)],
+        <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
+        <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
+      ];
+      final level = (int.tryParse(vipMatch.group(1) ?? '') ?? 1).clamp(1, 18);
+      return palettes[level - 1];
+    }
+    return switch (styleId) {
+        'profile-card-pink-heart' => const <Color>[
+            Color(0xFFFF3D98),
+            Color(0xFF7B1B7C),
+            Color(0xFF140B21),
+          ],
+        'profile-card-crystal-star' => const <Color>[
+            Color(0xFF52C7FF),
+            Color(0xFF4B36C9),
+            Color(0xFF100D24),
+          ],
+        'profile-card-vip-queen' => const <Color>[
+            Color(0xFFFFB11B),
+            Color(0xFF9B2CFF),
+            Color(0xFF150C22),
+          ],
+        'profile-card-family-leader' => const <Color>[
+            Color(0xFF67D66F),
+            Color(0xFF1B6652),
+            Color(0xFF0A1716),
+          ],
+        'profile-card-birthday' => const <Color>[
+            Color(0xFFFF7DB6),
+            Color(0xFF6957FF),
+            Color(0xFF160D24),
+          ],
+        'profile-card-winner' => const <Color>[
+            Color(0xFFFFD36A),
+            Color(0xFFFF6A2C),
+            Color(0xFF1D0C12),
+          ],
+        _ => const <Color>[
+            Color(0xFFFFD36A),
+            Color(0xFF8B4D18),
+            Color(0xFF150D18),
+          ],
+    }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _colors;
+    return Container(
+      margin: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
+        border: Border.all(color: colors.first.withValues(alpha: .9)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: colors.first.withValues(alpha: .28),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white70, width: 2),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: colors.first.withValues(alpha: .6),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              backgroundColor: Colors.black45,
+              backgroundImage: avatar,
+              child: avatar == null
+                  ? const Icon(Icons.person_rounded, color: Colors.white70)
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            displayName.isEmpty ? 'DarkVibeX' : displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(7),
+                  color: colors.first.withValues(alpha: .20),
+                  border: Border.all(color: colors.first),
+                ),
+                child: Text(
+                  'VIP$vipLevel',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  'ID $publicId',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.workspace_premium_rounded,
+                  color: Color(0xFFFFD36A), size: 13),
+              SizedBox(width: 4),
+              Icon(Icons.favorite_rounded,
+                  color: Color(0xFFFF79B0), size: 12),
+              SizedBox(width: 4),
+              Icon(Icons.auto_awesome_rounded,
+                  color: Color(0xFF78C8FF), size: 12),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+).firstMatch(styleId);
     if (vipMatch != null) {
       const palettes = <List<Color>>[
         <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
