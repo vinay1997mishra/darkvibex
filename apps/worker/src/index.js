@@ -6951,7 +6951,7 @@ async function handleApi(request, env, url) {
       if(walletType==="coin_seller"){
         vipAward=await awardSellerVipExp(db,receiverId,amount,now());
       }
-      if(walletType==="coin_seller" || walletType==="merchant"){
+      if(walletType==="coin_seller"){
         try {
           inviteCommission=await recordCoinSellerInviteCommission(db,{
             inviteeUserId:receiverId,
