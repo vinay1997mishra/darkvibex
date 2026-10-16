@@ -4260,8 +4260,594 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
+  List<Color> _profileCardColors(String? styleId) {
+    final match = RegExp(r'^profile-vip-(\\d{2})
+    final avatarKey = value['avatar_key']?.toString() ?? '';
+    final cpRelation = cp;
+    final cpActive =
+        cpRelation != null && cpRelation['state']?.toString() == 'active';
+    final cpPartnerAvatar =
+        cpActive ? _partnerAvatar(cpRelation) : '';
+    final followers =
+        int.tryParse(socialStats['followers_count']?.toString() ?? '') ?? 0;
+    final level = int.tryParse(idLevel['level']?.toString() ?? '') ?? 0;
+    final gender = value['gender']?.toString().trim().toLowerCase() ?? '';
+    return Container(
+      height: 310,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: hasProfileCard
+              ? <Color>[profileColors[0], profileColors[1], profileColors[2]]
+              : const <Color>[
+                  Color(0xFF10101A),
+                  Color(0xFF37275C),
+                  Color(0xFF8B5D82),
+                ],
+        ),
+        border: hasProfileCard
+            ? Border.all(color: profileColors[0], width: 2)
+            : null,
+        boxShadow: hasProfileCard
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: profileColors[0].withValues(alpha: .36),
+                  blurRadius: 24,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 4,
+              left: 4,
+              child: IconButton(
+                onPressed: () => Navigator.maybePop(context),
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            if (!isSelf)
+              Positioned(
+                top: 0,
+                right: 4,
+                child: _profileMoreMenu(),
+              ),
+            if (currentRoom != null)
+              Positioned(
+                top: 52,
+                right: 12,
+                child: _roomOnlineChip(),
+              ),
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 25,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    width: cpActive ? 138 : 88,
+                    height: 94,
+                    child: Stack(
+                      alignment: Alignment.bottomLeft,
+                      children: [
+                        if (cpActive)
+                          Positioned(
+                            left: 51,
+                            bottom: 0,
+                            child: _avatarCircle(
+                              radius: 39,
+                              avatarKey: cpPartnerAvatar,
+                              onTap: () => _openPartner(cpRelation),
+                            ),
+                          ),
+                        Positioned(
+                          left: 0,
+                          bottom: 0,
+                          child: _avatarCircle(
+                            radius: 43,
+                            avatarKey: avatarKey,
+                            onTap: null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          value['display_name']?.toString() ?? 'User',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'ID ${_publicId(value)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '$followers Followers',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 5,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xAA16A36A),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                'Lv.$level',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            if (gender == 'male' || gender == 'female')
+                              Container(
+                                width: 23,
+                                height: 23,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: gender == 'male'
+                                      ? const Color(0xFF4789E7)
+                                      : const Color(0xFFE868A7),
+                                ),
+                                child: Text(
+                                  gender == 'male' ? '♂' : '♀',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ..._ownerTagWidgets(value),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _medalStrip(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _followLabel {
+    if (isMutual) return 'Mutual Friend';
+    if (isFollowing) return 'Followed';
+    return 'Follow';
+  }
+
+  Widget _bottomActions() {
+    if (isSelf) return const SizedBox.shrink();
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 9, 18, 10),
+        color: Colors.white,
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: followBusy ? null : _toggleFollow,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF22BED8),
+                  side: const BorderSide(color: Color(0xFF22BED8)),
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+                child: followBusy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        _followLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _openChat,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF22BED8),
+                  side: const BorderSide(color: Color(0xFF22BED8)),
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+                child: const Text(
+                  'Chat',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xCCF4E8FE),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xCCF4E8FE),
+        appBar: AppBar(backgroundColor: const Color(0xCCF4E8FE)),
+        body: const Center(child: Text('Profile not found')),
+      );
+    }
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xCCF4E8FE),
+        body: Column(
+          children: [
+            _hero(),
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xE6F4E8FE),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const TabBar(
+                      labelColor: Colors.black87,
+                      unselectedLabelColor: Colors.black45,
+                      indicatorColor: Colors.transparent,
+                      labelStyle: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      unselectedLabelStyle: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      tabs: [
+                        Tab(text: 'Profile'),
+                        Tab(text: 'Intimacy'),
+                      ],
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _profileTab(),
+                          _intimacyTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: _bottomActions(),
+      ),
+    );
+  }
+}
+
+
+class _CpRuleScreen extends StatelessWidget {
+  const _CpRuleScreen();
+
+  static const List<List<String>> _levels = [
+    ['LV1 → LV2', '150M', '150M'],
+    ['LV2 → LV3', '250M', '250M'],
+    ['LV3 → LV4', '350M', '350M'],
+    ['LV4 → LV5', '450M', '450M'],
+    ['LV5 → LV6', '550M', '550M'],
+    ['LV6 → LV7', '650M', '650M'],
+    ['LV7 → LV8', '750M', '750M'],
+    ['LV8 → LV9', '850M', '850M'],
+    ['LV9 → LV10', '950M', '950M'],
+    ['LV10 → LV11', '1.05B', '1.05B'],
+    ['LV11 → LV12', '1.15B', '1.15B'],
+    ['LV12 → LV13', '1.25B', '1.25B'],
+  ];
+
+  static const List<List<String>> _privileges = [
+    ['LV1', 'Lv1 star cover background', 'Online remind'],
+    ['LV2', 'Lv2 star cover background', 'On Mic moving effect'],
+    ['LV3', 'Lv3 star cover background', 'On Mic moving effect'],
+    ['LV4', 'Lv4 star cover background', 'On Mic moving effect'],
+    ['LV5', 'Lv5 star cover background', 'On Mic moving effect'],
+    ['LV6', 'Lv6 star cover background', 'On Mic moving effect'],
+    ['LV7', 'Lv7 star cover background', 'On Mic moving effect'],
+    ['LV8', 'Lv8 star cover background', 'On Mic moving effect'],
+    ['LV9', 'Lv9 star cover background', 'On Mic moving effect'],
+    ['LV10', 'Lv10 star cover background', 'On Mic moving effect'],
+    ['LV11', 'Lv11 star cover background', 'On Mic moving effect'],
+    ['LV12', 'Lv12 star cover background', 'On Mic moving effect'],
+    ['Marry', 'Marry Cover background', 'Online remind & On mic effect'],
+  ];
+
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 4,
+              height: 23,
+              margin: const EdgeInsets.only(top: 2, right: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6536),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _ruleBox(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9F3FD),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: child,
+      );
+
+  Widget _table(List<List<String>> rows, List<String> headers) {
+    return Table(
+      border: TableBorder.all(color: const Color(0xFFEDE7F2), width: .8),
+      columnWidths: const {
+        0: FlexColumnWidth(.75),
+        1: FlexColumnWidth(1.55),
+        2: FlexColumnWidth(2.45),
+      },
+      children: [
+        TableRow(
+          decoration: const BoxDecoration(color: Color(0xFFF2E2FF)),
+          children: [
+            for (final header in headers)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                child: Text(
+                  header,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        for (final row in rows)
+          TableRow(
+            children: [
+              for (final cell in row)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                  child: Text(
+                    cell,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const paragraph = TextStyle(
+      color: Colors.black54,
+      fontSize: 15,
+      height: 1.5,
+    );
+    return Scaffold(
+      backgroundColor: const Color(0xCCF4E8FE),
+      appBar: AppBar(
+        backgroundColor: const Color(0xCCF4E8FE),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'CP Rule',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 30),
+        children: [
+          _sectionTitle('What is CP?'),
+          _ruleBox(
+            const Text(
+              '1. CP can be formed with an eligible mutual friend through the CP invitation flow. The CP invitation costs 2,222,222 coins.\n\n'
+              '2. My Heart is available as a 44,444-coin CP gift.\n\n'
+              '3. CP level progress only comes from gifts exchanged directly between the two active CP partners. Gifts from any third user add 0 CP level progress.',
+              style: paragraph,
+            ),
+          ),
+          _sectionTitle('What is marriage?'),
+          _ruleBox(
+            const Text(
+              '1. After becoming CP LV 1, you can purchase a ring to initiate a marriage proposal;\n\n'
+              '2. After a successful proposal, friends can be invited to participate, and the wedding room mode can be enabled in the room of the proposing party or on the wedding day. Gifts received in the wedding room on the day have a 1.1 time bonus to blessing value and intimacy value;\n\n'
+              '3. Love House: after getting married, you can upload themes in Love House, send and collect wedding rings to each other.\n\n'
+              '4. Divorce: after divorce, the CP relationship will also be terminated and the CP and marriage procedures need to be completed again. After restoring CP and getting married, intimacy value and blessing value can be restored.',
+              style: paragraph,
+            ),
+          ),
+          _sectionTitle(
+            'What is intimacy level and how to maintain and improve intimacy level?',
+          ),
+          _ruleBox(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Every CP level has two separate counters: Sending and Receiving. Both counters must reach the current target before the CP level increases. Lv.1→2 requires 150M sent and 150M received; Lv.2→3 requires 250M each; every next level increases the target by 100M. After level-up, both counters start again from 0 and extra progress is not carried forward. Total intimacy remains available for relationship history and ranking.',
+                  style: paragraph,
+                ),
+                const SizedBox(height: 14),
+                _table(
+                  _levels,
+                  const ['level', 'Sending target', 'Receiving target'],
+                ),
+              ],
+            ),
+          ),
+          _sectionTitle('Relationship tools'),
+          _ruleBox(
+            const Text(
+              'Active CP includes Love Days, Ring Cabinet, Memories, CP Ranking, Heartbeat matching, and partner-confirmed disconnect. Disconnect requests time out after 24 hours if the partner does not respond.',
+              style: paragraph,
+            ),
+          ),
+          _sectionTitle('What are the privileges of intimate relationships?'),
+          _ruleBox(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Close friends with different levels of intimacy have different privileges, as follows:',
+                  style: paragraph,
+                ),
+                const SizedBox(height: 14),
+                _table(
+                  _privileges,
+                  const ['level', 'Background', 'Effects'],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+).firstMatch(styleId ?? '');
+    const palettes = <List<Color>>[
+      <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
+      <Color>[Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21)],
+      <Color>[Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24)],
+      <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF220B3D)],
+      <Color>[Color(0xFFD8FF9C), Color(0xFF267C2E), Color(0xFF0A1716)],
+      <Color>[Color(0xFFFF8A38), Color(0xFF9B210D), Color(0xFF150808)],
+      <Color>[Color(0xFFDBF7FF), Color(0xFF2468D8), Color(0xFF07152E)],
+      <Color>[Color(0xFFFFB6D9), Color(0xFFC42D72), Color(0xFF210A18)],
+      <Color>[Color(0xFFD7BDFF), Color(0xFF6332C4), Color(0xFF160B2A)],
+      <Color>[Color(0xFFB7F4FF), Color(0xFF1677B8), Color(0xFF06182A)],
+      <Color>[Color(0xFFFFB0B0), Color(0xFF9F1637), Color(0xFF21070D)],
+      <Color>[Color(0xFFFFD17A), Color(0xFFB94A0C), Color(0xFF2A1000)],
+      <Color>[Color(0xFFE2B5FF), Color(0xFF7028C4), Color(0xFF1C0930)],
+      <Color>[Color(0xFFFFF0A3), Color(0xFFC17A05), Color(0xFF2B1900)],
+      <Color>[Color(0xFFFFA8FF), Color(0xFF7131C7), Color(0xFF1A0730)],
+      <Color>[Color(0xFFB4F8FF), Color(0xFF007DAA), Color(0xFF041E2E)],
+      <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
+      <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
+    ];
+    if (match != null) {
+      final level = (int.tryParse(match.group(1) ?? '') ?? 1).clamp(1, 18);
+      return palettes[level - 1];
+    }
+    return switch (styleId) {
+      'profile-card-pink-heart' => palettes[1],
+      'profile-card-crystal-star' => palettes[2],
+      'profile-card-vip-queen' => palettes[13],
+      'profile-card-family-leader' => palettes[4],
+      'profile-card-birthday' => palettes[7],
+      'profile-card-winner' => palettes[11],
+      _ => palettes[0],
+    };
+  }
+
   Widget _hero() {
     final value = user!;
+    final profileCardId = value['active_profile_card_id']?.toString();
+    final profileColors = _profileCardColors(profileCardId);
+    final hasProfileCard = profileCardId != null && profileCardId.isNotEmpty;
     final avatarKey = value['avatar_key']?.toString() ?? '';
     final cpRelation = cp;
     final cpActive =
