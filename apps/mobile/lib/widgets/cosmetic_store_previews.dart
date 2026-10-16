@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+
+import 'bubble_artwork_data.dart';
 
 class JewelryRingPreview extends StatelessWidget {
   const JewelryRingPreview({
@@ -304,6 +307,30 @@ class _JewelryRingPainter extends CustomPainter {
       oldDelegate.styleId != styleId;
 }
 
+final Map<String, MemoryImage> _bubbleArtworkCache =
+    <String, MemoryImage>{};
+
+MemoryImage? _bubbleArtwork(String styleId) {
+  final encoded = kBubbleArtworkBase64[styleId];
+  if (encoded == null || encoded.isEmpty) return null;
+  return _bubbleArtworkCache.putIfAbsent(
+    styleId,
+    () => MemoryImage(base64Decode(encoded)),
+  );
+}
+
+Rect _bubbleCenterSlice(String styleId) => switch (styleId) {
+      'bubble-gold' => const Rect.fromLTWH(108, 46, 139, 53),
+      'bubble-heart' => const Rect.fromLTWH(104, 46, 142, 53),
+      'bubble-king' => const Rect.fromLTWH(108, 48, 139, 54),
+      'bubble-dream' => const Rect.fromLTWH(104, 48, 142, 54),
+      'bubble-nature' => const Rect.fromLTWH(108, 44, 139, 52),
+      'bubble-dragon' => const Rect.fromLTWH(104, 44, 142, 52),
+      'bubble-ice' => const Rect.fromLTWH(108, 40, 139, 48),
+      'bubble-sakura' => const Rect.fromLTWH(104, 40, 142, 48),
+      _ => const Rect.fromLTWH(104, 44, 142, 52),
+    };
+
 class BubbleCosmeticPreview extends StatelessWidget {
   const BubbleCosmeticPreview({
     super.key,
@@ -316,7 +343,21 @@ class BubbleCosmeticPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Store preview intentionally contains no placeholder message text.
+    // Use the screenshot-matched artwork in Store. No fixed placeholder text
+    // is baked into the widget; real chat text is rendered separately.
+    final artwork = _bubbleArtwork(styleId);
+    if (artwork != null) {
+      return SizedBox(
+        height: height,
+        child: Image(
+          image: artwork,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+        ),
+      );
+    }
+
     final theme = _bubbleTheme(styleId);
     return SizedBox(
       height: height,
@@ -327,18 +368,19 @@ class BubbleCosmeticPreview extends StatelessWidget {
   }
 }
 
-// Message bubbles expand with content while keeping the cosmetic frame renderer shared with Store previews. // Dynamic size is shared by room and direct chat.
+// Room and direct-message bubbles share the same screenshot-matched artwork.
+// centerSlice keeps the decorative edges readable while the message area grows.
 class StretchableCosmeticBubble extends StatelessWidget {
   const StretchableCosmeticBubble({
     super.key,
     required this.styleId,
     required this.child,
-    this.maxWidth = 300,
-    this.minWidth = 86,
-    this.minHeight = 58,
+    this.maxWidth = 320,
+    this.minWidth = 168,
+    this.minHeight = 70,
     this.contentPadding = const EdgeInsets.symmetric(
-      horizontal: 30,
-      vertical: 18,
+      horizontal: 38,
+      vertical: 20,
     ),
   });
 
@@ -351,6 +393,30 @@ class StretchableCosmeticBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final artwork = _bubbleArtwork(styleId);
+    if (artwork != null) {
+      return ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: minWidth,
+          maxWidth: maxWidth,
+          minHeight: minHeight,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: artwork,
+              fit: BoxFit.fill,
+              centerSlice: _bubbleCenterSlice(styleId),
+            ),
+          ),
+          child: Padding(
+            padding: contentPadding,
+            child: child,
+          ),
+        ),
+      );
+    }
+
     final theme = _bubbleTheme(styleId);
     return ConstrainedBox(
       constraints: BoxConstraints(
