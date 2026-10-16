@@ -635,10 +635,12 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(
         remoteRooms
-            .where(
-              (row) =>
-                  (int.tryParse(row['online']?.toString() ?? '') ?? 0) > 0,
-            )
+            .where((row) {
+              final online =
+                  int.tryParse(row['online']?.toString() ?? '') ?? 0;
+              final ownerId = row['owner_user_id']?.toString() ?? '';
+              return online > 0 || ownerId == userId;
+            })
             .map((row) => RoomSummary(
                   id: row['id']?.toString() ?? '',
                   displayId: row['display_id']?.toString(),
@@ -666,10 +668,12 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(
         remoteRooms
-            .where(
-              (row) =>
-                  (int.tryParse(row['online']?.toString() ?? '') ?? 0) > 0,
-            )
+            .where((row) {
+              final online =
+                  int.tryParse(row['online']?.toString() ?? '') ?? 0;
+              final ownerId = row['owner_user_id']?.toString() ?? '';
+              return online > 0 || ownerId == userId;
+            })
             .map((row) => RoomSummary(
                   id: row['id']?.toString() ?? '',
                   displayId: row['display_id']?.toString(),
@@ -1240,16 +1244,21 @@ class AppState extends ChangeNotifier {
       throw StateError(message);
     }
 
+    final resolvedName = result?['name']?.toString().trim();
+    final resolvedSeatCount =
+        int.tryParse(result?['seat_count']?.toString() ?? '');
+    final resolvedOnline =
+        int.tryParse(result?['online']?.toString() ?? '');
     final room = RoomSummary(
       id: roomId,
       displayId: result?['display_id']?.toString() ?? publicId,
-      name: cleanName,
+      name: resolvedName?.isNotEmpty == true ? resolvedName! : cleanName,
       ownerName: displayName,
       ownerUserId: userId,
-      online: 1,
-      seatCount: allowedSeats,
-      partyMode: partyMode,
-      roomMode: roomMode,
+      online: resolvedOnline ?? (result?['existing'] == true ? 0 : 1),
+      seatCount: resolvedSeatCount ?? allowedSeats,
+      partyMode: result?['party_mode']?.toString() ?? partyMode,
+      roomMode: result?['room_mode']?.toString() ?? roomMode,
     );
     rooms.insert(0, room);
     notifyListeners();
