@@ -194,11 +194,28 @@ class _UniqueIdStoreScreenState extends State<UniqueIdStoreScreen> {
                                         color: TinniPalette.muted,
                                       ),
                                     )
-                                  : FilledButton(
-                                      onPressed: buying
-                                          ? null
-                                          : () => buy(item),
-                                      child: const Text('Buy'),
+                                  : SizedBox(
+                                      width: 88,
+                                      height: 38,
+                                      child: FilledButton(
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                          ),
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                        onPressed: buying
+                                            ? null
+                                            : () => buy(item),
+                                        child: const FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            'Buy',
+                                            maxLines: 1,
+                                            softWrap: false,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                             ),
                           ),
