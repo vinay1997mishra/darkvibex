@@ -744,7 +744,7 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
-  Future<bool> sendRoomMessage({
+  Future<Map<String, dynamic>?> sendRoomMessageResult({
     required String roomId,
     required String userId,
     String text = '',
@@ -758,8 +758,25 @@ class BackendApi {
         'text': text,
         if (imageKey != null) 'image_key': imageKey,
       },
+      returnErrorBody: true,
     );
-    return value?['ok'] == true;
+    if (value?['ok'] != true) return null;
+    return Map<String, dynamic>.from(value!);
+  }
+
+  Future<bool> sendRoomMessage({
+    required String roomId,
+    required String userId,
+    String text = '',
+    String? imageKey,
+  }) async {
+    final value = await sendRoomMessageResult(
+      roomId: roomId,
+      userId: userId,
+      text: text,
+      imageKey: imageKey,
+    );
+    return value != null;
   }
 
   Future<List<Map<String, dynamic>>> rechargeProviders() async {
