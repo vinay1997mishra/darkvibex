@@ -1129,6 +1129,101 @@ class _BubblePainter extends CustomPainter {
       oldDelegate.theme.colors != theme.colors;
 }
 
+class EntranceNameplatePreview extends StatelessWidget {
+  const EntranceNameplatePreview({
+    super.key,
+    required this.styleId,
+    required this.displayName,
+    required this.vipLevel,
+  });
+
+  final String styleId;
+  final String displayName;
+  final int vipLevel;
+
+  static const List<List<Color>> _palettes = <List<Color>>[
+    <Color>[Color(0xFFFFE08A), Color(0xFFFF8A00), Color(0xFF4D1600)],
+    <Color>[Color(0xFFFFB6E8), Color(0xFFFF3D98), Color(0xFF4D0734)],
+    <Color>[Color(0xFFBDEBFF), Color(0xFF3988FF), Color(0xFF091D59)],
+    <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF28094D)],
+    <Color>[Color(0xFFD8FF9C), Color(0xFF62D52B), Color(0xFF123B12)],
+    <Color>[Color(0xFFFFC078), Color(0xFFFF3A16), Color(0xFF4A0900)],
+    <Color>[Color(0xFFDBF7FF), Color(0xFF63CFFF), Color(0xFF062B68)],
+    <Color>[Color(0xFFFFC1E5), Color(0xFFFF5DAB), Color(0xFF5C123B)],
+    <Color>[Color(0xFFD7BDFF), Color(0xFF8B4DFF), Color(0xFF24105D)],
+    <Color>[Color(0xFFB7F4FF), Color(0xFF2A9DFF), Color(0xFF052A55)],
+    <Color>[Color(0xFFFFB0B0), Color(0xFFE51B43), Color(0xFF310713)],
+    <Color>[Color(0xFFFFD17A), Color(0xFFFF6A00), Color(0xFF4A1000)],
+    <Color>[Color(0xFFE2B5FF), Color(0xFFB05CFF), Color(0xFF301050)],
+    <Color>[Color(0xFFFFF0A3), Color(0xFFFFB51B), Color(0xFF4B2600)],
+    <Color>[Color(0xFFFFA8FF), Color(0xFF7A36FF), Color(0xFF1C073D)],
+    <Color>[Color(0xFFB4F8FF), Color(0xFF00A9E8), Color(0xFF04263D)],
+    <Color>[Color(0xFFFFB17D), Color(0xFFFF3B1D), Color(0xFF470800)],
+    <Color>[Color(0xFFFFE7A8), Color(0xFFFFC42E), Color(0xFF391A00)],
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = int.tryParse(styleId.split('-').last) ?? vipLevel;
+    final palette = _palettes[(parsed - 1).clamp(0, 17)];
+    return Center(
+      child: Container(
+        height: 74,
+        margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(38),
+          gradient: LinearGradient(colors: palette),
+          border: Border.all(color: palette.first, width: 1.7),
+          boxShadow: <BoxShadow>[
+            BoxShadow(color: palette[1].withValues(alpha: .55), blurRadius: 14),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: palette.first, width: 2),
+                color: palette.last,
+              ),
+              child: const Icon(Icons.person_rounded, color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                displayName.isEmpty ? 'YourName' : displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  shadows: <Shadow>[Shadow(color: Colors.black, blurRadius: 5)],
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+              decoration: BoxDecoration(
+                color: palette.last.withValues(alpha: .9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: palette.first),
+              ),
+              child: Text(
+                'VIP$parsed',
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ProfileCardCosmeticPreview extends StatelessWidget {
   const ProfileCardCosmeticPreview({
     super.key,
@@ -1145,7 +1240,33 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
   final int vipLevel;
   final ImageProvider<Object>? avatar;
 
-  List<Color> get _colors => switch (styleId) {
+  List<Color> get _colors {
+    final vipMatch = RegExp(r'^profile-vip-(\\d{2})$').firstMatch(styleId);
+    if (vipMatch != null) {
+      const palettes = <List<Color>>[
+        <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
+        <Color>[Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21)],
+        <Color>[Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24)],
+        <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF220B3D)],
+        <Color>[Color(0xFFD8FF9C), Color(0xFF267C2E), Color(0xFF0A1716)],
+        <Color>[Color(0xFFFF8A38), Color(0xFF9B210D), Color(0xFF150808)],
+        <Color>[Color(0xFFDBF7FF), Color(0xFF2468D8), Color(0xFF07152E)],
+        <Color>[Color(0xFFFFB6D9), Color(0xFFC42D72), Color(0xFF210A18)],
+        <Color>[Color(0xFFD7BDFF), Color(0xFF6332C4), Color(0xFF160B2A)],
+        <Color>[Color(0xFFB7F4FF), Color(0xFF1677B8), Color(0xFF06182A)],
+        <Color>[Color(0xFFFFB0B0), Color(0xFF9F1637), Color(0xFF21070D)],
+        <Color>[Color(0xFFFFD17A), Color(0xFFB94A0C), Color(0xFF2A1000)],
+        <Color>[Color(0xFFE2B5FF), Color(0xFF7028C4), Color(0xFF1C0930)],
+        <Color>[Color(0xFFFFF0A3), Color(0xFFC17A05), Color(0xFF2B1900)],
+        <Color>[Color(0xFFFFA8FF), Color(0xFF7131C7), Color(0xFF1A0730)],
+        <Color>[Color(0xFFB4F8FF), Color(0xFF007DAA), Color(0xFF041E2E)],
+        <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
+        <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
+      ];
+      final level = (int.tryParse(vipMatch.group(1) ?? '') ?? 1).clamp(1, 18);
+      return palettes[level - 1];
+    }
+    return switch (styleId) {
         'profile-card-pink-heart' => const <Color>[
             Color(0xFFFF3D98),
             Color(0xFF7B1B7C),
@@ -1181,7 +1302,7 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
             Color(0xFF8B4D18),
             Color(0xFF150D18),
           ],
-      };
+    }
 
   @override
   Widget build(BuildContext context) {
