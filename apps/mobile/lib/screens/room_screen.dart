@@ -201,7 +201,7 @@ class _RoomScreenState extends State<RoomScreen> {
     arrivalEffectTimer?.cancel();
     if (!mounted) return;
     setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
-    arrivalEffectTimer = Timer(const Duration(milliseconds: 5000), () {
+    arrivalEffectTimer = Timer(const Duration(milliseconds: 2000), () {
       if (mounted) setState(() => arrivalEffectMember = null);
     });
   }

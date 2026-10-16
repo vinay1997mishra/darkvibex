@@ -2,8 +2,9 @@ const COINS_PER_USD = 6_000_000;
 const SUCCESSFUL_INVITE_REWARD_COINS = 300_000;
 
 // Every newly successful invite gives the inviter a fixed one-time coin reward.
-// Ongoing commission is separate and only counts eligible Coin Seller/Merchant
-// transfers into the invited user's normal wallet. No vehicle/cosmetic prize.
+// Ongoing commission is separate and only counts coins credited through
+// Coin Seller transfers into the invited user's normal wallet. Merchant transfers,
+// gifts, game winnings, and other coin sources are excluded. No vehicle/cosmetic prize.
 
 // Direct-invite reward levels copied from the visible levels in the reference
 // flow. The last visible level is 5%; higher levels can be added without
@@ -303,9 +304,15 @@ export async function recordCoinSellerInviteCommission(db, {
   await ensureInviteRewardSchema(db);
   const amount = Number(sourceCoins);
   const walletType = String(sourceWalletType ?? "").trim();
-  if (!inviteeUserId || !sourceTransferId ||
-      !["coin_seller", "merchant"].includes(walletType) ||
-      !Number.isSafeInteger(amount) || amount <= 0) {
+  if (!inviteeUserId || !sourceTransferId) {
+    throw new Error("invalid_invite_commission_source");
+  }
+  // Commission volume is strictly Coin Seller received coins. Merchant
+  // transfers and other wallet sources must not earn invite commission.
+  if (walletType !== "coin_seller") {
+    return { applied: false, reason: "ineligible_source" };
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new Error("invalid_invite_commission_source");
   }
 
