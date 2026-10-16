@@ -6515,25 +6515,28 @@ class _RoomScreenState extends State<RoomScreen> {
                           ],
                         );
                         return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          key: Key('room-chat-message-$index'),
+                          // Keep every room message visually separate and
+                          // reserve the floating Rocket/Game lane on the right.
+                          padding: const EdgeInsets.fromLTRB(0, 7, 76, 7),
                           child: Align(
                             alignment: Alignment.centerLeft,
                             child: hasBubble
                                 ? StretchableCosmeticBubble(
                                     styleId: bubbleId,
-                                    maxWidth: 300,
-                                    minWidth: 168,
-                                    minHeight: 70,
+                                    maxWidth: 280,
+                                    minWidth: 112,
+                                    minHeight: 44,
                                     contentPadding:
                                         const EdgeInsets.symmetric(
-                                      horizontal: 38,
-                                      vertical: 20,
+                                      horizontal: 34,
+                                      vertical: 8,
                                     ),
                                     child: messageContent,
                                   )
                                 : ConstrainedBox(
                                     constraints:
-                                        const BoxConstraints(maxWidth: 300),
+                                        const BoxConstraints(maxWidth: 280),
                                     child: messageContent,
                                   ),
                           ),
