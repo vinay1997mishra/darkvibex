@@ -23,3 +23,32 @@ jobs:
           grep -q 'applicationId = "com.darkvibex.app"' apps/mobile/android/app/build.gradle.kts
           grep -q 'namespace = "com.darkvibex.app"' apps/mobile/android/app/build.gradle.kts
           grep -q 'android:label="DarkVibeX"' apps/mobile/android/app/src/main/AndroidManifest.xml
+
+      - name: Install Worker dependencies
+        working-directory: apps/worker
+        run: npm install
+
+      - name: Worker syntax and policy checks
+        working-directory: apps/worker
+        run: npm run check
+
+      - name: Worker regression tests
+        working-directory: apps/worker
+        run: npm test
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve Flutter dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      - name: Flutter static analysis
+        working-directory: apps/mobile
+        run: flutter analyze --no-pub
+
+      - name: Flutter regression tests
+        working-directory: apps/mobile
+        run: flutter test --no-pub
