@@ -327,6 +327,7 @@ class BubbleCosmeticPreview extends StatelessWidget {
   }
 }
 
+// Message bubbles expand with content while keeping the cosmetic frame renderer shared with Store previews.
 class StretchableCosmeticBubble extends StatelessWidget {
   const StretchableCosmeticBubble({
     super.key,
