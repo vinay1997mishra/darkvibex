@@ -16,3 +16,5 @@ test("accepted frames expose per-element animation metadata", () => {
   assert.ok(cosmeticsSource.includes('animation_type: "petal_sparkle"'));
   assert.ok(cosmeticsSource.includes("animation_ms: 2000"));
 });
+
+// Deploy gate: frame animation metadata is live with the mobile motif renderer.
