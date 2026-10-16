@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
 import 'vip_screen.dart';
@@ -4303,6 +4304,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final profileCardId = value['active_profile_card_id']?.toString();
     final profileColors = _profileCardColors(profileCardId);
     final hasProfileCard = profileCardId != null && profileCardId.isNotEmpty;
+    final profileLevel = profileCardId != null && profileCardId.startsWith('profile-vip-')
+        ? (int.tryParse(profileCardId.substring('profile-vip-'.length)) ?? 1).clamp(1, 18)
+        : 1;
+    final profileAsset = 'assets/vip18/profile_vip_${profileLevel.toString().padLeft(2, "0")}.svg';
     final avatarKey = value['avatar_key']?.toString() ?? '';
     final cpRelation = cp;
     final cpActive =
@@ -4332,9 +4337,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ? <BoxShadow>[BoxShadow(color: profileColors[0].withValues(alpha: .36), blurRadius: 24, spreadRadius: 1)]
             : null,
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Stack(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (hasProfileCard)
+            Positioned.fill(
+              child: SvgPicture.asset(profileAsset, fit: BoxFit.cover),
+            ),
+          SafeArea(
+            bottom: false,
+            child: Stack(
           children: [
             Positioned(
               top: 4,
@@ -4490,7 +4502,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
             ),
           ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
