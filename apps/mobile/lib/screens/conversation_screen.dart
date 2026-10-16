@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
+import '../widgets/cosmetic_store_previews.dart';
 import 'direct_call_screen.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -426,77 +427,84 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               bubbleId != null && bubbleId.isNotEmpty;
                           final hasVipBubble =
                               mine && widget.state.hasVipPrivilege('chat_bubble');
-                          return Align(
-                            alignment:
-                                mine ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              constraints: const BoxConstraints(maxWidth: 300),
-                              decoration: BoxDecoration(
-                                gradient: hasStoreBubble
-                                    ? const LinearGradient(
-                                        colors: <Color>[
-                                          Color(0xCC2A1538),
-                                          Color(0xCC5A2D65),
-                                          Color(0xCC251431),
-                                        ],
-                                      )
-                                    : null,
-                                color: hasStoreBubble
-                                    ? null
-                                    : mine
+                          final messageContent = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (item['image_key']?.toString().isNotEmpty == true)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.network(
+                                    widget.state.backend.fileUrl(item['image_key'].toString()),
+                                    headers: widget.state.sessionToken == null
+                                        ? const <String, String>{}
+                                        : <String, String>{'Authorization': 'Bearer ${widget.state.sessionToken}'},
+                                    width: 220,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const SizedBox(
+                                      width: 220,
+                                      height: 120,
+                                      child: Center(child: Icon(Icons.broken_image_outlined)),
+                                    ),
+                                  ),
+                                ),
+                              if (item['text']?.toString().isNotEmpty == true)
+                                Text(
+                                  item['text'].toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                            ],
+                          );
+                          final messageBubble = hasStoreBubble
+                              ? StretchableCosmeticBubble(
+                                  styleId: bubbleId!,
+                                  maxWidth: 300,
+                                  minWidth: 92,
+                                  minHeight: 58,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 32,
+                                    vertical: 18,
+                                  ),
+                                  child: messageContent,
+                                )
+                              : Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  constraints: const BoxConstraints(maxWidth: 300),
+                                  decoration: BoxDecoration(
+                                    color: mine
                                         ? (hasVipBubble
                                             ? const Color(0x664B3511)
                                             : const Color(0x33FFD36A))
                                         : Colors.white10,
-                                borderRadius: BorderRadius.circular(16),
-                                border: hasStoreBubble || hasVipBubble
-                                    ? Border.all(
-                                        color: hasStoreBubble
-                                            ? const Color(0xFFEE91FF)
-                                            : const Color(0xAAFFD36A),
-                                      )
-                                    : null,
-                                boxShadow: hasStoreBubble || hasVipBubble
-                                    ? <BoxShadow>[
-                                        BoxShadow(
-                                          color: hasStoreBubble
-                                              ? const Color(0x558D4BFF)
-                                              : const Color(0x33FFD36A),
-                                          blurRadius: 10,
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (item['image_key']?.toString().isNotEmpty == true)
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Image.network(
-                                        widget.state.backend.fileUrl(item['image_key'].toString()),
-                                        headers: widget.state.sessionToken == null
-                                            ? const <String, String>{}
-                                            : <String, String>{'Authorization': 'Bearer ${widget.state.sessionToken}'},
-                                        width: 220,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const SizedBox(
-                                          width: 220,
-                                          height: 120,
-                                          child: Center(child: Icon(Icons.broken_image_outlined)),
-                                        ),
-                                      ),
-                                    ),
-                                  if (item['text']?.toString().isNotEmpty == true)
-                                    Text(item['text'].toString()),
-                                ],
-                              ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: hasVipBubble
+                                        ? Border.all(
+                                            color: const Color(0xAAFFD36A),
+                                          )
+                                        : null,
+                                    boxShadow: hasVipBubble
+                                        ? const <BoxShadow>[
+                                            BoxShadow(
+                                              color: Color(0x33FFD36A),
+                                              blurRadius: 10,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: messageContent,
+                                );
+                          return Align(
+                            alignment:
+                                mine ? Alignment.centerRight : Alignment.centerLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: messageBubble,
                             ),
                           );
                         },
