@@ -1,6 +1,6 @@
 const readyDatabases = new WeakSet();
 
-// Bubble catalog and Store action layout are kept in parity with the mobile Store UI.
+// Bubble and final frame artwork catalogs stay in parity with the mobile Store UI.
 export const COSMETIC_CATALOG = [
   { id: "frame_royal", kind: "frame", name: "Royal Ember", price_coins: 0, min_vip_level: 1, duration_days: 30, tier: 1 },
   { id: "frame_sapphire", kind: "frame", name: "Sapphire Crown", price_coins: 0, min_vip_level: 4, duration_days: 30, tier: 4 },
