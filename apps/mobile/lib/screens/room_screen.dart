@@ -6455,7 +6455,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                       : widget.state.displayName)
                                   : (member?['display_name']?.toString() ??
                                       'No.${seat + 1}'),
-                              vipLevel: vipLevel.clamp(1, 18),
+                              vipLevel: vipLevel.clamp(1, 18).toInt(),
                             )
                           else
                             Text(
