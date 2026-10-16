@@ -6889,12 +6889,10 @@ class _RoomScreenState extends State<RoomScreen> {
                     onPressed: value.text.trim().isEmpty || roomMessageSending
                         ? null
                         : _sendInlineMessage,
-                    icon: TinniGlowIcon(
+                    icon: const TinniGlowIcon(
                       icon: Icons.send_rounded,
                       size: 20,
                       boxSize: 36,
-                      active: value.text.trim().isNotEmpty &&
-                          !roomMessageSending,
                     ),
                   ),
                 ),
