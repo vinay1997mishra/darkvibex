@@ -4296,7 +4296,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
       <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
     ];
-    return palettes[(level - 1).clamp(0, 17)];
+    return palettes[(level - 1).clamp(0, 17).toInt()];
   }
 
   Widget _hero() {
