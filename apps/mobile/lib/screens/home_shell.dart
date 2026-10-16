@@ -456,7 +456,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   List<RoomSummary> get visibleFollowedRooms {
-    final allowed = state.rooms.map((room) => room.id).toSet();
+    final allowed = state.rooms
+        .where((room) => room.online > 0)
+        .map((room) => room.id)
+        .toSet();
     return followedRooms
         .where((room) => allowed.contains(room.id))
         .toList(growable: false);
@@ -565,6 +568,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Widget _buildPartyPage(BuildContext context) {
+    final publicRooms = state.rooms
+        .where((room) => room.online > 0)
+        .toList(growable: false);
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => TinniBackground(
@@ -666,7 +672,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     ),
                     const Spacer(),
                     Text(
-                      '${state.rooms.length} rooms',
+                      '${publicRooms.length} rooms',
                       style: const TextStyle(
                         color: TinniPalette.muted,
                         fontSize: 11,
@@ -698,7 +704,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                           Expanded(
                             child: Builder(
                               builder: (context) {
-                                final rooms = [...state.rooms];
+                                final rooms = [...publicRooms];
                                 if (popular) {
                                   rooms.sort((a, b) => b.online.compareTo(a.online));
                                 } else {
@@ -727,10 +733,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
               sliver: SliverList.separated(
-                itemCount: state.rooms.length > 3 ? state.rooms.length - 3 : 0,
+                itemCount: publicRooms.length > 3 ? publicRooms.length - 3 : 0,
                 separatorBuilder: (_, _) => const SizedBox(height: 9),
                 itemBuilder: (context, roomIndex) {
-                  final rooms = [...state.rooms];
+                  final rooms = [...publicRooms];
                   if (popular) {
                     rooms.sort((a, b) => b.online.compareTo(a.online));
                   } else {
@@ -893,7 +899,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
     final recent = recentRoomIds
         .map((id) {
           for (final room in state.rooms) {
-            if (room.id == id) return room;
+            if (room.id == id && room.online > 0) return room;
           }
           return null;
         })
@@ -1223,6 +1229,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
   Widget build(BuildContext context) {
     final q = query.trim().toLowerCase();
     final rooms = widget.state.rooms
+        .where((room) => room.online > 0)
         .where(
           (room) =>
               q.isEmpty ||
