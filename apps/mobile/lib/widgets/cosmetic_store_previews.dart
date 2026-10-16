@@ -1241,7 +1241,7 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
   final ImageProvider<Object>? avatar;
 
   List<Color> get _colors {
-    final vipMatch = RegExp(r'^profile-vip-(\d{2}).firstMatch(styleId);
+    final vipMatch = RegExp(r'^profile-vip-(\\d{2})$').firstMatch(styleId);
     if (vipMatch != null) {
       const palettes = <List<Color>>[
         <Color>[Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18)],
@@ -1267,41 +1267,27 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
       return palettes[level - 1];
     }
     return switch (styleId) {
-        'profile-card-pink-heart' => const <Color>[
-            Color(0xFFFF3D98),
-            Color(0xFF7B1B7C),
-            Color(0xFF140B21),
-          ],
-        'profile-card-crystal-star' => const <Color>[
-            Color(0xFF52C7FF),
-            Color(0xFF4B36C9),
-            Color(0xFF100D24),
-          ],
-        'profile-card-vip-queen' => const <Color>[
-            Color(0xFFFFB11B),
-            Color(0xFF9B2CFF),
-            Color(0xFF150C22),
-          ],
-        'profile-card-family-leader' => const <Color>[
-            Color(0xFF67D66F),
-            Color(0xFF1B6652),
-            Color(0xFF0A1716),
-          ],
-        'profile-card-birthday' => const <Color>[
-            Color(0xFFFF7DB6),
-            Color(0xFF6957FF),
-            Color(0xFF160D24),
-          ],
-        'profile-card-winner' => const <Color>[
-            Color(0xFFFFD36A),
-            Color(0xFFFF6A2C),
-            Color(0xFF1D0C12),
-          ],
-        _ => const <Color>[
-            Color(0xFFFFD36A),
-            Color(0xFF8B4D18),
-            Color(0xFF150D18),
-          ],
+      'profile-card-pink-heart' => const <Color>[
+        Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21),
+      ],
+      'profile-card-crystal-star' => const <Color>[
+        Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24),
+      ],
+      'profile-card-vip-queen' => const <Color>[
+        Color(0xFFFFB11B), Color(0xFF9B2CFF), Color(0xFF150C22),
+      ],
+      'profile-card-family-leader' => const <Color>[
+        Color(0xFF67D66F), Color(0xFF1B6652), Color(0xFF0A1716),
+      ],
+      'profile-card-birthday' => const <Color>[
+        Color(0xFFFF7DB6), Color(0xFF6957FF), Color(0xFF160D24),
+      ],
+      'profile-card-winner' => const <Color>[
+        Color(0xFFFFD36A), Color(0xFFFF6A2C), Color(0xFF1D0C12),
+      ],
+      _ => const <Color>[
+        Color(0xFFFFD36A), Color(0xFF8B4D18), Color(0xFF150D18),
+      ],
     };
   }
 
