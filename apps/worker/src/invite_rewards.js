@@ -2,8 +2,9 @@ const COINS_PER_USD = 6_000_000;
 const SUCCESSFUL_INVITE_REWARD_COINS = 300_000;
 
 // Every newly successful invite gives the inviter a fixed one-time coin reward.
-// Ongoing commission is separate and only counts eligible Coin Seller/Merchant
-// transfers into the invited user's normal wallet. No vehicle/cosmetic prize.
+// Ongoing commission is separate and only counts coins credited through
+// Coin Seller transfers into the invited user's normal wallet. Merchant transfers,
+// gifts, game winnings, and other coin sources are excluded. No vehicle/cosmetic prize.
 
 // Direct-invite reward levels copied from the visible levels in the reference
 // flow. The last visible level is 5%; higher levels can be added without
