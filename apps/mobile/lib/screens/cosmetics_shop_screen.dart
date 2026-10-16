@@ -451,7 +451,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
         child: BubbleCosmeticPreview(
           styleId: id,
-          height: 92,
+          height: 96,
         ),
       );
     }
@@ -605,6 +605,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                                           ? '…'
                                           : (price <= 0 ? 'Get Free' : 'Buy'),
                                       maxLines: 1,
+                                      softWrap: false,
                                     ),
                                   ),
                                 ),
@@ -622,6 +623,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                                     child: Text(
                                       'VIP$requiredLevel',
                                       maxLines: 1,
+                                      softWrap: false,
                                     ),
                                   ),
                                 ),
@@ -646,6 +648,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                               child: Text(
                                 'Send',
                                 maxLines: 1,
+                                softWrap: false,
                               ),
                             ),
                           ),
