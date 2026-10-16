@@ -309,6 +309,14 @@ class _JewelryRingPainter extends CustomPainter {
 
 final Map<String, MemoryImage> _bubbleArtworkCache =
     <String, MemoryImage>{};
+final Map<String, MemoryImage> _bubbleChatArtworkCache =
+    <String, MemoryImage>{};
+
+// The final bubble art is 740-755 px wide. A raw 1.0 image scale makes the
+// fixed left/right nine-slice caps hundreds of logical pixels wide, so Flutter
+// has to squash them inside a 112-280 dp chat bubble. 5.5 maps those source
+// pixels to the intended chat density while Store previews keep scale 1.0.
+const double _bubbleChatImageScale = 5.5;
 
 MemoryImage? _bubbleArtwork(String styleId) {
   final encoded = kBubbleArtworkBase64[styleId];
@@ -319,7 +327,19 @@ MemoryImage? _bubbleArtwork(String styleId) {
   );
 }
 
-Rect _bubbleCenterSlice(String styleId) => switch (styleId) {
+MemoryImage? _bubbleChatArtwork(String styleId) {
+  final encoded = kBubbleArtworkBase64[styleId];
+  if (encoded == null || encoded.isEmpty) return null;
+  return _bubbleChatArtworkCache.putIfAbsent(
+    styleId,
+    () => MemoryImage(
+      base64Decode(encoded),
+      scale: _bubbleChatImageScale,
+    ),
+  );
+}
+
+Rect _bubbleRawCenterSlice(String styleId) => switch (styleId) {
       // These rectangles sit entirely inside the plain message panel so
       // crowns, hearts, butterflies, flowers, dragon and ice ornaments never
       // get stretched when a message grows.
@@ -333,6 +353,16 @@ Rect _bubbleCenterSlice(String styleId) => switch (styleId) {
       'bubble-sakura' => const Rect.fromLTWH(320, 125, 120, 55),
       _ => const Rect.fromLTWH(300, 105, 140, 50),
     };
+
+Rect _bubbleCenterSlice(String styleId) {
+  final raw = _bubbleRawCenterSlice(styleId);
+  return Rect.fromLTRB(
+    raw.left / _bubbleChatImageScale,
+    raw.top / _bubbleChatImageScale,
+    raw.right / _bubbleChatImageScale,
+    raw.bottom / _bubbleChatImageScale,
+  );
+}
 
 class BubbleCosmeticPreview extends StatelessWidget {
   const BubbleCosmeticPreview({
@@ -396,7 +426,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final artwork = _bubbleArtwork(styleId);
+    final artwork = _bubbleChatArtwork(styleId);
     if (artwork != null) {
       return RepaintBoundary(
         child: ClipRect(
