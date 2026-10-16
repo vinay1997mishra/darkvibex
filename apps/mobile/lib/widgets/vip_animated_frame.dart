@@ -97,11 +97,15 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
 
     if (artwork != null) {
-      // Keep the DP at its normal seat/profile size. The accepted 320x320 frame
-      // artwork has an open centre that is about 64% of the full canvas, so the
-      // frame itself must paint outside the DP instead of shrinking the DP to
-      // fit inside the artwork canvas.
-      const openCenterFraction = .64;
+      // The DP always keeps its full seat/profile diameter. The decorative art
+      // is painted outside that circle and is the only layer that animates.
+      const frameScale = 1.86;
+      final isButterfly = widget.styleId == 'frame_blue_butterfly' ||
+          widget.styleId == 'frame_purple_butterfly';
+      final isRoyal = widget.styleId == 'frame_golden_crown' ||
+          widget.styleId == 'frame_blue_angel_crown' ||
+          widget.styleId == 'frame_red_black_royal_wings';
+
       return SizedBox.square(
         dimension: widget.size,
         child: Stack(
@@ -112,10 +116,47 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
               dimension: widget.size,
               child: widget.child,
             ),
+            // Keep a clear DP circle visible even when ornate artwork crosses
+            // the edge. This makes the frame read as an outside overlay.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFFFD45A).withValues(alpha: .82),
+                      width: 1.15,
+                    ),
+                  ),
+                ),
+              ),
+            ),
             IgnorePointer(
-              child: Transform.scale(
-                scale: 1 / openCenterFraction,
-                alignment: Alignment.center,
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final phase = _controller.value * math.pi * 2;
+                  final wave = math.sin(phase);
+                  final pulse = 1.0 + (isRoyal ? .012 : .018) * ((wave + 1) / 2);
+                  final vertical = isButterfly ? wave * .9 : 0.0;
+                  final angle = isButterfly ? wave * .012 : 0.0;
+                  final opacity = .94 + .06 * ((wave + 1) / 2);
+
+                  return Transform.translate(
+                    offset: Offset(0, vertical),
+                    child: Transform.rotate(
+                      angle: angle,
+                      child: Transform.scale(
+                        scale: frameScale * pulse,
+                        alignment: Alignment.center,
+                        child: Opacity(
+                          opacity: opacity,
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  );
+                },
                 child: SizedBox.square(
                   dimension: widget.size,
                   child: Image(
