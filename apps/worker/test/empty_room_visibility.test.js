@@ -60,3 +60,19 @@ test("creating an already-owned permanent room ID is idempotent", () => {
   assert.ok(workerSource.includes("existing: true"));
   assert.ok(workerSource.includes("room_id: roomId"));
 });
+
+test("owner room is returned regardless of country/presence so My room never falls back to Create", () => {
+  assert.ok(
+    workerSource.includes("r.owner_user_id = ?"),
+    "owner room must bypass public country/presence visibility rules",
+  );
+  assert.ok(
+    workerSource.includes("ORDER BY CASE WHEN r.owner_user_id = ? THEN 0 ELSE 1 END"),
+    "owner room should be prioritized in the room payload",
+  );
+  assert.equal(
+    workerSource.includes("if (!viewerCountry) return [];"),
+    false,
+    "missing/changed country must not hide an already-created owner room",
+  );
+});
