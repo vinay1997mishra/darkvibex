@@ -6031,6 +6031,7 @@ class _RoomScreenState extends State<RoomScreen> {
   @override
   Widget build(BuildContext context) {
     final spec = SeatLayoutSpec.forCount(roomSeatCount);
+    final typingMode = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -6647,7 +6648,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 backgroundColor: const Color(0xFF5D1E65),
               ),
             ),
-          if (rocketDrawNoticeEnabled && effectsEnabled)
+          if (!typingMode && rocketDrawNoticeEnabled && effectsEnabled)
             Positioned(
             key: const Key('room-game-floating-position'),
             right: 8,
@@ -6896,51 +6897,53 @@ class _RoomScreenState extends State<RoomScreen> {
                     ),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Emoji & Emotes',
-                  onPressed: _showEmojiPicker,
-                  icon: const TinniGlowIcon(
-                    icon: Icons.emoji_emotions_rounded,
-                    size: 20,
-                    boxSize: 36,
+                if (!typingMode) ...<Widget>[
+                  IconButton(
+                    tooltip: 'Emoji & Emotes',
+                    onPressed: _showEmojiPicker,
+                    icon: const TinniGlowIcon(
+                      icon: Icons.emoji_emotions_rounded,
+                      size: 20,
+                      boxSize: 36,
+                    ),
                   ),
-                ),
-              IconButton(
-                tooltip: 'Microphone',
-                onPressed: mySeat == null ? null : _toggleMic,
-                icon: TinniGlowIcon(
-                  icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                  size: 20,
-                  boxSize: 36,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Gifts',
-                onPressed: _sendGift,
-                icon: const TinniGlowIcon(
-                  icon: Icons.card_giftcard_rounded,
-                  size: 20,
-                  boxSize: 36,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Messages',
-                onPressed: _openRoomInbox,
-                icon: const TinniGlowIcon(
-                  icon: Icons.mark_chat_unread_rounded,
-                  size: 20,
-                  boxSize: 36,
-                ),
-              ),
-              IconButton(
-                tooltip: '4-Box',
-                onPressed: _showRoomTools,
-                icon: const TinniGlowIcon(
-                  icon: Icons.grid_view_rounded,
-                  size: 20,
-                  boxSize: 36,
-                ),
-              ),
+                  IconButton(
+                    tooltip: 'Microphone',
+                    onPressed: mySeat == null ? null : _toggleMic,
+                    icon: TinniGlowIcon(
+                      icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                      size: 20,
+                      boxSize: 36,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Gifts',
+                    onPressed: _sendGift,
+                    icon: const TinniGlowIcon(
+                      icon: Icons.card_giftcard_rounded,
+                      size: 20,
+                      boxSize: 36,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Messages',
+                    onPressed: _openRoomInbox,
+                    icon: const TinniGlowIcon(
+                      icon: Icons.mark_chat_unread_rounded,
+                      size: 20,
+                      boxSize: 36,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '4-Box',
+                    onPressed: _showRoomTools,
+                    icon: const TinniGlowIcon(
+                      icon: Icons.grid_view_rounded,
+                      size: 20,
+                      boxSize: 36,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
