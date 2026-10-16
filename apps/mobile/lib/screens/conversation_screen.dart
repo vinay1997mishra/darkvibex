@@ -460,7 +460,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           );
                           final messageBubble = hasStoreBubble
                               ? StretchableCosmeticBubble(
-                                  styleId: bubbleId!,
+                                  styleId: bubbleId,
                                   maxWidth: 300,
                                   minWidth: 92,
                                   minHeight: 58,
