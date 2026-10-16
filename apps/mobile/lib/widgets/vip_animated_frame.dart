@@ -322,7 +322,10 @@ class _FrameElementPainter extends CustomPainter {
         ],
       ).createShader(rect);
     canvas.save();
-    canvas.rotate(-.18, pivot: Offset(size.width / 2, size.height * .18));
+    final pivot = Offset(size.width / 2, size.height * .18);
+    canvas.translate(pivot.dx, pivot.dy);
+    canvas.rotate(-.18);
+    canvas.translate(-pivot.dx, -pivot.dy);
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, Radius.circular(size.width * .03)),
       paint,
