@@ -1333,14 +1333,17 @@ async function listRooms(db, viewerUserId) {
        LEFT JOIN room_settings rs ON rs.room_id = r.id
       WHERE r.country_code = ?
         AND COALESCE(rc.banned,0)=0
-        AND EXISTS (
-          SELECT 1 FROM room_members visible_member
-           WHERE visible_member.room_id = r.id
-             AND visible_member.updated_at >= ?
+        AND (
+          r.owner_user_id = ?
+          OR EXISTS (
+            SELECT 1 FROM room_members visible_member
+             WHERE visible_member.room_id = r.id
+               AND visible_member.updated_at >= ?
+          )
         )
       ORDER BY r.updated_at DESC
       LIMIT 100`
-  ).bind(now(), presenceCutoff, viewerCountry, presenceCutoff).all();
+  ).bind(now(), presenceCutoff, viewerCountry, viewerUserId, presenceCutoff).all();
   const rows = result.results ?? [];
   for (const row of rows) {
     const currentDisplayId = String(row.display_id ?? "").trim();
@@ -5602,10 +5605,30 @@ async function handleApi(request, env, url) {
     const roomId = ownerPublicId;
     await ensureOwnerControlSchema(db);
     const existingRoomId = await db.prepare(
-      "SELECT owner_user_id FROM rooms WHERE id=? LIMIT 1"
+      `SELECT r.owner_user_id,r.name,r.seat_count,
+              COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
+              COALESCE(rs.room_mode,'voice') AS room_mode
+         FROM rooms r
+         LEFT JOIN room_settings rs ON rs.room_id=r.id
+        WHERE r.id=? LIMIT 1`
     ).bind(roomId).first();
     if (existingRoomId) {
-      return json({ ok: false, error: "room_id_taken" }, { status: 409 });
+      if (String(existingRoomId.owner_user_id ?? "") !== ownerId) {
+        return json({ ok: false, error: "room_id_taken" }, { status: 409 });
+      }
+      // Room IDs are the owner's permanent 7-digit profile ID. Re-creating
+      // an already-owned room is therefore an idempotent "open my room".
+      return json({
+        ok: true,
+        existing: true,
+        room_id: roomId,
+        display_id: ownerPublicId,
+        name: String(existingRoomId.name ?? name),
+        seat_count: Number(existingRoomId.seat_count ?? seatCount),
+        party_mode: String(existingRoomId.party_mode ?? partyMode),
+        room_mode: String(existingRoomId.room_mode ?? roomMode),
+        online: 0,
+      });
     }
     await db.prepare("DELETE FROM owner_room_controls WHERE room_id=?").bind(roomId).run();
 
