@@ -320,15 +320,18 @@ MemoryImage? _bubbleArtwork(String styleId) {
 }
 
 Rect _bubbleCenterSlice(String styleId) => switch (styleId) {
-      'bubble-gold' => const Rect.fromLTWH(108, 46, 139, 53),
-      'bubble-heart' => const Rect.fromLTWH(104, 46, 142, 53),
-      'bubble-king' => const Rect.fromLTWH(108, 48, 139, 54),
-      'bubble-dream' => const Rect.fromLTWH(104, 48, 142, 54),
-      'bubble-nature' => const Rect.fromLTWH(108, 44, 139, 52),
-      'bubble-dragon' => const Rect.fromLTWH(104, 44, 142, 52),
-      'bubble-ice' => const Rect.fromLTWH(108, 40, 139, 48),
-      'bubble-sakura' => const Rect.fromLTWH(104, 40, 142, 48),
-      _ => const Rect.fromLTWH(104, 44, 142, 52),
+      // These rectangles sit entirely inside the plain message panel so
+      // crowns, hearts, butterflies, flowers, dragon and ice ornaments never
+      // get stretched when a message grows.
+      'bubble-gold' => const Rect.fromLTWH(300, 90, 140, 50),
+      'bubble-heart' => const Rect.fromLTWH(320, 95, 120, 45),
+      'bubble-king' => const Rect.fromLTWH(300, 100, 140, 50),
+      'bubble-dream' => const Rect.fromLTWH(320, 110, 120, 50),
+      'bubble-nature' => const Rect.fromLTWH(300, 110, 140, 50),
+      'bubble-dragon' => const Rect.fromLTWH(360, 105, 140, 50),
+      'bubble-ice' => const Rect.fromLTWH(300, 120, 140, 60),
+      'bubble-sakura' => const Rect.fromLTWH(320, 125, 120, 55),
+      _ => const Rect.fromLTWH(300, 105, 140, 50),
     };
 
 class BubbleCosmeticPreview extends StatelessWidget {
