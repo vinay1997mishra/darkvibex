@@ -60,7 +60,6 @@ export const COSMETIC_CATALOG = [
   { id: "bubble-dragon", kind: "bubble", name: "Dragon Bubble", price_coins: 0, min_vip_level: 8, duration_days: 30, tier: 8 },
   { id: "bubble-ice", kind: "bubble", name: "Ice Bubble", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 6 },
   { id: "bubble-sakura", kind: "bubble", name: "Sakura Bubble", price_coins: 0, min_vip_level: 5, duration_days: 30, tier: 5 },
-];
 
 // DarkVibeX VIP 1-18 dedicated entrance nameplates and full profile cards.
   { id: "entrance-vip-01", kind: "entry", name: "Royal Crown Entrance", price_coins: 0, min_vip_level: 1, duration_days: 30, tier: 1, animation_type: "nameplate_glow", animation_ms: 2000 },
@@ -99,6 +98,7 @@ export const COSMETIC_CATALOG = [
   { id: "profile-vip-16", kind: "profile_card", name: "Glacier King Profile", price_coins: 0, min_vip_level: 16, duration_days: 30, tier: 16, animation_type: "profile_glow", animation_ms: 2000 },
   { id: "profile-vip-17", kind: "profile_card", name: "Inferno Phoenix Profile", price_coins: 0, min_vip_level: 17, duration_days: 30, tier: 17, animation_type: "profile_glow", animation_ms: 2000 },
   { id: "profile-vip-18", kind: "profile_card", name: "Eternal Sovereign Profile", price_coins: 0, min_vip_level: 18, duration_days: 30, tier: 18, animation_type: "profile_glow", animation_ms: 2000 },
+];
 
 const legacyKinds = new Set(["frame", "vehicle"]);
 
