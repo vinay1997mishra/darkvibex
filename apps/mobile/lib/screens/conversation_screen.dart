@@ -451,9 +451,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               if (item['text']?.toString().isNotEmpty == true)
                                 Text(
                                   item['text'].toString(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
+                                  style: TextStyle(
+                                    color: hasStoreBubble
+                                        ? const Color(0xFF241626)
+                                        : Colors.white,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                             ],
