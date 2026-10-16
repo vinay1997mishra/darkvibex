@@ -6285,6 +6285,9 @@ class _RoomScreenState extends State<RoomScreen> {
                       ) ??
                       0;
                   final activeFrame = member?['active_frame_id']?.toString();
+                  final activeEntry = mine
+                      ? widget.state.activeCosmetic('entry')
+                      : member?['active_entry_id']?.toString();
                   final frameTier = switch (activeFrame) {
                     'frame_royal' => 1,
                     'frame_king' => 18,
@@ -6441,22 +6444,36 @@ class _RoomScreenState extends State<RoomScreen> {
                             ],
                           ),
                           SizedBox(height: compactSeats ? 1 : 3),
-                          Text(
-                            mine
-                                ? (widget.state.vipAnonymousEverywhere
-                                    ? 'Anonymous'
-                                    : widget.state.displayName)
-                                : (member?['display_name']?.toString() ??
-                                    'No.${seat + 1}'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize:
-                                  compactSeats ? 8 : (diameter < 48 ? 9 : 11),
-                              color: TinniPalette.cream,
+                          if (activeEntry != null &&
+                              activeEntry.startsWith('entrance-vip-'))
+                            EntranceNameplatePreview(
+                              compact: true,
+                              styleId: activeEntry,
+                              displayName: mine
+                                  ? (widget.state.vipAnonymousEverywhere
+                                      ? 'Anonymous'
+                                      : widget.state.displayName)
+                                  : (member?['display_name']?.toString() ??
+                                      'No.${seat + 1}'),
+                              vipLevel: vipLevel.clamp(1, 18),
+                            )
+                          else
+                            Text(
+                              mine
+                                  ? (widget.state.vipAnonymousEverywhere
+                                      ? 'Anonymous'
+                                      : widget.state.displayName)
+                                  : (member?['display_name']?.toString() ??
+                                      'No.${seat + 1}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize:
+                                    compactSeats ? 8 : (diameter < 48 ? 9 : 11),
+                                color: TinniPalette.cream,
+                              ),
                             ),
-                          ),
                           if (mine &&
                               widget.state.hasVipPrivilege('mic_chair'))
                             const Icon(
