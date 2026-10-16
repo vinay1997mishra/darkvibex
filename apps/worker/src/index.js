@@ -5907,7 +5907,7 @@ async function handleApi(request, env, url) {
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
-          ORDER BY m.created_at DESC LIMIT 100`
+          ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
       ).bind(now(), now(), roomId).all();
       return json({ ok: true, messages: (rows.results ?? []).reverse() });
     }
@@ -5956,7 +5956,36 @@ async function handleApi(request, env, url) {
           .bind(messageId, imageKey, createdAt));
       }
       await db.batch(statements);
-      return json({ ok: true, message_id: messageId, image_key: imageKey || null }, { status: 201 });
+      const createdMessage = await db.prepare(
+        `SELECT m.id, m.user_id,
+                CASE WHEN v.level >= 18 AND v.active_until > ?
+                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                     THEN 'Anonymous' ELSE u.display_name END AS display_name,
+                m.text, m.created_at, mi.image_key,
+                (SELECT p.item_id FROM user_props p
+                  WHERE p.user_id=m.user_id AND p.kind='bubble'
+                    AND p.active=1 AND p.expires_at>?
+                  LIMIT 1) AS active_bubble_id
+           FROM room_messages m
+           LEFT JOIN users u ON u.id = m.user_id
+           LEFT JOIN user_vip v ON v.user_id = m.user_id
+           LEFT JOIN room_message_images mi ON mi.message_id = m.id
+          WHERE m.id = ?
+          LIMIT 1`
+      ).bind(createdAt, createdAt, messageId).first();
+      return json({
+        ok: true,
+        message_id: messageId,
+        created_at: createdAt,
+        image_key: imageKey || null,
+        message: createdMessage ?? {
+          id: messageId,
+          user_id: userId,
+          text: textValue,
+          created_at: createdAt,
+          image_key: imageKey || null,
+        },
+      }, { status: 201 });
     }
   }
 
