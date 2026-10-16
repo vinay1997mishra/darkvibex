@@ -371,7 +371,7 @@ class BubbleCosmeticPreview extends StatelessWidget {
   }
 }
 
-// Room and direct-message bubbles share the same screenshot-matched artwork used by Store previews.
+// Room and direct-message bubbles share the final accepted artwork used by Store previews.
 // centerSlice keeps the decorative edges readable while the message area grows.
 class StretchableCosmeticBubble extends StatelessWidget {
   const StretchableCosmeticBubble({
