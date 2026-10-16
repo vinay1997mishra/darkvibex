@@ -97,14 +97,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
 
     if (artwork != null) {
-      // The DP always keeps its full seat/profile diameter. The decorative art
-      // is painted outside that circle and is the only layer that animates.
+      // Keep the complete frame artwork static. Only motif elements animate:
+      // butterfly wings flap, crown/wing highlights sweep, and decorative
+      // sparkles/petals pulse. The DP and frame body never shake or rotate.
       const frameScale = 1.86;
-      final isButterfly = widget.styleId == 'frame_blue_butterfly' ||
-          widget.styleId == 'frame_purple_butterfly';
-      final isRoyal = widget.styleId == 'frame_golden_crown' ||
-          widget.styleId == 'frame_blue_angel_crown' ||
-          widget.styleId == 'frame_red_black_royal_wings';
 
       return SizedBox.square(
         dimension: widget.size,
@@ -116,8 +112,6 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
               dimension: widget.size,
               child: widget.child,
             ),
-            // Keep a clear DP circle visible even when ornate artwork crosses
-            // the edge. This makes the frame read as an outside overlay.
             Positioned.fill(
               child: IgnorePointer(
                 child: DecoratedBox(
@@ -132,31 +126,9 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
               ),
             ),
             IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _controller,
-                builder: (context, child) {
-                  final phase = _controller.value * math.pi * 2;
-                  final wave = math.sin(phase);
-                  final pulse = 1.0 + (isRoyal ? .012 : .018) * ((wave + 1) / 2);
-                  final vertical = isButterfly ? wave * .9 : 0.0;
-                  final angle = isButterfly ? wave * .012 : 0.0;
-                  final opacity = .94 + .06 * ((wave + 1) / 2);
-
-                  return Transform.translate(
-                    offset: Offset(0, vertical),
-                    child: Transform.rotate(
-                      angle: angle,
-                      child: Transform.scale(
-                        scale: frameScale * pulse,
-                        alignment: Alignment.center,
-                        child: Opacity(
-                          opacity: opacity,
-                          child: child,
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              child: Transform.scale(
+                scale: frameScale,
+                alignment: Alignment.center,
                 child: SizedBox.square(
                   dimension: widget.size,
                   child: Image(
@@ -164,6 +136,24 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     fit: BoxFit.contain,
                     filterQuality: FilterQuality.high,
                     gaplessPlayback: true,
+                  ),
+                ),
+              ),
+            ),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: frameScale,
+                alignment: Alignment.center,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => CustomPaint(
+                      painter: _FrameElementPainter(
+                        styleId: widget.styleId,
+                        phase: _controller.value,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -191,6 +181,241 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
       ),
     );
   }
+}
+
+class _FrameElementPainter extends CustomPainter {
+  const _FrameElementPainter({
+    required this.styleId,
+    required this.phase,
+  });
+
+  final String? styleId;
+  final double phase;
+
+  bool get _butterfly =>
+      styleId == 'frame_blue_butterfly' ||
+      styleId == 'frame_purple_butterfly' ||
+      styleId == 'frame_red_rose';
+
+  bool get _crown =>
+      styleId == 'frame_golden_crown' ||
+      styleId == 'frame_blue_angel_crown';
+
+  bool get _heart =>
+      styleId == 'frame_pink_heart' ||
+      styleId == 'frame_royal_love';
+
+  bool get _royalWings => styleId == 'frame_red_black_royal_wings';
+
+  Color get _accent => switch (styleId) {
+        'frame_blue_butterfly' => const Color(0xFF8CEBFF),
+        'frame_purple_butterfly' => const Color(0xFFD8A7FF),
+        'frame_red_rose' => const Color(0xFFFF8EC9),
+        'frame_golden_crown' => const Color(0xFFFFE36A),
+        'frame_blue_angel_crown' => const Color(0xFFAAD9FF),
+        'frame_pink_heart' => const Color(0xFFFF8EC7),
+        'frame_royal_love' => const Color(0xFFFF6C8E),
+        'frame_red_black_royal_wings' => const Color(0xFFFF7A55),
+        'frame_purple_star' => const Color(0xFFD6A8FF),
+        'frame_golden_flower' => const Color(0xFFFFC84A),
+        'frame_pink_blossom' => const Color(0xFFFFB6DA),
+        'frame_green_nature' => const Color(0xFF8DFFB0),
+        _ => const Color(0xFFFFD86B),
+      };
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (styleId == null || styleId!.isEmpty) return;
+    if (_butterfly) {
+      _paintButterfly(canvas, size);
+      _paintSparkles(canvas, size, count: 5);
+      return;
+    }
+    if (_crown) {
+      _paintCrownShine(canvas, size);
+      _paintSparkles(canvas, size, count: 4);
+      return;
+    }
+    if (_heart) {
+      _paintHeartPulse(canvas, size);
+      _paintSparkles(canvas, size, count: 4);
+      return;
+    }
+    if (_royalWings) {
+      _paintWingShimmer(canvas, size);
+      _paintSparkles(canvas, size, count: 6);
+      return;
+    }
+    _paintPetalGlow(canvas, size);
+    _paintSparkles(canvas, size, count: 5);
+  }
+
+  void _paintButterfly(Canvas canvas, Size size) {
+    final t = phase * math.pi * 2;
+    final flap = .48 + .38 * (math.sin(t * 2).abs());
+    final center = Offset(size.width * .50, size.height * .18);
+    final wingPaint = Paint()
+      ..color = _accent.withValues(alpha: .38)
+      ..style = PaintingStyle.fill;
+    final edgePaint = Paint()
+      ..color = Colors.white.withValues(alpha: .55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * .012;
+
+    void wing(bool left) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      final direction = left ? -1.0 : 1.0;
+      canvas.scale(direction, 1);
+      canvas.rotate((1 - flap) * .42);
+      final path = Path()
+        ..moveTo(0, 0)
+        ..cubicTo(
+          size.width * .045,
+          -size.height * .10,
+          size.width * .16,
+          -size.height * .09,
+          size.width * .17,
+          size.height * .005,
+        )
+        ..cubicTo(
+          size.width * .15,
+          size.height * .10,
+          size.width * .055,
+          size.height * .115,
+          0,
+          size.height * .025,
+        )
+        ..close();
+      canvas.drawPath(path, wingPaint);
+      canvas.drawPath(path, edgePaint);
+      canvas.restore();
+    }
+
+    wing(true);
+    wing(false);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center + Offset(0, size.height * .012),
+        width: size.width * .028,
+        height: size.height * .11,
+      ),
+      Paint()..color = _accent.withValues(alpha: .72),
+    );
+  }
+
+  void _paintCrownShine(Canvas canvas, Size size) {
+    final x = size.width * (-.10 + 1.20 * phase);
+    final rect = Rect.fromLTWH(
+      x,
+      size.height * .03,
+      size.width * .055,
+      size.height * .30,
+    );
+    final paint = Paint()
+      ..shader = LinearGradient(
+        colors: <Color>[
+          Colors.transparent,
+          Colors.white.withValues(alpha: .78),
+          _accent.withValues(alpha: .62),
+          Colors.transparent,
+        ],
+      ).createShader(rect);
+    canvas.save();
+    canvas.rotate(-.18, pivot: Offset(size.width / 2, size.height * .18));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(size.width * .03)),
+      paint,
+    );
+    canvas.restore();
+  }
+
+  void _paintHeartPulse(Canvas canvas, Size size) {
+    final pulse = .86 + .16 * ((math.sin(phase * math.pi * 2) + 1) / 2);
+    final center = Offset(size.width * .50, size.height * .16);
+    final r = size.width * .055 * pulse;
+    final path = Path()
+      ..moveTo(center.dx, center.dy + r * .9)
+      ..cubicTo(
+        center.dx - r * 1.8,
+        center.dy - r * .2,
+        center.dx - r * .9,
+        center.dy - r * 1.3,
+        center.dx,
+        center.dy - r * .45,
+      )
+      ..cubicTo(
+        center.dx + r * .9,
+        center.dy - r * 1.3,
+        center.dx + r * 1.8,
+        center.dy - r * .2,
+        center.dx,
+        center.dy + r * .9,
+      )
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()..color = _accent.withValues(alpha: .32),
+    );
+  }
+
+  void _paintWingShimmer(Canvas canvas, Size size) {
+    final sweep = (phase * 1.4) % 1.0;
+    final y = size.height * (.20 + .52 * sweep);
+    final paint = Paint()
+      ..color = _accent.withValues(alpha: .42)
+      ..strokeWidth = size.width * .018
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(size.width * .12, y),
+      Offset(size.width * .33, y - size.height * .06),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width * .88, y),
+      Offset(size.width * .67, y - size.height * .06),
+      paint,
+    );
+  }
+
+  void _paintPetalGlow(Canvas canvas, Size size) {
+    final t = phase * math.pi * 2;
+    final center = Offset(size.width * .50, size.height * .17);
+    for (var i = 0; i < 5; i++) {
+      final a = t * .35 + i * math.pi * 2 / 5;
+      final distance = size.width * (.07 + .01 * math.sin(t + i));
+      final p = center + Offset(math.cos(a), math.sin(a)) * distance;
+      canvas.drawCircle(
+        p,
+        size.width * (.012 + .004 * ((math.sin(t * 2 + i) + 1) / 2)),
+        Paint()..color = _accent.withValues(alpha: .34),
+      );
+    }
+  }
+
+  void _paintSparkles(Canvas canvas, Size size, {required int count}) {
+    final t = phase * math.pi * 2;
+    for (var i = 0; i < count; i++) {
+      final a = i * 2.399963 + phase * .7;
+      final radius = size.width * (.34 + .06 * math.sin(t + i));
+      final center = Offset(size.width / 2, size.height / 2);
+      final p = center + Offset(math.cos(a), math.sin(a)) * radius;
+      final alpha = (.12 + .38 * ((math.sin(t * 2 + i) + 1) / 2))
+          .clamp(.12, .50)
+          .toDouble();
+      final r = size.width * (.007 + .006 * ((math.sin(t + i) + 1) / 2));
+      final paint = Paint()
+        ..color = _accent.withValues(alpha: alpha)
+        ..strokeWidth = r * .65
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(p.dx - r, p.dy), Offset(p.dx + r, p.dy), paint);
+      canvas.drawLine(Offset(p.dx, p.dy - r), Offset(p.dx, p.dy + r), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FrameElementPainter oldDelegate) =>
+      oldDelegate.styleId != styleId || oldDelegate.phase != phase;
 }
 
 class _FrameTheme {
