@@ -54,6 +54,11 @@ export const COSMETIC_CATALOG = [
   { id: "bubble-gold", kind: "bubble", name: "Golden Bubble", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 1 },
   { id: "bubble-heart", kind: "bubble", name: "Heart Bubble", price_coins: 0, min_vip_level: 2, duration_days: 30, tier: 2 },
   { id: "bubble-king", kind: "bubble", name: "King Bubble", price_coins: 0, min_vip_level: 10, duration_days: 30, tier: 10 },
+  { id: "bubble-dream", kind: "bubble", name: "Dream Bubble", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 4 },
+  { id: "bubble-nature", kind: "bubble", name: "Nature Bubble", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 5 },
+  { id: "bubble-dragon", kind: "bubble", name: "Dragon Bubble", price_coins: 0, min_vip_level: 8, duration_days: 30, tier: 8 },
+  { id: "bubble-ice", kind: "bubble", name: "Ice Bubble", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 6 },
+  { id: "bubble-sakura", kind: "bubble", name: "Sakura Bubble", price_coins: 0, min_vip_level: 5, duration_days: 30, tier: 5 },
 ];
 
 const legacyKinds = new Set(["frame", "vehicle"]);
