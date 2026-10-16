@@ -1183,15 +1183,30 @@ class EntranceNameplatePreview extends StatelessWidget {
           ],
         ),
         alignment: Alignment.center,
-        child: Text(
-          displayName.isEmpty ? 'User' : displayName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 7,
-            fontWeight: FontWeight.w900,
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            SvgPicture.asset(
+              'assets/vip18/entrance_vip_${parsed.toString().padLeft(2, '0')}.svg',
+              fit: BoxFit.fill,
+            ),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: Text(
+                  displayName.isEmpty ? 'User' : displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w900,
+                    shadows: <Shadow>[Shadow(color: Colors.black, blurRadius: 4)],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -1208,8 +1223,15 @@ class EntranceNameplatePreview extends StatelessWidget {
             BoxShadow(color: palette[1].withValues(alpha: .55), blurRadius: 14),
           ],
         ),
-        child: Row(
+        child: Stack(
+          fit: StackFit.expand,
           children: [
+            SvgPicture.asset(
+              'assets/vip18/entrance_vip_${parsed.toString().padLeft(2, '0')}.svg',
+              fit: BoxFit.fill,
+            ),
+            Row(
+              children: [
             Container(
               width: 48,
               height: 48,
@@ -1245,6 +1267,8 @@ class EntranceNameplatePreview extends StatelessWidget {
                 'VIP$parsed',
                 style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
               ),
+            ),
+              ],
             ),
           ],
         ),
@@ -1326,9 +1350,16 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
+          SvgPicture.asset(
+            'assets/vip18/profile_vip_${(int.tryParse(styleId.substring('profile-vip-'.length)) ?? 1).clamp(1, 18).toString().padLeft(2, '0')}.svg',
+            fit: BoxFit.fill,
+          ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
           Container(
             width: 54,
             height: 54,
@@ -1407,6 +1438,8 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
               SizedBox(width: 4),
               Icon(Icons.auto_awesome_rounded,
                   color: Color(0xFF78C8FF), size: 12),
+            ],
+          ),
             ],
           ),
         ],
