@@ -522,6 +522,8 @@ async function effectiveCosmeticCatalog(db) {
       tier: Number(row.data?.tier ?? previous.tier ?? 0),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
       description: String(row.data?.description ?? previous.description ?? ""),
+      animation_type: String(row.data?.animation_type ?? previous.animation_type ?? ""),
+      animation_ms: Number(row.data?.animation_ms ?? previous.animation_ms ?? 0),
       starts_at: startsAt,
       ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
