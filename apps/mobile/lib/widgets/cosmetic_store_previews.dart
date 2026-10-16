@@ -327,7 +327,7 @@ class BubbleCosmeticPreview extends StatelessWidget {
   }
 }
 
-// Message bubbles expand with content while keeping the cosmetic frame renderer shared with Store previews.
+// Message bubbles expand with content while keeping the cosmetic frame renderer shared with Store previews. // Dynamic size is shared by room and direct chat.
 class StretchableCosmeticBubble extends StatelessWidget {
   const StretchableCosmeticBubble({
     super.key,
