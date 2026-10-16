@@ -6888,7 +6888,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     tooltip: 'Send',
                     onPressed: value.text.trim().isEmpty || roomMessageSending
                         ? null
-                        : _sendInlineMessage,
+                        : () => _sendInlineMessage(),
                     icon: const TinniGlowIcon(
                       icon: Icons.send_rounded,
                       size: 20,
