@@ -327,6 +327,47 @@ class BubbleCosmeticPreview extends StatelessWidget {
   }
 }
 
+class StretchableCosmeticBubble extends StatelessWidget {
+  const StretchableCosmeticBubble({
+    super.key,
+    required this.styleId,
+    required this.child,
+    this.maxWidth = 300,
+    this.minWidth = 86,
+    this.minHeight = 58,
+    this.contentPadding = const EdgeInsets.symmetric(
+      horizontal: 30,
+      vertical: 18,
+    ),
+  });
+
+  final String styleId;
+  final Widget child;
+  final double maxWidth;
+  final double minWidth;
+  final double minHeight;
+  final EdgeInsetsGeometry contentPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = _bubbleTheme(styleId);
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        minWidth: minWidth,
+        maxWidth: maxWidth,
+        minHeight: minHeight,
+      ),
+      child: CustomPaint(
+        painter: _BubblePainter(theme),
+        child: Padding(
+          padding: contentPadding,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 class _BubbleTheme {
   const _BubbleTheme({
     required this.colors,
@@ -411,14 +452,17 @@ class _BubblePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final horizontalInset = math.min(18.0, size.width * .10);
+    final verticalInset = math.min(12.0, size.height * .16);
+    final bodyRect = Rect.fromLTWH(
+      horizontalInset,
+      verticalInset,
+      math.max(1, size.width - horizontalInset * 2),
+      math.max(1, size.height - verticalInset * 2),
+    );
     final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * .10,
-        size.height * .22,
-        size.width * .80,
-        size.height * .50,
-      ),
-      Radius.circular(size.height * .22),
+      bodyRect,
+      Radius.circular(math.min(24, size.height * .34)),
     );
 
     final outerGlow = Paint()
