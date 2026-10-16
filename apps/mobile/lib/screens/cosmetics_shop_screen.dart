@@ -42,6 +42,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
   List<Map<String, dynamic>> _owned = const [];
   bool _loading = true;
   bool _inventoryOnly = false;
+  String? _loadError;
   int _categoryIndex = 0;
   final Set<String> _busy = <String>{};
 
@@ -62,23 +63,58 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() => _loading = true);
-    final result = await widget.state.backend.cosmetics(
-      userId: widget.state.userId,
-    );
-    await widget.state.refreshCosmetics();
-    if (!mounted) return;
     setState(() {
-      _items = (result?['items'] as List? ?? const [])
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row))
-          .toList();
-      _owned = (result?['owned'] as List? ?? const [])
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row))
-          .toList();
-      _loading = false;
+      _loading = true;
+      _loadError = null;
     });
+    try {
+      final result = await widget.state.backend.cosmetics(
+        userId: widget.state.userId,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true || result?['items'] is! List) {
+        final detail = result?['error']?.toString().trim() ?? '';
+        setState(() {
+          _loadError = detail.isEmpty
+              ? 'Store catalog could not be loaded. Tap refresh to retry.'
+              : 'Store request failed: ${detail.replaceAll('_', ' ')}. Tap refresh to retry.';
+          _loading = false;
+        });
+        return;
+      }
+
+      final items = (result!['items'] as List)
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      final owned = (result['owned'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+
+      // Render the catalog response first. A transient error during the
+      // second request for equipped cosmetics must not blank the Store.
+      setState(() {
+        _items = items;
+        _owned = owned;
+        _loading = false;
+        _loadError = items.isEmpty
+            ? 'The Store catalog returned no items. Tap refresh to retry.'
+            : null;
+      });
+
+      try {
+        await widget.state.refreshCosmetics();
+      } catch (_) {
+        // Catalog loading succeeded; cosmetic-equipment refresh is separate.
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not connect to the Store. Tap refresh to retry.';
+        _loading = false;
+      });
+    }
   }
 
   Map<String, dynamic>? _ownership(String id) {
@@ -361,10 +397,36 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : products.isEmpty
                       ? Center(
-                          child: Text(
-                            _inventoryOnly
-                                ? 'No owned ${_category.label} items'
-                                : 'No ${_category.label} items available',
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: _loadError != null
+                                ? Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.storefront_outlined,
+                                        size: 36,
+                                        color: TinniPalette.gold,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        _loadError!,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      FilledButton.icon(
+                                        onPressed: _loading ? null : _load,
+                                        icon: const Icon(Icons.refresh_rounded),
+                                        label: const Text('Retry'),
+                                      ),
+                                    ],
+                                  )
+                                : Text(
+                                    _inventoryOnly
+                                        ? 'No owned ${_category.label} items'
+                                        : 'No ${_category.label} items available',
+                                    textAlign: TextAlign.center,
+                                  ),
                           ),
                         )
                       : RefreshIndicator(

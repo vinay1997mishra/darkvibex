@@ -1186,7 +1186,11 @@ class BackendApi {
       );
 
   Future<Map<String, dynamic>?> cosmetics({required String userId}) =>
-      _json('GET', '/api/cosmetics/${Uri.encodeComponent(userId)}');
+      _json(
+        'GET',
+        '/api/cosmetics/${Uri.encodeComponent(userId)}',
+        returnErrorBody: true,
+      );
 
   Future<Map<String, dynamic>?> purchaseCosmetic({required String userId, required String itemId, String? recipientUserId}) =>
       _json('POST', '/api/cosmetics/purchase', returnErrorBody: true, body: {

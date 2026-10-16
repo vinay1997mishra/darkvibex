@@ -495,26 +495,34 @@ async function ownerStoreOverrides(db) {
   }
 }
 
-async function effectiveCosmeticCatalog(db) {
+export async function effectiveCosmeticCatalog(db) {
   const map = new Map(COSMETIC_CATALOG.map((item) => [item.id, { ...item }]));
   for (const row of await ownerStoreOverrides(db)) {
-    if (!STORE_COSMETIC_KINDS.has(String(row.kind))) continue;
+    const kind = String(row.kind ?? "");
+    if (!STORE_COSMETIC_KINDS.has(kind)) continue;
     const itemId = String(row.id ?? "").trim();
     if (!itemId) continue;
-    const startsAt=row.data?.starts_at==null?null:Number(row.data.starts_at);
-    const endsAt=row.data?.ends_at==null?null:Number(row.data.ends_at);
-    const ts=now();
-    if (Number(row.enabled ?? 1) === 0 ||
-        (startsAt!=null&&startsAt>0&&startsAt>ts) ||
-        (endsAt!=null&&endsAt>0&&endsAt<ts)) {
-      map.delete(itemId);
+    const startsAt = row.data?.starts_at == null ? null : Number(row.data.starts_at);
+    const endsAt = row.data?.ends_at == null ? null : Number(row.data.ends_at);
+    const ts = now();
+    const inactive = Number(row.enabled ?? 1) === 0 ||
+      (startsAt != null && startsAt > 0 && startsAt > ts) ||
+      (endsAt != null && endsAt > 0 && endsAt < ts);
+    const existing = map.get(itemId);
+
+    // Owner catalog rows must never hide or overwrite a built-in item from
+    // another category just because their IDs happen to collide.
+    if (existing && String(existing.kind ?? "") !== kind) continue;
+    if (inactive) {
+      if (existing && String(existing.kind ?? "") === kind) map.delete(itemId);
       continue;
     }
-    const previous = map.get(itemId) ?? {};
+
+    const previous = existing ?? {};
     map.set(itemId, {
       ...previous,
       id: itemId,
-      kind: String(row.kind),
+      kind,
       name: String(row.name ?? previous.name ?? itemId),
       price_coins: Number(row.price_coins ?? previous.price_coins ?? 0),
       min_vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.min_vip_level ?? 0),
@@ -529,10 +537,18 @@ async function effectiveCosmeticCatalog(db) {
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
     });
   }
-  return [...map.values()].sort((a,b)=>
-    Number(a.sort_order ?? 0)-Number(b.sort_order ?? 0) ||
+  const items = [...map.values()].sort((a, b) =>
+    Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) ||
     String(a.name ?? "").localeCompare(String(b.name ?? ""))
   );
+
+  // Fail safe: stale/accidental disabled overrides must not blank the entire
+  // Store. Keep the canonical catalog available if every built-in entry was
+  // filtered out; owner pricing overrides are still applied by the API route.
+  if (items.length === 0 && COSMETIC_CATALOG.length > 0) {
+    return COSMETIC_CATALOG.map((item) => ({ ...item }));
+  }
+  return items;
 }
 
 // CP ring presentation metadata is resolved here so every client screen shares one selected ring.
