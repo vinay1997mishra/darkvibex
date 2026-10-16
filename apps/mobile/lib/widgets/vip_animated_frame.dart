@@ -97,8 +97,11 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
 
     if (artwork != null) {
-      // The final approved frame artwork is rendered directly, pixel-for-pixel.
-      // Only the DP sits underneath the transparent/open centre.
+      // Keep the DP at its normal seat/profile size. The accepted 320x320 frame
+      // artwork has an open centre that is about 64% of the full canvas, so the
+      // frame itself must paint outside the DP instead of shrinking the DP to
+      // fit inside the artwork canvas.
+      const openCenterFraction = .64;
       return SizedBox.square(
         dimension: widget.size,
         child: Stack(
@@ -106,23 +109,21 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
           clipBehavior: Clip.none,
           children: <Widget>[
             SizedBox.square(
-              dimension: widget.size * .64,
-              child: ClipOval(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox.square(
-                    dimension: widget.size * .64,
-                    child: widget.child,
-                  ),
-                ),
-              ),
+              dimension: widget.size,
+              child: widget.child,
             ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Image(
-                  image: artwork,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
+            IgnorePointer(
+              child: Transform.scale(
+                scale: 1 / openCenterFraction,
+                alignment: Alignment.center,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: Image(
+                    image: artwork,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                  ),
                 ),
               ),
             ),
