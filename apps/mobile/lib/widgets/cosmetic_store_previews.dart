@@ -308,48 +308,31 @@ class BubbleCosmeticPreview extends StatelessWidget {
   const BubbleCosmeticPreview({
     super.key,
     required this.styleId,
-    this.height = 90,
+    this.height = 94,
   });
 
   final String styleId;
   final double height;
 
-  List<Color> get _colors => switch (styleId) {
-        'bubble-heart' => const <Color>[
-            Color(0xFFFFB7D8),
-            Color(0xFFFF3D98),
-            Color(0xFF9B2CFF),
-          ],
-        'bubble-king' => const <Color>[
-            Color(0xFF9ED7FF),
-            Color(0xFF397BFF),
-            Color(0xFFFFB11B),
-          ],
-        _ => const <Color>[
-            Color(0xFFFFF1A8),
-            Color(0xFFFFB11B),
-            Color(0xFFFF7A1A),
-          ],
-      };
-
   @override
   Widget build(BuildContext context) {
-    final colors = _colors;
+    final theme = _bubbleTheme(styleId);
     return SizedBox(
       height: height,
       child: CustomPaint(
-        painter: _BubblePainter(colors, styleId),
+        painter: _BubblePainter(theme),
         child: const Center(
           child: Padding(
-            padding: EdgeInsets.only(bottom: 4),
+            padding: EdgeInsets.only(bottom: 1),
             child: Text(
               'Hello',
+              maxLines: 1,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 17,
                 fontWeight: FontWeight.w800,
                 shadows: <Shadow>[
-                  Shadow(color: Colors.black54, blurRadius: 4),
+                  Shadow(color: Colors.black87, blurRadius: 5),
                 ],
               ),
             ),
@@ -360,87 +343,658 @@ class BubbleCosmeticPreview extends StatelessWidget {
   }
 }
 
-class _BubblePainter extends CustomPainter {
-  const _BubblePainter(this.colors, this.styleId);
+class _BubbleTheme {
+  const _BubbleTheme({
+    required this.colors,
+    required this.motif,
+  });
 
   final List<Color> colors;
-  final String styleId;
+  final String motif;
+}
+
+_BubbleTheme _bubbleTheme(String styleId) => switch (styleId) {
+      'bubble-heart' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFFFC2DF),
+            Color(0xFFFF3D98),
+            Color(0xFFC016FF),
+          ],
+          motif: 'heart',
+        ),
+      'bubble-king' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFB8E7FF),
+            Color(0xFF2D77FF),
+            Color(0xFFFFB11B),
+          ],
+          motif: 'king',
+        ),
+      'bubble-dream' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFF0C9FF),
+            Color(0xFF9B32FF),
+            Color(0xFF5C20D6),
+          ],
+          motif: 'dream',
+        ),
+      'bubble-nature' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFD9FFD9),
+            Color(0xFF45E558),
+            Color(0xFF0C8E38),
+          ],
+          motif: 'nature',
+        ),
+      'bubble-dragon' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFFFC36A),
+            Color(0xFFFF3A24),
+            Color(0xFF8F121B),
+          ],
+          motif: 'dragon',
+        ),
+      'bubble-ice' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFEAFBFF),
+            Color(0xFF4CC8FF),
+            Color(0xFF2F72FF),
+          ],
+          motif: 'ice',
+        ),
+      'bubble-sakura' => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFFFE2F0),
+            Color(0xFFFF6FB5),
+            Color(0xFFD62E84),
+          ],
+          motif: 'sakura',
+        ),
+      _ => const _BubbleTheme(
+          colors: <Color>[
+            Color(0xFFFFF2A6),
+            Color(0xFFFFB11B),
+            Color(0xFFFF6A18),
+          ],
+          motif: 'gold',
+        ),
+    };
+
+class _BubblePainter extends CustomPainter {
+  const _BubblePainter(this.theme);
+
+  final _BubbleTheme theme;
 
   @override
   void paint(Canvas canvas, Size size) {
     final body = RRect.fromRectAndRadius(
       Rect.fromLTWH(
-        size.width * .08,
-        size.height * .18,
-        size.width * .82,
-        size.height * .56,
+        size.width * .10,
+        size.height * .22,
+        size.width * .80,
+        size.height * .50,
       ),
-      Radius.circular(size.height * .28),
+      Radius.circular(size.height * .22),
     );
 
-    final glow = Paint()
+    final outerGlow = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 9
-      ..color = colors[1].withValues(alpha: .22)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    canvas.drawRRect(body, glow);
+      ..strokeWidth = 11
+      ..color = theme.colors[1].withValues(alpha: .22)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+    canvas.drawRRect(body, outerGlow);
+
+    final innerGlow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..color = theme.colors.first.withValues(alpha: .26)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    canvas.drawRRect(body, innerGlow);
 
     final fill = Paint()
       ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
         colors: <Color>[
-          colors.last.withValues(alpha: .42),
-          const Color(0xFF160D1F),
+          theme.colors.last.withValues(alpha: .36),
+          const Color(0xFF120A1D).withValues(alpha: .96),
+          Colors.black.withValues(alpha: .88),
         ],
       ).createShader(body.outerRect);
     canvas.drawRRect(body, fill);
 
     final border = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.6
-      ..shader = LinearGradient(colors: colors).createShader(body.outerRect);
+      ..strokeWidth = 2.8
+      ..shader = LinearGradient(
+        colors: <Color>[
+          theme.colors.first,
+          theme.colors[1],
+          theme.colors.last,
+          theme.colors.first,
+        ],
+      ).createShader(body.outerRect);
     canvas.drawRRect(body, border);
 
-    final tail = Path()
-      ..moveTo(size.width * .73, size.height * .72)
-      ..lineTo(size.width * .82, size.height * .90)
-      ..lineTo(size.width * .84, size.height * .69)
-      ..close();
-    canvas.drawPath(tail, border);
+    final highlight = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = Colors.white.withValues(alpha: .75);
+    canvas.drawArc(
+      body.outerRect.deflate(3),
+      math.pi * 1.08,
+      math.pi * .58,
+      false,
+      highlight,
+    );
 
-    if (styleId == 'bubble-heart') {
-      final heartPaint = Paint()..color = colors[1];
-      for (final p in <Offset>[
-        Offset(size.width * .13, size.height * .22),
-        Offset(size.width * .88, size.height * .26),
-      ]) {
-        canvas.drawCircle(p, 6, heartPaint);
-        canvas.drawCircle(Offset(p.dx + 7, p.dy), 6, heartPaint);
-      }
-    } else if (styleId == 'bubble-king') {
-      final crown = Paint()..color = colors.last;
-      final path = Path()
-        ..moveTo(size.width * .12, size.height * .22)
-        ..lineTo(size.width * .16, size.height * .06)
-        ..lineTo(size.width * .20, size.height * .20)
-        ..lineTo(size.width * .25, size.height * .05)
-        ..lineTo(size.width * .29, size.height * .22)
-        ..close();
-      canvas.drawPath(path, crown);
+    switch (theme.motif) {
+      case 'heart':
+        _drawHeartTheme(canvas, size);
+        break;
+      case 'king':
+        _drawKingTheme(canvas, size);
+        break;
+      case 'dream':
+        _drawDreamTheme(canvas, size);
+        break;
+      case 'nature':
+        _drawNatureTheme(canvas, size);
+        break;
+      case 'dragon':
+        _drawDragonTheme(canvas, size);
+        break;
+      case 'ice':
+        _drawIceTheme(canvas, size);
+        break;
+      case 'sakura':
+        _drawSakuraTheme(canvas, size);
+        break;
+      default:
+        _drawGoldTheme(canvas, size);
+        break;
     }
 
-    final sparkle = Paint()..color = colors.first;
+    final sparkle = Paint()..color = theme.colors.first;
     for (final p in <Offset>[
-      Offset(size.width * .18, size.height * .12),
-      Offset(size.width * .77, size.height * .11),
-      Offset(size.width * .91, size.height * .47),
+      Offset(size.width * .18, size.height * .17),
+      Offset(size.width * .80, size.height * .14),
+      Offset(size.width * .91, size.height * .45),
+      Offset(size.width * .30, size.height * .77),
     ]) {
-      canvas.drawCircle(p, 2.2, sparkle);
+      _drawSpark(canvas, p, size.shortestSide * .022, sparkle);
     }
+  }
+
+  void _drawGoldTheme(Canvas canvas, Size size) {
+    _drawCrown(
+      canvas,
+      Offset(size.width * .28, size.height * .22),
+      size.width * .11,
+      theme.colors,
+    );
+    for (final side in <double>[-1, 1]) {
+      for (var i = 0; i < 4; i++) {
+        final y = size.height * (.30 + i * .10);
+        final x = side < 0 ? size.width * .12 : size.width * .88;
+        _drawLeaf(
+          canvas,
+          Offset(x, y),
+          side < 0 ? -.45 : math.pi + .45,
+          size.width * .026,
+          theme.colors[1],
+        );
+      }
+    }
+    _drawDiamond(
+      canvas,
+      Offset(size.width * .50, size.height * .72),
+      size.width * .026,
+      theme.colors.first,
+    );
+  }
+
+  void _drawHeartTheme(Canvas canvas, Size size) {
+    final paint = Paint()..color = theme.colors[1];
+    final hearts = <Offset>[
+      Offset(size.width * .13, size.height * .31),
+      Offset(size.width * .18, size.height * .20),
+      Offset(size.width * .84, size.height * .20),
+      Offset(size.width * .90, size.height * .35),
+      Offset(size.width * .84, size.height * .67),
+    ];
+    for (var i = 0; i < hearts.length; i++) {
+      _drawHeart(
+        canvas,
+        hearts[i],
+        size.width * (i == 0 ? .060 : .040),
+        paint,
+      );
+    }
+  }
+
+  void _drawKingTheme(Canvas canvas, Size size) {
+    _drawCrown(
+      canvas,
+      Offset(size.width * .48, size.height * .18),
+      size.width * .12,
+      theme.colors,
+    );
+    for (final side in <double>[-1, 1]) {
+      for (var i = 0; i < 5; i++) {
+        final y = size.height * (.31 + i * .085);
+        final x = side < 0
+            ? size.width * (.15 + i * .006)
+            : size.width * (.85 - i * .006);
+        _drawLeaf(
+          canvas,
+          Offset(x, y),
+          side < 0 ? -.55 : math.pi + .55,
+          size.width * .024,
+          i.isEven ? theme.colors[2] : theme.colors[1],
+        );
+      }
+    }
+    _drawDiamond(
+      canvas,
+      Offset(size.width * .50, size.height * .72),
+      size.width * .030,
+      theme.colors[2],
+    );
+  }
+
+  void _drawDreamTheme(Canvas canvas, Size size) {
+    _drawButterfly(
+      canvas,
+      Offset(size.width * .18, size.height * .24),
+      size.width * .055,
+      theme.colors.first,
+    );
+    _drawButterfly(
+      canvas,
+      Offset(size.width * .84, size.height * .64),
+      size.width * .047,
+      theme.colors[1],
+    );
+    final p = Paint()..color = theme.colors.first;
+    for (final point in <Offset>[
+      Offset(size.width * .78, size.height * .20),
+      Offset(size.width * .24, size.height * .67),
+      Offset(size.width * .88, size.height * .34),
+    ]) {
+      _drawStar(canvas, point, size.width * .025, p);
+    }
+  }
+
+  void _drawNatureTheme(Canvas canvas, Size size) {
+    for (final side in <double>[-1, 1]) {
+      for (var i = 0; i < 5; i++) {
+        final x = side < 0 ? size.width * .14 : size.width * .86;
+        final y = size.height * (.28 + i * .09);
+        _drawLeaf(
+          canvas,
+          Offset(x, y),
+          side < 0 ? -.65 : math.pi + .65,
+          size.width * .028,
+          theme.colors[1],
+        );
+      }
+    }
+    for (final point in <Offset>[
+      Offset(size.width * .17, size.height * .32),
+      Offset(size.width * .20, size.height * .62),
+      Offset(size.width * .82, size.height * .30),
+      Offset(size.width * .86, size.height * .59),
+    ]) {
+      _drawFlower(canvas, point, size.width * .040, Colors.white, theme.colors[2]);
+    }
+  }
+
+  void _drawDragonTheme(Canvas canvas, Size size) {
+    final flame = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * .022
+      ..strokeCap = StrokeCap.round
+      ..color = theme.colors[1];
+    final left = Path()
+      ..moveTo(size.width * .13, size.height * .58)
+      ..quadraticBezierTo(
+        size.width * .08,
+        size.height * .36,
+        size.width * .18,
+        size.height * .22,
+      )
+      ..quadraticBezierTo(
+        size.width * .22,
+        size.height * .16,
+        size.width * .27,
+        size.height * .26,
+      );
+    canvas.drawPath(left, flame);
+    final right = Path()
+      ..moveTo(size.width * .86, size.height * .61)
+      ..quadraticBezierTo(
+        size.width * .95,
+        size.height * .42,
+        size.width * .88,
+        size.height * .24,
+      )
+      ..quadraticBezierTo(
+        size.width * .84,
+        size.height * .14,
+        size.width * .77,
+        size.height * .24,
+      );
+    canvas.drawPath(right, flame);
+    _drawDragonHead(
+      canvas,
+      Offset(size.width * .84, size.height * .31),
+      size.width * .070,
+    );
+    _drawDiamond(
+      canvas,
+      Offset(size.width * .18, size.height * .66),
+      size.width * .025,
+      theme.colors.first,
+    );
+  }
+
+  void _drawIceTheme(Canvas canvas, Size size) {
+    for (final point in <Offset>[
+      Offset(size.width * .16, size.height * .25),
+      Offset(size.width * .22, size.height * .63),
+      Offset(size.width * .80, size.height * .24),
+      Offset(size.width * .86, size.height * .60),
+    ]) {
+      _drawSnowflake(
+        canvas,
+        point,
+        size.width * .045,
+        theme.colors.first,
+      );
+    }
+  }
+
+  void _drawSakuraTheme(Canvas canvas, Size size) {
+    for (final point in <Offset>[
+      Offset(size.width * .16, size.height * .27),
+      Offset(size.width * .21, size.height * .60),
+      Offset(size.width * .82, size.height * .25),
+      Offset(size.width * .87, size.height * .58),
+    ]) {
+      _drawFlower(
+        canvas,
+        point,
+        size.width * .046,
+        theme.colors.first,
+        theme.colors[1],
+      );
+    }
+    final petal = Paint()..color = theme.colors.first.withValues(alpha: .9);
+    for (final point in <Offset>[
+      Offset(size.width * .34, size.height * .16),
+      Offset(size.width * .74, size.height * .17),
+      Offset(size.width * .70, size.height * .76),
+    ]) {
+      canvas.save();
+      canvas.translate(point.dx, point.dy);
+      canvas.rotate(.6);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: size.width * .022,
+          height: size.width * .040,
+        ),
+        petal,
+      );
+      canvas.restore();
+    }
+  }
+
+  void _drawCrown(
+    Canvas canvas,
+    Offset center,
+    double size,
+    List<Color> colors,
+  ) {
+    final path = Path()
+      ..moveTo(center.dx - size, center.dy + size * .36)
+      ..lineTo(center.dx - size * .72, center.dy - size * .55)
+      ..lineTo(center.dx - size * .28, center.dy - size * .08)
+      ..lineTo(center.dx, center.dy - size)
+      ..lineTo(center.dx + size * .30, center.dy - size * .08)
+      ..lineTo(center.dx + size * .72, center.dy - size * .58)
+      ..lineTo(center.dx + size, center.dy + size * .36)
+      ..close();
+    final paint = Paint()
+      ..shader = LinearGradient(colors: colors).createShader(
+        Rect.fromCenter(
+          center: center,
+          width: size * 2,
+          height: size * 1.5,
+        ),
+      );
+    canvas.drawPath(path, paint);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = Colors.white.withValues(alpha: .75),
+    );
+  }
+
+  void _drawHeart(Canvas canvas, Offset c, double s, Paint paint) {
+    final path = Path()
+      ..moveTo(c.dx, c.dy + s * .85)
+      ..cubicTo(
+        c.dx - s * 1.25,
+        c.dy + s * .1,
+        c.dx - s * .9,
+        c.dy - s * .95,
+        c.dx,
+        c.dy - s * .28,
+      )
+      ..cubicTo(
+        c.dx + s * .9,
+        c.dy - s * .95,
+        c.dx + s * 1.25,
+        c.dy + s * .1,
+        c.dx,
+        c.dy + s * .85,
+      )
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawButterfly(Canvas canvas, Offset c, double s, Color color) {
+    final wing = Paint()..color = color.withValues(alpha: .92);
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(-.12);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(-s * .60, -s * .05),
+        width: s * 1.05,
+        height: s * 1.40,
+      ),
+      wing,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(s * .60, -s * .05),
+        width: s * 1.05,
+        height: s * 1.40,
+      ),
+      wing,
+    );
+    canvas.drawCircle(Offset.zero, s * .12, Paint()..color = Colors.white70);
+    canvas.restore();
+  }
+
+  void _drawLeaf(
+    Canvas canvas,
+    Offset c,
+    double angle,
+    double s,
+    Color color,
+  ) {
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(angle);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: s * 2.0,
+        height: s,
+      ),
+      Paint()..color = color.withValues(alpha: .92),
+    );
+    canvas.restore();
+  }
+
+  void _drawFlower(
+    Canvas canvas,
+    Offset c,
+    double s,
+    Color petalColor,
+    Color centerColor,
+  ) {
+    final petal = Paint()..color = petalColor.withValues(alpha: .94);
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    for (var i = 0; i < 5; i++) {
+      canvas.save();
+      canvas.rotate(i * math.pi * 2 / 5);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(0, -s * .55),
+          width: s * .58,
+          height: s,
+        ),
+        petal,
+      );
+      canvas.restore();
+    }
+    canvas.drawCircle(
+      Offset.zero,
+      s * .22,
+      Paint()..color = centerColor,
+    );
+    canvas.restore();
+  }
+
+  void _drawStar(Canvas canvas, Offset c, double r, Paint paint) {
+    final path = Path();
+    for (var i = 0; i < 10; i++) {
+      final rr = i.isEven ? r : r * .42;
+      final a = -math.pi / 2 + i * math.pi / 5;
+      final p = Offset(c.dx + math.cos(a) * rr, c.dy + math.sin(a) * rr);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawDiamond(Canvas canvas, Offset c, double r, Color color) {
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..lineTo(c.dx + r * .72, c.dy)
+      ..lineTo(c.dx, c.dy + r)
+      ..lineTo(c.dx - r * .72, c.dy)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white70,
+    );
+  }
+
+  void _drawDragonHead(Canvas canvas, Offset c, double s) {
+    final fill = Paint()..color = const Color(0xFF24111B);
+    final outline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeJoin = StrokeJoin.round
+      ..color = theme.colors[1];
+    final path = Path()
+      ..moveTo(c.dx - s, c.dy + s * .15)
+      ..lineTo(c.dx - s * .25, c.dy - s * .62)
+      ..lineTo(c.dx + s * .20, c.dy - s * .28)
+      ..lineTo(c.dx + s * .92, c.dy - s * .60)
+      ..lineTo(c.dx + s * .60, c.dy - s * .05)
+      ..lineTo(c.dx + s, c.dy + s * .32)
+      ..lineTo(c.dx + s * .30, c.dy + s * .20)
+      ..lineTo(c.dx - s * .20, c.dy + s * .65)
+      ..close();
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, outline);
+    canvas.drawCircle(
+      Offset(c.dx + s * .30, c.dy - s * .05),
+      s * .09,
+      Paint()..color = theme.colors.first,
+    );
+  }
+
+  void _drawSnowflake(Canvas canvas, Offset c, double r, Color color) {
+    final paint = Paint()
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    for (var i = 0; i < 6; i++) {
+      final a = i * math.pi / 3;
+      final end = Offset(c.dx + math.cos(a) * r, c.dy + math.sin(a) * r);
+      canvas.drawLine(c, end, paint);
+      final b1 = a + .55;
+      final b2 = a - .55;
+      final branchBase = Offset(
+        c.dx + math.cos(a) * r * .62,
+        c.dy + math.sin(a) * r * .62,
+      );
+      canvas.drawLine(
+        branchBase,
+        Offset(
+          branchBase.dx + math.cos(b1) * r * .26,
+          branchBase.dy + math.sin(b1) * r * .26,
+        ),
+        paint,
+      );
+      canvas.drawLine(
+        branchBase,
+        Offset(
+          branchBase.dx + math.cos(b2) * r * .26,
+          branchBase.dy + math.sin(b2) * r * .26,
+        ),
+        paint,
+      );
+    }
+  }
+
+  void _drawSpark(Canvas canvas, Offset c, double r, Paint paint) {
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..lineTo(c.dx + r * .25, c.dy - r * .25)
+      ..lineTo(c.dx + r, c.dy)
+      ..lineTo(c.dx + r * .25, c.dy + r * .25)
+      ..lineTo(c.dx, c.dy + r)
+      ..lineTo(c.dx - r * .25, c.dy + r * .25)
+      ..lineTo(c.dx - r, c.dy)
+      ..lineTo(c.dx - r * .25, c.dy - r * .25)
+      ..close();
+    canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(covariant _BubblePainter oldDelegate) =>
-      oldDelegate.styleId != styleId;
+      oldDelegate.theme.motif != theme.motif ||
+      oldDelegate.theme.colors != theme.colors;
 }
 
 class ProfileCardCosmeticPreview extends StatelessWidget {
