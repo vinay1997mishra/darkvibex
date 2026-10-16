@@ -316,6 +316,7 @@ class BubbleCosmeticPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Store preview intentionally contains no placeholder message text.
     final theme = _bubbleTheme(styleId);
     return SizedBox(
       height: height,
