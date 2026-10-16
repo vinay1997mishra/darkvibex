@@ -2105,59 +2105,6 @@ class BackendApi {
       );
 
 
-  Future<Map<String, dynamic>?> intimacyCards({
-    required String userId,
-  }) =>
-      _json(
-        'GET',
-        '/api/intimacy/cards?user_id=${Uri.encodeQueryComponent(userId)}',
-        returnErrorBody: true,
-      );
-
-  Future<Map<String, dynamic>?> unlockIntimacyCard({
-    required String userId,
-  }) =>
-      _json(
-        'POST',
-        '/api/intimacy/cards/unlock',
-        body: <String, dynamic>{
-          'user_id': userId,
-        },
-        returnErrorBody: true,
-      );
-
-  Future<Map<String, dynamic>?> bindIntimacyCard({
-    required String userId,
-    required int slotIndex,
-    required String targetUserId,
-    required String relationType,
-  }) =>
-      _json(
-        'POST',
-        '/api/intimacy/cards/bind',
-        body: <String, dynamic>{
-          'user_id': userId,
-          'slot_index': slotIndex,
-          'target_user_id': targetUserId,
-          'relation_type': relationType,
-        },
-        returnErrorBody: true,
-      );
-
-  Future<Map<String, dynamic>?> unbindIntimacyCard({
-    required String userId,
-    required int slotIndex,
-  }) =>
-      _json(
-        'POST',
-        '/api/intimacy/cards/unbind',
-        body: <String, dynamic>{
-          'user_id': userId,
-          'slot_index': slotIndex,
-        },
-        returnErrorBody: true,
-      );
-
   Future<Map<String, dynamic>?> cpRequest({
     required String userId,
     required String targetUserId,
