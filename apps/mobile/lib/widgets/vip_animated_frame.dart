@@ -1,6 +1,21 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import 'frame_artwork_data.dart';
+
+final Map<String, MemoryImage> _frameArtworkCache = <String, MemoryImage>{};
+
+MemoryImage? _frameArtwork(String? styleId) {
+  if (styleId == null || styleId.isEmpty) return null;
+  final encoded = kFrameArtworkBase64[styleId];
+  if (encoded == null || encoded.isEmpty) return null;
+  return _frameArtworkCache.putIfAbsent(
+    styleId,
+    () => MemoryImage(base64Decode(encoded)),
+  );
+}
 
 const Set<String> _freeAnimatedFrameIds = <String>{
   'frame_golden_crown',
@@ -78,23 +93,62 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox.square(
+  Widget build(BuildContext context) {
+    final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
+
+    if (artwork != null) {
+      // The approved frame artwork is rendered directly, pixel-for-pixel.
+      // Only the DP sits underneath the transparent/open centre.
+      return SizedBox.square(
         dimension: widget.size,
-        child: AnimatedBuilder(
-          animation: _controller,
-          child: Padding(padding: const EdgeInsets.all(8), child: widget.child),
-          builder: (context, child) => CustomPaint(
-            painter: widget.enabled
-                ? _VipRingPainter(
-                    _controller.value,
-                    widget.level,
-                    widget.styleId,
-                  )
-                : null,
-            child: child,
-          ),
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            SizedBox.square(
+              dimension: widget.size * .64,
+              child: ClipOval(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox.square(
+                    dimension: widget.size * .64,
+                    child: widget.child,
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Image(
+                  image: artwork,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+            ),
+          ],
         ),
       );
+    }
+
+    return SizedBox.square(
+      dimension: widget.size,
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: Padding(padding: const EdgeInsets.all(8), child: widget.child),
+        builder: (context, child) => CustomPaint(
+          painter: widget.enabled
+              ? _VipRingPainter(
+                  _controller.value,
+                  widget.level,
+                  widget.styleId,
+                )
+              : null,
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 class _FrameTheme {
