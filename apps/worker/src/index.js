@@ -1311,7 +1311,6 @@ async function listRooms(db, viewerUserId) {
     "SELECT country_code FROM users WHERE id=? LIMIT 1"
   ).bind(viewerUserId).first();
   const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
-  if (!viewerCountry) return [];
   const presenceCutoff = await cleanupStaleRoomMembers(db, now());
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
@@ -1332,19 +1331,28 @@ async function listRooms(db, viewerUserId) {
        LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
        LEFT JOIN room_images ri ON ri.room_id = r.id
        LEFT JOIN room_settings rs ON rs.room_id = r.id
-      WHERE r.country_code = ?
-        AND COALESCE(rc.banned,0)=0
+      WHERE COALESCE(rc.banned,0)=0
         AND (
           r.owner_user_id = ?
-          OR EXISTS (
-            SELECT 1 FROM room_members visible_member
-             WHERE visible_member.room_id = r.id
-               AND visible_member.updated_at >= ?
+          OR (
+            r.country_code = ?
+            AND EXISTS (
+              SELECT 1 FROM room_members visible_member
+               WHERE visible_member.room_id = r.id
+                 AND visible_member.updated_at >= ?
+            )
           )
         )
-      ORDER BY r.updated_at DESC
+      ORDER BY CASE WHEN r.owner_user_id = ? THEN 0 ELSE 1 END, r.updated_at DESC
       LIMIT 100`
-  ).bind(now(), presenceCutoff, viewerCountry, viewerUserId, presenceCutoff).all();
+  ).bind(
+    now(),
+    presenceCutoff,
+    viewerUserId,
+    viewerCountry,
+    presenceCutoff,
+    viewerUserId,
+  ).all();
   const rows = result.results ?? [];
   for (const row of rows) {
     const currentDisplayId = String(row.display_id ?? "").trim();
