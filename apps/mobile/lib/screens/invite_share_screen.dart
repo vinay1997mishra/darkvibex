@@ -74,7 +74,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
       'Join me on DarkVibeX: $inviteLink\n'
       'Invitation code: $invitationCode\n'
       'If you install from this link, the invitation binds automatically after signup. '
-      'Coin Seller and Merchant transfers to the normal wallet count for commission.';
+      'Only coins received through eligible Coin Seller transfers into the invited user's normal wallet count toward commission.';
 
   Future<void> _copyCode() async {
     await Clipboard.setData(ClipboardData(text: invitationCode));
@@ -247,7 +247,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Invite friends and earn commission when they receive Coin Seller or Merchant coins in their normal wallet.',
+                          'Invite friends and earn commission only when they receive eligible Coin Seller coins in their normal wallet.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Color(0xFFFFE6CB),
@@ -419,7 +419,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ],
                         const SizedBox(height: 10),
                         const Text(
-                          "Each successful invite gives 300,000 coins once. Coin Seller and Merchant transfers both count for ongoing commission only when coins enter the invited user's normal wallet. Rewards are coins only; no Entry Vehicle or other prize item is included. Seller/Merchant wallet-to-wallet transfers, gifts, game winnings and other coin flows do not count.",
+                          "Each successful invite gives 300,000 coins once. Ongoing commission counts only coins credited to the invited user's normal wallet through eligible Coin Seller transfers. Merchant transfers, gifts, game winnings and other coin sources do not count. Rewards are coins only; no Entry Vehicle or other prize item is included.",
                           style: TextStyle(
                             color: Color(0xFFFFD7B0),
                             fontSize: 11,
@@ -604,7 +604,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                 _inviteTableCell('DP / Name', header: true),
                 _inviteTableCell('7-digit ID', header: true),
                 _inviteTableCell('Invite Date & Time', header: true),
-                _inviteTableCell('Seller/Merchant Coins', header: true),
+                _inviteTableCell('Coin Seller Coins', header: true),
                 _inviteTableCell('Commission', header: true),
                 _inviteTableCell('Invite Reward', header: true),
               ],
