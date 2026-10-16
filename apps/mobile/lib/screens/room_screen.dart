@@ -6518,7 +6518,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             alignment: Alignment.centerLeft,
                             child: hasBubble
                                 ? StretchableCosmeticBubble(
-                                    styleId: bubbleId!,
+                                    styleId: bubbleId,
                                     maxWidth: 300,
                                     minWidth: 96,
                                     minHeight: 58,
