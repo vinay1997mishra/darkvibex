@@ -97,7 +97,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
 
     if (artwork != null) {
-      // The approved frame artwork is rendered directly, pixel-for-pixel.
+      // The final approved frame artwork is rendered directly, pixel-for-pixel.
       // Only the DP sits underneath the transparent/open centre.
       return SizedBox.square(
         dimension: widget.size,
