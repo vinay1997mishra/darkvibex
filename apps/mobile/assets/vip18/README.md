@@ -12,4 +12,4 @@ This feature includes 36 separate SVG assets:
 - The room seat label uses the equipped entrance SVG for users whose active entry cosmetic is one of the new VIP nameplates.
 
 ## Scope note
-The SVGs are original scalable vector assets, not a flattened poster or a pixel-for-pixel trace of the supplied concept image. The current room integration renders the equipped nameplate alongside the seated user's name; a separate timed entrance-banner animation on the exact room-join event is not yet implemented.
+The SVGs are original scalable vector assets, not a flattened poster or a pixel-for-pixel trace of the supplied concept image. The room polls membership and plays the equipped VIP nameplate for five seconds when a newly arrived member has one equipped; the same nameplate remains visible by the seated user's name. Invisible-entry preference suppresses the arrival display.
