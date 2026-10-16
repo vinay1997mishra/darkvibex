@@ -472,7 +472,17 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         ),
       );
     }
-    if (kind == 'vehicle' || kind == 'entry') {
+    if (kind == 'entry') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 12),
+        child: EntranceNameplatePreview(
+          styleId: id,
+          displayName: widget.state.displayName,
+          vipLevel: tier.clamp(1, 18),
+        ),
+      );
+    }
+    if (kind == 'vehicle') {
       return Padding(
         padding: const EdgeInsets.all(10),
         child: VehicleShowcase(level: tier.clamp(1, 18)),
