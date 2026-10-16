@@ -3,3 +3,4 @@ Premium CP rings + center placement + owner-controlled free pricing
 Updated: 2026-10-16
 Build trigger: bubble/store parity + external avatar frame overlay fixes.
 Build trigger: minimal typing controls + per-element frame animation metadata.
+Final APK trigger after backend deploy: typing-only composer + motif animation.
