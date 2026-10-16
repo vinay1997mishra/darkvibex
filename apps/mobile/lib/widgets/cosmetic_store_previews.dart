@@ -378,12 +378,12 @@ class StretchableCosmeticBubble extends StatelessWidget {
     super.key,
     required this.styleId,
     required this.child,
-    this.maxWidth = 320,
-    this.minWidth = 168,
-    this.minHeight = 70,
+    this.maxWidth = 292,
+    this.minWidth = 112,
+    this.minHeight = 44,
     this.contentPadding = const EdgeInsets.symmetric(
-      horizontal: 38,
-      vertical: 20,
+      horizontal: 34,
+      vertical: 8,
     ),
   });
 
@@ -398,23 +398,27 @@ class StretchableCosmeticBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final artwork = _bubbleArtwork(styleId);
     if (artwork != null) {
-      return ConstrainedBox(
-        constraints: BoxConstraints(
-          minWidth: minWidth,
-          maxWidth: maxWidth,
-          minHeight: minHeight,
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            image: DecorationImage(
-              image: artwork,
-              fit: BoxFit.fill,
-              centerSlice: _bubbleCenterSlice(styleId),
+      return RepaintBoundary(
+        child: ClipRect(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: minWidth,
+              maxWidth: maxWidth,
+              minHeight: minHeight,
             ),
-          ),
-          child: Padding(
-            padding: contentPadding,
-            child: child,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                image: DecorationImage(
+                  image: artwork,
+                  fit: BoxFit.fill,
+                  centerSlice: _bubbleCenterSlice(styleId),
+                ),
+              ),
+              child: Padding(
+                padding: contentPadding,
+                child: child,
+              ),
+            ),
           ),
         ),
       );
