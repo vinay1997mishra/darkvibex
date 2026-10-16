@@ -293,7 +293,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         child: Row(
           children: [
             SizedBox(
-              width: 92,
+              width: 82,
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
                 itemCount: _categories.length,
@@ -373,14 +373,14 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                             physics:
                                 const AlwaysScrollableScrollPhysics(),
                             padding:
-                                const EdgeInsets.fromLTRB(10, 8, 10, 28),
+                                const EdgeInsets.fromLTRB(8, 8, 8, 28),
                             itemCount: products.length,
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 2,
                               crossAxisSpacing: 9,
                               mainAxisSpacing: 9,
-                              childAspectRatio: .64,
+                              childAspectRatio: .70,
                             ),
                             itemBuilder: (_, index) =>
                                 _productCard(products[index]),
@@ -407,27 +407,27 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     final kind = item['kind']?.toString() ?? '';
     final id = item['id']?.toString() ?? '';
     if (kind == 'frame') {
+      // Store cards must show the frame itself as a large open DP ring,
+      // not as a tiny profile badge. The real user DP is only inserted
+      // when the frame is equipped on profile/seat surfaces.
       return Center(
-        child: VipAnimatedFrame(
-          size: 100,
-          enabled: true,
-          level: tier,
-          styleId: id,
-          child: CircleAvatar(
-            backgroundColor: const Color(0xFF110D18),
-            backgroundImage: widget.state.avatarKey?.isNotEmpty == true
-                ? NetworkImage(
-                    widget.state.backend.fileUrl(widget.state.avatarKey!),
-                    headers: widget.state.backend.fileHeaders,
-                  )
-                : null,
-            child: widget.state.avatarKey?.isNotEmpty == true
-                ? null
-                : const Icon(
-                    Icons.person_rounded,
-                    color: Colors.white70,
-                    size: 34,
-                  ),
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: VipAnimatedFrame(
+            size: 132,
+            enabled: true,
+            level: tier,
+            styleId: id,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF0F0B16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: .10),
+                  width: 1,
+                ),
+              ),
+            ),
           ),
         ),
       );
@@ -586,30 +586,69 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                     children: [
                       Expanded(
                         child: canUse
-                            ? FilledButton.icon(
-                                onPressed:
-                                    busy ? null : () => _buy(item),
-                                icon: Icon(
-                                  price <= 0
-                                      ? Icons.redeem_rounded
-                                      : Icons.shopping_cart_rounded,
-                                  size: 17,
-                                ),
-                                label: Text(
-                                  busy ? '…' : (price <= 0 ? 'Get Free' : 'Buy'),
+                            ? SizedBox(
+                                height: 38,
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    visualDensity: VisualDensity.compact,
+                                    textStyle: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  onPressed: busy ? null : () => _buy(item),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      busy
+                                          ? '…'
+                                          : (price <= 0 ? 'Get Free' : 'Buy'),
+                                      maxLines: 1,
+                                    ),
+                                  ),
                                 ),
                               )
-                            : OutlinedButton(
-                                onPressed: null,
-                                child: Text('VIP$requiredLevel'),
+                            : SizedBox(
+                                height: 38,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: null,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'VIP$requiredLevel',
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                                ),
                               ),
                       ),
                       const SizedBox(width: 5),
                       Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: busy ? null : () => _send(item),
-                          icon: const Icon(Icons.send_rounded, size: 16),
-                          label: const Text('Send'),
+                        child: SizedBox(
+                          height: 38,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              visualDensity: VisualDensity.compact,
+                              textStyle: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            onPressed: busy ? null : () => _send(item),
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Send',
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
