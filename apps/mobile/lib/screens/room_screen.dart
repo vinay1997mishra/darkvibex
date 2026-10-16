@@ -75,6 +75,8 @@ class _RoomScreenState extends State<RoomScreen> {
     <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
   ];
   final TextEditingController roomChatController = TextEditingController();
+  final ScrollController roomChatScrollController = ScrollController();
+  bool roomMessageSending = false;
   bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   List<Map<String, dynamic>> roomMembers = <Map<String, dynamic>>[];
@@ -202,17 +204,40 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
+  void _scrollChatToLatest({bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !roomChatScrollController.hasClients) return;
+      final target = roomChatScrollController.position.maxScrollExtent;
+      if (animate) {
+        roomChatScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        roomChatScrollController.jumpTo(target);
+      }
+    });
+  }
+
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
-    if (!mounted || rows.isEmpty && chat.length == 1 && chat.first['text'] == 'Welcome to the room 👋') return;
-    final next = rows.map((message) => Map<String, dynamic>.from(message)).toList();
+    if (!mounted ||
+        (rows.isEmpty &&
+            chat.length == 1 &&
+            chat.first['text'] == 'Welcome to the room 👋')) {
+      return;
+    }
+    final next =
+        rows.map((message) => Map<String, dynamic>.from(message)).toList();
     if (!mounted || next.toString() == chat.toString()) return;
     setState(() {
       chat
         ..clear()
         ..addAll(next);
     });
+    _scrollChatToLatest();
   }
 
   static const _legalVersion = 'darkvibex-terms-privacy-2026-10-v1';
@@ -1356,6 +1381,7 @@ class _RoomScreenState extends State<RoomScreen> {
     giftEffectTimer?.cancel();
     _silentSpeakingLevels.dispose();
     roomChatController.dispose();
+    roomChatScrollController.dispose();
     unawaited(roomMusic.dispose());
     rtcEvents?.dispose();
     rtcEvents = null;
@@ -5751,6 +5777,7 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendInlineMessage([String? override]) async {
+    if (roomMessageSending) return;
     if (chatBanned) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Room owner/admin has chat banned this ID')),
@@ -5765,30 +5792,64 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     final value = (override ?? roomChatController.text).trim();
     if (value.isEmpty) return;
-    if (widget.state.backendConnected) {
-      final sent = await widget.state.backend.sendRoomMessage(
-        roomId: widget.room.id,
-        userId: widget.state.userId,
-        text: value,
-      );
-      if (!sent) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Message was not sent. Check your connection.')),
-          );
+
+    if (mounted) setState(() => roomMessageSending = true);
+    try {
+      if (widget.state.backendConnected) {
+        final result = await widget.state.backend.sendRoomMessageResult(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+          text: value,
+        );
+        if (result == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Message was not sent. Check your connection.'),
+              ),
+            );
+          }
+          return;
         }
+
+        roomChatController.clear();
+        if (!mounted) return;
+        final serverMessage = result['message'];
+        final message = serverMessage is Map
+            ? Map<String, dynamic>.from(serverMessage)
+            : <String, dynamic>{
+                'id': result['message_id'],
+                'user_id': widget.state.userId,
+                'display_name': widget.state.displayName,
+                'text': value,
+                'created_at': result['created_at'],
+                'active_bubble_id': widget.state.activeCosmetic('bubble'),
+              };
+        message['display_name'] ??= widget.state.displayName;
+        message['active_bubble_id'] ??= widget.state.activeCosmetic('bubble');
+        final id = message['id']?.toString();
+        if (id == null ||
+            id.isEmpty ||
+            !chat.any((item) => item['id']?.toString() == id)) {
+          setState(() => chat.add(message));
+        }
+        _scrollChatToLatest();
+        unawaited(_loadRoomMessages());
         return;
       }
+
+      if (!mounted) return;
       roomChatController.clear();
-      await _loadRoomMessages();
-      return;
+      setState(() => chat.add(<String, dynamic>{
+            'user_id': widget.state.userId,
+            'display_name': widget.state.displayName,
+            'text': value,
+            'active_bubble_id': widget.state.activeCosmetic('bubble'),
+          }));
+      _scrollChatToLatest();
+    } finally {
+      if (mounted) setState(() => roomMessageSending = false);
     }
-    if (!mounted) return;
-    roomChatController.clear();
-    setState(() => chat.add(<String, dynamic>{
-      'display_name': widget.state.displayName,
-      'text': value,
-    }));
   }
 
   Future<void> _showEmojiPicker() async {
@@ -5882,13 +5943,35 @@ class _RoomScreenState extends State<RoomScreen> {
         contentType: contentType,
       );
       if (key == null) throw StateError('upload_failed');
-      final sent = await widget.state.backend.sendRoomMessage(
+      final result = await widget.state.backend.sendRoomMessageResult(
         roomId: widget.room.id,
         userId: widget.state.userId,
         imageKey: key,
       );
-      if (!sent) throw StateError('send_failed');
-      await _loadRoomMessages();
+      if (result == null) throw StateError('send_failed');
+      if (!mounted) return;
+      final serverMessage = result['message'];
+      final message = serverMessage is Map
+          ? Map<String, dynamic>.from(serverMessage)
+          : <String, dynamic>{
+              'id': result['message_id'],
+              'user_id': widget.state.userId,
+              'display_name': widget.state.displayName,
+              'text': '',
+              'image_key': key,
+              'created_at': result['created_at'],
+              'active_bubble_id': widget.state.activeCosmetic('bubble'),
+            };
+      message['display_name'] ??= widget.state.displayName;
+      message['image_key'] ??= key;
+      final id = message['id']?.toString();
+      if (id == null ||
+          id.isEmpty ||
+          !chat.any((item) => item['id']?.toString() == id)) {
+        setState(() => chat.add(message));
+      }
+      _scrollChatToLatest();
+      unawaited(_loadRoomMessages());
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Photo could not be sent. Check your connection and try again.')),
@@ -5950,6 +6033,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final spec = SeatLayoutSpec.forCount(roomSeatCount);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: _roomThemeColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -6433,6 +6517,8 @@ class _RoomScreenState extends State<RoomScreen> {
                   Expanded(
                     child: ListView.builder(
                       key: const Key('room-chat-list'),
+                      controller: roomChatScrollController,
+                      padding: const EdgeInsets.only(bottom: 14),
                       itemCount: chat.length + 1,
                       itemBuilder: (context, index) {
                         if (index == 0) {
@@ -6742,52 +6828,85 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-          decoration: const BoxDecoration(
-            color: TinniPalette.black,
-            border: Border(top: BorderSide(color: TinniPalette.bronze)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: roomChatController,
-                  enabled: !chatBanned && (publicScreenEnabled || isRoomAdmin),
-                  textInputAction: TextInputAction.send,
-                  maxLength: 200,
-                  buildCounter: (
-                    BuildContext context, {
-                    required int currentLength,
-                    required bool isFocused,
-                    required int? maxLength,
-                  }) => null,
-                  decoration: InputDecoration(
-                    hintText: chatBanned
-                        ? 'Chat banned'
-                        : (!publicScreenEnabled && !isRoomAdmin
-                            ? 'Owner/Admin only'
-                            : 'Chat'),
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
+      bottomNavigationBar: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            decoration: const BoxDecoration(
+              color: TinniPalette.black,
+              border: Border(top: BorderSide(color: TinniPalette.bronze)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const Key('room-chat-composer'),
+                    controller: roomChatController,
+                    enabled: !chatBanned && (publicScreenEnabled || isRoomAdmin),
+                    textInputAction: TextInputAction.send,
+                    minLines: 1,
+                    maxLines: 3,
+                    maxLength: 200,
+                    scrollPadding: const EdgeInsets.only(bottom: 96),
+                    buildCounter: (
+                      BuildContext context, {
+                      required int currentLength,
+                      required bool isFocused,
+                      required int? maxLength,
+                    }) => null,
+                    decoration: InputDecoration(
+                      hintText: chatBanned
+                          ? 'Chat banned'
+                          : (!publicScreenEnabled && !isRoomAdmin
+                              ? 'Owner/Admin only'
+                              : 'Type a message'),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 11,
+                      ),
+                    ),
+                    onTap: () {
+                      Future<void>.delayed(
+                        const Duration(milliseconds: 220),
+                        _scrollChatToLatest,
+                      );
+                    },
+                    onSubmitted: (_) => _sendInlineMessage(),
+                  ),
+                ),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: roomChatController,
+                  builder: (context, value, child) => IconButton(
+                    key: const Key('room-chat-send-button'),
+                    tooltip: 'Send',
+                    onPressed: value.text.trim().isEmpty || roomMessageSending
+                        ? null
+                        : _sendInlineMessage,
+                    icon: TinniGlowIcon(
+                      icon: Icons.send_rounded,
+                      size: 20,
+                      boxSize: 36,
+                      active: value.text.trim().isNotEmpty &&
+                          !roomMessageSending,
                     ),
                   ),
-                  onSubmitted: (_) => _sendInlineMessage(),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Emoji & Emotes',
-                onPressed: _showEmojiPicker,
-                icon: const TinniGlowIcon(
-                  icon: Icons.emoji_emotions_rounded,
-                  size: 20,
-                  boxSize: 36,
+                IconButton(
+                  tooltip: 'Emoji & Emotes',
+                  onPressed: _showEmojiPicker,
+                  icon: const TinniGlowIcon(
+                    icon: Icons.emoji_emotions_rounded,
+                    size: 20,
+                    boxSize: 36,
+                  ),
                 ),
-              ),
               IconButton(
                 tooltip: 'Microphone',
                 onPressed: mySeat == null ? null : _toggleMic,
@@ -6824,7 +6943,8 @@ class _RoomScreenState extends State<RoomScreen> {
                   boxSize: 36,
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
