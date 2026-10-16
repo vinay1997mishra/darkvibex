@@ -74,7 +74,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
       'Join me on DarkVibeX: $inviteLink\n'
       'Invitation code: $invitationCode\n'
       'If you install from this link, the invitation binds automatically after signup. '
-      'Only coins received through eligible Coin Seller transfers into the invited user's normal wallet count toward commission.';
+      'Only coins received through eligible Coin Seller transfers into the invited user\'s normal wallet count toward commission.';
 
   Future<void> _copyCode() async {
     await Clipboard.setData(ClipboardData(text: invitationCode));
