@@ -304,9 +304,15 @@ export async function recordCoinSellerInviteCommission(db, {
   await ensureInviteRewardSchema(db);
   const amount = Number(sourceCoins);
   const walletType = String(sourceWalletType ?? "").trim();
-  if (!inviteeUserId || !sourceTransferId ||
-      !["coin_seller", "merchant"].includes(walletType) ||
-      !Number.isSafeInteger(amount) || amount <= 0) {
+  if (!inviteeUserId || !sourceTransferId) {
+    throw new Error("invalid_invite_commission_source");
+  }
+  // Commission volume is strictly Coin Seller received coins. Merchant
+  // transfers and other wallet sources must not earn invite commission.
+  if (walletType !== "coin_seller") {
+    return { applied: false, reason: "ineligible_source" };
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new Error("invalid_invite_commission_source");
   }
 
