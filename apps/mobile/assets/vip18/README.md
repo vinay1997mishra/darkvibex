@@ -1,12 +1,15 @@
 # DarkVibeX VIP 1–18 Entrance and Full Profile Cards
 
-This feature adds 18 independent `entry` cosmetics and 18 independent `profile_card` cosmetics to the worker catalog.
+This feature includes 36 separate SVG assets:
+- `entrance_vip_01.svg` … `entrance_vip_18.svg`
+- `profile_vip_01.svg` … `profile_vip_18.svg`
 
-- Store categories remain separate: **Entrance** uses `kind: entry`; **Profile** uses `kind: profile_card`.
-- Each item has a stable ID, its own VIP requirement (VIP1–VIP18), a 30-day duration, and an owner-configurable coin price (currently 0, matching the existing catalog policy).
-- The Store uses a horizontal animated-style nameplate preview for entrance items and the full profile-card preview for profile items.
-- Profile-card previews include live display name, public ID, VIP badge, and avatar placeholder/image rather than using a DP-only frame.
+## Integration
+- Store categories are separate: Entrance uses `kind: entry`; Profile uses `kind: profile_card`.
+- Each catalog item has a stable ID, VIP 1–18 gate, 30-day ownership duration, and owner-configurable coin price (currently 0 under the existing catalog policy).
+- The Store previews use the corresponding SVG asset with live name, ID, VIP badge and avatar rendered by Flutter.
+- The equipped profile-card ID is returned by the user-profile endpoint and styles the public profile header with its matching SVG.
+- The room seat label uses the equipped entrance SVG for users whose active entry cosmetic is one of the new VIP nameplates.
 
-## Important implementation note
-
-These are app-rendered scalable UI designs, not a flattened poster. This keeps text and user data dynamic and allows each of the 36 styles to be rendered independently. Actual production room-entry triggering and applying the selected full-card style to the public profile surface must use the equipped cosmetic state in those surfaces; this catalog/store PR does not claim that end-to-end room/profile wiring is finished.
+## Scope note
+The SVGs are original scalable vector assets, not a flattened poster or a pixel-for-pixel trace of the supplied concept image. The current room integration renders the equipped nameplate alongside the seated user's name; a separate timed entrance-banner animation on the exact room-join event is not yet implemented.
