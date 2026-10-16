@@ -463,12 +463,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           final messageBubble = hasStoreBubble
                               ? StretchableCosmeticBubble(
                                   styleId: bubbleId,
-                                  maxWidth: 300,
-                                  minWidth: 168,
-                                  minHeight: 70,
+                                  maxWidth: 292,
+                                  minWidth: 112,
+                                  minHeight: 44,
                                   contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 38,
-                                    vertical: 20,
+                                    horizontal: 34,
+                                    vertical: 8,
                                   ),
                                   child: messageContent,
                                 )
@@ -505,7 +505,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             alignment:
                                 mine ? Alignment.centerRight : Alignment.centerLeft,
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              padding: const EdgeInsets.symmetric(vertical: 7),
                               child: messageBubble,
                             ),
                           );
