@@ -321,23 +321,6 @@ class BubbleCosmeticPreview extends StatelessWidget {
       height: height,
       child: CustomPaint(
         painter: _BubblePainter(theme),
-        child: const Center(
-          child: Padding(
-            padding: EdgeInsets.only(bottom: 1),
-            child: Text(
-              'Hello',
-              maxLines: 1,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                shadows: <Shadow>[
-                  Shadow(color: Colors.black87, blurRadius: 5),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
