@@ -1166,7 +1166,7 @@ class EntranceNameplatePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final parsed = (int.tryParse(styleId.split('-').last) ?? vipLevel).clamp(1, 18);
+    final parsed = (int.tryParse(styleId.split('-').last) ?? vipLevel).clamp(1, 18).toInt();
     final palette = _palettes[parsed - 1];
     final asset = 'assets/vip18/entrance_vip_${parsed.toString().padLeft(2, "0")}.svg';
     if (compact) {
@@ -1318,7 +1318,7 @@ class ProfileCardCosmeticPreview extends StatelessWidget {
       <Color>[Color(0xFFFFB17D), Color(0xFFB92510), Color(0xFF2B0800)],
       <Color>[Color(0xFFFFE7A8), Color(0xFFDA8B08), Color(0xFF321500)],
     ];
-    return palettes[(level - 1).clamp(0, 17)];
+    return palettes[(level - 1).clamp(0, 17).toInt()];
   }
 
   @override
