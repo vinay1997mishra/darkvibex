@@ -8264,6 +8264,9 @@ async function handleLiveKitToken(request, env) {
 
 const INTIMACY_CARD_UNLOCK_COST = 100000;
 const INTIMACY_CARD_TOTAL_SLOTS = 20;
+// Slots 1-4 are shown initially: slot 1 is Brother/Sister, slots 2-3 are
+// available Add cards, and slot 4 is the first locked card. Each unlock adds
+// exactly one slot, revealing the next locked card until all 20 are available.
 const INTIMACY_CARD_INITIAL_UNLOCKED = 3;
 
 async function ensureIntimacyCardSchema(db) {
@@ -8345,6 +8348,13 @@ async function unlockIntimacyCard(db, userId) {
   const wallet = await db.prepare(
     "SELECT coins FROM users WHERE id=? LIMIT 1"
   ).bind(userId).first();
+  await db.prepare(
+    "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+  ).bind(
+    crypto.randomUUID(), userId, "intimacy_card_unlock",
+    -INTIMACY_CARD_UNLOCK_COST, Number(wallet?.coins ?? 0),
+    "intimacy_card:" + (state.unlocked_count + 1), ts(),
+  ).run();
   return {
     ...(await intimacyCardState(db, userId)),
     coin_balance: Number(wallet?.coins ?? 0),
@@ -8413,6 +8423,8 @@ async function bindIntimacyCard(db, userId, slotIndexRaw, targetUserIdRaw, relat
 }
 
 async function unbindIntimacyCard(db, userId, slotIndexRaw) {
+  await ensureUser(db, userId);
+  await ensureUserAllowed(db, userId);
   await ensureIntimacyCardSchema(db);
   const slotIndex = Number(slotIndexRaw);
   if (!Number.isInteger(slotIndex) || slotIndex < 1 || slotIndex > INTIMACY_CARD_TOTAL_SLOTS) {
