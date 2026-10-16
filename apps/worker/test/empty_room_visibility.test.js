@@ -13,30 +13,50 @@ const appStateSource = readFileSync(
   ),
   "utf8",
 );
+const homeSource = readFileSync(
+  fileURLToPath(
+    new URL("../../mobile/lib/screens/home_shell.dart", import.meta.url),
+  ),
+  "utf8",
+);
 
-test("public room discovery excludes rooms with no members", () => {
-  const guard =
-    "EXISTS (\n          SELECT 1 FROM room_members visible_member";
-  assert.ok(workerSource.includes(guard));
+test("public room discovery hides empty rooms but owner can recover own room", () => {
+  assert.ok(
+    workerSource.includes("r.owner_user_id = ?"),
+    "owner must receive their own room even when presence is empty",
+  );
+  assert.ok(
+    workerSource.includes(
+      "SELECT 1 FROM room_members visible_member",
+    ),
+  );
   assert.ok(
     workerSource.includes(
       "WHERE visible_member.room_id = r.id",
     ),
   );
+});
+
+test("mobile state retains own empty room while public surfaces filter it", () => {
+  const ownerAwareFilter =
+    "return online > 0 || ownerId == userId;";
+  assert.equal(
+    appStateSource.split(ownerAwareFilter).length - 1,
+    2,
+    "initial load and refresh must preserve the viewer's own room",
+  );
   assert.ok(
-    workerSource.includes(
-      "remoteRooms",
-    ) === false,
-    "worker should not contain mobile room list code",
+    homeSource.includes(".where((room) => room.online > 0)"),
+    "Party/Discover/followed public surfaces must still hide empty rooms",
   );
 });
 
-test("mobile room state defensively drops zero-online rooms", () => {
-  const filter =
-    "(int.tryParse(row['online']?.toString() ?? '') ?? 0) > 0";
-  assert.equal(
-    appStateSource.split(filter).length - 1,
-    2,
-    "initial load and refresh must both filter empty rooms",
+test("creating an already-owned permanent room ID is idempotent", () => {
+  assert.ok(
+    workerSource.includes(
+      'String(existingRoomId.owner_user_id ?? "") !== ownerId',
+    ),
   );
+  assert.ok(workerSource.includes("existing: true"));
+  assert.ok(workerSource.includes("room_id: roomId"));
 });
