@@ -1135,6 +1135,7 @@ class EntranceNameplatePreview extends StatelessWidget {
     required this.styleId,
     required this.displayName,
     required this.vipLevel,
+    this.compact = false,
   });
 
   final String styleId;
