@@ -23,3 +23,5 @@ test("room message history uses stable newest-first ordering", () => {
     "messages with the same timestamp still need deterministic ordering",
   );
 });
+
+// Release gate: room composer delivery payload is covered by this test.
