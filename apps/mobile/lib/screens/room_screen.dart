@@ -6520,12 +6520,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ? StretchableCosmeticBubble(
                                     styleId: bubbleId,
                                     maxWidth: 300,
-                                    minWidth: 96,
-                                    minHeight: 58,
+                                    minWidth: 168,
+                                    minHeight: 70,
                                     contentPadding:
                                         const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                      vertical: 18,
+                                      horizontal: 38,
+                                      vertical: 20,
                                     ),
                                     child: messageContent,
                                   )
