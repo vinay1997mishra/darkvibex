@@ -1140,6 +1140,7 @@ class EntranceNameplatePreview extends StatelessWidget {
   final String styleId;
   final String displayName;
   final int vipLevel;
+  final bool compact;
 
   static const List<List<Color>> _palettes = <List<Color>>[
     <Color>[Color(0xFFFFE08A), Color(0xFFFF8A00), Color(0xFF4D1600)],
@@ -1166,6 +1167,33 @@ class EntranceNameplatePreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final parsed = int.tryParse(styleId.split('-').last) ?? vipLevel;
     final palette = _palettes[(parsed - 1).clamp(0, 17)];
+    if (compact) {
+      return Container(
+        width: double.infinity,
+        height: 19,
+        margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(5),
+          gradient: LinearGradient(colors: palette),
+          border: Border.all(color: palette.first, width: .8),
+          boxShadow: <BoxShadow>[
+            BoxShadow(color: palette[1].withValues(alpha: .38), blurRadius: 4),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          displayName.isEmpty ? 'User' : displayName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 7,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      );
+    }
     return Center(
       child: Container(
         height: 74,
