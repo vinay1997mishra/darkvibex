@@ -20,7 +20,7 @@ void main() {
     expect(source, contains('_paintStarPulse'));
     expect(source, contains('_paintFlowerOrbit'));
     expect(source, contains('_paintNatureGlow'));
-    expect(source, contains('photo does not look'));
+    expect(source, contains('The DP stays full-size'));
     expect(source, isNot(contains('canvas.drawLine(')));
     expect(source, isNot(contains('0xFFFFD45A).withValues(alpha: .82')));
   });
