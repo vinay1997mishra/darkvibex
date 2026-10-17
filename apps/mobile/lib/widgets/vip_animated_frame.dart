@@ -33,6 +33,7 @@ const Set<String> _freeAnimatedFrameIds = <String>{
   'frame_blue_magic_butterfly',
   'frame_golden_butterfly_queen',
   'frame_purple_dream_butterfly',
+  'frame_neon_butterfly',
 };
 
 const Set<String> _premiumButterflyFrameIds = <String>{
@@ -153,9 +154,8 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     }
 
     if (artwork != null) {
-      // Keep the complete frame artwork static. Only motif elements animate:
-      // butterfly wings flap, crown/wing highlights sweep, and decorative
-      // sparkles/petals pulse. The DP and frame body never shake or rotate.
+      // The DP stays full-size beneath the transparent artwork overlay.
+      // Only the ornaments animate; the photo and frame body do not move.
       const frameScale = 1.86;
 
       return SizedBox.square(
@@ -167,19 +167,6 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
             SizedBox.square(
               dimension: widget.size,
               child: widget.child,
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFFFFD45A).withValues(alpha: .82),
-                      width: 1.15,
-                    ),
-                  ),
-                ),
-              ),
             ),
             IgnorePointer(
               child: Transform.scale(
@@ -265,7 +252,7 @@ class _FrameElementPainter extends CustomPainter {
   bool get _butterfly =>
       styleId == 'frame_blue_butterfly' ||
       styleId == 'frame_purple_butterfly' ||
-      styleId == 'frame_red_rose';
+      styleId == 'frame_neon_butterfly';
 
   bool get _crown =>
       styleId == 'frame_golden_crown' ||
@@ -276,6 +263,10 @@ class _FrameElementPainter extends CustomPainter {
       styleId == 'frame_royal_love';
 
   bool get _royalWings => styleId == 'frame_red_black_royal_wings';
+  bool get _rose => styleId == 'frame_red_rose';
+  bool get _star => styleId == 'frame_purple_star';
+  bool get _flower => styleId == 'frame_golden_flower' || styleId == 'frame_pink_blossom';
+  bool get _nature => styleId == 'frame_green_nature';
 
   Color get _accent => switch (styleId) {
         'frame_blue_butterfly' => const Color(0xFF8CEBFF),
@@ -315,6 +306,26 @@ class _FrameElementPainter extends CustomPainter {
     if (_royalWings) {
       _paintWingShimmer(canvas, size);
       _paintSparkles(canvas, size, count: 6);
+      return;
+    }
+    if (_rose) {
+      _paintRoseBloom(canvas, size);
+      _paintSparkles(canvas, size, count: 4);
+      return;
+    }
+    if (_star) {
+      _paintStarPulse(canvas, size);
+      _paintSparkles(canvas, size, count: 6);
+      return;
+    }
+    if (_flower) {
+      _paintFlowerOrbit(canvas, size);
+      _paintSparkles(canvas, size, count: 5);
+      return;
+    }
+    if (_nature) {
+      _paintNatureGlow(canvas, size);
+      _paintSparkles(canvas, size, count: 4);
       return;
     }
     _paintPetalGlow(canvas, size);
@@ -376,32 +387,25 @@ class _FrameElementPainter extends CustomPainter {
   }
 
   void _paintCrownShine(Canvas canvas, Size size) {
-    final x = size.width * (-.10 + 1.20 * phase);
-    final rect = Rect.fromLTWH(
-      x,
-      size.height * .03,
-      size.width * .055,
-      size.height * .30,
-    );
-    final paint = Paint()
-      ..shader = LinearGradient(
-        colors: <Color>[
-          Colors.transparent,
-          Colors.white.withValues(alpha: .78),
-          _accent.withValues(alpha: .62),
-          Colors.transparent,
-        ],
-      ).createShader(rect);
-    canvas.save();
-    final pivot = Offset(size.width / 2, size.height * .18);
-    canvas.translate(pivot.dx, pivot.dy);
-    canvas.rotate(-.18);
-    canvas.translate(-pivot.dx, -pivot.dy);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, Radius.circular(size.width * .03)),
-      paint,
-    );
-    canvas.restore();
+    // Crown jewels twinkle softly; do not sweep a hard line across the DP.
+    final t = phase * math.pi * 2;
+    for (var i = 0; i < 5; i++) {
+      final bob = math.sin(t + i * 1.4);
+      final point = Offset(size.width * (.20 + i * .15),
+          size.height * (.095 + bob * .012));
+      final radius = size.width * (.018 + .006 * ((bob + 1) / 2));
+      canvas.drawCircle(point, radius * 2.4, Paint()
+        ..color = _accent.withValues(alpha: .22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      final jewel = Path()
+        ..moveTo(point.dx, point.dy - radius * 1.6)
+        ..lineTo(point.dx + radius, point.dy)
+        ..lineTo(point.dx, point.dy + radius * 1.6)
+        ..lineTo(point.dx - radius, point.dy)
+        ..close();
+      canvas.drawPath(jewel, Paint()
+        ..color = Colors.white.withValues(alpha: .4 + .4 * ((bob + 1) / 2)));
+    }
   }
 
   void _paintHeartPulse(Canvas canvas, Size size) {
@@ -434,22 +438,115 @@ class _FrameElementPainter extends CustomPainter {
   }
 
   void _paintWingShimmer(Canvas canvas, Size size) {
-    final sweep = (phase * 1.4) % 1.0;
-    final y = size.height * (.20 + .52 * sweep);
-    final paint = Paint()
-      ..color = _accent.withValues(alpha: .42)
-      ..strokeWidth = size.width * .018
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(size.width * .12, y),
-      Offset(size.width * .33, y - size.height * .06),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width * .88, y),
-      Offset(size.width * .67, y - size.height * .06),
-      paint,
-    );
+    // Soft light beads drift along both wings; no straight moving lines.
+    final t = phase * math.pi * 2;
+    for (var i = 0; i < 4; i++) {
+      final progress = (phase + i * .26) % 1.0;
+      final drift = math.sin(t + i * 1.7) * .035;
+      final y = .22 + .54 * progress;
+      for (final point in <Offset>[
+        Offset(size.width * (.18 + drift), size.height * y),
+        Offset(size.width * (.82 - drift), size.height * (y - .035)),
+      ]) {
+        canvas.drawCircle(point, size.width * .060, Paint()
+          ..color = _accent.withValues(alpha: .18)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+        canvas.drawCircle(point, size.width * .018,
+          Paint()..color = Colors.white.withValues(alpha: .52));
+      }
+    }
+  }
+
+  void _paintRoseBloom(Canvas canvas, Size size) {
+    final t = phase * math.pi * 2;
+    final center = Offset(size.width * .50, size.height * .16);
+    for (var i = 0; i < 7; i++) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(i * math.pi * 2 / 7 + math.sin(t) * .08);
+      final petal = Rect.fromCenter(center: Offset(0, -size.height * .026),
+          width: size.width * .065, height: size.height * .080);
+      canvas.drawOval(petal, Paint()..color = _accent.withValues(alpha: .18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      canvas.drawOval(petal, Paint()..color = _accent.withValues(alpha: .64));
+      canvas.restore();
+    }
+    canvas.drawCircle(center, size.width * (.016 + .004 * math.sin(t).abs()),
+      Paint()..color = const Color(0xFFFFF1B5).withValues(alpha: .92));
+  }
+
+  void _paintStarPulse(Canvas canvas, Size size) {
+    final t = phase * math.pi * 2;
+    final center = Offset(size.width * .50, size.height * .16);
+    for (var i = 0; i < 3; i++) {
+      final angle = t * .3 + i * math.pi * 2 / 3;
+      final point = center + Offset(math.cos(angle), math.sin(angle)) * size.width * .075;
+      final radius = size.width * (.022 + .008 * ((math.sin(t + i) + 1) / 2));
+      final star = Path()
+        ..moveTo(point.dx, point.dy - radius)
+        ..lineTo(point.dx + radius * .35, point.dy - radius * .35)
+        ..lineTo(point.dx + radius, point.dy)
+        ..lineTo(point.dx + radius * .35, point.dy + radius * .35)
+        ..lineTo(point.dx, point.dy + radius)
+        ..lineTo(point.dx - radius * .35, point.dy + radius * .35)
+        ..lineTo(point.dx - radius, point.dy)
+        ..lineTo(point.dx - radius * .35, point.dy - radius * .35)
+        ..close();
+      canvas.drawCircle(point, radius * 2.4, Paint()
+        ..color = _accent.withValues(alpha: .2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      canvas.drawPath(star, Paint()..color = Colors.white.withValues(alpha: .8));
+    }
+  }
+
+  void _paintFlowerOrbit(Canvas canvas, Size size) {
+    final t = phase * math.pi * 2;
+    final center = Offset(size.width * .50, size.height * .16);
+    final orbit = size.width * (.06 + .01 * math.sin(t));
+    for (var i = 0; i < 6; i++) {
+      final angle = i * math.pi * 2 / 6 + t * .12;
+      final point = center + Offset(math.cos(angle), math.sin(angle)) * orbit;
+      canvas.save();
+      canvas.translate(point.dx, point.dy);
+      canvas.rotate(angle + math.pi / 2);
+      final petal = Rect.fromCenter(center: Offset.zero,
+          width: size.width * .024, height: size.height * .048);
+      canvas.drawOval(petal, Paint()..color = _accent.withValues(alpha: .2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      canvas.drawOval(petal, Paint()..color = _accent.withValues(alpha: .7));
+      canvas.restore();
+    }
+    canvas.drawCircle(center, size.width * .014,
+      Paint()..color = Colors.white.withValues(alpha: .8));
+  }
+
+  void _paintNatureGlow(Canvas canvas, Size size) {
+    final t = phase * math.pi * 2;
+    final center = Offset(size.width * .50, size.height * .18);
+    for (var i = 0; i < 4; i++) {
+      final side = i.isEven ? -1.0 : 1.0;
+      final point = center + Offset(side * size.width * (.045 + .012 * (i ~/ 2)),
+          math.sin(t + i) * size.height * .018);
+      canvas.save();
+      canvas.translate(point.dx, point.dy);
+      canvas.rotate(side * (.42 + .1 * math.sin(t + i)));
+      final leaf = Path()
+        ..moveTo(0, 0)
+        ..quadraticBezierTo(size.width * side * .07, -size.height * .055,
+            size.width * side * .105, 0)
+        ..quadraticBezierTo(size.width * side * .045, size.height * .045, 0, 0)
+        ..close();
+      canvas.drawPath(leaf, Paint()..color = _accent.withValues(alpha: .18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      canvas.drawPath(leaf, Paint()..color = _accent.withValues(alpha: .58));
+      canvas.restore();
+    }
+    final dew = center + Offset(0, size.height * .045);
+    canvas.drawCircle(dew, size.width * .026, Paint()
+      ..color = const Color(0xFFD2FFE1).withValues(alpha: .36)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+    canvas.drawCircle(dew, size.width * .010,
+      Paint()..color = Colors.white.withValues(alpha: .82));
   }
 
   void _paintPetalGlow(Canvas canvas, Size size) {
@@ -459,11 +556,9 @@ class _FrameElementPainter extends CustomPainter {
       final a = t * .35 + i * math.pi * 2 / 5;
       final distance = size.width * (.07 + .01 * math.sin(t + i));
       final p = center + Offset(math.cos(a), math.sin(a)) * distance;
-      canvas.drawCircle(
-        p,
-        size.width * (.012 + .004 * ((math.sin(t * 2 + i) + 1) / 2)),
-        Paint()..color = _accent.withValues(alpha: .34),
-      );
+      canvas.drawCircle(p, size.width * (.012 + .004 * ((math.sin(t * 2 + i) + 1) / 2)),
+        Paint()..color = _accent.withValues(alpha: .34)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
     }
   }
 
@@ -474,16 +569,19 @@ class _FrameElementPainter extends CustomPainter {
       final radius = size.width * (.34 + .06 * math.sin(t + i));
       final center = Offset(size.width / 2, size.height / 2);
       final p = center + Offset(math.cos(a), math.sin(a)) * radius;
-      final alpha = (.12 + .38 * ((math.sin(t * 2 + i) + 1) / 2))
-          .clamp(.12, .50)
-          .toDouble();
-      final r = size.width * (.007 + .006 * ((math.sin(t + i) + 1) / 2));
-      final paint = Paint()
-        ..color = _accent.withValues(alpha: alpha)
-        ..strokeWidth = r * .65
-        ..strokeCap = StrokeCap.round;
-      canvas.drawLine(Offset(p.dx - r, p.dy), Offset(p.dx + r, p.dy), paint);
-      canvas.drawLine(Offset(p.dx, p.dy - r), Offset(p.dx, p.dy + r), paint);
+      final alpha = (.12 + .38 * ((math.sin(t * 2 + i) + 1) / 2)).clamp(.12, .50).toDouble();
+      final r = size.width * (.010 + .006 * ((math.sin(t + i) + 1) / 2));
+      canvas.drawCircle(p, r * 2.1, Paint()..color = _accent.withValues(alpha: alpha * .42)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      final diamond = Path()
+        ..moveTo(p.dx, p.dy - r * 1.6)
+        ..lineTo(p.dx + r * .65, p.dy)
+        ..lineTo(p.dx, p.dy + r * 1.6)
+        ..lineTo(p.dx - r * .65, p.dy)
+        ..close();
+      canvas.drawPath(diamond, Paint()..color = _accent.withValues(alpha: alpha));
+      canvas.drawCircle(p, r * .30,
+        Paint()..color = Colors.white.withValues(alpha: alpha * .85));
     }
   }
 
@@ -690,27 +788,22 @@ class _ButterflyFlightPainter extends CustomPainter {
       palette,
     );
 
-    // Soft twinkles reinforce the magical look without moving the ring itself.
+    // Blurred light beads orbit the ring instead of crossing hairline flashes.
     for (var i = 0; i < 6; i++) {
       final angle = cycle * .4 + i * math.pi / 3;
-      final point = center +
-          Offset(math.cos(angle), math.sin(angle)) * radius * 1.13;
+      final point = center + Offset(math.cos(angle), math.sin(angle)) * radius * 1.13;
       final alpha = .20 + .48 * ((math.sin(cycle * 2 + i) + 1) / 2);
-      final arm = size.shortestSide * .018;
-      final paint = Paint()
-        ..color = palette.light.withValues(alpha: alpha)
-        ..strokeWidth = size.shortestSide * .008
-        ..strokeCap = StrokeCap.round;
-      canvas.drawLine(
-        point - Offset(arm, 0),
-        point + Offset(arm, 0),
-        paint,
-      );
-      canvas.drawLine(
-        point - Offset(0, arm),
-        point + Offset(0, arm),
-        paint,
-      );
+      final glowRadius = size.shortestSide * .018;
+      canvas.drawCircle(point, glowRadius * 2.1, Paint()
+        ..color = palette.light.withValues(alpha: alpha * .42)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+      final diamond = Path()
+        ..moveTo(point.dx, point.dy - glowRadius)
+        ..lineTo(point.dx + glowRadius * .58, point.dy)
+        ..lineTo(point.dx, point.dy + glowRadius)
+        ..lineTo(point.dx - glowRadius * .58, point.dy)
+        ..close();
+      canvas.drawPath(diamond, Paint()..color = palette.light.withValues(alpha: alpha));
     }
   }
 
