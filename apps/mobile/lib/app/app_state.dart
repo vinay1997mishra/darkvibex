@@ -564,6 +564,8 @@ class AppState extends ChangeNotifier {
           'Google Login configuration does not match this app build.',
         'invalid_google_token' =>
           'Google sign-in token was rejected. Please sign in again.',
+        'google_identity_conflict' =>
+          'This email ID is linked to a different Google account. Sign in with the original Google account or use Email / Gmail Login.',
         'google_email_not_verified' =>
           'This Google account email is not verified.',
         'google_session_storage_failed' =>
