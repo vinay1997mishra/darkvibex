@@ -51,6 +51,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     final savedDob = DateTime.tryParse(state.dateOfBirth?.trim() ?? '');
     if (_dateOfBirth == null && savedDob != null) _dateOfBirth = savedDob;
+    final savedCountryCode = state.countryCode.trim();
+    if (_selectedCountry == null && savedCountryCode.isNotEmpty) {
+      _selectedCountry = CountryParser.tryParseCountryCode(savedCountryCode);
+    }
     final savedGender = state.gender.trim().toLowerCase();
     if (_selectedGender == null &&
         const <String>{'male', 'female'}.contains(savedGender)) {
