@@ -17,6 +17,9 @@ export const COSMETIC_CATALOG = [
   { id: "frame_blue_angel_crown", kind: "frame", name: "Sakura Blossom", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 14, animation_type: "crown_shine", animation_ms: 2000 },
   { id: "frame_red_black_royal_wings", kind: "frame", name: "Galaxy Star", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 16, animation_type: "wing_shimmer", animation_ms: 2000 },
   { id: "frame_purple_butterfly", kind: "frame", name: "Ocean Pearl", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 14, animation_type: "butterfly_wings", animation_ms: 2000 },
+  { id: "frame_blue_magic_butterfly", kind: "frame", name: "Blue Magic Butterfly", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 10, animation_type: "butterfly_wings_flight", animation_ms: 2000 },
+  { id: "frame_golden_butterfly_queen", kind: "frame", name: "Golden Butterfly Queen", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 12, animation_type: "butterfly_wings_flight", animation_ms: 2000 },
+  { id: "frame_purple_dream_butterfly", kind: "frame", name: "Purple Dream Butterfly", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 14, animation_type: "butterfly_wings_flight", animation_ms: 2000 },
   { id: "frame_royal_love", kind: "frame", name: "Dark Rose", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 16, animation_type: "heart_pulse", animation_ms: 2000 },
   { id: "frame_green_nature", kind: "frame", name: "Phoenix Fire", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 8, animation_type: "petal_sparkle", animation_ms: 2000 },
 
