@@ -38,19 +38,20 @@ test("public room discovery hides empty rooms but owner can recover own room", (
 });
 
 test("mobile state retains own empty room while public surfaces filter it", () => {
-  const ownerAwareFilter =
-    "return online > 0 || ownerId == userId;";
+  const sharedRefreshPath =
+    "await _replaceRoomsFromRemote(await backend.listRooms());";
   assert.equal(
-    appStateSource.split(ownerAwareFilter).length - 1,
+    appStateSource.split(sharedRefreshPath).length - 1,
     2,
-    "initial load and refresh must preserve the viewer's own room",
+    "initial load and periodic refresh must share the owner-room cache path",
   );
+  assert.ok(appStateSource.includes("_readOwnedRoomCache"));
+  assert.ok(appStateSource.includes("_writeOwnedRoomCache"));
   assert.ok(
     homeSource.includes(".where((room) => room.online > 0)"),
     "Party/Discover/followed public surfaces must still hide empty rooms",
   );
 });
-
 test("creating an already-owned permanent room ID is idempotent", () => {
   assert.ok(
     workerSource.includes(
