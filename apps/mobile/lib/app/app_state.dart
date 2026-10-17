@@ -90,6 +90,9 @@ class AppState extends ChangeNotifier {
   bool backendConnected = false;
   bool isInitializing = true;
   bool isAuthenticated = false;
+  // True only when a signed-in account is missing required profile fields.
+  // Existing complete profiles proceed straight to HomeShell.
+  bool needsProfileSetup = false;
   bool signingIn = false;
   bool googleSignInReady = false;
   bool _googleInitialized = false;
@@ -184,8 +187,15 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      final restored = await _restorePersistedSession();
-      if (restored) return;
+      // A temporary profile/API failure must not abort the rest of startup or
+      // replace the real Google sign-in error with a generic restore error.
+      try {
+        final restored = await _restorePersistedSession();
+        if (restored) return;
+      } catch (error) {
+        BackendApi.sessionToken = null;
+        debugPrint('DarkVibeX persisted session could not be checked: $error');
+      }
 
       if (await _ensureGoogleSignInInitialized()) {
         final lightweight =
@@ -613,12 +623,22 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       dateOfBirth = prefs.getString(_sessionDateOfBirthKey);
     }
+    needsProfileSetup =
+        (dateOfBirth?.trim().isNotEmpty != true) ||
+        countryCode.trim().isEmpty ||
+        !const <String>{'male', 'female'}.contains(gender.trim().toLowerCase());
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
 
     await _persistSession();
-    await _loadRemoteData();
+    // Core authentication should succeed even if an optional dashboard endpoint
+    // (rooms, wallet, inbox) is temporarily unavailable.
+    try {
+      await _loadRemoteData();
+    } catch (error) {
+      debugPrint('DarkVibeX post-login refresh failed: $error');
+    }
     if (notify) notifyListeners();
     return true;
   }
@@ -737,6 +757,7 @@ class AppState extends ChangeNotifier {
     authProvider = null;
     backendConnected = false;
     isAuthenticated = false;
+    needsProfileSetup = false;
     authError = null;
     userId = '91000001';
     publicId = '9100001';
@@ -1139,6 +1160,7 @@ class AppState extends ChangeNotifier {
     }
 
     authError = null;
+    needsProfileSetup = false;
     await _persistSession();
     if (previousCountry != countryCode) {
       await refreshRooms(notify: false);
