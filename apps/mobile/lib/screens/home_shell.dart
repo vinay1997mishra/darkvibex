@@ -105,12 +105,25 @@ class _HomeShellState extends State<HomeShell> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: IndexedStack(
-                index: index,
-                children: [
-                  for (var i = 0; i < pages.length; i++)
-                    visited.contains(i) ? pages[i] : const SizedBox.shrink(),
-                ],
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity.abs() < 250) return;
+                  setState(() {
+                    index = (index + (velocity < 0 ? 1 : -1))
+                        .clamp(0, pages.length - 1)
+                        .toInt();
+                    visited.add(index);
+                  });
+                },
+                child: IndexedStack(
+                  index: index,
+                  children: [
+                    for (var i = 0; i < pages.length; i++)
+                      visited.contains(i) ? pages[i] : const SizedBox.shrink(),
+                  ],
+                ),
               ),
             ),
             if (widget.minimizedRoom != null)
