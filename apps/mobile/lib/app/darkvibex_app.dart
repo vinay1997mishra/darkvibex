@@ -85,7 +85,7 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
               ),
             );
           }
-          if (!state.isAuthenticated) {
+          if (!state.isAuthenticated || state.needsProfileSetup) {
             return LoginScreen(state: state);
           }
           return HomeShell(state: state);

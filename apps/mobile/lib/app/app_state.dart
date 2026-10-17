@@ -90,6 +90,9 @@ class AppState extends ChangeNotifier {
   bool backendConnected = false;
   bool isInitializing = true;
   bool isAuthenticated = false;
+  // True only when a signed-in account is missing required profile fields.
+  // Existing complete profiles proceed straight to HomeShell.
+  bool needsProfileSetup = false;
   bool signingIn = false;
   bool googleSignInReady = false;
   bool _googleInitialized = false;
@@ -184,8 +187,15 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      final restored = await _restorePersistedSession();
-      if (restored) return;
+      // A temporary profile/API failure must not abort the rest of startup or
+      // replace the real Google sign-in error with a generic restore error.
+      try {
+        final restored = await _restorePersistedSession();
+        if (restored) return;
+      } catch (error) {
+        BackendApi.sessionToken = null;
+        debugPrint('DarkVibeX persisted session could not be checked: $error');
+      }
 
       if (await _ensureGoogleSignInInitialized()) {
         final lightweight =
@@ -204,8 +214,9 @@ class AppState extends ChangeNotifier {
         '${error.code} ${error.description ?? ''}',
       );
     } catch (error) {
-      authError = 'DarkVibeX could not restore your session. Please try again.';
-      debugPrint('DarkVibeX session restore failed: $error');
+      authError =
+          'Could not connect to DarkVibeX. Check your internet connection and try again.';
+      debugPrint('DarkVibeX startup/auth check failed: $error');
     } finally {
       isInitializing = false;
       notifyListeners();
@@ -248,6 +259,21 @@ class AppState extends ChangeNotifier {
           provider: provider,
           notify: false,
         );
+      }
+
+      // Do not destroy a valid persisted session because the API briefly returns
+      // an empty/error response. Clear only when the server explicitly says the
+      // account or token is no longer valid; retry transient failures next launch.
+      final profileError = profile?['error']?.toString().trim() ?? '';
+      if (profile == null ||
+          !const <String>{
+            'user_not_found',
+            'invalid_session',
+            'session_expired',
+            'unauthorized',
+            'forbidden',
+          }.contains(profileError)) {
+        throw StateError('Profile restore temporarily unavailable');
       }
       BackendApi.sessionToken = null;
     }
@@ -538,6 +564,8 @@ class AppState extends ChangeNotifier {
           'Google Login configuration does not match this app build.',
         'invalid_google_token' =>
           'Google sign-in token was rejected. Please sign in again.',
+        'google_identity_conflict' =>
+          'This email ID is linked to a different Google account. Sign in with the original Google account or use Email / Gmail Login.',
         'google_email_not_verified' =>
           'This Google account email is not verified.',
         'google_session_storage_failed' =>
@@ -613,12 +641,22 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       dateOfBirth = prefs.getString(_sessionDateOfBirthKey);
     }
+    needsProfileSetup =
+        (dateOfBirth?.trim().isNotEmpty != true) ||
+        countryCode.trim().isEmpty ||
+        !const <String>{'male', 'female'}.contains(gender.trim().toLowerCase());
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
 
     await _persistSession();
-    await _loadRemoteData();
+    // Core authentication should succeed even if an optional dashboard endpoint
+    // (rooms, wallet, inbox) is temporarily unavailable.
+    try {
+      await _loadRemoteData();
+    } catch (error) {
+      debugPrint('DarkVibeX post-login refresh failed: $error');
+    }
     if (notify) notifyListeners();
     return true;
   }
@@ -737,6 +775,7 @@ class AppState extends ChangeNotifier {
     authProvider = null;
     backendConnected = false;
     isAuthenticated = false;
+    needsProfileSetup = false;
     authError = null;
     userId = '91000001';
     publicId = '9100001';
@@ -1139,6 +1178,7 @@ class AppState extends ChangeNotifier {
     }
 
     authError = null;
+    needsProfileSetup = false;
     await _persistSession();
     if (previousCountry != countryCode) {
       await refreshRooms(notify: false);

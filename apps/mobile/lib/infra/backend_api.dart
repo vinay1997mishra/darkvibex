@@ -181,6 +181,7 @@ class BackendApi {
       _json(
         'GET',
         '/api/users/${Uri.encodeComponent(userId)}${recordVisit ? '' : '?record_visit=0'}',
+        returnErrorBody: true,
       );
 
   Future<List<Map<String, dynamic>>> profileVisitors({required String userId}) async {

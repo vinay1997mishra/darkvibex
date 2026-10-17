@@ -30,8 +30,41 @@ class _LoginScreenState extends State<LoginScreen> {
   String _avatarExtension = 'jpg';
   String _avatarContentType = 'image/jpeg';
   bool _savingProfile = false;
+  bool _emailSignupDraft = false;
+  String _pendingSignupEmail = '';
 
   AppState get state => widget.state;
+  bool get _showProfileForm => state.needsProfileSetup || _emailSignupDraft;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrateProfileFields();
+  }
+
+  void _hydrateProfileFields() {
+    final savedName = state.displayName.trim();
+    if (_nameController.text.trim().isEmpty &&
+        savedName.isNotEmpty &&
+        savedName != 'DarkVibeX User') {
+      _nameController.text = savedName;
+    }
+    final savedDob = DateTime.tryParse(state.dateOfBirth?.trim() ?? '');
+    if (_dateOfBirth == null && savedDob != null) _dateOfBirth = savedDob;
+    final savedCountryCode = state.countryCode.trim();
+    if (_selectedCountry == null && savedCountryCode.isNotEmpty) {
+      _selectedCountry = CountryParser.tryParseCountryCode(savedCountryCode);
+    }
+    final savedGender = state.gender.trim().toLowerCase();
+    if (_selectedGender == null &&
+        const <String>{'male', 'female'}.contains(savedGender)) {
+      _selectedGender = savedGender;
+    }
+    final savedLanguage = state.languagePreference.value.trim();
+    if (darkVibeXIsSupportedLanguage(savedLanguage)) {
+      _selectedLanguage = savedLanguage;
+    }
+  }
 
   @override
   void dispose() {
@@ -173,10 +206,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _finishProfile() async {
+    if (!_validateProfile() || state.signingIn || _savingProfile) return;
     if (mounted) setState(() => _savingProfile = true);
     try {
       final country = _selectedCountry!;
-      await state.completeLoginProfile(
+      final saved = await state.completeLoginProfile(
         name: _nameController.text.trim(),
         dateOfBirthValue: _dobApiValue,
         countryCodeValue: country.countryCode,
@@ -188,15 +222,23 @@ class _LoginScreenState extends State<LoginScreen> {
         avatarExtension: _avatarExtension,
         avatarContentType: _avatarContentType,
       );
+      if (!saved && mounted && state.authError != null) {
+        _notice(state.authError!);
+      }
+    } catch (error) {
+      _notice('Profile could not be saved. Check your connection and try again.');
     } finally {
       if (mounted) setState(() => _savingProfile = false);
     }
   }
 
   Future<void> _googleLogin() async {
-    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    if (state.signingIn || _savingProfile) return;
     final ok = await state.signInWithGoogle();
-    if (ok) await _finishProfile();
+    if (ok && state.needsProfileSetup && mounted) {
+      _hydrateProfileFields();
+      setState(() {});
+    }
   }
 
   void _notice(String text) {
@@ -285,11 +327,25 @@ class _LoginScreenState extends State<LoginScreen> {
       _notice('Enter your email and DarkVibeX password.');
       return;
     }
-    await state.signInWithEmail(email: email, password: password);
+    final ok = await state.signInWithEmail(email: email, password: password);
+    if (ok && state.needsProfileSetup && mounted) {
+      _hydrateProfileFields();
+      setState(() {});
+    }
   }
 
-  Future<void> _createEmailAccount({String initialEmail = ''}) async {
-    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+  Future<void> _createEmailAccount({
+    String initialEmail = '',
+    bool profileAlreadyCollected = false,
+  }) async {
+    if (state.signingIn || _savingProfile) return;
+    if (!profileAlreadyCollected) {
+      _pendingSignupEmail = initialEmail;
+      _hydrateProfileFields();
+      if (mounted) setState(() => _emailSignupDraft = true);
+      return;
+    }
+    if (!_validateProfile()) return;
     final emailController = TextEditingController(text: initialEmail);
     final email = await showDialog<String>(
       context: context,
@@ -437,13 +493,21 @@ class _LoginScreenState extends State<LoginScreen> {
       name: _nameController.text.trim(),
       dateOfBirthValue: _dobApiValue,
     );
-    if (ok && mounted) await _finishProfile();
+    if (ok && mounted) {
+      setState(() => _emailSignupDraft = false);
+      if (state.needsProfileSetup) await _finishProfile();
+    } else if (mounted && !state.isAuthenticated) {
+      setState(() => _emailSignupDraft = true);
+    }
   }
 
   Future<void> _guestLogin() async {
-    if (!_validateProfile() || state.signingIn || _savingProfile) return;
+    if (state.signingIn || _savingProfile) return;
     final ok = await state.continueAsGuest();
-    if (ok) await _finishProfile();
+    if (ok && state.needsProfileSetup && mounted) {
+      _hydrateProfileFields();
+      setState(() {});
+    }
   }
 
   @override
@@ -473,13 +537,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Create your profile and enter the vibe',
-                        style: TextStyle(
+                      Text(
+                        _showProfileForm
+                            ? 'Complete your profile to continue'
+                            : 'Sign in or create your account',
+                        style: const TextStyle(
                           color: TinniPalette.muted,
                           fontSize: 12,
                         ),
                       ),
+                      if (_showProfileForm) ...[
                       const SizedBox(height: 22),
                       GestureDetector(
                         onTap: busy ? null : _pickAvatar,
@@ -664,6 +731,48 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 54,
                         child: FilledButton.icon(
+                          key: const Key('complete-profile-button'),
+                          onPressed: busy
+                              ? null
+                              : _emailSignupDraft
+                                  ? () => _createEmailAccount(
+                                        initialEmail: _pendingSignupEmail,
+                                        profileAlreadyCollected: true,
+                                      )
+                                  : _finishProfile,
+                          icon: _savingProfile
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.black,
+                                  ),
+                                )
+                              : const Icon(Icons.check_circle_outline_rounded),
+                          label: Text(
+                            _emailSignupDraft
+                                ? 'Continue to Email Sign-up'
+                                : 'Save Profile & Enter DarkVibeX',
+                          ),
+                        ),
+                      ),
+                      if (_emailSignupDraft)
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => setState(() {
+                                    _emailSignupDraft = false;
+                                    _pendingSignupEmail = '';
+                                  }),
+                          child: const Text('Back to Login'),
+                        ),
+                      ],
+                      if (!_showProfileForm) ...[
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: FilledButton.icon(
                           onPressed: busy ? null : _googleLogin,
                           icon: busy
                               ? const SizedBox.square(
@@ -698,6 +807,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           label: const Text('Continue as guest'),
                         ),
                       ),
+                      ],
                       if (state.authError != null) ...[
                         const SizedBox(height: 16),
                         Container(

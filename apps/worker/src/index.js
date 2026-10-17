@@ -824,7 +824,10 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
     `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, created_at, updated_at)
      VALUES (?, ?, 'user', 500000, 120, 0, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
-       display_name = CASE WHEN excluded.display_name <> '' THEN excluded.display_name ELSE users.display_name END,
+       display_name = CASE
+         WHEN users.display_name = '' AND excluded.display_name <> '' THEN excluded.display_name
+         ELSE users.display_name
+       END,
        updated_at = excluded.updated_at`
   ).bind(userId, displayName, ts, ts).run();
   await ensureUserPublicId(db, userId);
@@ -4275,14 +4278,52 @@ async function handleApi(request, env, url) {
     const linkedIdentity = await db.prepare(
       "SELECT user_id FROM user_auth_identities WHERE provider='google' AND subject=? LIMIT 1"
     ).bind(subject).first();
-    const userId = String(linkedIdentity?.user_id ?? ("g_" + subject));
+
+    // If this Google account was not linked before, reuse an existing verified
+    // email/password account with the same verified email instead of silently
+    // creating a second DarkVibeX ID. Google email verification is enforced by
+    // verifyGoogleIdToken() above.
+    let userId = String(linkedIdentity?.user_id ?? "");
+    let matchedExistingEmailAccount = false;
+    const verifiedEmail = normalizeEmail(claims.email ?? "");
+    if (!userId && verifiedEmail) {
+      try {
+        await ensureEmailAuthSchema(db);
+        const emailAccount = await db.prepare(
+          "SELECT user_id FROM email_credentials WHERE email=? LIMIT 1"
+        ).bind(verifiedEmail).first();
+        if (emailAccount?.user_id) {
+          userId = String(emailAccount.user_id);
+          matchedExistingEmailAccount = true;
+          const otherGoogleIdentity = await db.prepare(
+            "SELECT subject FROM user_auth_identities WHERE provider='google' AND user_id=? AND subject<>? LIMIT 1"
+          ).bind(userId, subject).first();
+          if (otherGoogleIdentity) {
+            return json(
+              { ok: false, error: "google_identity_conflict" },
+              { status: 409 },
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Google session email account lookup failed", error);
+        return json(
+          { ok: false, error: "google_session_storage_failed" },
+          { status: 503 },
+        );
+      }
+    }
+    if (!userId) userId = "g_" + subject;
+
     const displayName = String(
       claims.name ?? claims.given_name ?? claims.email ?? "DarkVibeX User"
     ).trim().slice(0, 60);
 
     let user;
     try {
-      user = await ensureUser(db, userId, displayName);
+      // When attaching Google to an existing email ID, preserve its current
+      // DarkVibeX name/profile instead of replacing it with Google's display name.
+      user = await ensureUser(db, userId, matchedExistingEmailAccount ? "" : displayName);
       await db.prepare(
         `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
          VALUES('google',?,?,?,?,?)
