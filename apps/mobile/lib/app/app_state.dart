@@ -214,8 +214,9 @@ class AppState extends ChangeNotifier {
         '${error.code} ${error.description ?? ''}',
       );
     } catch (error) {
-      authError = 'DarkVibeX could not restore your session. Please try again.';
-      debugPrint('DarkVibeX session restore failed: $error');
+      authError =
+          'Could not connect to DarkVibeX. Check your internet connection and try again.';
+      debugPrint('DarkVibeX startup/auth check failed: $error');
     } finally {
       isInitializing = false;
       notifyListeners();
@@ -258,6 +259,21 @@ class AppState extends ChangeNotifier {
           provider: provider,
           notify: false,
         );
+      }
+
+      // Do not destroy a valid persisted session because the API briefly returns
+      // an empty/error response. Clear only when the server explicitly says the
+      // account or token is no longer valid; retry transient failures next launch.
+      final profileError = profile?['error']?.toString().trim() ?? '';
+      if (profile == null ||
+          !const <String>{
+            'user_not_found',
+            'invalid_session',
+            'session_expired',
+            'unauthorized',
+            'forbidden',
+          }.contains(profileError)) {
+        throw StateError('Profile restore temporarily unavailable');
       }
       BackendApi.sessionToken = null;
     }
