@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -668,66 +669,14 @@ class AppState extends ChangeNotifier {
     await refreshIdLevel(notify: false);
     await refreshCosmetics(notify: false);
 
-    final remoteRooms = await backend.listRooms();
-    rooms
-      ..clear()
-      ..addAll(
-        remoteRooms
-            .where((row) {
-              final online =
-                  int.tryParse(row['online']?.toString() ?? '') ?? 0;
-              final ownerId = row['owner_user_id']?.toString() ?? '';
-              return online > 0 || ownerId == userId;
-            })
-            .map((row) => RoomSummary(
-                  id: row['id']?.toString() ?? '',
-                  displayId: row['display_id']?.toString(),
-                  name: row['name']?.toString() ?? 'Room',
-                  ownerName: row['owner_name']?.toString() ?? '',
-                  ownerUserId: row['owner_user_id']?.toString() ?? '',
-                  online:
-                      int.tryParse(row['online']?.toString() ?? '') ?? 0,
-                  seatCount:
-                      int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-                  avatarKey: row['avatar_key']?.toString(),
-                  partyMode:
-                      row['party_mode']?.toString() ?? 'Friends-making Party',
-                  roomMode: row['room_mode']?.toString() ?? 'voice',
-                )),
-      );
+    await _replaceRoomsFromRemote(await backend.listRooms());
 
     await refreshInbox(notify: false);
   }
 
   Future<void> refreshRooms({bool notify = true}) async {
     if (!backendConnected) return;
-    final remoteRooms = await backend.listRooms();
-    rooms
-      ..clear()
-      ..addAll(
-        remoteRooms
-            .where((row) {
-              final online =
-                  int.tryParse(row['online']?.toString() ?? '') ?? 0;
-              final ownerId = row['owner_user_id']?.toString() ?? '';
-              return online > 0 || ownerId == userId;
-            })
-            .map((row) => RoomSummary(
-                  id: row['id']?.toString() ?? '',
-                  displayId: row['display_id']?.toString(),
-                  name: row['name']?.toString() ?? 'Room',
-                  ownerName: row['owner_name']?.toString() ?? '',
-                  ownerUserId: row['owner_user_id']?.toString() ?? '',
-                  online:
-                      int.tryParse(row['online']?.toString() ?? '') ?? 0,
-                  seatCount:
-                      int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-                  avatarKey: row['avatar_key']?.toString(),
-                  partyMode:
-                      row['party_mode']?.toString() ?? 'Friends-making Party',
-                  roomMode: row['room_mode']?.toString() ?? 'voice',
-                )),
-      );
+    await _replaceRoomsFromRemote(await backend.listRooms());
     if (notify) notifyListeners();
   }
 
@@ -1235,6 +1184,93 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  String get _ownedRoomCacheKey => 'darkvibex.owned_room.$userId';
+
+  Future<RoomSummary?> _readOwnedRoomCache() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_ownedRoomCacheKey)?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final id = decoded['id']?.toString().trim() ?? '';
+      final ownerId = decoded['ownerUserId']?.toString().trim() ?? '';
+      if (id.isEmpty || ownerId != userId) return null;
+      return RoomSummary(
+        id: id,
+        displayId: decoded['displayId']?.toString(),
+        name: decoded['name']?.toString() ?? 'My Room',
+        ownerName: decoded['ownerName']?.toString() ?? displayName,
+        ownerUserId: ownerId,
+        online: int.tryParse(decoded['online']?.toString() ?? '') ?? 0,
+        seatCount: int.tryParse(decoded['seatCount']?.toString() ?? '') ?? 12,
+        avatarKey: decoded['avatarKey']?.toString(),
+        partyMode: decoded['partyMode']?.toString() ?? 'Friends-making Party',
+        roomMode: decoded['roomMode']?.toString() ?? 'voice',
+      );
+    } catch (_) {
+      await preferences.remove(_ownedRoomCacheKey);
+      return null;
+    }
+  }
+
+  Future<void> _writeOwnedRoomCache(RoomSummary room) async {
+    if (room.id.trim().isEmpty || room.ownerUserId != userId) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _ownedRoomCacheKey,
+      jsonEncode(<String, Object?>{
+        'id': room.id,
+        'displayId': room.displayId,
+        'name': room.name,
+        'ownerName': room.ownerName,
+        'ownerUserId': room.ownerUserId,
+        'online': room.online,
+        'seatCount': room.seatCount,
+        'avatarKey': room.avatarKey,
+        'partyMode': room.partyMode,
+        'roomMode': room.roomMode,
+      }),
+    );
+  }
+
+  Future<void> _replaceRoomsFromRemote(List<Map<String, dynamic>> rows) async {
+    final cachedOwnedRoom = await _readOwnedRoomCache();
+    final byId = <String, RoomSummary>{};
+    for (final row in rows) {
+      final room = RoomSummary(
+        id: row['id']?.toString() ?? '',
+        displayId: row['display_id']?.toString(),
+        name: row['name']?.toString() ?? 'Room',
+        ownerName: row['owner_name']?.toString() ?? '',
+        ownerUserId: row['owner_user_id']?.toString() ?? '',
+        online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+        seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+        avatarKey: row['avatar_key']?.toString(),
+        partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
+        roomMode: row['room_mode']?.toString() ?? 'voice',
+      );
+      if (room.id.isEmpty ||
+          (room.online <= 0 && room.ownerUserId != userId)) {
+        continue;
+      }
+      byId[room.id] = room;
+    }
+    final hasOwnedRoom = byId.values.any((room) => room.ownerUserId == userId);
+    if (!hasOwnedRoom && cachedOwnedRoom != null) {
+      byId[cachedOwnedRoom.id] = cachedOwnedRoom;
+    }
+    rooms
+      ..clear()
+      ..addAll(byId.values);
+    for (final room in rooms) {
+      if (room.ownerUserId == userId) {
+        await _writeOwnedRoomCache(room);
+        break;
+      }
+    }
+  }
+
   Future<RoomSummary> createRoom(
     String name, {
     int seatCount = 12,
@@ -1300,7 +1336,15 @@ class AppState extends ChangeNotifier {
       partyMode: result?['party_mode']?.toString() ?? partyMode,
       roomMode: result?['room_mode']?.toString() ?? roomMode,
     );
-    rooms.insert(0, room);
+    final existingIndex = rooms.indexWhere(
+      (existing) => existing.id == room.id || existing.ownerUserId == userId,
+    );
+    if (existingIndex >= 0) {
+      rooms[existingIndex] = room;
+    } else {
+      rooms.insert(0, room);
+    }
+    await _writeOwnedRoomCache(room);
     notifyListeners();
     return room;
   }

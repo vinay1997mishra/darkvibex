@@ -274,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         state.hasVipPrivilege('dynamic_avatar'),
                     styleId: state.activeFrameId,
                     child: Container(
-                      padding: EdgeInsets.all(ringId == null ? 2 : 4),
+                      padding: EdgeInsets.all(ringId == null ? 0 : 1.5),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: ringId == null
@@ -303,7 +303,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ],
                       ),
                       child: CircleAvatar(
-                        radius: 32,
+                        radius: ringId == null ? 35 : 34.5,
                         backgroundColor: TinniPalette.panel2,
                         backgroundImage: state.avatarKey == null
                             ? null

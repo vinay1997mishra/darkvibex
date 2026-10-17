@@ -3096,7 +3096,7 @@ class _RoomScreenState extends State<RoomScreen> {
                               size: 44,
                               enabled: (int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 7,
                               child: CircleAvatar(
-                                radius: 18,
+                                radius: 21,
                                 backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders) : null,
                                 child: avatar == null || avatar.isEmpty ? const Icon(Icons.person_rounded, size: 20) : null,
                               ),
@@ -6370,6 +6370,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                         level: frameTier,
                                         styleId: activeFrame,
                                         child: CircleAvatar(
+                                          radius: (diameter / 2) - 1,
                                           backgroundImage:
                                               avatar != null && avatar.isNotEmpty
                                                   ? NetworkImage(
