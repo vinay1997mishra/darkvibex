@@ -384,6 +384,44 @@ async function ownerUserPricing(db,userId,kind,itemId,basePrice,baseDuration=nul
   };
 }
 
+// Store catalogs can contain many products. Resolve all user-specific price
+// overrides in one D1 query instead of issuing one query per product; otherwise
+// a single Store request can exceed the Workers per-invocation subrequest limit.
+async function ownerUserPricingForCatalog(db,userId,catalog) {
+  await ensureOwnerControlSchema(db);
+  const rows = await db.prepare(
+    `SELECT kind,item_id,price_coins,free,duration_days,updated_at
+       FROM owner_user_price_overrides
+      WHERE user_id=?
+      ORDER BY updated_at DESC
+      LIMIT 1000`
+  ).bind(userId).all();
+  const overrides = new Map();
+  for (const row of rows.results ?? []) {
+    const key = JSON.stringify([String(row.kind ?? ""), String(row.item_id ?? "")]);
+    // Results are newest first, so keep the newest override for each key.
+    if (!overrides.has(key)) overrides.set(key, row);
+  }
+  return catalog.map((item) => {
+    const kind = String(item.kind ?? "");
+    const itemId = String(item.id ?? "");
+    const row = overrides.get(JSON.stringify([kind, itemId])) ??
+      overrides.get(JSON.stringify([kind, "*"])) ?? null;
+    const basePrice = Number(item.price_coins ?? 0);
+    const free = Number(row?.free ?? 0) === 1;
+    const rawPrice = row?.price_coins == null ? basePrice : Number(row.price_coins);
+    const price = free ? 0 : rawPrice;
+    const baseDuration = Number(item.duration_days ?? 0);
+    const rawDuration = row?.duration_days == null ? baseDuration : Number(row.duration_days);
+    return {
+      price_coins: Number.isSafeInteger(price) && price >= 0 ? price : basePrice,
+      duration_days: rawDuration == null ? null : Number(rawDuration),
+      owner_price_override: Boolean(row),
+      owner_free: free,
+    };
+  });
+}
+
 async function ownerIdentityMeta(db,userId) {
   await ensureOwnerControlSchema(db);
   const [override,tags]=await Promise.all([
@@ -3982,20 +4020,12 @@ async function handleApi(request, env, url) {
     await ensureUser(db, userId);
     await ensureCosmeticsSchema(db);
     const owned = await ownedCosmetics(db, userId, now());
-    const pricedItems=[];
-    for(const item of await effectiveCosmeticCatalog(db)){
-      const pricing=await ownerUserPricing(
-        db,userId,String(item.kind ?? ""),String(item.id ?? ""),
-        Number(item.price_coins ?? 0),Number(item.duration_days ?? 0),
-      );
-      pricedItems.push({
-        ...item,
-        price_coins:pricing.price_coins,
-        duration_days:pricing.duration_days,
-        owner_price_override:pricing.overridden,
-        owner_free:pricing.free,
-      });
-    }
+    const catalog = await effectiveCosmeticCatalog(db);
+    const pricing = await ownerUserPricingForCatalog(db, userId, catalog);
+    const pricedItems = catalog.map((item, index) => ({
+      ...item,
+      ...pricing[index],
+    }));
     return json({ ok: true, items: pricedItems, owned });
   }
 
