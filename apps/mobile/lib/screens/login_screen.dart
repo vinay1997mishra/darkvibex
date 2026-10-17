@@ -501,15 +501,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _guestLogin() async {
-    if (state.signingIn || _savingProfile) return;
-    final ok = await state.continueAsGuest();
-    if (ok && state.needsProfileSetup && mounted) {
-      _hydrateProfileFields();
-      setState(() {});
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final busy = state.signingIn || _savingProfile;
@@ -798,15 +789,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 11),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          onPressed: busy ? null : _guestLogin,
-                          icon: const Icon(Icons.person_outline_rounded),
-                          label: const Text('Continue as guest'),
-                        ),
-                      ),
                       ],
                       if (state.authError != null) ...[
                         const SizedBox(height: 16),
