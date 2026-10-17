@@ -41,7 +41,9 @@ test("Owner Panel can add edit enable disable and remove live app-store items", 
   assert.match(panelApp, /async function removeStoreItem/);
   assert.match(indexJs, /async function effectiveCosmeticCatalog/);
   assert.match(indexJs, /async function effectiveGiftCatalog/);
-  assert.match(indexJs, /for\(const item of await effectiveCosmeticCatalog\(db\)\)/);
+  assert.match(indexJs, /async function ownerUserPricingForCatalog\(db,userId,catalog\)/);
+  assert.match(indexJs, /const pricing = await ownerUserPricingForCatalog\(db, userId, catalog\)/);
+  assert.doesNotMatch(indexJs, /for\(const item of await effectiveCosmeticCatalog\(db\)\)/);
   assert.match(indexJs, /ownerUserPricing/);
   assert.match(indexJs, /await effectiveGiftCatalog\(db\)/);
 });
