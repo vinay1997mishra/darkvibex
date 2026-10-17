@@ -30,6 +30,15 @@ const Set<String> _freeAnimatedFrameIds = <String>{
   'frame_purple_butterfly',
   'frame_royal_love',
   'frame_green_nature',
+  'frame_blue_magic_butterfly',
+  'frame_golden_butterfly_queen',
+  'frame_purple_dream_butterfly',
+};
+
+const Set<String> _premiumButterflyFrameIds = <String>{
+  'frame_blue_magic_butterfly',
+  'frame_golden_butterfly_queen',
+  'frame_purple_dream_butterfly',
 };
 
 /// Ornate, animated frame used on room seats and profile avatars.
@@ -95,6 +104,53 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   @override
   Widget build(BuildContext context) {
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
+
+    if (widget.enabled &&
+        _premiumButterflyFrameIds.contains(widget.styleId)) {
+      // The avatar itself stays at its original size. All ornamental artwork is
+      // drawn in a separate layer outside the avatar circle.
+      return SizedBox.square(
+        dimension: widget.size,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            SizedBox.square(
+              dimension: widget.size,
+              child: widget.child,
+            ),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: 1.42,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: CustomPaint(
+                    painter: _ButterflyFrameBasePainter(widget.styleId),
+                  ),
+                ),
+              ),
+            ),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: 1.42,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => CustomPaint(
+                      painter: _ButterflyFlightPainter(
+                        styleId: widget.styleId,
+                        phase: _controller.value,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (artwork != null) {
       // Keep the complete frame artwork static. Only motif elements animate:
@@ -421,6 +477,318 @@ class _FrameElementPainter extends CustomPainter {
       oldDelegate.styleId != styleId || oldDelegate.phase != phase;
 }
 
+class _ButterflyPalette {
+  const _ButterflyPalette({
+    required this.light,
+    required this.accent,
+    required this.deep,
+  });
+
+  final Color light;
+  final Color accent;
+  final Color deep;
+
+  static _ButterflyPalette forStyle(String? styleId) => switch (styleId) {
+        'frame_golden_butterfly_queen' => const _ButterflyPalette(
+            light: Color(0xFFFFF5BB),
+            accent: Color(0xFFFFB52E),
+            deep: Color(0xFF9B4C05),
+          ),
+        'frame_purple_dream_butterfly' => const _ButterflyPalette(
+            light: Color(0xFFF8D6FF),
+            accent: Color(0xFFC15AFF),
+            deep: Color(0xFF5A22C0),
+          ),
+        _ => const _ButterflyPalette(
+            light: Color(0xFFC7F8FF),
+            accent: Color(0xFF36B6FF),
+            deep: Color(0xFF344CEB),
+          ),
+      };
+}
+
+/// Static jewelry and ring work: separated from the animated motif so the
+/// frame body never rotates or shakes while the butterfly wings are moving.
+class _ButterflyFrameBasePainter extends CustomPainter {
+  const _ButterflyFrameBasePainter(this.styleId);
+
+  final String? styleId;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final palette = _ButterflyPalette.forStyle(styleId);
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.shortestSide * .385;
+    final ringRect = Rect.fromCircle(center: center, radius: radius);
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.shortestSide * .055
+        ..color = palette.accent.withValues(alpha: .24)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.shortestSide * .030
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[palette.light, palette.accent, palette.deep, palette.light],
+        ).createShader(ringRect),
+    );
+    canvas.drawCircle(
+      center,
+      radius - size.shortestSide * .025,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.shortestSide * .007
+        ..color = palette.light.withValues(alpha: .88),
+    );
+
+    final flourish = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.shortestSide * .012
+      ..strokeCap = StrokeCap.round
+      ..color = palette.accent.withValues(alpha: .9);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * 1.10),
+      math.pi * 1.05,
+      math.pi * .31,
+      false,
+      flourish,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius * 1.10),
+      -math.pi * .26,
+      math.pi * .31,
+      false,
+      flourish,
+    );
+
+    _drawDiamond(
+      canvas,
+      Offset(center.dx, center.dy - radius),
+      size.shortestSide * .072,
+      palette,
+    );
+    _drawDiamond(
+      canvas,
+      Offset(center.dx, center.dy + radius),
+      size.shortestSide * .072,
+      palette,
+    );
+
+    for (var i = 0; i < 8; i++) {
+      final angle = i * math.pi / 4;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * (radius * 1.045);
+      canvas.drawCircle(
+        point,
+        size.shortestSide * .012,
+        Paint()..color = palette.light.withValues(alpha: .88),
+      );
+    }
+  }
+
+  void _drawDiamond(
+    Canvas canvas,
+    Offset center,
+    double length,
+    _ButterflyPalette palette,
+  ) {
+    final path = Path()
+      ..moveTo(center.dx, center.dy - length)
+      ..lineTo(center.dx + length * .58, center.dy)
+      ..lineTo(center.dx, center.dy + length)
+      ..lineTo(center.dx - length * .58, center.dy)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = LinearGradient(
+          colors: <Color>[palette.light, palette.accent, palette.deep],
+        ).createShader(
+          Rect.fromCenter(center: center, width: length * 1.2, height: length * 2),
+        ),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = length * .08
+        ..color = Colors.white.withValues(alpha: .8),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ButterflyFrameBasePainter oldDelegate) =>
+      oldDelegate.styleId != styleId;
+}
+
+/// Only the butterfly wings, the orbiting small butterfly and sparkles animate.
+class _ButterflyFlightPainter extends CustomPainter {
+  const _ButterflyFlightPainter({
+    required this.styleId,
+    required this.phase,
+  });
+
+  final String? styleId;
+  final double phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final palette = _ButterflyPalette.forStyle(styleId);
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.shortestSide * .385;
+    final cycle = phase * math.pi * 2;
+
+    // Large butterfly rests on the upper-left edge; its wings flap twice
+    // during the two-second cycle while its body remains close to stationary.
+    final mainAnchor = center +
+        Offset(
+          math.cos(-2.28) * radius * 1.055,
+          math.sin(-2.28) * radius * 1.055 +
+              math.sin(cycle) * size.shortestSide * .006,
+        );
+    final flap = .22 + .78 * ((math.sin(cycle * 2) + 1) / 2);
+    _drawButterfly(canvas, mainAnchor, size.shortestSide * .205, flap, palette);
+
+    // A smaller butterfly flies a complete circular path around the frame.
+    final flyAngle = -math.pi / 2 + cycle;
+    final flyingAnchor = center +
+        Offset(
+          math.cos(flyAngle) * radius * 1.18,
+          math.sin(flyAngle) * radius * 1.18,
+        );
+    final smallFlap = .28 + .72 * ((math.sin(cycle * 2 + .7) + 1) / 2);
+    _drawButterfly(
+      canvas,
+      flyingAnchor,
+      size.shortestSide * .075,
+      smallFlap,
+      palette,
+    );
+
+    // Soft twinkles reinforce the magical look without moving the ring itself.
+    for (var i = 0; i < 6; i++) {
+      final angle = cycle * .4 + i * math.pi / 3;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * radius * 1.13;
+      final alpha = .20 + .48 * ((math.sin(cycle * 2 + i) + 1) / 2);
+      final arm = size.shortestSide * .018;
+      final paint = Paint()
+        ..color = palette.light.withValues(alpha: alpha)
+        ..strokeWidth = size.shortestSide * .008
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        point - Offset(arm, 0),
+        point + Offset(arm, 0),
+        paint,
+      );
+      canvas.drawLine(
+        point - Offset(0, arm),
+        point + Offset(0, arm),
+        paint,
+      );
+    }
+  }
+
+  void _drawButterfly(
+    Canvas canvas,
+    Offset center,
+    double size,
+    double flap,
+    _ButterflyPalette palette,
+  ) {
+    final wingFill = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomRight,
+        colors: <Color>[
+          palette.light.withValues(alpha: .96),
+          palette.accent.withValues(alpha: .91),
+          palette.deep.withValues(alpha: .90),
+        ],
+      ).createShader(
+        Rect.fromCenter(
+          center: center,
+          width: size * 1.45,
+          height: size * 1.2,
+        ),
+      );
+    final outline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size * .035
+      ..color = Colors.white.withValues(alpha: .72);
+
+    final wingPath = Path()
+      ..moveTo(0, 0)
+      ..cubicTo(size * .10, -size * .47, size * .63, -size * .42,
+          size * .52, -size * .025)
+      ..cubicTo(size * .46, size * .24, size * .15, size * .22, 0, size * .09)
+      ..close();
+    final lowerWingPath = Path()
+      ..moveTo(0, size * .045)
+      ..cubicTo(size * .18, size * .02, size * .40, size * .24,
+          size * .20, size * .34)
+      ..cubicTo(size * .08, size * .35, size * .02, size * .20, 0, size * .12)
+      ..close();
+
+    for (final direction in <double>[-1, 1]) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(direction * (1 - flap) * .48);
+      canvas.scale(direction * flap, 1);
+      canvas.drawPath(wingPath, wingFill);
+      canvas.drawPath(wingPath, outline);
+      canvas.drawPath(lowerWingPath, wingFill);
+      canvas.drawPath(lowerWingPath, outline);
+      canvas.restore();
+    }
+
+    final body = Paint()..color = palette.deep;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center + Offset(0, size * .055),
+        width: size * .075,
+        height: size * .42,
+      ),
+      body,
+    );
+    final antenna = Paint()
+      ..color = palette.light
+      ..strokeWidth = size * .022
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final antennaPath = Path()
+      ..moveTo(center.dx, center.dy - size * .12)
+      ..quadraticBezierTo(
+        center.dx - size * .10,
+        center.dy - size * .25,
+        center.dx - size * .16,
+        center.dy - size * .22,
+      )
+      ..moveTo(center.dx, center.dy - size * .12)
+      ..quadraticBezierTo(
+        center.dx + size * .10,
+        center.dy - size * .25,
+        center.dx + size * .16,
+        center.dy - size * .22,
+      );
+    canvas.drawPath(antennaPath, antenna);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ButterflyFlightPainter oldDelegate) =>
+      oldDelegate.styleId != styleId || oldDelegate.phase != phase;
+}
+
 class _FrameTheme {
   const _FrameTheme(this.colors, this.motif);
   final List<Color> colors;
@@ -428,6 +796,18 @@ class _FrameTheme {
 }
 
 _FrameTheme _themeFor(String? styleId, int level) => switch (styleId) {
+      'frame_blue_magic_butterfly' => const _FrameTheme(
+          <Color>[Color(0xFFB9F7FF), Color(0xFF27A8FF), Color(0xFF384FEA)],
+          'butterfly',
+        ),
+      'frame_golden_butterfly_queen' => const _FrameTheme(
+          <Color>[Color(0xFFFFF3B0), Color(0xFFFFB11B), Color(0xFFBA6509)],
+          'butterfly',
+        ),
+      'frame_purple_dream_butterfly' => const _FrameTheme(
+          <Color>[Color(0xFFF7C9FF), Color(0xFFB84DFF), Color(0xFF5520BD)],
+          'butterfly',
+        ),
       'frame_golden_crown' => const _FrameTheme(
           <Color>[Color(0xFFFFF3B0), Color(0xFFFFB11B), Color(0xFFE46A15)],
           'crown',
