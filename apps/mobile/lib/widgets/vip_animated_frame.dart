@@ -219,21 +219,35 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
       );
     }
 
+    // Preserve the avatar's full diameter (0% shrink). Draw the animated
+    // ring in a separate enlarged layer so decoration stays outside the DP.
     return SizedBox.square(
       dimension: widget.size,
-      child: AnimatedBuilder(
-        animation: _controller,
-        child: Padding(padding: const EdgeInsets.all(8), child: widget.child),
-        builder: (context, child) => CustomPaint(
-          painter: widget.enabled
-              ? _VipRingPainter(
-                  _controller.value,
-                  widget.level,
-                  widget.styleId,
-                )
-              : null,
-          child: child,
-        ),
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          SizedBox.square(dimension: widget.size, child: widget.child),
+          if (widget.enabled)
+            IgnorePointer(
+              child: Transform.scale(
+                scale: 1.42,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => CustomPaint(
+                      painter: _VipRingPainter(
+                        _controller.value,
+                        widget.level,
+                        widget.styleId,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -276,6 +290,7 @@ class _FrameElementPainter extends CustomPainter {
         'frame_golden_flower' => const Color(0xFFFFC84A),
         'frame_pink_blossom' => const Color(0xFFFFB6DA),
         'frame_green_nature' => const Color(0xFF8DFFB0),
+        'frame_neon_butterfly' => const Color(0xFF56F0FF),
         _ => const Color(0xFFFFD86B),
       };
 
@@ -853,8 +868,12 @@ _FrameTheme _themeFor(String? styleId, int level) => switch (styleId) {
           'royal_love',
         ),
       'frame_green_nature' => const _FrameTheme(
-          <Color>[Color(0xFFD7FFD8), Color(0xFF67D66F), Color(0xFF23763D)],
-          'nature',
+          <Color>[Color(0xFFFFD37A), Color(0xFFFF5B20), Color(0xFF9E1B18)],
+          'royal_wings',
+        ),
+      'frame_neon_butterfly' => const _FrameTheme(
+          <Color>[Color(0xFFB8FFFF), Color(0xFF38DFFF), Color(0xFF873BFF)],
+          'butterfly',
         ),
       'frame_royal' => const _FrameTheme(
           <Color>[Color(0xFFFFE49B), Color(0xFFCC542E), Color(0xFFFFC95C)],

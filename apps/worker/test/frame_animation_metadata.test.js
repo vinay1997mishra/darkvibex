@@ -19,6 +19,7 @@ test("accepted frames expose per-element animation metadata", () => {
     "frame_blue_magic_butterfly",
     "frame_golden_butterfly_queen",
     "frame_purple_dream_butterfly",
+    "frame_neon_butterfly",
   ]) {
     assert.ok(cosmeticsSource.includes(`id: "${id}"`), `missing catalog item ${id}`);
   }
