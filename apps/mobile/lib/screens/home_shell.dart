@@ -482,6 +482,14 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Future<void> _createRoom(BuildContext context) async {
+    // My room is permanent: tapping create again should reopen it, not create
+    // another setup flow or a duplicate local entry.
+    for (final room in state.rooms) {
+      if (room.id.isNotEmpty && room.ownerUserId == state.userId) {
+        _openRoom(room);
+        return;
+      }
+    }
     final draft = await showModalBottomSheet<_CreateRoomDraft>(
       context: context,
       isScrollControlled: true,
