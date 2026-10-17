@@ -6035,7 +6035,12 @@ class _RoomScreenState extends State<RoomScreen> {
     final spec = SeatLayoutSpec.forCount(roomSeatCount);
     final typingMode = MediaQuery.viewInsetsOf(context).bottom > 0;
 
-    return Scaffold(
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_minimizeRoom());
+      },
+      child: Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: _roomThemeColor,
       appBar: AppBar(
@@ -6984,6 +6989,7 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
