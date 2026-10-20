@@ -10,6 +10,6 @@ void main() {
 
     expect(find.text('DarkVibeX'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Continue as guest'), findsOneWidget);
+    expect(find.text('Continue as guest'), findsNothing);
   });
 }
