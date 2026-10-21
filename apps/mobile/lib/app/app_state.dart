@@ -276,6 +276,35 @@ class AppState extends ChangeNotifier {
           }.contains(profileError)) {
         throw StateError('Profile restore temporarily unavailable');
       }
+      // Access tokens are intentionally short-lived. Refresh a signed saved
+      // token before treating the user as logged out; the refresh endpoint
+      // verifies the signature and account status, then issues a fresh token.
+      final refreshed = await backend.refreshSession(token: token);
+      if (refreshed?['ok'] == true &&
+          refreshed?['token'] is String &&
+          refreshed?['user'] is Map) {
+        return _applySession(
+          <String, dynamic>{
+            'token': refreshed!['token'],
+            'user': Map<String, dynamic>.from(refreshed['user'] as Map),
+          },
+          provider: provider,
+          notify: false,
+        );
+      }
+      final refreshError = refreshed?['error']?.toString().trim() ?? '';
+      if (refreshed == null ||
+          !const <String>{
+            'user_not_found',
+            'invalid_session',
+            'session_expired',
+            'unauthorized',
+            'forbidden',
+            'user_banned',
+            'user_suspended',
+          }.contains(refreshError)) {
+        throw StateError('Session refresh temporarily unavailable');
+      }
       BackendApi.sessionToken = null;
     }
 
