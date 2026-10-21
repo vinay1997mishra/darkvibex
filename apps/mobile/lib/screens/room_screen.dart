@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart' as gift_video;
+import 'package:video_player/video_player.dart' as gift_video; // Avoid LiveKit's VideoTrack name collision.
 
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
