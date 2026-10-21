@@ -6004,7 +6004,7 @@ class _RoomScreenState extends State<RoomScreen> {
         },
       );
     } catch (_) {
-      // If R2 playback is temporarily unavailable, preserve the standard gift effect.
+      // Keep gift sending usable if R2 playback is temporarily unavailable.
       if (mounted) _playGiftEffect(gift, receiverId: receiverId);
     } finally {
       if (controller != null && playbackListener != null) {
