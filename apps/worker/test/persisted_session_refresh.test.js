@@ -30,7 +30,7 @@ test("transient restore failures do not clear the saved session", () => {
   const restoreEnd = stateSource.indexOf("Future<void> _persistSession()", restoreStart);
   assert.ok(restoreStart >= 0 && restoreEnd > restoreStart);
   const restore = stateSource.slice(restoreStart, restoreEnd);
-  assert.ok(restore.includes("Session refresh temporarily unavailable"));
+  assert.ok(restore.includes("Session restore temporarily unavailable"));
   assert.ok(restore.includes("await _clearPersistedSession()"));
   assert.ok(restore.includes("user_not_found"));
 });
