@@ -62,7 +62,7 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
     _controller = controller;
     try {
       await controller.initialize();
-      await controller.setLooping(true);
+      await controller.setLooping(false);
       await controller.setVolume(0);
       await controller.play();
       if (!mounted || _controller != controller) return;
