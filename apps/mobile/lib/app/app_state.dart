@@ -248,34 +248,57 @@ class AppState extends ChangeNotifier {
 
     if (token.isNotEmpty) {
       BackendApi.sessionToken = token;
-      final profile = await backend.userProfile(userId: savedUserId);
-      final user = profile?['user'];
-      if (profile?['ok'] == true && user is Map) {
-        final restoredSession = <String, dynamic>{
-          'token': token,
-          'user': Map<String, dynamic>.from(user),
-        };
+
+      // Refresh first so closing/reopening the app never turns a normal
+      // 7-day access-token expiry into a logout or a new user ID.
+      final refreshed = await backend.refreshSession(token: token);
+      if (refreshed?['ok'] == true &&
+          refreshed?['token'] is String &&
+          refreshed?['user'] is Map) {
         return _applySession(
-          restoredSession,
+          <String, dynamic>{
+            'token': refreshed!['token'],
+            'user': Map<String, dynamic>.from(refreshed['user'] as Map),
+          },
           provider: provider,
           notify: false,
         );
       }
 
-      // Do not destroy a valid persisted session because the API briefly returns
-      // an empty/error response. Clear only when the server explicitly says the
-      // account or token is no longer valid; retry transient failures next launch.
-      final profileError = profile?['error']?.toString().trim() ?? '';
-      if (profile == null ||
-          !const <String>{
-            'user_not_found',
-            'invalid_session',
-            'session_expired',
-            'unauthorized',
-            'forbidden',
-          }.contains(profileError)) {
-        throw StateError('Profile restore temporarily unavailable');
+      // If refresh is temporarily unreachable, an unexpired token may still
+      // restore normally. Never erase the saved login for a network/API hiccup.
+      final profile = await backend.userProfile(userId: savedUserId);
+      final user = profile?['user'];
+      if (profile?['ok'] == true && user is Map) {
+        return _applySession(
+          <String, dynamic>{
+            'token': token,
+            'user': Map<String, dynamic>.from(user),
+          },
+          provider: provider,
+          notify: false,
+        );
       }
+
+      final refreshError = refreshed?['error']?.toString().trim() ?? '';
+      final profileError = profile?['error']?.toString().trim() ?? '';
+      const terminalErrors = <String>{
+        'user_not_found',
+        'invalid_session',
+        'session_expired',
+        'unauthorized',
+        'forbidden',
+        'user_banned',
+        'user_suspended',
+      };
+      final refreshIsTerminal = terminalErrors.contains(refreshError);
+      final profileIsTerminal = terminalErrors.contains(profileError);
+      if (refreshed == null &&
+          profile == null ||
+          (!refreshIsTerminal && !profileIsTerminal)) {
+        throw StateError('Session restore temporarily unavailable');
+      }
+      // Only a confirmed invalid/revoked account or token is cleared.
       BackendApi.sessionToken = null;
     }
 

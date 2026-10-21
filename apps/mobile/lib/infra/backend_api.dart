@@ -257,6 +257,15 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  Future<Map<String, dynamic>?> refreshSession({required String token}) =>
+      _json(
+        'POST',
+        '/api/session/refresh',
+        authToken: token,
+        body: const <String, dynamic>{},
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> startEmailSession({
     required String email,
     required String password,
