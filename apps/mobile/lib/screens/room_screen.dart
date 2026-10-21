@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart';
+import 'package:video_player/video_player.dart' as gift_video;
 
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
@@ -5887,12 +5887,12 @@ class _RoomScreenState extends State<RoomScreen> {
     required String receiverId,
     required String videoKey,
   }) async {
-    VideoPlayerController? controller;
+    gift_video.VideoPlayerController? controller;
     VoidCallback? playbackListener;
     var listenerAttached = false;
     var closeTriggered = false;
     try {
-      final player = VideoPlayerController.networkUrl(
+      final player = gift_video.VideoPlayerController.networkUrl(
         Uri.parse(widget.state.backend.fileUrl(videoKey)),
         httpHeaders: widget.state.backend.fileHeaders,
       );
@@ -5951,7 +5951,7 @@ class _RoomScreenState extends State<RoomScreen> {
                         aspectRatio: player.value.aspectRatio > 0
                             ? player.value.aspectRatio
                             : 9 / 16,
-                        child: VideoPlayer(player),
+                        child: gift_video.VideoPlayer(player),
                       ),
                     ),
                     Positioned(
