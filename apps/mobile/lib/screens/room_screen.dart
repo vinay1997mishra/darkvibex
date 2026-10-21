@@ -5926,7 +5926,7 @@ class _RoomScreenState extends State<RoomScreen> {
                       aspectRatio: controller!.value.aspectRatio > 0
                           ? controller.value.aspectRatio
                           : 9 / 16,
-                      child: VideoPlayer(controller),
+                      child: VideoPlayer(controller!),
                     ),
                   ),
                   Positioned(
