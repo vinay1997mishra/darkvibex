@@ -5889,17 +5889,19 @@ class _RoomScreenState extends State<RoomScreen> {
   }) async {
     VideoPlayerController? controller;
     VoidCallback? playbackListener;
-    var closeTriggered = false;
     var listenerAttached = false;
+    var closeTriggered = false;
     try {
-      controller = VideoPlayerController.networkUrl(
+      final player = VideoPlayerController.networkUrl(
         Uri.parse(widget.state.backend.fileUrl(videoKey)),
         httpHeaders: widget.state.backend.fileHeaders,
       );
-      await controller.initialize();
-      await controller.setLooping(false);
-      await controller.setVolume(1.0);
+      controller = player;
+      await player.initialize();
+      await player.setLooping(false);
+      await player.setVolume(1.0);
       if (!mounted) return;
+
       final receiver = membersBySeat.values.firstWhere(
         (member) => member['user_id']?.toString() == receiverId,
         orElse: () => <String, dynamic>{},
@@ -5912,14 +5914,15 @@ class _RoomScreenState extends State<RoomScreen> {
                   : receiverId))
           .toString();
       final giftName = (gift['name'] ?? 'Gift').toString();
+
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
         barrierColor: Colors.black,
         builder: (dialogContext) {
           playbackListener ??= () {
-            if (!controller!.value.isInitialized ||
-                !controller.value.isCompleted ||
+            if (!player.value.isInitialized ||
+                !player.value.isCompleted ||
                 closeTriggered) {
               return;
             }
@@ -5929,75 +5932,75 @@ class _RoomScreenState extends State<RoomScreen> {
             }
           };
           if (!listenerAttached) {
-            controller.addListener(playbackListener!);
+            player.addListener(playbackListener!);
             listenerAttached = true;
           }
-          if (!controller.value.isPlaying && !controller.value.isCompleted) {
-            unawaited(controller.play());
+          if (!player.value.isPlaying && !player.value.isCompleted) {
+            unawaited(player.play());
           }
           return PopScope(
-          canPop: true,
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            body: SafeArea(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Center(
-                    child: AspectRatio(
-                      aspectRatio: controller!.value.aspectRatio > 0
-                          ? controller.value.aspectRatio
-                          : 9 / 16,
-                      child: VideoPlayer(controller!),
-                    ),
-                  ),
-                  Positioned(
-                    top: 14,
-                    left: 16,
-                    right: 16,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: const Color(0xB8000000),
-                        borderRadius: BorderRadius.circular(14),
+            canPop: true,
+            child: Scaffold(
+              backgroundColor: Colors.black,
+              body: SafeArea(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: player.value.aspectRatio > 0
+                            ? player.value.aspectRatio
+                            : 9 / 16,
+                        child: VideoPlayer(player),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '${widget.state.displayName} sent $giftName',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 17,
+                    ),
+                    Positioned(
+                      top: 14,
+                      left: 16,
+                      right: 16,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xB8000000),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${widget.state.displayName} sent $giftName',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 17,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'To: $receiverName',
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                'To: $receiverName',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: IconButton(
-                      tooltip: 'Close gift video',
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      icon: const Icon(Icons.close, color: Colors.white),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        tooltip: 'Close gift video',
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        );
+          );
         },
       );
     } catch (_) {
