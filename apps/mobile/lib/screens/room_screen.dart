@@ -5890,6 +5890,7 @@ class _RoomScreenState extends State<RoomScreen> {
     VideoPlayerController? controller;
     VoidCallback? playbackListener;
     var closeTriggered = false;
+    var listenerAttached = false;
     try {
       controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.state.backend.fileUrl(videoKey)),
@@ -5927,8 +5928,9 @@ class _RoomScreenState extends State<RoomScreen> {
               Navigator.of(dialogContext).pop();
             }
           };
-          if (!controller!.hasListeners || playbackListener != null) {
+          if (!listenerAttached) {
             controller.addListener(playbackListener!);
+            listenerAttached = true;
           }
           if (!controller.value.isPlaying && !controller.value.isCompleted) {
             unawaited(controller.play());
