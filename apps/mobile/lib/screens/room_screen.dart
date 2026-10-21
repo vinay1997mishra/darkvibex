@@ -1600,8 +1600,6 @@ class _RoomScreenState extends State<RoomScreen> {
                       '')
                   .toString()
                   .toLowerCase();
-              final vipLevel =
-                  int.tryParse(item['vip_level']?.toString() ?? '') ?? 0;
               final normalizedCategory = category
                   .replaceAll('-', '')
                   .replaceAll('_', '')
