@@ -495,6 +495,16 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   Future<void> _createRoom(BuildContext context) async {
+    // Refresh before deciding that the owner has no room. A stale/empty local
+    // list must never offer a second room after app restart or room exit.
+    if (state.backendConnected) {
+      try {
+        await state.refreshRooms(notify: false);
+      } catch (_) {
+        // Continue using the persistent local owner-room cache if the network
+        // is temporarily unavailable; server create remains idempotent too.
+      }
+    }
     // My room is permanent: tapping create again should reopen it, not create
     // another setup flow or a duplicate local entry.
     for (final room in state.rooms) {
