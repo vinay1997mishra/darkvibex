@@ -26,6 +26,8 @@ class _GiftsScreenState extends State<GiftsScreen> {
     'VS',
     'Luxury',
     'Backpack',
+    'Exclusive',
+    'Custom',
   ];
 
   int categoryIndex = 0;
