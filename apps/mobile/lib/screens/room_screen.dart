@@ -1517,7 +1517,37 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       builder: (sheetContext) {
         final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .58;
-        return SafeArea(
+        var selectedGiftCategory = 'Normal';
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final visibleGifts = gifts.where((item) {
+              final category = (item['category'] ??
+                      item['gift_category'] ??
+                      item['type'] ??
+                      '')
+                  .toString()
+                  .toLowerCase();
+              final vipLevel =
+                  int.tryParse(item['vip_level']?.toString() ?? '') ?? 0;
+              switch (selectedGiftCategory) {
+                case 'CP':
+                  return category == 'cp' ||
+                      category.contains('couple') ||
+                      category.contains('cp_');
+                case 'Country':
+                  return category.contains('country') ||
+                      category.contains('nation');
+                case 'VIP':
+                  return category == 'vip' ||
+                      category.contains('vip_') ||
+                      vipLevel > 0;
+                default:
+                  return category.isEmpty ||
+                      category == 'normal' ||
+                      category == 'gift';
+              }
+            }).toList(growable: false);
+            return SafeArea(
           top: false,
           child: SizedBox(
             height: sheetHeight,
@@ -1574,8 +1604,57 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                 ),
                 const Divider(height: 1, color: Colors.white12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+                  child: Row(
+                    children: [
+                      for (final category in const [
+                        'Normal',
+                        'CP',
+                        'Country',
+                        'VIP',
+                      ])
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: ChoiceChip(
+                              key: Key('room-gift-category-$category'),
+                              label: Text(category),
+                              selected: selectedGiftCategory == category,
+                              onSelected: (_) => setSheetState(
+                                () => selectedGiftCategory = category,
+                              ),
+                              labelStyle: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: selectedGiftCategory == category
+                                    ? TinniPalette.black
+                                    : TinniPalette.cream,
+                              ),
+                              selectedColor: TinniPalette.brightGold,
+                              backgroundColor: const Color(0xFF21183D),
+                              side: BorderSide(
+                                color: selectedGiftCategory == category
+                                    ? TinniPalette.brightGold
+                                    : Colors.white24,
+                              ),
+                              showCheckmark: false,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
                 Expanded(
-                  child: GridView.builder(
+                  child: visibleGifts.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No ${selectedGiftCategory.toLowerCase()} gifts available',
+                            style: const TextStyle(color: TinniPalette.cream),
+                          ),
+                        )
+                      : GridView.builder(
                     padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1584,9 +1663,9 @@ class _RoomScreenState extends State<RoomScreen> {
                       mainAxisSpacing: 10,
                       childAspectRatio: .72,
                     ),
-                    itemCount: gifts.length,
+                    itemCount: visibleGifts.length,
                     itemBuilder: (context, index) {
-                      final item = gifts[index];
+                      final item = visibleGifts[index];
                       final cost = int.tryParse(
                             item['coin_cost']?.toString() ?? '',
                           ) ??
@@ -1777,6 +1856,8 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
           ),
+            );
+          },
         );
       },
     );
@@ -6923,25 +7004,34 @@ class _RoomScreenState extends State<RoomScreen> {
                     onSubmitted: (_) => _sendInlineMessage(),
                   ),
                 ),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: roomChatController,
-                  builder: (context, value, child) => IconButton(
-                    key: const Key('room-chat-send-button'),
-                    tooltip: 'Send',
-                    onPressed: value.text.trim().isEmpty || roomMessageSending
-                        ? null
-                        : () => _sendInlineMessage(),
-                    icon: const TinniGlowIcon(
-                      icon: Icons.send_rounded,
-                      size: 20,
-                      boxSize: 36,
-                    ),
+                if (typingMode)
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: roomChatController,
+                    builder: (context, value, child) {
+                      if (value.text.trim().isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return IconButton(
+                        key: const Key('room-chat-send-button'),
+                        tooltip: 'Send',
+                        onPressed: roomMessageSending
+                            ? null
+                            : () => _sendInlineMessage(),
+                        icon: const TinniGlowIcon(
+                          icon: Icons.send_rounded,
+                          size: 20,
+                          boxSize: 36,
+                        ),
+                      );
+                    },
                   ),
-                ),
                 if (!typingMode) ...<Widget>[
                   IconButton(
                     tooltip: 'Emoji & Emotes',
-                    onPressed: _showEmojiPicker,
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      _showEmojiPicker();
+                    },
                     icon: const TinniGlowIcon(
                       icon: Icons.emoji_emotions_rounded,
                       size: 20,
@@ -6950,7 +7040,12 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                   IconButton(
                     tooltip: 'Microphone',
-                    onPressed: mySeat == null ? null : _toggleMic,
+                    onPressed: mySeat == null
+                        ? null
+                        : () {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            _toggleMic();
+                          },
                     icon: TinniGlowIcon(
                       icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
                       size: 20,
@@ -6959,7 +7054,10 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                   IconButton(
                     tooltip: 'Gifts',
-                    onPressed: _sendGift,
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      _sendGift();
+                    },
                     icon: const TinniGlowIcon(
                       icon: Icons.card_giftcard_rounded,
                       size: 20,
