@@ -6006,6 +6006,24 @@ class _RoomScreenState extends State<RoomScreen> {
       final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
           .toString()
           .trim();
+      final receiver = membersBySeat.values.firstWhere(
+        (member) => member['user_id']?.toString() == receiverId,
+        orElse: () => <String, dynamic>{},
+      );
+      final receiverName = (receiver['display_name'] ??
+              receiver['name'] ??
+              receiver['nickname'] ??
+              (receiverId == widget.state.userId
+                  ? widget.state.displayName
+                  : receiverId))
+          .toString();
+      final giftName = (gift['name'] ?? 'Gift').toString();
+      // Keep the gift visible in the room chat as a normal room event too.
+      unawaited(widget.state.backend.sendRoomMessage(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        text: '🎁 ${widget.state.displayName} sent $giftName to $receiverName',
+      ));
       if (videoKey.isNotEmpty) {
         await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey);
       } else {
