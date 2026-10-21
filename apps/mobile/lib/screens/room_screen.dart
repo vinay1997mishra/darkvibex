@@ -123,6 +123,10 @@ class _RoomScreenState extends State<RoomScreen> {
   String? activeGiftReceiverAvatarKey;
   int giftEffectSequence = 0;
   Timer? giftEffectTimer;
+  final Map<String, String> activeSeatReactions = <String, String>{};
+  final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
+  final Set<String> seenSeatReactionMessageIds = <String>{};
+  final Map<String, Timer> seatReactionTimers = <String, Timer>{};
   final ValueNotifier<Map<String, double>> _silentSpeakingLevels =
       ValueNotifier<Map<String, double>>(const <String, double>{});
   final KtvService roomMusic = KtvService();
@@ -222,6 +226,69 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
+  void _showSeatReaction({
+    required String userId,
+    required String emoji,
+    required String messageId,
+  }) {
+    if (userId.isEmpty || emoji.isEmpty || messageId.isEmpty) return;
+    if (activeSeatReactionMessageIds[userId] == messageId) return;
+    activeSeatReactionMessageIds[userId] = messageId;
+    activeSeatReactions[userId] = emoji;
+    seatReactionTimers[userId]?.cancel();
+    if (mounted) setState(() {});
+    seatReactionTimers[userId] = Timer(const Duration(seconds: 3), () {
+      if (!mounted ||
+          activeSeatReactionMessageIds[userId] != messageId) {
+        return;
+      }
+      setState(() {
+        activeSeatReactions.remove(userId);
+        activeSeatReactionMessageIds.remove(userId);
+      });
+      seatReactionTimers.remove(userId);
+    });
+  }
+
+  void _syncSeatReactions(List<Map<String, dynamic>> messages) {
+    final latestByUser = <String, Map<String, dynamic>>{};
+    for (final message in messages.reversed) {
+      final userId = message['user_id']?.toString() ?? '';
+      final text = message['text']?.toString().trim() ?? '';
+      if (userId.isEmpty ||
+          text.isEmpty ||
+          text.length > 12 ||
+          RegExp(r'[A-Za-z0-9]').hasMatch(text) ||
+          latestByUser.containsKey(userId)) {
+        continue;
+      }
+      latestByUser[userId] = message;
+    }
+    for (final entry in latestByUser.entries) {
+      final message = entry.value;
+      final createdAt = DateTime.tryParse(
+        message['created_at']?.toString() ?? '',
+      );
+      if (createdAt != null &&
+          DateTime.now().difference(createdAt.toLocal()) >
+              const Duration(seconds: 4)) {
+        continue;
+      }
+      final messageId = (message['id'] ??
+              message['message_id'] ??
+              message['created_at'] ??
+              '${entry.key}:${message['text']}')
+          .toString();
+      if (seenSeatReactionMessageIds.contains(messageId)) continue;
+      seenSeatReactionMessageIds.add(messageId);
+      _showSeatReaction(
+        userId: entry.key,
+        emoji: message['text']?.toString().trim() ?? '',
+        messageId: messageId,
+      );
+    }
+  }
+
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
@@ -233,6 +300,7 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     final next =
         rows.map((message) => Map<String, dynamic>.from(message)).toList();
+    _syncSeatReactions(next);
     if (!mounted || next.toString() == chat.toString()) return;
     setState(() {
       chat
@@ -1381,6 +1449,10 @@ class _RoomScreenState extends State<RoomScreen> {
     memberRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
+    for (final timer in seatReactionTimers.values) {
+      timer.cancel();
+    }
+    seatReactionTimers.clear();
     _silentSpeakingLevels.dispose();
     roomChatController.dispose();
     roomChatScrollController.dispose();
@@ -1517,7 +1589,37 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       builder: (sheetContext) {
         final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .58;
-        return SafeArea(
+        var selectedGiftCategory = 'Normal';
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final visibleGifts = gifts.where((item) {
+              final category = (item['category'] ??
+                      item['gift_category'] ??
+                      item['type'] ??
+                      '')
+                  .toString()
+                  .toLowerCase();
+              final vipLevel =
+                  int.tryParse(item['vip_level']?.toString() ?? '') ?? 0;
+              switch (selectedGiftCategory) {
+                case 'CP':
+                  return category == 'cp' ||
+                      category.contains('couple') ||
+                      category.contains('cp_');
+                case 'Country':
+                  return category.contains('country') ||
+                      category.contains('nation');
+                case 'VIP':
+                  return category == 'vip' ||
+                      category.contains('vip_') ||
+                      vipLevel > 0;
+                default:
+                  return category.isEmpty ||
+                      category == 'normal' ||
+                      category == 'gift';
+              }
+            }).toList(growable: false);
+            return SafeArea(
           top: false,
           child: SizedBox(
             height: sheetHeight,
@@ -1574,8 +1676,57 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                 ),
                 const Divider(height: 1, color: Colors.white12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+                  child: Row(
+                    children: [
+                      for (final category in const [
+                        'Normal',
+                        'CP',
+                        'Country',
+                        'VIP',
+                      ])
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: ChoiceChip(
+                              key: Key('room-gift-category-$category'),
+                              label: Text(category),
+                              selected: selectedGiftCategory == category,
+                              onSelected: (_) => setSheetState(
+                                () => selectedGiftCategory = category,
+                              ),
+                              labelStyle: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: selectedGiftCategory == category
+                                    ? TinniPalette.black
+                                    : TinniPalette.cream,
+                              ),
+                              selectedColor: TinniPalette.brightGold,
+                              backgroundColor: const Color(0xFF21183D),
+                              side: BorderSide(
+                                color: selectedGiftCategory == category
+                                    ? TinniPalette.brightGold
+                                    : Colors.white24,
+                              ),
+                              showCheckmark: false,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
                 Expanded(
-                  child: GridView.builder(
+                  child: visibleGifts.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No ${selectedGiftCategory.toLowerCase()} gifts available',
+                            style: const TextStyle(color: TinniPalette.cream),
+                          ),
+                        )
+                      : GridView.builder(
                     padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1584,9 +1735,9 @@ class _RoomScreenState extends State<RoomScreen> {
                       mainAxisSpacing: 10,
                       childAspectRatio: .72,
                     ),
-                    itemCount: gifts.length,
+                    itemCount: visibleGifts.length,
                     itemBuilder: (context, index) {
-                      final item = gifts[index];
+                      final item = visibleGifts[index];
                       final cost = int.tryParse(
                             item['coin_cost']?.toString() ?? '',
                           ) ??
@@ -1777,6 +1928,8 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
           ),
+            );
+          },
         );
       },
     );
@@ -6306,6 +6459,10 @@ class _RoomScreenState extends State<RoomScreen> {
                       (member['mic_muted'] == 0 ||
                           member['mic_muted']?.toString() == '0');
                   final memberId = member?['user_id']?.toString() ?? '';
+                  final seatUserId = memberId.isNotEmpty
+                      ? memberId
+                      : (mine ? widget.state.userId : '');
+                  final seatReaction = activeSeatReactions[seatUserId];
                   final speakingUserId = memberId.isNotEmpty
                       ? memberId
                       : (mine ? widget.state.userId : null);
@@ -6424,6 +6581,40 @@ class _RoomScreenState extends State<RoomScreen> {
                                             : TinniPalette.cream,
                                       ),
                               ),
+                              if (seatReaction != null)
+                                Positioned(
+                                  top: -(compactSeats ? 15.0 : 22.0),
+                                  child: IgnorePointer(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xCC15102E),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: TinniPalette.brightGold,
+                                          width: .8,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x665A2DFF),
+                                            blurRadius: 8,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Padding(
+                                        padding: EdgeInsets.all(
+                                          compactSeats ? 2 : 4,
+                                        ),
+                                        child: Text(
+                                          seatReaction,
+                                          style: TextStyle(
+                                            fontSize: compactSeats ? 13 : 20,
+                                            height: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               if (speakingUserId != null)
                                 Positioned(
                                   left: -(compactSeats ? 9.0 : 12.0),
@@ -6923,25 +7114,34 @@ class _RoomScreenState extends State<RoomScreen> {
                     onSubmitted: (_) => _sendInlineMessage(),
                   ),
                 ),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: roomChatController,
-                  builder: (context, value, child) => IconButton(
-                    key: const Key('room-chat-send-button'),
-                    tooltip: 'Send',
-                    onPressed: value.text.trim().isEmpty || roomMessageSending
-                        ? null
-                        : () => _sendInlineMessage(),
-                    icon: const TinniGlowIcon(
-                      icon: Icons.send_rounded,
-                      size: 20,
-                      boxSize: 36,
-                    ),
+                if (typingMode)
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: roomChatController,
+                    builder: (context, value, child) {
+                      if (value.text.trim().isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return IconButton(
+                        key: const Key('room-chat-send-button'),
+                        tooltip: 'Send',
+                        onPressed: roomMessageSending
+                            ? null
+                            : () => _sendInlineMessage(),
+                        icon: const TinniGlowIcon(
+                          icon: Icons.send_rounded,
+                          size: 20,
+                          boxSize: 36,
+                        ),
+                      );
+                    },
                   ),
-                ),
                 if (!typingMode) ...<Widget>[
                   IconButton(
                     tooltip: 'Emoji & Emotes',
-                    onPressed: _showEmojiPicker,
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      _showEmojiPicker();
+                    },
                     icon: const TinniGlowIcon(
                       icon: Icons.emoji_emotions_rounded,
                       size: 20,
@@ -6950,7 +7150,12 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                   IconButton(
                     tooltip: 'Microphone',
-                    onPressed: mySeat == null ? null : _toggleMic,
+                    onPressed: mySeat == null
+                        ? null
+                        : () {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            _toggleMic();
+                          },
                     icon: TinniGlowIcon(
                       icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
                       size: 20,
@@ -6959,7 +7164,10 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                   IconButton(
                     tooltip: 'Gifts',
-                    onPressed: _sendGift,
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      _sendGift();
+                    },
                     icon: const TinniGlowIcon(
                       icon: Icons.card_giftcard_rounded,
                       size: 20,

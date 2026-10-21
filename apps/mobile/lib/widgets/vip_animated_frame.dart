@@ -174,11 +174,22 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 alignment: Alignment.center,
                 child: SizedBox.square(
                   dimension: widget.size,
-                  child: Image(
-                    image: artwork,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
+                  child: ColorFiltered(
+                    // Key the opaque near-black matte out of older frame art.
+                    // Transparent pixels remain transparent; dark backing pixels
+                    // fade away so the galaxy background shows through around DP.
+                    colorFilter: const ColorFilter.matrix(<double>[
+                      1, 0, 0, 0, 0,
+                      0, 1, 0, 0, 0,
+                      0, 0, 1, 0, 0,
+                      1, 1, 1, 1, -255,
+                    ]),
+                    child: Image(
+                      image: artwork,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      gaplessPlayback: true,
+                    ),
                   ),
                 ),
               ),
