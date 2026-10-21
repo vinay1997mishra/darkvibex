@@ -13,6 +13,9 @@ void main() {
     expect(pubspec, contains('video_player:'));
     expect(festival, contains("gift['video_key']"));
     expect(festival, contains('GiftMediaPreview('));
+    for (final category in ['Normal', 'CP', 'VS', 'Luxury', 'Backpack', 'Exclusive', 'Custom']) {
+      expect(festival, contains("'$category'"), reason: '$category category should be available in the mobile gift grid');
+    }
     expect(room, contains("item['video_key']"));
     expect(room, contains('GiftMediaPreview('));
     expect(preview, contains('VideoPlayerController.networkUrl'));
