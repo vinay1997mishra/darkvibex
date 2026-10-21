@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
@@ -1601,22 +1602,29 @@ class _RoomScreenState extends State<RoomScreen> {
                   .toLowerCase();
               final vipLevel =
                   int.tryParse(item['vip_level']?.toString() ?? '') ?? 0;
+              final normalizedCategory = category
+                  .replaceAll('-', '')
+                  .replaceAll('_', '')
+                  .replaceAll(' ', '');
               switch (selectedGiftCategory) {
                 case 'CP':
-                  return category == 'cp' ||
-                      category.contains('couple') ||
-                      category.contains('cp_');
-                case 'Country':
-                  return category.contains('country') ||
-                      category.contains('nation');
-                case 'VIP':
-                  return category == 'vip' ||
-                      category.contains('vip_') ||
-                      vipLevel > 0;
+                  return normalizedCategory == 'cp' ||
+                      normalizedCategory.contains('couple');
+                case 'VS':
+                  return normalizedCategory == 'vs' ||
+                      normalizedCategory.contains('versus');
+                case 'Luxury':
+                  return normalizedCategory == 'luxury';
+                case 'Backpack':
+                  return normalizedCategory == 'backpack';
+                case 'Exclusive':
+                  return normalizedCategory == 'exclusive';
+                case 'Custom':
+                  return normalizedCategory == 'custom';
                 default:
-                  return category.isEmpty ||
-                      category == 'normal' ||
-                      category == 'gift';
+                  return normalizedCategory.isEmpty ||
+                      normalizedCategory == 'normal' ||
+                      normalizedCategory == 'gift';
               }
             }).toList(growable: false);
             return SafeArea(
@@ -1683,8 +1691,11 @@ class _RoomScreenState extends State<RoomScreen> {
                       for (final category in const [
                         'Normal',
                         'CP',
-                        'Country',
-                        'VIP',
+                        'VS',
+                        'Luxury',
+                        'Backpack',
+                        'Exclusive',
+                        'Custom',
                       ])
                         Expanded(
                           child: Padding(
@@ -5870,6 +5881,110 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _playGiftVideo(
+    Map<String, dynamic> gift, {
+    required String receiverId,
+    required String videoKey,
+  }) async {
+    VideoPlayerController? controller;
+    try {
+      controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.state.backend.fileUrl(videoKey)),
+        httpHeaders: widget.state.backend.fileHeaders,
+      );
+      await controller.initialize();
+      await controller.setLooping(false);
+      await controller.setVolume(1.0);
+      await controller.play();
+      if (!mounted) return;
+      final receiver = membersBySeat.values.firstWhere(
+        (member) => member['user_id']?.toString() == receiverId,
+        orElse: () => <String, dynamic>{},
+      );
+      final receiverName = (receiver['display_name'] ??
+              receiver['name'] ??
+              receiver['nickname'] ??
+              (receiverId == widget.state.userId
+                  ? widget.state.displayName
+                  : receiverId))
+          .toString();
+      final giftName = (gift['name'] ?? 'Gift').toString();
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black,
+        builder: (dialogContext) => PopScope(
+          canPop: true,
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: SafeArea(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Center(
+                    child: AspectRatio(
+                      aspectRatio: controller!.value.aspectRatio > 0
+                          ? controller.value.aspectRatio
+                          : 9 / 16,
+                      child: VideoPlayer(controller),
+                    ),
+                  ),
+                  Positioned(
+                    top: 14,
+                    left: 16,
+                    right: 16,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xB8000000),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${widget.state.displayName} sent $giftName',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 17,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'To: $receiverName',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      tooltip: 'Close gift video',
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (_) {
+      // If R2 playback is temporarily unavailable, preserve the standard gift effect.
+      if (mounted) _playGiftEffect(gift, receiverId: receiverId);
+    } finally {
+      await controller?.dispose();
+    }
+  }
+
   Future<void> _sendGiftByDefinition(
     Map<String, dynamic> gift,
     String receiverId,
@@ -5888,7 +6003,14 @@ class _RoomScreenState extends State<RoomScreen> {
         int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
     if (remoteBalance != null) {
       widget.state.setCoinBalance(remoteBalance);
-      _playGiftEffect(gift, receiverId: receiverId);
+      final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
+          .toString()
+          .trim();
+      if (videoKey.isNotEmpty) {
+        await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey);
+      } else {
+        _playGiftEffect(gift, receiverId: receiverId);
+      }
       await widget.state.refreshIdLevel(notify: false);
       if (!mounted) return;
       unawaited(_loadRoomGiftRanking());
