@@ -125,6 +125,7 @@ class _RoomScreenState extends State<RoomScreen> {
   Timer? giftEffectTimer;
   final Map<String, String> activeSeatReactions = <String, String>{};
   final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
+  final Set<String> seenSeatReactionMessageIds = <String>{};
   final Map<String, Timer> seatReactionTimers = <String, Timer>{};
   final ValueNotifier<Map<String, double>> _silentSpeakingLevels =
       ValueNotifier<Map<String, double>>(const <String, double>{});
@@ -265,11 +266,21 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     for (final entry in latestByUser.entries) {
       final message = entry.value;
+      final createdAt = DateTime.tryParse(
+        message['created_at']?.toString() ?? '',
+      );
+      if (createdAt != null &&
+          DateTime.now().difference(createdAt.toLocal()) >
+              const Duration(seconds: 4)) {
+        continue;
+      }
       final messageId = (message['id'] ??
               message['message_id'] ??
               message['created_at'] ??
               '${entry.key}:${message['text']}')
           .toString();
+      if (seenSeatReactionMessageIds.contains(messageId)) continue;
+      seenSeatReactionMessageIds.add(messageId);
       _showSeatReaction(
         userId: entry.key,
         emoji: message['text']?.toString().trim() ?? '',
