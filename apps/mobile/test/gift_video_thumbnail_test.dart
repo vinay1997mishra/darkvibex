@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('gift videos render as small looping gift DPs in every gift grid', () {
+  test('gift videos render as small muted non-looping gift DPs in every gift grid', () {
     final festival = File('lib/screens/gifts_screen.dart').readAsStringSync();
     final room = File('lib/screens/room_screen.dart').readAsStringSync();
     final preview =
@@ -16,7 +16,7 @@ void main() {
     expect(room, contains("item['video_key']"));
     expect(room, contains('GiftMediaPreview('));
     expect(preview, contains('VideoPlayerController.networkUrl'));
-    expect(preview, contains('setLooping(true)'));
+    expect(preview, contains('setLooping(false)'));
     expect(preview, contains('setVolume(0)'));
     expect(preview, contains('controller.play()'));
   });
