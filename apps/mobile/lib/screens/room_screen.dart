@@ -1686,20 +1686,21 @@ class _RoomScreenState extends State<RoomScreen> {
                 const Divider(height: 1, color: Colors.white12),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-                  child: Row(
-                    children: [
-                      for (final category in const [
-                        'Normal',
-                        'CP',
-                        'VS',
-                        'Luxury',
-                        'Backpack',
-                        'Exclusive',
-                        'Custom',
-                      ])
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final category in const [
+                          'Normal',
+                          'CP',
+                          'VS',
+                          'Luxury',
+                          'Backpack',
+                          'Exclusive',
+                          'Custom',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
                             child: ChoiceChip(
                               key: Key('room-gift-category-$category'),
                               label: Text(category),
@@ -1725,8 +1726,8 @@ class _RoomScreenState extends State<RoomScreen> {
                               visualDensity: VisualDensity.compact,
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 Expanded(
@@ -5887,6 +5888,8 @@ class _RoomScreenState extends State<RoomScreen> {
     required String videoKey,
   }) async {
     VideoPlayerController? controller;
+    VoidCallback? playbackListener;
+    var closeTriggered = false;
     try {
       controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.state.backend.fileUrl(videoKey)),
@@ -5895,7 +5898,6 @@ class _RoomScreenState extends State<RoomScreen> {
       await controller.initialize();
       await controller.setLooping(false);
       await controller.setVolume(1.0);
-      await controller.play();
       if (!mounted) return;
       final receiver = membersBySeat.values.firstWhere(
         (member) => member['user_id']?.toString() == receiverId,
@@ -5913,7 +5915,25 @@ class _RoomScreenState extends State<RoomScreen> {
         context: context,
         barrierDismissible: false,
         barrierColor: Colors.black,
-        builder: (dialogContext) => PopScope(
+        builder: (dialogContext) {
+          playbackListener ??= () {
+            if (!controller!.value.isInitialized ||
+                !controller.value.isCompleted ||
+                closeTriggered) {
+              return;
+            }
+            closeTriggered = true;
+            if (Navigator.of(dialogContext).canPop()) {
+              Navigator.of(dialogContext).pop();
+            }
+          };
+          if (!controller!.hasListeners || playbackListener != null) {
+            controller.addListener(playbackListener!);
+          }
+          if (!controller.value.isPlaying && !controller.value.isCompleted) {
+            unawaited(controller.play());
+          }
+          return PopScope(
           canPop: true,
           child: Scaffold(
             backgroundColor: Colors.black,
@@ -5975,12 +5995,16 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
             ),
           ),
-        ),
+        );
+        },
       );
     } catch (_) {
       // If R2 playback is temporarily unavailable, preserve the standard gift effect.
       if (mounted) _playGiftEffect(gift, receiverId: receiverId);
     } finally {
+      if (controller != null && playbackListener != null) {
+        controller.removeListener(playbackListener!);
+      }
       await controller?.dispose();
     }
   }
