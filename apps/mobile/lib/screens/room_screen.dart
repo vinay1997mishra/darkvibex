@@ -123,6 +123,9 @@ class _RoomScreenState extends State<RoomScreen> {
   String? activeGiftReceiverAvatarKey;
   int giftEffectSequence = 0;
   Timer? giftEffectTimer;
+  final Map<String, String> activeSeatReactions = <String, String>{};
+  final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
+  final Map<String, Timer> seatReactionTimers = <String, Timer>{};
   final ValueNotifier<Map<String, double>> _silentSpeakingLevels =
       ValueNotifier<Map<String, double>>(const <String, double>{});
   final KtvService roomMusic = KtvService();
@@ -222,6 +225,59 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
+  void _showSeatReaction({
+    required String userId,
+    required String emoji,
+    required String messageId,
+  }) {
+    if (userId.isEmpty || emoji.isEmpty || messageId.isEmpty) return;
+    if (activeSeatReactionMessageIds[userId] == messageId) return;
+    activeSeatReactionMessageIds[userId] = messageId;
+    activeSeatReactions[userId] = emoji;
+    seatReactionTimers[userId]?.cancel();
+    if (mounted) setState(() {});
+    seatReactionTimers[userId] = Timer(const Duration(seconds: 3), () {
+      if (!mounted ||
+          activeSeatReactionMessageIds[userId] != messageId) {
+        return;
+      }
+      setState(() {
+        activeSeatReactions.remove(userId);
+        activeSeatReactionMessageIds.remove(userId);
+      });
+      seatReactionTimers.remove(userId);
+    });
+  }
+
+  void _syncSeatReactions(List<Map<String, dynamic>> messages) {
+    final latestByUser = <String, Map<String, dynamic>>{};
+    for (final message in messages.reversed) {
+      final userId = message['user_id']?.toString() ?? '';
+      final text = message['text']?.toString().trim() ?? '';
+      if (userId.isEmpty ||
+          text.isEmpty ||
+          text.length > 12 ||
+          RegExp(r'[A-Za-z0-9]').hasMatch(text) ||
+          latestByUser.containsKey(userId)) {
+        continue;
+      }
+      latestByUser[userId] = message;
+    }
+    for (final entry in latestByUser.entries) {
+      final message = entry.value;
+      final messageId = (message['id'] ??
+              message['message_id'] ??
+              message['created_at'] ??
+              '${entry.key}:${message['text']}')
+          .toString();
+      _showSeatReaction(
+        userId: entry.key,
+        emoji: message['text']?.toString().trim() ?? '',
+        messageId: messageId,
+      );
+    }
+  }
+
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
@@ -233,6 +289,7 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     final next =
         rows.map((message) => Map<String, dynamic>.from(message)).toList();
+    _syncSeatReactions(next);
     if (!mounted || next.toString() == chat.toString()) return;
     setState(() {
       chat
@@ -1381,6 +1438,10 @@ class _RoomScreenState extends State<RoomScreen> {
     memberRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
+    for (final timer in seatReactionTimers.values) {
+      timer.cancel();
+    }
+    seatReactionTimers.clear();
     _silentSpeakingLevels.dispose();
     roomChatController.dispose();
     roomChatScrollController.dispose();
@@ -6387,6 +6448,10 @@ class _RoomScreenState extends State<RoomScreen> {
                       (member['mic_muted'] == 0 ||
                           member['mic_muted']?.toString() == '0');
                   final memberId = member?['user_id']?.toString() ?? '';
+                  final seatUserId = memberId.isNotEmpty
+                      ? memberId
+                      : (mine ? widget.state.userId : '');
+                  final seatReaction = activeSeatReactions[seatUserId];
                   final speakingUserId = memberId.isNotEmpty
                       ? memberId
                       : (mine ? widget.state.userId : null);
@@ -6505,6 +6570,40 @@ class _RoomScreenState extends State<RoomScreen> {
                                             : TinniPalette.cream,
                                       ),
                               ),
+                              if (seatReaction != null)
+                                Positioned(
+                                  top: -(compactSeats ? 15.0 : 22.0),
+                                  child: IgnorePointer(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xCC15102E),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: TinniPalette.brightGold,
+                                          width: .8,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x665A2DFF),
+                                            blurRadius: 8,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Padding(
+                                        padding: EdgeInsets.all(
+                                          compactSeats ? 2 : 4,
+                                        ),
+                                        child: Text(
+                                          seatReaction,
+                                          style: TextStyle(
+                                            fontSize: compactSeats ? 13 : 20,
+                                            height: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               if (speakingUserId != null)
                                 Positioned(
                                   left: -(compactSeats ? 9.0 : 12.0),
