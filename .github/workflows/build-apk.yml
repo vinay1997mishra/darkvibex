@@ -18,14 +18,14 @@ permissions:
   contents: write
   statuses: write
 
-# [apk] Manual rebuild marker: commit messages containing [apk] run the full Android build.
+# Build APK on every main push so merged fixes are always shipped.
 concurrency:
   group: darkvibex-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   worker-check:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[apk]')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     defaults:
       run:
