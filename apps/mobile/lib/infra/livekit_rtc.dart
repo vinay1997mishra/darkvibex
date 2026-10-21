@@ -172,15 +172,33 @@ class LiveKitRtcAdapter implements RtcAdapter {
 
   void _sampleSpeakingLevels() {
     final room = _room;
-    if (room == null || state != RtcConnectionState.joined) return;
+    if (room == null || state != RtcConnectionState.joined) {
+      if (_speakingLevels.value.isNotEmpty) {
+        _speakingLevels.value = const <String, double>{};
+      }
+      return;
+    }
+
+    // LiveKit's active-speaker list is the authoritative speaking signal.
+    // Do not gate it on a fixed audioLevel threshold: quiet voices and some
+    // Android devices report very small non-zero levels. The UI animation
+    // needs a stable, normalized level and must clear on the first silent tick.
     final next = <String, double>{};
     for (final participant in room.activeSpeakers) {
       final identity = participant.identity.trim();
-      if (identity.isEmpty || !participant.isSpeaking || participant.isMuted) continue;
-      final level = participant.audioLevel.clamp(0.0, 1.0).toDouble();
-      if (level >= 0.01) next[identity] = level;
+      if (identity.isEmpty || !participant.isSpeaking || participant.isMuted) {
+        continue;
+      }
+      final rawLevel = participant.audioLevel.clamp(0.0, 1.0).toDouble();
+      final level = rawLevel <= 0 ? 0.18 : rawLevel.clamp(0.18, 1.0).toDouble();
+      next[identity] = level;
     }
-    _speakingLevels.value = Map<String, double>.unmodifiable(next);
+
+    final current = _speakingLevels.value;
+    if (current.length != next.length ||
+        current.entries.any((entry) => next[entry.key] != entry.value)) {
+      _speakingLevels.value = Map<String, double>.unmodifiable(next);
+    }
   }
 
   Future<Map<String, dynamic>> _fetchCredentials({
