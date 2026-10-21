@@ -160,6 +160,19 @@ async function verifySessionToken(token, secret) {
   return payload;
 }
 
+// Validate a saved token's signature even after its short-lived access expiry.
+// The refresh endpoint still checks that the account exists and is allowed.
+async function verifyRefreshableSessionToken(token, secret) {
+  const parts = String(token ?? "").split(".");
+  if (parts.length !== 3) throw new Error("invalid_session");
+  const input = parts[0] + "." + parts[1];
+  const expected = await hmacSignature(secret, input);
+  if (expected !== parts[2]) throw new Error("invalid_session");
+  const payload = JSON.parse(decodeBase64UrlText(parts[1]));
+  if (!payload?.sub) throw new Error("invalid_session");
+  return payload;
+}
+
 
 async function createSessionToken(env, userId, displayName) {
   if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
@@ -4233,6 +4246,31 @@ async function handleApi(request, env, url) {
     } catch(error) {
       const code=String(error?.message ?? error);
       return json({ok:false,error:code},{status:400});
+    }
+  }
+
+  if (url.pathname === "/api/session/refresh" && request.method === "POST") {
+    if (!env.SESSION_SECRET) {
+      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
+    }
+    try {
+      const previous = await verifyRefreshableSessionToken(
+        bearerToken(request),
+        String(env.SESSION_SECRET),
+      );
+      const userId = String(previous.sub);
+      await ensureUsersSchema(db);
+      const user = await db.prepare(
+        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
+      ).bind(userId).first();
+      if (!user) return json({ ok: false, error: "user_not_found" }, { status: 401 });
+      await ensureUserAllowed(db, userId);
+      const token = await createSessionToken(env, userId, user.display_name);
+      return json({ ok: true, token, user, provider: "refresh" });
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      const status = code === "user_banned" || code === "user_suspended" ? 403 : 401;
+      return json({ ok: false, error: code }, { status });
     }
   }
 
