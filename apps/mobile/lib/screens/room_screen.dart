@@ -1577,12 +1577,16 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendGiftToSeatUser(String receiverId) async {
-    if (receiverId.isEmpty) return;
-
     final catalog = widget.state.backendConnected
         ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
         : <Map<String, dynamic>>[];
     if (!mounted) return;
+    final fetchedMembers = widget.state.backendConnected
+        ? await widget.state.backend.roomMembers(roomId: widget.room.id)
+        : roomMembers;
+    if (!mounted) return;
+    final availableMembers =
+        fetchedMembers.isEmpty ? roomMembers : fetchedMembers;
 
     final selection = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -1595,20 +1599,33 @@ class _RoomScreenState extends State<RoomScreen> {
       builder: (sheetContext) {
         final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .64;
         var selectedGiftCategory = 'Normal';
-        final selectedReceiverIds = <String>{receiverId};
+        final selectedReceiverIds = receiverId.trim().isEmpty
+            ? <String>{}
+            : <String>{receiverId};
         final selectedGiftIds = <String>{};
         final giftOptions = catalog
             .map((gift) => Map<String, dynamic>.from(gift))
             .toList(growable: true);
         final recipients = <Map<String, dynamic>>[
-          ...roomMembers.map((row) => Map<String, dynamic>.from(row)),
+          ...availableMembers.map((row) => Map<String, dynamic>.from(row)),
         ];
-        if (!recipients.any((row) => row['user_id']?.toString() == receiverId)) {
+        if (receiverId.trim().isNotEmpty &&
+            !recipients.any((row) => row['user_id']?.toString() == receiverId)) {
           recipients.insert(0, <String, dynamic>{
             'user_id': receiverId,
             'display_name': receiverId == widget.state.userId
                 ? widget.state.displayName
                 : 'Selected user',
+          });
+        }
+        if (!recipients.any(
+          (row) => row['user_id']?.toString() == widget.state.userId,
+        )) {
+          recipients.insert(0, <String, dynamic>{
+            'user_id': widget.state.userId,
+            'display_name': widget.state.displayName,
+            'avatar_key': widget.state.avatarKey,
+            'seat_index': mySeat,
           });
         }
 
@@ -5900,154 +5917,6 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  Future<String?> _chooseGiftReceiver() async {
-    final members =
-        await widget.state.backend.roomMembers(roomId: widget.room.id);
-    if (!mounted) return null;
-
-    final candidates = members
-        .where((member) => member['user_id']?.toString().isNotEmpty == true)
-        .map((member) => Map<String, dynamic>.from(member))
-        .toList(growable: true);
-
-    final selfIndex = candidates.indexWhere(
-      (member) => member['user_id']?.toString() == widget.state.userId,
-    );
-    if (selfIndex < 0) {
-      candidates.insert(0, <String, dynamic>{
-        'user_id': widget.state.userId,
-        'display_name': widget.state.displayName,
-        'avatar_key': widget.state.avatarKey,
-        'seat_index': mySeat,
-      });
-    } else if (selfIndex > 0) {
-      final self = candidates.removeAt(selfIndex);
-      candidates.insert(0, self);
-    }
-
-    if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No gift receiver is available')),
-      );
-      return null;
-    }
-
-    return showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: math.min(
-            MediaQuery.sizeOf(sheetContext).height * .52,
-            520,
-          ),
-          child: Column(
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Send gift to',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GridView.builder(
-                  key: const Key('room-gift-recipient-grid'),
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 18),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: .78,
-                  ),
-                  itemCount: candidates.length,
-                  itemBuilder: (context, index) {
-                    final member = candidates[index];
-                    final userId = member['user_id']?.toString() ?? '';
-                    final isSelf = userId == widget.state.userId;
-                    final avatar = member['avatar_key']?.toString().trim() ?? '';
-                    final displayName =
-                        member['display_name']?.toString().trim().isNotEmpty ==
-                                true
-                            ? member['display_name'].toString().trim()
-                            : 'User $userId';
-                    final seat = int.tryParse(
-                      member['seat_index']?.toString() ?? '',
-                    );
-                    return InkWell(
-                      key: Key('gift-recipient-$userId'),
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => Navigator.pop(sheetContext, userId),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 58,
-                            height: 58,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isSelf
-                                    ? TinniPalette.brightGold
-                                    : TinniPalette.bronze,
-                                width: isSelf ? 2.4 : 1.2,
-                              ),
-                              boxShadow: isSelf
-                                  ? const <BoxShadow>[
-                                      BoxShadow(
-                                        color: Color(0x66FFD45A),
-                                        blurRadius: 12,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: CircleAvatar(
-                              backgroundImage: avatar.isNotEmpty
-                                  ? NetworkImage(
-                                      widget.state.backend.fileUrl(avatar),
-                                      headers: widget.state.backend.fileHeaders,
-                                    )
-                                  : null,
-                              child: avatar.isEmpty
-                                  ? Icon(
-                                      isSelf
-                                          ? Icons.account_circle_rounded
-                                          : Icons.person_rounded,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            isSelf ? '$displayName (You)' : displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 10),
-                          ),
-                          Text(
-                            seat == null ? 'Audience' : 'Seat ${seat + 1}',
-                            maxLines: 1,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              color: Colors.white60,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<Map<String, dynamic>?> _createRoomCustomGift() async {
     if (!widget.state.backendConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -6359,9 +6228,10 @@ class _RoomScreenState extends State<RoomScreen> {
       );
       return;
     }
-    final selected = await _chooseGiftReceiver();
-    if (selected == null || selected.isEmpty) return;
-    await _sendGiftToSeatUser(selected);
+
+    // Open the complete Gift Box first: recipient DPs and all seven category
+    // chips are visible together, and the user chooses recipients in that box.
+    await _sendGiftToSeatUser('');
   }
 
   Future<void> _sendInlineMessage([String? override]) async {
