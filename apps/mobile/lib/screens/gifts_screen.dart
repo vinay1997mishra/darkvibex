@@ -28,6 +28,8 @@ class _GiftsScreenState extends State<GiftsScreen> {
     'Country',
     'Luxury',
     'Backpack',
+    'Exclusive',
+    'Custom',
   ];
 
   int categoryIndex = 0;
@@ -67,6 +69,9 @@ class _GiftsScreenState extends State<GiftsScreen> {
     final id = gift['id']?.toString().toLowerCase() ?? '';
     if (id.startsWith('cp-')) return 'cp';
     if (id.startsWith('vs-') || id.startsWith('enemy-')) return 'vs';
+    if (id.startsWith('backpack-') || id.startsWith('bag-')) return 'backpack';
+    if (id.startsWith('exclusive-')) return 'exclusive';
+    if (id.startsWith('custom-')) return 'custom';
     final price = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
     if (price >= 1000000) return 'luxury';
     return 'normal';
