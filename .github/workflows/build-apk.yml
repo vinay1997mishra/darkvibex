@@ -54,7 +54,7 @@ jobs:
         run: npx wrangler deploy --dry-run --outdir /tmp/darkvibex-worker
 
   android:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[apk]')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[apk]')
     runs-on: ubuntu-latest
     env:
       DVX_API_ORIGIN: ${{ inputs.api_origin || 'https://darkvibex-api.mishrajii7991.workers.dev' }}
