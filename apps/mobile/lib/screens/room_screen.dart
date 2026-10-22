@@ -1593,7 +1593,7 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       builder: (sheetContext) {
         final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .82;
-        var selectedGiftCategory = 'Popular';
+        var selectedGiftCategory = '';
         final selectedReceiverIds = <String>{receiverId};
         final recipients = <Map<String, dynamic>>[
           ...roomMembers.map((row) => Map<String, dynamic>.from(row)),
@@ -1619,9 +1619,8 @@ class _RoomScreenState extends State<RoomScreen> {
                   .replaceAll('-', '')
                   .replaceAll('_', '')
                   .replaceAll(' ', '');
+              if (selectedGiftCategory.isEmpty) return true;
               switch (selectedGiftCategory) {
-                case 'Popular':
-                  return true;
                 case 'Lucky':
                   return normalizedCategory == 'lucky';
                 case 'CP':
@@ -1797,7 +1796,6 @@ class _RoomScreenState extends State<RoomScreen> {
                         runSpacing: 1,
                         children: [
                           for (final category in const [
-                            'Popular',
                             'Normal',
                             'Lucky',
                             'CP',
@@ -1805,15 +1803,14 @@ class _RoomScreenState extends State<RoomScreen> {
                             'Country',
                             'Luxury',
                             'Backpack',
-                            'Exclusive',
-                            'Custom',
                           ])
                             ChoiceChip(
                               key: Key('room-gift-category-$category'),
                               label: Text(category),
                               selected: selectedGiftCategory == category,
                               onSelected: (_) => setSheetState(
-                                () => selectedGiftCategory = category,
+                                () => selectedGiftCategory =
+                                    selectedGiftCategory == category ? '' : category,
                               ),
                               labelStyle: TextStyle(
                                 fontSize: 10,
