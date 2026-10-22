@@ -1597,7 +1597,7 @@ class _RoomScreenState extends State<RoomScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (sheetContext) {
-        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .64;
+        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .58;
         var selectedGiftCategory = 'Normal';
         final selectedReceiverIds = receiverId.trim().isEmpty
             ? <String>{}
@@ -1812,7 +1812,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     ),
                   ),
                   SizedBox(
-                    height: 91,
+                    height: 79,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.fromLTRB(15, 5, 15, 4),
@@ -1841,12 +1841,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                   }
                                 }),
                                 child: SizedBox(
-                                  width: 76,
+                                  width: 66,
                                   child: Column(
                                     children: [
                                       Container(
-                                        width: 57,
-                                        height: 57,
+                                        width: 49,
+                                        height: 49,
                                         padding: const EdgeInsets.all(2),
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
@@ -1958,7 +1958,7 @@ class _RoomScreenState extends State<RoomScreen> {
                               crossAxisCount: 3,
                               crossAxisSpacing: 9,
                               mainAxisSpacing: 9,
-                              childAspectRatio: .78,
+                              childAspectRatio: .95,
                             ),
                             itemCount: visibleGifts.length,
                             itemBuilder: (context, index) {
@@ -1992,7 +1992,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 130),
                                   padding:
-                                      const EdgeInsets.fromLTRB(7, 8, 7, 7),
+                                      const EdgeInsets.fromLTRB(5, 5, 5, 5),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFF17243A),
                                     borderRadius: BorderRadius.circular(19),
@@ -2020,8 +2020,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                             Positioned.fill(
                                               child: Center(
                                                 child: SizedBox(
-                                                  width: 76,
-                                                  height: 76,
+                                                  width: 58,
+                                                  height: 58,
                                                   child: ClipRRect(
                                                     borderRadius:
                                                         BorderRadius.circular(
@@ -2092,7 +2092,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                         textAlign: TextAlign.center,
                                         style: const TextStyle(
                                           color: Color(0xFFF0F0F6),
-                                          fontSize: 12,
+                                          fontSize: 11,
                                           height: 1.05,
                                           fontWeight: FontWeight.w800,
                                         ),
@@ -2104,7 +2104,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                           color: Color(0xFFC4B078),
-                                          fontSize: 11,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),

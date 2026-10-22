@@ -32,6 +32,15 @@ void main() {
     expect(picker, contains("Key('room-gift-send-button')"));
     expect(picker, contains("final fetchedMembers = widget.state.backendConnected"));
     expect(picker, contains("'avatar_key': widget.state.avatarKey"));
+    expect(
+      picker,
+      contains("MediaQuery.sizeOf(sheetContext).height * .58"),
+      reason: 'Gift Box panel should be shorter to leave more room for the room',
+    );
+    expect(picker, contains('height: 79,'));
+    expect(picker, contains('childAspectRatio: .95'));
+    expect(picker, contains('width: 58,\n                                                  height: 58,'));
+    expect(picker, contains('fontSize: 11,\n                                          height: 1.05,'));
 
     final categoryRow = picker.indexOf("for (final category in const [");
     final recipientRow = picker.indexOf('for (final person in recipients)');
