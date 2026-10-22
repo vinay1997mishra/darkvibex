@@ -1994,22 +1994,13 @@ class _RoomScreenState extends State<RoomScreen> {
                                   padding:
                                       const EdgeInsets.fromLTRB(5, 5, 5, 5),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF17243A),
-                                    borderRadius: BorderRadius.circular(19),
-                                    border: Border.all(
-                                      color: chosen
-                                          ? const Color(0xFFB77BE5)
-                                          : const Color(0xAAAB8B4D),
-                                      width: chosen ? 2 : 1.2,
-                                    ),
-                                    boxShadow: chosen
-                                        ? const [
-                                            BoxShadow(
-                                              color: Color(0x334F3381),
-                                              blurRadius: 8,
-                                            ),
-                                          ]
-                                        : null,
+                                    // Keep gift artwork visually free of the
+                                    // oversized square card border. Selection
+                                    // is indicated by the check badge instead.
+                                    color: chosen
+                                        ? const Color(0x1FB77BE5)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Column(
                                     children: [
