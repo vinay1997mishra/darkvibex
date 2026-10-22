@@ -1605,20 +1605,20 @@ class _RoomScreenState extends State<RoomScreen> {
                   .replaceAll('_', '')
                   .replaceAll(' ', '');
               switch (selectedGiftCategory) {
+                case 'Popular':
+                  return true;
+                case 'Lucky':
+                  return normalizedCategory == 'lucky';
                 case 'CP':
                   return normalizedCategory == 'cp' ||
                       normalizedCategory.contains('couple');
                 case 'VS':
                   return normalizedCategory == 'vs' ||
                       normalizedCategory.contains('versus');
+                case 'Country':
+                  return normalizedCategory == 'country';
                 case 'Luxury':
                   return normalizedCategory == 'luxury';
-                case 'Backpack':
-                  return normalizedCategory == 'backpack';
-                case 'Exclusive':
-                  return normalizedCategory == 'exclusive';
-                case 'Custom':
-                  return normalizedCategory == 'custom';
                 default:
                   return normalizedCategory.isEmpty ||
                       normalizedCategory == 'normal' ||
@@ -1689,13 +1689,13 @@ class _RoomScreenState extends State<RoomScreen> {
                     child: Row(
                       children: [
                         for (final category in const [
+                          'Popular',
                           'Normal',
+                          'Lucky',
                           'CP',
                           'VS',
+                          'Country',
                           'Luxury',
-                          'Backpack',
-                          'Exclusive',
-                          'Custom',
                         ])
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 3),
