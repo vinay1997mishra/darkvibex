@@ -1578,23 +1578,28 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _sendGiftToSeatUser(String receiverId) async {
     if (receiverId.isEmpty) return;
-    final gifts = widget.state.backendConnected
+
+    final catalog = widget.state.backendConnected
         ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
         : <Map<String, dynamic>>[];
-    // Always open the Gift Box so category tabs remain visible even when the
-    // catalog request fails or the catalog is empty; show an empty-state message instead.
     if (!mounted) return;
-    final gift = await showModalBottomSheet<Map<String, dynamic>>(
+
+    final selection = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: TinniPalette.nearBlack,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (sheetContext) {
-        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .82;
-        var selectedGiftCategory = '';
+        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .64;
+        var selectedGiftCategory = 'Normal';
         final selectedReceiverIds = <String>{receiverId};
+        final selectedGiftIds = <String>{};
+        final giftOptions = catalog
+            .map((gift) => Map<String, dynamic>.from(gift))
+            .toList(growable: true);
         final recipients = <Map<String, dynamic>>[
           ...roomMembers.map((row) => Map<String, dynamic>.from(row)),
         ];
@@ -1606,194 +1611,132 @@ class _RoomScreenState extends State<RoomScreen> {
                 : 'Selected user',
           });
         }
+
+        String giftSelectionKey(Map<String, dynamic> item) {
+          final id = item['id']?.toString().trim() ?? '';
+          if (id.isNotEmpty) return id;
+          return (item['name'] ?? 'Gift').toString() +
+              ':' +
+              (item['coin_cost'] ?? 0).toString();
+        }
+
+        int giftCost(Map<String, dynamic> item) =>
+            int.tryParse(item['coin_cost']?.toString() ?? '') ?? 0;
+
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
-            final visibleGifts = gifts.where((item) {
-              final category = (item['category'] ??
+            final visibleGifts = giftOptions.where((item) {
+              final rawCategory = (item['category'] ??
                       item['gift_category'] ??
                       item['type'] ??
                       '')
                   .toString()
                   .toLowerCase();
-              final normalizedCategory = category
+              final category = rawCategory
                   .replaceAll('-', '')
                   .replaceAll('_', '')
                   .replaceAll(' ', '');
-              if (selectedGiftCategory.isEmpty) return true;
               switch (selectedGiftCategory) {
                 case 'Lucky':
-                  return normalizedCategory == 'lucky';
+                  return category == 'lucky';
                 case 'CP':
-                  return normalizedCategory == 'cp' ||
-                      normalizedCategory.contains('couple');
+                  return category == 'cp' || category.contains('couple');
                 case 'VS':
-                  return normalizedCategory == 'vs' ||
-                      normalizedCategory.contains('versus');
+                  return category == 'vs' || category.contains('versus');
                 case 'Country':
-                  return normalizedCategory == 'country';
+                  return category == 'country';
                 case 'Luxury':
-                  return normalizedCategory == 'luxury';
+                  return category == 'luxury';
                 case 'Backpack':
-                  return normalizedCategory == 'backpack';
-                case 'Exclusive':
-                  return normalizedCategory == 'exclusive';
-                case 'Custom':
-                  return normalizedCategory == 'custom';
+                  return category == 'backpack';
                 case 'Normal':
                 default:
-                  return normalizedCategory.isEmpty ||
-                      normalizedCategory == 'normal' ||
-                      normalizedCategory == 'gift';
+                  return category.isEmpty ||
+                      category == 'normal' ||
+                      category == 'gift';
               }
             }).toList(growable: false);
-            return SafeArea(
-          top: false,
-          child: SizedBox(
-            height: sheetHeight,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.card_giftcard_rounded,
-                        color: TinniPalette.brightGold,
-                      ),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Gifts',
-                          style: TextStyle(
-                            color: TinniPalette.cream,
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${gifts.length} gifts',
-                        style: const TextStyle(
-                          color: Colors.white60,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      IconButton(
-                        key: const Key('room-create-custom-gift-grid'),
-                        tooltip: 'Custom Gift',
-                        onPressed: () async {
-                          Navigator.pop(sheetContext);
-                          final created = await _createRoomCustomGift();
-                          if (created == null || !mounted) return;
-                          await _sendGiftByDefinition(created, receiverId);
-                        },
-                        icon: const Icon(
-                          Icons.add_photo_alternate_rounded,
-                          color: TinniPalette.brightGold,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.pop(sheetContext),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Colors.white12),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.people_alt_rounded, color: TinniPalette.brightGold, size: 18),
-                      const SizedBox(width: 6),
-                      Text('Select users (${selectedReceiverIds.length})',
-                        style: const TextStyle(color: TinniPalette.cream, fontWeight: FontWeight.w800, fontSize: 12)),
-                      const Spacer(),
-                      TextButton(onPressed: () => setSheetState(() {
-                        selectedReceiverIds
-                          ..clear()
-                          ..addAll(recipients.map((r) => r['user_id']?.toString() ?? '').where((id) => id.isNotEmpty));
-                      }), child: const Text('Select all')),
-                      TextButton(onPressed: () => setSheetState(() {
-                        selectedReceiverIds..clear()..add(receiverId);
-                      }), child: const Text('Reset')),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  height: 82,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    children: [
-                      for (final person in recipients)
-                        Builder(builder: (context) {
-                          final id = person['user_id']?.toString() ?? '';
-                          if (id.isEmpty) return const SizedBox.shrink();
-                          final avatar = person['avatar_key']?.toString() ?? '';
-                          final chosen = selectedReceiverIds.contains(id);
-                          final name = (person['display_name'] ?? person['name'] ?? 'User').toString();
-                          return InkWell(
-                            onTap: () => setSheetState(() {
-                              if (chosen) {
-                                if (selectedReceiverIds.length > 1) selectedReceiverIds.remove(id);
-                              } else {
-                                selectedReceiverIds.add(id);
-                              }
-                            }),
-                            child: SizedBox(
-                              width: 68,
-                              child: Column(children: [
-                                Stack(children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: BoxDecoration(shape: BoxShape.circle,
-                                      border: Border.all(color: chosen ? TinniPalette.brightGold : Colors.white24, width: chosen ? 2.5 : 1)),
-                                    child: CircleAvatar(radius: 22,
-                                      backgroundColor: const Color(0xFF30254B),
-                                      backgroundImage: avatar.isEmpty ? null : NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders),
-                                      child: avatar.isEmpty ? const Icon(Icons.person_rounded, color: Colors.white70) : null),
-                                  ),
-                                  if (chosen) const Positioned(right: 0, bottom: 0,
-                                    child: CircleAvatar(radius: 9, backgroundColor: TinniPalette.brightGold,
-                                      child: Icon(Icons.check, size: 12, color: Colors.black))),
-                                ]),
-                                const SizedBox(height: 3),
-                                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: chosen ? TinniPalette.brightGold : TinniPalette.cream, fontSize: 10)),
-                              ]),
-                            ),
-                          );
-                        }),
-                    ],
-                  ),
-                ),
 
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
-                  child: Column(
-                    key: const Key('room-gift-category-wrap'),
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(left: 3, bottom: 5),
-                        child: Text(
-                          'GIFT CATEGORIES',
-                          style: TextStyle(
-                            color: Color(0xFFFFD45A),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.1,
+            final selectedGifts = giftOptions
+                .where((item) => selectedGiftIds.contains(giftSelectionKey(item)))
+                .toList(growable: false);
+            final totalCoins = selectedGifts.fold<int>(
+                  0,
+                  (total, item) => total + giftCost(item),
+                ) *
+                selectedReceiverIds.length;
+
+            return Container(
+              height: sheetHeight,
+              decoration: const BoxDecoration(
+                color: Color(0xFF10192D),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 9, bottom: 5),
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD4D7E1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 7, 14, 5),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Gift',
+                            style: TextStyle(
+                              color: Color(0xFFB77BE5),
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                         ),
-                      ),
-                      Wrap(
-                        spacing: 4,
-                        runSpacing: 1,
+                        IconButton(
+                          key: const Key('room-create-custom-gift-grid'),
+                          tooltip: 'Add custom gift',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () async {
+                            final created = await _createRoomCustomGift();
+                            if (created == null || !sheetContext.mounted) {
+                              return;
+                            }
+                            final customGift =
+                                Map<String, dynamic>.from(created);
+                            customGift['category'] = 'normal';
+                            final customKey = giftSelectionKey(customGift);
+                            setSheetState(() {
+                              if (!giftOptions.any(
+                                (item) => giftSelectionKey(item) == customKey,
+                              )) {
+                                giftOptions.add(customGift);
+                              }
+                              selectedGiftCategory = 'Normal';
+                            });
+                          },
+                          icon: const Icon(
+                            Icons.add_photo_alternate_rounded,
+                            color: Color(0xFFB77BE5),
+                            size: 25,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 47,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Row(
                         children: [
                           for (final category in const [
                             'Normal',
@@ -1804,269 +1747,459 @@ class _RoomScreenState extends State<RoomScreen> {
                             'Luxury',
                             'Backpack',
                           ])
-                            ChoiceChip(
-                              key: Key('room-gift-category-$category'),
-                              label: Text(category),
-                              selected: selectedGiftCategory == category,
-                              onSelected: (_) => setSheetState(
-                                () => selectedGiftCategory =
-                                    selectedGiftCategory == category ? '' : category,
+                            Padding(
+                              padding: const EdgeInsets.only(right: 7),
+                              child: ChoiceChip(
+                                key: Key('room-gift-category-' + category),
+                                label: Text(category),
+                                selected: selectedGiftCategory == category,
+                                onSelected: (_) => setSheetState(
+                                  () => selectedGiftCategory = category,
+                                ),
+                                showCheckmark: true,
+                                checkmarkColor: const Color(0xFFD3DEFA),
+                                selectedColor: const Color(0xFF293D60),
+                                backgroundColor: const Color(0xFF1A263B),
+                                side: BorderSide(
+                                  color: selectedGiftCategory == category
+                                      ? const Color(0xFF7598D6)
+                                      : const Color(0xFF43516B),
+                                  width: selectedGiftCategory == category
+                                      ? 1.4
+                                      : 1,
+                                ),
+                                labelStyle: TextStyle(
+                                  color: selectedGiftCategory == category
+                                      ? const Color(0xFFB3C6EC)
+                                      : const Color(0xFFE8EAF2),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
-                              labelStyle: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: selectedGiftCategory == category
-                                    ? TinniPalette.black
-                                    : TinniPalette.cream,
-                              ),
-                              selectedColor: TinniPalette.brightGold,
-                              backgroundColor: const Color(0xFF21183D),
-                              side: BorderSide(
-                                color: selectedGiftCategory == category
-                                    ? TinniPalette.brightGold
-                                    : Colors.white24,
-                              ),
-                              showCheckmark: false,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
                             ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: visibleGifts.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No ${selectedGiftCategory.toLowerCase()} gifts available',
-                            style: const TextStyle(color: TinniPalette.cream),
-                          ),
-                        )
-                      : GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 10,
-                      childAspectRatio: .72,
                     ),
-                    itemCount: visibleGifts.length,
-                    itemBuilder: (context, index) {
-                      final item = visibleGifts[index];
-                      final cost = int.tryParse(
-                            item['coin_cost']?.toString() ?? '',
-                          ) ??
-                          0;
-                      final vipLevel = int.tryParse(
-                            item['vip_level']?.toString() ?? '',
-                          ) ??
-                          0;
-                      final emoji = item['emoji']?.toString() ?? '🎁';
-                      final name = item['name']?.toString() ?? 'Gift';
-                      final giftAssetKey =
-                          item['asset_key']?.toString().trim() ?? '';
-                      final giftVideoKey =
-                          item['video_key']?.toString().trim() ?? '';
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () {
-                          if (selectedReceiverIds.isEmpty) return;
-                          Navigator.pop(sheetContext, <String, dynamic>{
-                            ...item,
-                            '_selected_receiver_ids': selectedReceiverIds.toList(),
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.fromLTRB(5, 7, 5, 6),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            gradient: const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Color(0xFF2A1D59),
-                                Color(0xFF15102E),
-                              ],
-                            ),
-                            border: Border.all(
-                              color: vipLevel > 0
-                                  ? TinniPalette.brightGold
-                                  : Colors.white12,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  alignment: Alignment.center,
-                                  children: [
-                                    Container(
-                                      width: 56,
-                                      height: 56,
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: const Color(0x1FFFFFFF),
-                                        border: Border.all(
-                                          color: TinniPalette.brightGold
-                                              .withValues(alpha: .55),
-                                          width: 1.2,
+                  ),
+                  SizedBox(
+                    height: 91,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(15, 5, 15, 4),
+                      children: [
+                        for (final person in recipients)
+                          Builder(
+                            builder: (context) {
+                              final id =
+                                  person['user_id']?.toString().trim() ?? '';
+                              if (id.isEmpty) return const SizedBox.shrink();
+                              final name = (person['display_name'] ??
+                                      person['name'] ??
+                                      person['nickname'] ??
+                                      'User')
+                                  .toString();
+                              final avatar =
+                                  person['avatar_key']?.toString() ?? '';
+                              final chosen = selectedReceiverIds.contains(id);
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => setSheetState(() {
+                                  if (chosen) {
+                                    selectedReceiverIds.remove(id);
+                                  } else {
+                                    selectedReceiverIds.add(id);
+                                  }
+                                }),
+                                child: SizedBox(
+                                  width: 76,
+                                  child: Column(
+                                    children: [
+                                      Container(
+                                        width: 57,
+                                        height: 57,
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: chosen
+                                                ? const Color(0xFFB77BE5)
+                                                : const Color(0xFF586681),
+                                            width: chosen ? 2.5 : 1,
+                                          ),
+                                          boxShadow: chosen
+                                              ? const [
+                                                  BoxShadow(
+                                                    color: Color(0x554B2B87),
+                                                    blurRadius: 8,
+                                                  ),
+                                                ]
+                                              : null,
                                         ),
-                                        boxShadow: const <BoxShadow>[
-                                          BoxShadow(
-                                            color: Color(0x44FFD45A),
-                                            blurRadius: 9,
-                                            spreadRadius: 1,
-                                          ),
-                                        ],
-                                      ),
-                                      child: ClipOval(
-                                        child: GiftMediaPreview(
-                                          backend: widget.state.backend,
-                                          videoKey: giftVideoKey,
-                                          assetKey: giftAssetKey,
-                                          emoji: emoji,
-                                        ),
-                                      ),
-                                    ),
-                                    if (vipLevel > 0)
-                                      Positioned(
-                                        right: 0,
-                                        top: 0,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: TinniPalette.brightGold,
-                                            borderRadius:
-                                                BorderRadius.circular(7),
-                                          ),
-                                          child: Text(
-                                            'V$vipLevel',
-                                            style: const TextStyle(
-                                              color: Colors.black,
-                                              fontSize: 8,
-                                              fontWeight: FontWeight.w900,
-                                            ),
+                                        child: ClipOval(
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              ColoredBox(
+                                                color: const Color(0xFF202D45),
+                                                child: avatar.isEmpty
+                                                    ? const Icon(
+                                                        Icons.person_rounded,
+                                                        color: Colors.white70,
+                                                        size: 28,
+                                                      )
+                                                    : Image.network(
+                                                        widget.state.backend
+                                                            .fileUrl(avatar),
+                                                        headers: widget.state
+                                                            .backend.fileHeaders,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder: (
+                                                          context,
+                                                          error,
+                                                          stackTrace,
+                                                        ) =>
+                                                            const Icon(
+                                                          Icons.person_rounded,
+                                                          color: Colors.white70,
+                                                          size: 28,
+                                                        ),
+                                                      ),
+                                              ),
+                                              if (chosen)
+                                                const ColoredBox(
+                                                  color: Color(0x55100D20),
+                                                  child: Center(
+                                                    child: Icon(
+                                                      Icons.check_rounded,
+                                                      size: 29,
+                                                      color: Color(0xFFFFD45A),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                         ),
                                       ),
-                                  ],
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: chosen
+                                              ? const Color(0xFFE2C6FF)
+                                              : const Color(0xFFC7CBDA),
+                                          fontSize: 10,
+                                          fontWeight: chosen
+                                              ? FontWeight.w800
+                                              : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: visibleGifts.isEmpty
+                        ? Center(
+                            child: Text(
+                              catalog.isEmpty
+                                  ? 'No gifts available'
+                                  : 'No ' +
+                                      selectedGiftCategory.toLowerCase() +
+                                      ' gifts available',
+                              style: const TextStyle(
+                                color: Color(0xFFC7CBDA),
+                                fontSize: 13,
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 16,
-                                    height: 16,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white24,
-                                        width: .7,
-                                      ),
+                            ),
+                          )
+                        : GridView.builder(
+                            key: const Key('room-gift-selection-grid'),
+                            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 9,
+                              mainAxisSpacing: 9,
+                              childAspectRatio: .78,
+                            ),
+                            itemCount: visibleGifts.length,
+                            itemBuilder: (context, index) {
+                              final item = visibleGifts[index];
+                              final id = giftSelectionKey(item);
+                              final chosen = selectedGiftIds.contains(id);
+                              final name =
+                                  item['name']?.toString() ?? 'Gift';
+                              final emoji =
+                                  item['emoji']?.toString() ?? '🎁';
+                              final assetKey =
+                                  item['asset_key']?.toString().trim() ?? '';
+                              final videoKey =
+                                  item['video_key']?.toString().trim() ?? '';
+                              final cost = giftCost(item);
+                              final vipLevel = int.tryParse(
+                                    item['vip_level']?.toString() ?? '',
+                                  ) ??
+                                  0;
+
+                              return InkWell(
+                                key: Key('room-gift-card-' + id),
+                                borderRadius: BorderRadius.circular(19),
+                                onTap: () => setSheetState(() {
+                                  if (chosen) {
+                                    selectedGiftIds.remove(id);
+                                  } else {
+                                    selectedGiftIds.add(id);
+                                  }
+                                }),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 130),
+                                  padding:
+                                      const EdgeInsets.fromLTRB(7, 8, 7, 7),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF17243A),
+                                    borderRadius: BorderRadius.circular(19),
+                                    border: Border.all(
+                                      color: chosen
+                                          ? const Color(0xFFB77BE5)
+                                          : const Color(0xAAAB8B4D),
+                                      width: chosen ? 2 : 1.2,
                                     ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: giftAssetKey.isNotEmpty
-                                        ? Image.network(
-                                            widget.state.backend
-                                                .fileUrl(giftAssetKey),
-                                            headers: widget.state.backend
-                                                .fileHeaders,
-                                            fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stack) =>
-                                                    Center(
-                                              child: Text(
-                                                emoji,
-                                                style: const TextStyle(
-                                                  fontSize: 9,
+                                    boxShadow: chosen
+                                        ? const [
+                                            BoxShadow(
+                                              color: Color(0x334F3381),
+                                              blurRadius: 8,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Expanded(
+                                        child: Stack(
+                                          clipBehavior: Clip.none,
+                                          children: [
+                                            Positioned.fill(
+                                              child: Center(
+                                                child: SizedBox(
+                                                  width: 76,
+                                                  height: 76,
+                                                  child: ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      12,
+                                                    ),
+                                                    child: GiftMediaPreview(
+                                                      backend:
+                                                          widget.state.backend,
+                                                      videoKey: videoKey,
+                                                      assetKey: assetKey,
+                                                      emoji: emoji,
+                                                      fit: BoxFit.contain,
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                          )
-                                        : Center(
-                                            child: Text(
-                                              emoji,
-                                              style: const TextStyle(
-                                                fontSize: 9,
+                                            if (vipLevel > 0)
+                                              Positioned(
+                                                top: 0,
+                                                left: 0,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 5,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(
+                                                      0xFFD8B65B,
+                                                    ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    'V' + vipLevel.toString(),
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF1A1D26),
+                                                      fontSize: 8,
+                                                      fontWeight: FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      name,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: TinniPalette.cream,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.05,
+                                            if (chosen)
+                                              const Positioned(
+                                                top: 0,
+                                                right: 0,
+                                                child: CircleAvatar(
+                                                  radius: 10,
+                                                  backgroundColor:
+                                                      Color(0xFFB77BE5),
+                                                  child: Icon(
+                                                    Icons.check_rounded,
+                                                    size: 13,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.monetization_on_rounded,
-                                    size: 12,
-                                    color: TinniPalette.brightGold,
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Flexible(
-                                    child: Text(
-                                      _compactRoomCoins(cost),
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Color(0xFFF0F0F6),
+                                          fontSize: 12,
+                                          height: 1.05,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        cost.toString(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFFC4B078),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              );
+                            },
                           ),
-                        ),
-                      );
-                    },
                   ),
-                ),
-              ],
-            ),
-          ),
+                  Container(
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF10192D),
+                      border: Border(
+                        top: BorderSide(color: Color(0xFF28364E), width: 1),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 9, 14, 9),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.monetization_on_rounded,
+                              color: Color(0xFFFFD45A),
+                              size: 21,
+                            ),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                'Total Coins ' + _compactRoomCoins(totalCoins),
+                                key: const Key('room-gift-total-coins'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFFFFD45A),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              height: 44,
+                              child: FilledButton.icon(
+                                key: const Key('room-gift-send-button'),
+                                onPressed: selectedGifts.isEmpty ||
+                                        selectedReceiverIds.isEmpty
+                                    ? null
+                                    : () => Navigator.of(sheetContext).pop(
+                                          <String, dynamic>{
+                                            '_selected_receiver_ids':
+                                                selectedReceiverIds.toList(),
+                                            '_selected_gifts': selectedGifts
+                                                .map(
+                                                  (gift) =>
+                                                      Map<String, dynamic>.from(
+                                                    gift,
+                                                  ),
+                                                )
+                                                .toList(growable: false),
+                                          },
+                                        ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF44364F),
+                                  disabledBackgroundColor:
+                                      const Color(0xFF272536),
+                                  foregroundColor:
+                                      const Color(0xFFD8DCE8),
+                                  disabledForegroundColor:
+                                      const Color(0xFF777D8D),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 23,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(28),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.send_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('Send'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
       },
     );
-    if (!mounted || gift == null) return;
-    final recipientIds = (gift['_selected_receiver_ids'] as List?)
-        ?.map((id) => id.toString())
-        .where((id) => id.isNotEmpty)
-        .toList() ?? <String>[receiverId];
-    final giftDefinition = Map<String, dynamic>.from(gift)
-      ..remove('_selected_receiver_ids');
-    for (final id in recipientIds) {
-      if (!mounted) return;
-      await _sendGiftByDefinition(giftDefinition, id);
+
+    if (!mounted || selection == null) return;
+    final recipientIds = (selection['_selected_receiver_ids'] as List?)
+            ?.map((id) => id.toString())
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList(growable: false) ??
+        <String>[];
+    final selectedGifts = (selection['_selected_gifts'] as List?)
+            ?.whereType<Map>()
+            .map((gift) => Map<String, dynamic>.from(gift))
+            .toList(growable: false) ??
+        <Map<String, dynamic>>[];
+
+    if (recipientIds.isEmpty || selectedGifts.isEmpty) return;
+    for (final gift in selectedGifts) {
+      for (final id in recipientIds) {
+        if (!mounted) return;
+        await _sendGiftByDefinition(gift, id);
+      }
     }
   }
 
