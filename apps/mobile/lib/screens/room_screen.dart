@@ -1593,7 +1593,7 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
       builder: (sheetContext) {
         final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .82;
-        var selectedGiftCategory = 'Normal';
+        var selectedGiftCategory = 'Popular';
         final selectedReceiverIds = <String>{receiverId};
         final recipients = <Map<String, dynamic>>[
           ...roomMembers.map((row) => Map<String, dynamic>.from(row)),
@@ -1774,26 +1774,41 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
 
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final category in const [
-                          'Popular',
-                          'Normal',
-                          'Lucky',
-                          'CP',
-                          'VS',
-                          'Country',
-                          'Luxury',
-                          'Backpack',
-                          'Exclusive',
-                          'Custom',
-                        ])
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 3),
-                            child: ChoiceChip(
+                  padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+                  child: Column(
+                    key: const Key('room-gift-category-wrap'),
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(left: 3, bottom: 5),
+                        child: Text(
+                          'GIFT CATEGORIES',
+                          style: TextStyle(
+                            color: Color(0xFFFFD45A),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 1,
+                        children: [
+                          for (final category in const [
+                            'Popular',
+                            'Normal',
+                            'Lucky',
+                            'CP',
+                            'VS',
+                            'Country',
+                            'Luxury',
+                            'Backpack',
+                            'Exclusive',
+                            'Custom',
+                          ])
+                            ChoiceChip(
                               key: Key('room-gift-category-$category'),
                               label: Text(category),
                               selected: selectedGiftCategory == category,
@@ -1801,7 +1816,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 () => selectedGiftCategory = category,
                               ),
                               labelStyle: TextStyle(
-                                fontSize: 11,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w800,
                                 color: selectedGiftCategory == category
                                     ? TinniPalette.black
@@ -1816,10 +1831,12 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                               showCheckmark: false,
                               visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
                             ),
-                          ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 Expanded(
