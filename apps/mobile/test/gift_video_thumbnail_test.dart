@@ -15,12 +15,12 @@ void main() {
     expect(festival, contains('GiftMediaPreview('));
     for (final category in [
       'Normal',
+      'Lucky',
       'CP',
       'VS',
+      'Country',
       'Luxury',
       'Backpack',
-      'Exclusive',
-      'Custom',
     ]) {
       expect(
         festival,
