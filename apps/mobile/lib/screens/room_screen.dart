@@ -1577,10 +1577,13 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendGiftToSeatUser(String receiverId) async {
-    if (!widget.state.backendConnected || receiverId.isEmpty) return;
-    final gifts =
-        await widget.state.backend.giftCatalog(userId: widget.state.userId);
-    if (!mounted || gifts.isEmpty) return;
+    if (receiverId.isEmpty) return;
+    final gifts = widget.state.backendConnected
+        ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
+        : <Map<String, dynamic>>[];
+    // Always open the Gift Box so category tabs remain visible even when the
+    // catalog request fails or the catalog is empty; show an empty-state message instead.
+    if (!mounted) return;
     final gift = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
