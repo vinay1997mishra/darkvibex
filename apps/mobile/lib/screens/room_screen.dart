@@ -1619,6 +1619,13 @@ class _RoomScreenState extends State<RoomScreen> {
                   return normalizedCategory == 'country';
                 case 'Luxury':
                   return normalizedCategory == 'luxury';
+                case 'Backpack':
+                  return normalizedCategory == 'backpack';
+                case 'Exclusive':
+                  return normalizedCategory == 'exclusive';
+                case 'Custom':
+                  return normalizedCategory == 'custom';
+                case 'Normal':
                 default:
                   return normalizedCategory.isEmpty ||
                       normalizedCategory == 'normal' ||
@@ -1696,6 +1703,9 @@ class _RoomScreenState extends State<RoomScreen> {
                           'VS',
                           'Country',
                           'Luxury',
+                          'Backpack',
+                          'Exclusive',
+                          'Custom',
                         ])
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 3),
