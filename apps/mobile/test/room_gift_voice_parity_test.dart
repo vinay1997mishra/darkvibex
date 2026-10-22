@@ -4,32 +4,39 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('room gifts include self, target DP, and speaking waves', () {
+  test('room Gift Box opens with recipient DPs and categories together', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
-
-    final chooserStart =
-        source.indexOf('Future<String?> _chooseGiftReceiver() async');
-    final chooserEnd =
-        source.indexOf('Future<Map<String, dynamic>?> _createRoomCustomGift()',
-            chooserStart);
-    expect(chooserStart, greaterThanOrEqualTo(0));
-    expect(chooserEnd, greaterThan(chooserStart));
-    final chooser = source.substring(chooserStart, chooserEnd);
-
-    expect(chooser, contains("'user_id': widget.state.userId"));
-    expect(chooser, contains("Key('gift-recipient-\$userId')"));
-    expect(chooser, contains('room-gift-recipient-grid'));
-    expect(
-      chooser,
-      isNot(contains("member['user_id']?.toString() != widget.state.userId")),
-    );
 
     final sendStart = source.indexOf('Future<void> _sendGift() async');
     final sendEnd =
         source.indexOf('Future<void> _sendInlineMessage', sendStart);
+    expect(sendStart, greaterThanOrEqualTo(0));
+    expect(sendEnd, greaterThan(sendStart));
     final sendBlock = source.substring(sendStart, sendEnd);
-    expect(sendBlock, contains('final selected = await _chooseGiftReceiver()'));
-    expect(sendBlock, isNot(contains('if (isRoomHost)')));
+    expect(sendBlock, contains("await _sendGiftToSeatUser('')"));
+    expect(sendBlock, isNot(contains('_chooseGiftReceiver')));
+
+    final pickerStart =
+        source.indexOf('Future<void> _sendGiftToSeatUser(String receiverId)');
+    final pickerEnd =
+        source.indexOf('Future<void> _showSeatMemberProfile', pickerStart);
+    expect(pickerStart, greaterThanOrEqualTo(0));
+    expect(pickerEnd, greaterThan(pickerStart));
+    final picker = source.substring(pickerStart, pickerEnd);
+
+    expect(picker, contains("final selectedReceiverIds = receiverId.trim().isEmpty"));
+    expect(picker, contains("for (final category in const ["));
+    expect(picker, contains("Key('room-gift-category-' + category)"));
+    expect(picker, contains('for (final person in recipients)'));
+    expect(picker, contains("Key('room-gift-total-coins')"));
+    expect(picker, contains("Key('room-gift-send-button')"));
+    expect(picker, contains("final fetchedMembers = widget.state.backendConnected"));
+    expect(picker, contains("'avatar_key': widget.state.avatarKey"));
+
+    final categoryRow = picker.indexOf("for (final category in const [");
+    final recipientRow = picker.indexOf('for (final person in recipients)');
+    expect(categoryRow, greaterThanOrEqualTo(0));
+    expect(recipientRow, greaterThan(categoryRow));
 
     expect(source, contains('activeGiftReceiverId == memberId'));
     expect(source, contains('_buildSeatGiftImpactEffect'));
