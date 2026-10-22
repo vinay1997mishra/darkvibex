@@ -1592,8 +1592,20 @@ class _RoomScreenState extends State<RoomScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) {
-        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .58;
+        final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .82;
         var selectedGiftCategory = 'Normal';
+        final selectedReceiverIds = <String>{receiverId};
+        final recipients = <Map<String, dynamic>>[
+          ...roomMembers.map((row) => Map<String, dynamic>.from(row)),
+        ];
+        if (!recipients.any((row) => row['user_id']?.toString() == receiverId)) {
+          recipients.insert(0, <String, dynamic>{
+            'user_id': receiverId,
+            'display_name': receiverId == widget.state.userId
+                ? widget.state.displayName
+                : 'Selected user',
+          });
+        }
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
             final visibleGifts = gifts.where((item) {
@@ -1693,6 +1705,75 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
                 const Divider(height: 1, color: Colors.white12),
                 Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.people_alt_rounded, color: TinniPalette.brightGold, size: 18),
+                      const SizedBox(width: 6),
+                      Text('Select users (${selectedReceiverIds.length})',
+                        style: const TextStyle(color: TinniPalette.cream, fontWeight: FontWeight.w800, fontSize: 12)),
+                      const Spacer(),
+                      TextButton(onPressed: () => setSheetState(() {
+                        selectedReceiverIds
+                          ..clear()
+                          ..addAll(recipients.map((r) => r['user_id']?.toString() ?? '').where((id) => id.isNotEmpty));
+                      }), child: const Text('Select all')),
+                      TextButton(onPressed: () => setSheetState(() {
+                        selectedReceiverIds..clear()..add(receiverId);
+                      }), child: const Text('Reset')),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 82,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    children: [
+                      for (final person in recipients)
+                        Builder(builder: (context) {
+                          final id = person['user_id']?.toString() ?? '';
+                          if (id.isEmpty) return const SizedBox.shrink();
+                          final avatar = person['avatar_key']?.toString() ?? '';
+                          final chosen = selectedReceiverIds.contains(id);
+                          final name = (person['display_name'] ?? person['name'] ?? 'User').toString();
+                          return InkWell(
+                            onTap: () => setSheetState(() {
+                              if (chosen) {
+                                if (selectedReceiverIds.length > 1) selectedReceiverIds.remove(id);
+                              } else {
+                                selectedReceiverIds.add(id);
+                              }
+                            }),
+                            child: SizedBox(
+                              width: 68,
+                              child: Column(children: [
+                                Stack(children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(shape: BoxShape.circle,
+                                      border: Border.all(color: chosen ? TinniPalette.brightGold : Colors.white24, width: chosen ? 2.5 : 1)),
+                                    child: CircleAvatar(radius: 22,
+                                      backgroundColor: const Color(0xFF30254B),
+                                      backgroundImage: avatar.isEmpty ? null : NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders),
+                                      child: avatar.isEmpty ? const Icon(Icons.person_rounded, color: Colors.white70) : null),
+                                  ),
+                                  if (chosen) const Positioned(right: 0, bottom: 0,
+                                    child: CircleAvatar(radius: 9, backgroundColor: TinniPalette.brightGold,
+                                      child: Icon(Icons.check, size: 12, color: Colors.black))),
+                                ]),
+                                const SizedBox(height: 3),
+                                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: chosen ? TinniPalette.brightGold : TinniPalette.cream, fontSize: 10)),
+                              ]),
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+
+                Padding(
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -1777,7 +1858,13 @@ class _RoomScreenState extends State<RoomScreen> {
                           item['video_key']?.toString().trim() ?? '';
                       return InkWell(
                         borderRadius: BorderRadius.circular(14),
-                        onTap: () => Navigator.pop(sheetContext, item),
+                        onTap: () {
+                          if (selectedReceiverIds.isEmpty) return;
+                          Navigator.pop(sheetContext, <String, dynamic>{
+                            ...item,
+                            '_selected_receiver_ids': selectedReceiverIds.toList(),
+                          });
+                        },
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(5, 7, 5, 6),
                           decoration: BoxDecoration(
@@ -1957,7 +2044,16 @@ class _RoomScreenState extends State<RoomScreen> {
       },
     );
     if (!mounted || gift == null) return;
-    await _sendGiftByDefinition(gift, receiverId);
+    final recipientIds = (gift['_selected_receiver_ids'] as List?)
+        ?.map((id) => id.toString())
+        .where((id) => id.isNotEmpty)
+        .toList() ?? <String>[receiverId];
+    final giftDefinition = Map<String, dynamic>.from(gift)
+      ..remove('_selected_receiver_ids');
+    for (final id in recipientIds) {
+      if (!mounted) return;
+      await _sendGiftByDefinition(giftDefinition, id);
+    }
   }
 
   Future<void> _showSeatMemberProfile(
