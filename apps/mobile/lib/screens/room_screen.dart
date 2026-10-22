@@ -1653,7 +1653,17 @@ class _RoomScreenState extends State<RoomScreen> {
                 default:
                   return category.isEmpty ||
                       category == 'normal' ||
-                      category == 'gift';
+                      category == 'gift' ||
+                      !const <String>{
+                        'lucky',
+                        'cp',
+                        'couple',
+                        'vs',
+                        'versus',
+                        'country',
+                        'luxury',
+                        'backpack',
+                      }.contains(category);
               }
             }).toList(growable: false);
 
