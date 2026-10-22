@@ -22,12 +22,12 @@ class _GiftsScreenState extends State<GiftsScreen> {
   static const categories = <String>[
     'Popular',
     'Normal',
+    'Lucky',
     'CP',
     'VS',
+    'Country',
     'Luxury',
     'Backpack',
-    'Exclusive',
-    'Custom',
   ];
 
   int categoryIndex = 0;
@@ -74,18 +74,14 @@ class _GiftsScreenState extends State<GiftsScreen> {
 
   List<Map<String, dynamic>> get visibleGifts {
     final selected = categories[categoryIndex].toLowerCase();
-    final safe = gifts.where((gift) {
-      final category = _category(gift);
-      return category != 'lucky' && category != 'country';
-    }).toList(growable: false);
-    if (selected == 'popular') return safe;
+    if (selected == 'popular') return gifts;
     if (selected == 'luxury') {
-      return safe.where((gift) {
+      return gifts.where((gift) {
         final price = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
         return _category(gift) == 'luxury' || price >= 1000000;
       }).toList(growable: false);
     }
-    return safe
+    return gifts
         .where((gift) => _category(gift) == selected)
         .toList(growable: false);
   }
