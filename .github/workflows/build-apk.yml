@@ -85,7 +85,9 @@ jobs:
           df -h /
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Pin the SDK version from the last successful Android build so CI
+          # does not stall while resolving the latest stable channel release.
+          flutter-version: '3.47.8'
           cache: true
 
       - name: Generate missing Android scaffold
