@@ -1952,13 +1952,13 @@ class _RoomScreenState extends State<RoomScreen> {
                           )
                         : GridView.builder(
                             key: const Key('room-gift-selection-grid'),
-                            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 9,
-                              mainAxisSpacing: 9,
-                              childAspectRatio: .95,
+                              crossAxisCount: 5,
+                              crossAxisSpacing: 2,
+                              mainAxisSpacing: 5,
+                              childAspectRatio: .72,
                             ),
                             itemCount: visibleGifts.length,
                             itemBuilder: (context, index) {
@@ -1981,7 +1981,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
                               return InkWell(
                                 key: Key('room-gift-card-' + id),
-                                borderRadius: BorderRadius.circular(19),
+                                borderRadius: BorderRadius.circular(8),
                                 onTap: () => setSheetState(() {
                                   if (chosen) {
                                     selectedGiftIds.remove(id);
@@ -1991,8 +1991,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 }),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 130),
-                                  padding:
-                                      const EdgeInsets.fromLTRB(5, 5, 5, 5),
+                                  padding: const EdgeInsets.all(2),
                                   decoration: BoxDecoration(
                                     // Keep gift artwork visually free of the
                                     // oversized square card border. Selection
@@ -2011,12 +2010,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                             Positioned.fill(
                                               child: Center(
                                                 child: SizedBox(
-                                                  width: 58,
-                                                  height: 58,
+                                                  width: 36,
+                                                  height: 36,
                                                   child: ClipRRect(
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                      12,
+                                                      8,
                                                     ),
                                                     child: GiftMediaPreview(
                                                       backend:
@@ -2075,7 +2074,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 2),
                                       Text(
                                         name,
                                         maxLines: 2,
@@ -2083,19 +2082,19 @@ class _RoomScreenState extends State<RoomScreen> {
                                         textAlign: TextAlign.center,
                                         style: const TextStyle(
                                           color: Color(0xFFF0F0F6),
-                                          fontSize: 11,
+                                          fontSize: 9,
                                           height: 1.05,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 1),
                                       Text(
                                         cost.toString(),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                           color: Color(0xFFC4B078),
-                                          fontSize: 10,
+                                          fontSize: 8,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
