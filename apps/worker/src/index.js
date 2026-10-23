@@ -7717,14 +7717,20 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, receiver);
     const eventId = id();
     const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
+    const giftCreatedAt = now();
+    // Every paid coin spent on a gift must become one diamond for the exact
+    // receiver ID. Keep the credit and gift receipt tied to the same event.
     await db.batch([
       db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?")
-        .bind(cost, now(), receiver),
+        .bind(cost, giftCreatedAt, receiver),
       db.prepare(
         "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, now()),
+      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, giftCreatedAt),
     ]);
-    await awardIdLevelGift(db, sender, cost, eventId, now());
+    const receiverWallet = await db.prepare(
+      "SELECT diamonds FROM users WHERE id=? LIMIT 1"
+    ).bind(receiver).first();
+    await awardIdLevelGift(db, sender, cost, eventId, giftCreatedAt);
     await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
     let cpProgress = null;
     let vsProgress = null;
@@ -7750,6 +7756,7 @@ async function handleApi(request, env, url) {
       gift_cost:cost,
       owner_price_override:pricing.overridden,
       sender_coin_balance: balance,
+      receiver_diamond_balance: Number(receiverWallet?.diamonds ?? 0),
       cp_progress: Number(cpProgress?.progress ?? 0),
       cp_state: cpProgress?.cp ?? null,
       vs_progress: Number(vsProgress?.progress ?? 0),
