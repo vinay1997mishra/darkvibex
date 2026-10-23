@@ -38,6 +38,9 @@ void main() {
       reason: 'Gift Box panel should be shorter to leave more room for the room',
     );
     expect(picker, contains('height: 79,'));
+    expect(picker, contains('crossAxisCount: 5'));
+    expect(picker, contains('crossAxisSpacing: 2'));
+    expect(picker, contains('mainAxisSpacing: 5'));
     expect(picker, contains('childAspectRatio: .72'));
     expect(picker, contains('width: 36,\n                                                  height: 36,'));
     expect(picker, contains('fontSize: 9,\n                                          height: 1.05,'));
