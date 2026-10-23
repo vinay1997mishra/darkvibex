@@ -1577,6 +1577,16 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _sendGiftToSeatUser(String receiverId) async {
+    // Get the authoritative server wallet balance before showing Gift Box.
+    // A stale/default AppState balance must never be presented as the wallet.
+    if (widget.state.backendConnected) {
+      try {
+        await widget.state.refreshWallet(notify: false);
+      } catch (_) {
+        // Keep the Gift Box available when the wallet endpoint is temporarily
+        // unreachable; the last known balance remains visible.
+      }
+    }
     final catalog = widget.state.backendConnected
         ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
         : <Map<String, dynamic>>[];
@@ -2125,16 +2135,37 @@ class _RoomScreenState extends State<RoomScreen> {
                             ),
                             const SizedBox(width: 5),
                             Expanded(
-                              child: Text(
-                                'Total Coins ' + _compactRoomCoins(totalCoins),
-                                key: const Key('room-gift-total-coins'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFFFFD45A),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                              child: Column(
+                                key: const Key('room-gift-wallet-summary'),
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Wallet Coins ' +
+                                        widget.state.coins.toString(),
+                                    key: const Key('room-gift-wallet-coins'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFFFFD45A),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Total Coins ' + _compactRoomCoins(totalCoins),
+                                    key: const Key('room-gift-total-coins'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFFC4C9D5),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -6153,6 +6184,13 @@ class _RoomScreenState extends State<RoomScreen> {
     );
     final remoteBalance =
         int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
+    final receiverDiamondBalance = int.tryParse(
+      result?['receiver_diamond_balance']?.toString() ?? '',
+    );
+    if (receiverId == widget.state.userId &&
+        receiverDiamondBalance != null) {
+      widget.state.setDiamondBalance(receiverDiamondBalance);
+    }
     if (remoteBalance != null) {
       widget.state.setCoinBalance(remoteBalance);
       final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
