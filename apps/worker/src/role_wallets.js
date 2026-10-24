@@ -51,11 +51,13 @@ export async function ensureRoleWallet(db,userId,walletType,ts=Date.now()){
 export async function roleWalletDetail(db,userId,walletType,limit=200,ts=Date.now()){
   const wallet=await ensureRoleWallet(db,userId,walletType,ts);
   const rows=await db.prepare(
-    `SELECT id,kind,coin_amount,coin_balance_after,
-            counterparty_user_id,reference_id,created_at
-       FROM role_wallet_ledger
-      WHERE user_id=? AND wallet_type=?
-      ORDER BY created_at DESC LIMIT ?`
+    `SELECT l.id,l.kind,l.coin_amount,l.coin_balance_after,
+            l.counterparty_user_id,u.public_id AS counterparty_public_id,
+            l.reference_id,l.created_at
+       FROM role_wallet_ledger l
+       LEFT JOIN users u ON u.id=l.counterparty_user_id
+      WHERE l.user_id=? AND l.wallet_type=?
+      ORDER BY l.created_at DESC LIMIT ?`
   ).bind(userId,walletType,Math.max(1,Math.min(500,Number(limit)||200))).all();
   return {
     wallet_type:walletType,

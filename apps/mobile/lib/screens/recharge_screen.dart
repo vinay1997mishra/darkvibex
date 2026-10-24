@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import '../ui/currency_badge.dart';
+import '../utils/public_user_id.dart';
 import 'conversation_screen.dart';
 import 'wallet_detail_screens.dart';
 
@@ -318,7 +319,6 @@ class _ProviderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final id = row['user_id']?.toString() ?? '';
     final name = row['display_name']?.toString().trim();
     final avatar = row['avatar_key']?.toString() ?? '';
     return Padding(
@@ -351,7 +351,7 @@ class _ProviderTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    roleLabel + ' • ID ' + id,
+                    roleLabel + ' • ID ' + formatPublicUserId(row['public_id']),
                     style: const TextStyle(
                       color: TinniPalette.muted,
                       fontSize: 10,

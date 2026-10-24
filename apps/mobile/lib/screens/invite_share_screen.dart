@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 import 'recharge_screen.dart';
 
 class InviteShareScreen extends StatefulWidget {
@@ -483,7 +484,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          'ID ${boundMap['inviter_public_id'] ?? boundMap['invitation_code'] ?? ''}',
+                          'ID ${formatPublicUserId(boundMap['inviter_public_id'], fallback: boundMap['invitation_code']?.toString() ?? '')}',
                           style: const TextStyle(color: Color(0xFFFFD7B0)),
                         ),
                         trailing: const Icon(
@@ -602,7 +603,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
               decoration: const BoxDecoration(color: Color(0xFF7A1320)),
               children: [
                 _inviteTableCell('DP / Name', header: true),
-                _inviteTableCell('7-digit ID', header: true),
+                _inviteTableCell('8-digit ID', header: true),
                 _inviteTableCell('Invite Date & Time', header: true),
                 _inviteTableCell('Coin Seller Coins', header: true),
                 _inviteTableCell('Commission', header: true),
@@ -615,9 +616,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                 children: [
                   _inviteUserCell(row),
                   _inviteTableCell(
-                    row['public_id']?.toString().trim().isNotEmpty == true
-                        ? row['public_id'].toString()
-                        : '-',
+                    formatPublicUserId(row['public_id']),
                   ),
                   _inviteTableCell(_formatDateTime(row['bound_at'])),
                   _inviteTableCell(

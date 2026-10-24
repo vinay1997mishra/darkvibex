@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 
 class FamilyWalletScreen extends StatefulWidget {
   const FamilyWalletScreen({
@@ -97,7 +98,7 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          'Send coins to ${targetName == null || targetName.isEmpty ? targetId : targetName}',
+          'Send coins to ${targetName == null || targetName.isEmpty ? 'User' : targetName}',
         ),
         content: TextField(
           key: const Key('family-wallet-amount'),
@@ -245,7 +246,7 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
                               member['display_name']?.toString() ?? 'User',
                             ),
                             subtitle: Text(
-                              'ID ${member['user_id'] ?? '-'} • Received ${_compact(int.tryParse(member['received_coins']?.toString() ?? '') ?? 0)}',
+                              'ID ${formatPublicUserId(member['public_id'])} • Received ${_compact(int.tryParse(member['received_coins']?.toString() ?? '') ?? 0)}',
                             ),
                             trailing:
                                 member['user_id']?.toString() ==
@@ -283,8 +284,8 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
                             color: TinniPalette.gold,
                           ),
                           title: Text(
-                            '${row['sender_name'] ?? row['sender_user_id']} → '
-                            '${row['receiver_name'] ?? row['receiver_user_id']}',
+                            '${row['sender_name'] ?? 'User'} → '
+                            '${row['receiver_name'] ?? 'User'}',
                           ),
                           subtitle: Text(_date(row['created_at'])),
                           trailing: Text(

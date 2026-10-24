@@ -1350,16 +1350,18 @@ async function handleUsers(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "users.search");
     const query = String(url.searchParams.get("q") ?? "").trim();
+    const normalizedQuery = /^0[1-9]\\d{6}$/.test(query) ? query.slice(1) : query;
     const limit = clampInt(url.searchParams.get("limit"), 1, 200, 100);
     const pattern = `%${query}%`;
+    const publicPattern = `%${normalizedQuery}%`;
     const rows = await db.prepare(
       `SELECT u.id, u.public_id, u.display_name, u.role, u.coins, u.diamonds, u.vip_level, u.updated_at,
               COALESCE(c.status,'active') AS status, c.muted_until, c.banned_until
          FROM users u LEFT JOIN owner_user_controls c ON c.user_id = u.id
-        WHERE (? = '' OR u.id LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR u.display_name LIKE ?
-          OR EXISTS (SELECT 1 FROM owner_public_id_history h WHERE h.user_id = u.id AND h.public_id LIKE ?))
+        WHERE (? = '' OR u.id LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR u.display_name LIKE ?
+          OR EXISTS (SELECT 1 FROM owner_public_id_history h WHERE h.user_id = u.id AND (h.public_id LIKE ? OR h.public_id LIKE ?)))
         ORDER BY u.updated_at DESC LIMIT ?`
-    ).bind(query, pattern, pattern, pattern, pattern, limit).all();
+    ).bind(query, pattern, pattern, publicPattern, pattern, pattern, publicPattern, limit).all();
     return json({ ok: true, users: rows.results ?? [] });
   }
 
@@ -1431,8 +1433,8 @@ async function handleUsers(request, db, actor, url, parts) {
     requirePermission(actor, "users.public_id.change");
     const body = await bodyJson(request);
     const requested = String(body.public_id ?? "").trim();
-    if (!/^\d{7}$/.test(requested) || Number(requested) < 1000001) {
-      return json({ ok: false, error: "public_id_must_be_1000001_to_9999999" }, { status: 400 });
+    if (!/^\d{8}$/.test(requested) || Number(requested) < 10000001) {
+      return json({ ok: false, error: "public_id_must_be_10000001_to_99999999" }, { status: 400 });
     }
     const current = await db.prepare("SELECT public_id FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });

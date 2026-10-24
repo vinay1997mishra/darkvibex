@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -632,9 +633,10 @@ class AppState extends ChangeNotifier {
 
     userId = user['id']?.toString() ?? userId;
     final incomingPublicId = user['public_id']?.toString().trim() ?? '';
-    if (incomingPublicId.length == 7 &&
+    if ((incomingPublicId.length == 7 || incomingPublicId.length == 8) &&
         int.tryParse(incomingPublicId) != null &&
         !incomingPublicId.startsWith('0')) {
+      // Keep the stored value canonical so legacy room references still resolve.
       publicId = incomingPublicId;
     }
     displayName = user['display_name']?.toString() ?? displayName;

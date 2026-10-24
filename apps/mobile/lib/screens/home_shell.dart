@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
+import '../utils/public_user_id.dart';
 import '../ui/tinni_style.dart';
 import '../vip/vip_policy.dart';
 import 'messages_screen.dart';
@@ -453,7 +454,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
     final roomId = link.startsWith('room:') ? link.substring(5).trim() : '';
     if (roomId.isNotEmpty) {
       for (final room in state.rooms) {
-        if (room.id == roomId || room.roomNumber == roomId) {
+        if (room.id == roomId ||
+            formatPublicUserId(room.roomNumber) == formatPublicUserId(roomId)) {
           _openRoom(room);
           return;
         }
@@ -1265,7 +1267,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
           (room) =>
               q.isEmpty ||
               room.name.toLowerCase().contains(q) ||
-              room.roomNumber.toLowerCase().contains(q) ||
+              formatPublicUserId(room.roomNumber).toLowerCase().contains(q) ||
               room.ownerName.toLowerCase().contains(q),
         )
         .toList();
@@ -1636,7 +1638,7 @@ class _RoomCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'ID ${room.roomNumber} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
+                    'ID ${formatPublicUserId(room.roomNumber)} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
                     style: const TextStyle(
                       color: TinniPalette.muted,
                       fontSize: 10,

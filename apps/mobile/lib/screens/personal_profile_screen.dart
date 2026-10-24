@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 
 class PersonalProfileScreen extends StatefulWidget {
   const PersonalProfileScreen({super.key, required this.state});
@@ -581,12 +582,12 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                 children: [
                   ListTile(
                     title: const Text('DarkVibeX ID'),
-                    subtitle: Text(widget.state.publicId),
+                    subtitle: Text(formatPublicUserId(widget.state.publicId)),
                     trailing: IconButton(
                       tooltip: 'Copy ID',
                       onPressed: () async {
                         await Clipboard.setData(
-                          ClipboardData(text: widget.state.publicId),
+                          ClipboardData(text: formatPublicUserId(widget.state.publicId)),
                         );
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(

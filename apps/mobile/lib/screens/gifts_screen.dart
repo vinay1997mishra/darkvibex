@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 import '../widgets/gift_media_preview.dart';
 
 class GiftsScreen extends StatefulWidget {
@@ -128,7 +129,7 @@ class _GiftsScreenState extends State<GiftsScreen> {
                 ),
                 title: Text(room.name),
                 subtitle: Text(
-                  'ID ' + room.id + ' • ' + room.online.toString() + ' online',
+                  'ID ' + formatPublicUserId(room.roomNumber) + ' • ' + room.online.toString() + ' online',
                 ),
                 onTap: () => Navigator.pop(sheetContext, room),
               ),
@@ -186,16 +187,17 @@ class _GiftsScreenState extends State<GiftsScreen> {
                 title: Text(
                   row['display_name']?.toString().trim().isNotEmpty == true
                       ? row['display_name'].toString()
-                      : 'User ' + row['user_id'].toString(),
+                      : 'User',
                 ),
                 subtitle: Text(
-                  row['seat_index'] == null
-                      ? 'Audience'
-                      : 'Seat ' +
-                          ((int.tryParse(row['seat_index']?.toString() ?? '') ??
-                                      0) +
-                                  1)
-                              .toString(),
+                  'ID ${formatPublicUserId(row['public_id'])} • ' +
+                      (row['seat_index'] == null
+                          ? 'Audience'
+                          : 'Seat ' +
+                              ((int.tryParse(row['seat_index']?.toString() ?? '') ??
+                                          0) +
+                                      1)
+                                  .toString()),
                 ),
                 onTap: () => Navigator.pop(sheetContext, row),
               ),

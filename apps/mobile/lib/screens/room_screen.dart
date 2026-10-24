@@ -10,6 +10,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart' as gift_video; // Avoid LiveKit's VideoTrack name collision.
 
+import '../utils/public_user_id.dart';
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
 import '../background/room_permission_bridge.dart';
@@ -2410,12 +2411,7 @@ class _RoomScreenState extends State<RoomScreen> {
         ? profile['display_name']!.toString().trim()
         : fallbackName;
     final avatar = profile['avatar_key']?.toString() ?? '';
-    final publicId = (profile['vip_custom_id']?.toString().trim().isNotEmpty == true
-            ? profile['vip_custom_id']
-            : profile['public_id'])
-        ?.toString()
-        .trim();
-    final shownId = publicId == null || publicId.isEmpty ? userId : publicId;
+    final shownId = formatPublicUserId(profile['public_id']);
     final country = profile['country_name']?.toString().trim() ?? '';
     final flag = profile['flag_emoji']?.toString().trim() ?? '';
     final gender = profile['gender']?.toString().trim().toLowerCase() ?? '';
@@ -3365,10 +3361,13 @@ class _RoomScreenState extends State<RoomScreen> {
             final visible = query.isEmpty
                 ? eligible
                 : eligible
-                    .where(
-                      (member) =>
-                          (member['user_id']?.toString() ?? '').contains(query),
-                    )
+                    .where((member) {
+                      final publicId = formatPublicUserId(member['public_id']);
+                      final name = member['display_name']?.toString() ?? '';
+                      final q = query.toLowerCase();
+                      return publicId.contains(query) ||
+                          name.toLowerCase().contains(q);
+                    })
                     .toList(growable: false);
 
             return SafeArea(
@@ -3421,7 +3420,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     member['display_name']?.toString().trim();
                                 final name =
                                     rawName == null || rawName.isEmpty
-                                        ? 'User $userId'
+                                        ? 'User'
                                         : rawName;
                                 final avatar =
                                     member['avatar_key']?.toString();
@@ -3447,7 +3446,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                   title: Text(
                                     '$name${isAdmin ? ' • Admin' : ''}',
                                   ),
-                                  subtitle: Text('ID $userId • Audience'),
+                                  subtitle: Text('ID ${formatPublicUserId(member['public_id'])} • Audience'),
                                   trailing: TextButton(
                                     key: Key(
                                       'room-seat-$seat-invite-user-$userId',
@@ -3566,7 +3565,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     : null,
                               ),
                               title: Text(name),
-                              subtitle: Text('ID ${userId}'),
+                              subtitle: Text('ID ${formatPublicUserId(row['public_id'])}'),
                               trailing: TextButton(
                                 onPressed: () async {
                                   final ok = await widget.state.backend
@@ -3648,12 +3647,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                 child: avatar == null || avatar.isEmpty ? const Icon(Icons.person_rounded, size: 20) : null,
                               ),
                             ),
-                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
+                            title: Text('${name == null || name.isEmpty ? 'User' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
                             subtitle: Row(
                               children: [
                                 Expanded(
                                   child: Text(
-                                    'ID $userId • ' +
+                                    'ID ${formatPublicUserId(member['public_id'])} • ' +
                                         (seat == null
                                             ? 'Audience'
                                             : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}') +
@@ -3953,7 +3952,7 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _shareRoomId() async {
-    await Clipboard.setData(ClipboardData(text: widget.room.roomNumber));
+    await Clipboard.setData(ClipboardData(text: formatPublicUserId(widget.room.roomNumber)));
     final result = widget.state.backendConnected
         ? await widget.state.backend.shareRoomForIdLevel(
             userId: widget.state.userId,
@@ -4459,7 +4458,7 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                               title: Text(
                                 displayName == null || displayName.isEmpty
-                                    ? 'User ${userId}'
+                                    ? 'User'
                                     : displayName,
                               ),
                               subtitle: Text('Requests Seat ${seat + 1}'),
@@ -5956,7 +5955,7 @@ class _RoomScreenState extends State<RoomScreen> {
             ListTile(
               leading: const Icon(Icons.copy_rounded),
               title: const Text('Copy room ID'),
-              subtitle: Text(widget.room.roomNumber),
+              subtitle: Text(formatPublicUserId(widget.room.roomNumber)),
               onTap: () async {
                 await Clipboard.setData(ClipboardData(text: widget.room.roomNumber));
                 if (!mounted) return;
@@ -6657,7 +6656,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 children: [
                   Text(roomName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
-                    'ID ${widget.room.roomNumber} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
+                    'ID ${formatPublicUserId(widget.room.roomNumber)} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

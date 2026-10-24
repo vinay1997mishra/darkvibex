@@ -33,7 +33,7 @@ void main() {
     expect(notice, isNot(contains("Text('Terms')")));
   });
 
-  test('profile and room UI use stable seven-digit public IDs', () {
+  test('profile and room UI display eight-digit public IDs', () {
     final appState = File('lib/app/app_state.dart').readAsStringSync();
     final profile = File('lib/screens/profile_screen.dart').readAsStringSync();
     final personal =

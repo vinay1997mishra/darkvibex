@@ -16,6 +16,7 @@ import 'personal_profile_screen.dart';
 import 'room_screen.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
 import '../ui/intimacy_vs_art_b64.dart';
 import '../ui/intimacy_cp_art_b64.dart';
@@ -91,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             : null,
                       ),
                       title: Text(name),
-                      subtitle: Text('ID $id'),
+                      subtitle: Text('ID ${formatPublicUserId(friend['public_id'])}'),
                       onTap: id.isEmpty
                           ? null
                           : () => Navigator.of(sheetContext).push(
@@ -340,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'ID: ${state.publicId}',
+                          'ID: ${formatPublicUserId(state.publicId)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -1479,10 +1480,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final invisible = value['invisible_id'] == true ||
         value['invisible_id']?.toString() == '1';
     if (invisible && !isSelf) return 'Hidden';
-    final custom = value['vip_custom_id']?.toString().trim() ?? '';
-    if (custom.isNotEmpty) return custom;
-    final stable = value['public_id']?.toString().trim() ?? '';
-    return stable.isNotEmpty ? stable : value['id']?.toString() ?? '';
+    // Vanity IDs and internal database keys are not the public user ID.
+    return formatPublicUserId(value['public_id']);
   }
 
   Color _ownerTagColor(String? value) {
@@ -1606,7 +1605,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final publicId = a == targetId
         ? relation['user_b_public_id']?.toString().trim() ?? ''
         : relation['user_a_public_id']?.toString().trim() ?? '';
-    return publicId.isNotEmpty ? publicId : _partnerId(relation);
+    return formatPublicUserId(publicId);
   }
 
   void _openPartner(Map<String, dynamic>? relation) {
@@ -1858,7 +1857,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
     RoomSummary? cached;
     for (final item in widget.state.rooms) {
-      if (item.id == roomId || item.roomNumber == roomId) {
+      if (item.id == roomId ||
+          formatPublicUserId(item.roomNumber) == formatPublicUserId(roomId)) {
         cached = item;
         break;
       }
@@ -2148,7 +2148,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((row) {
             if (q.isEmpty) return true;
             final id = row['id']?.toString().toLowerCase() ?? '';
-            final publicId = row['public_id']?.toString().toLowerCase() ?? '';
+            final publicId = formatPublicUserId(row['public_id']).toLowerCase();
             final name = row['display_name']?.toString().toLowerCase() ?? '';
             return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
@@ -2248,11 +2248,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final friend = filtered[index];
                                 final avatarKey =
                                     friend['avatar_key']?.toString() ?? '';
-                                final id = friend['id']?.toString() ?? '';
-                                final displayId =
-                                    friend['public_id']?.toString().trim().isNotEmpty == true
-                                        ? friend['public_id'].toString()
-                                        : id;
+                                final displayId = formatPublicUserId(friend['public_id']);
                                 final name = friend['display_name']
                                         ?.toString()
                                         .trim() ??
@@ -2372,7 +2368,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((row) {
             if (q.isEmpty) return true;
             final id = row['id']?.toString().toLowerCase() ?? '';
-            final publicId = row['public_id']?.toString().toLowerCase() ?? '';
+            final publicId = formatPublicUserId(row['public_id']).toLowerCase();
             final name = row['display_name']?.toString().toLowerCase() ?? '';
             return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
@@ -2461,11 +2457,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final friend = filtered[index];
                                 final avatarKey =
                                     friend['avatar_key']?.toString() ?? '';
-                                final id = friend['id']?.toString() ?? '';
-                                final displayId =
-                                    friend['public_id']?.toString().trim().isNotEmpty == true
-                                        ? friend['public_id'].toString()
-                                        : id;
+                                final displayId = formatPublicUserId(friend['public_id']);
                                 final name = friend['display_name']
                                         ?.toString()
                                         .trim() ??
@@ -2643,7 +2635,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                'ID:' + id,
+                'ID:' + formatPublicUserId(friend['public_id']),
                 style: const TextStyle(
                   color: Color(0xFFB5B5BA),
                   fontSize: 12,
@@ -2866,7 +2858,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                'ID:$id',
+                'ID:${formatPublicUserId(friend['public_id'])}',
                 style: const TextStyle(
                   color: Color(0xFFB5B5BA),
                   fontSize: 12,

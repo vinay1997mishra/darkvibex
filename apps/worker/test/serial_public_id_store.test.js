@@ -9,11 +9,11 @@ const vipActions = await readFile(new URL("../src/vip_actions.js", import.meta.u
 const panelHtml = await readFile(new URL("../../owner_panel/index.html", import.meta.url), "utf8");
 const panelApp = await readFile(new URL("../../owner_panel/app.js", import.meta.url), "utf8");
 
-test("public IDs are serial from 1000001 and not random", () => {
-  assert.match(indexJs, /CREATE TABLE IF NOT EXISTS public_id_sequence/);
-  assert.match(indexJs, /VALUES\('main',1000001\)/);
+test("new public IDs are serial from 10000001 and not random", () => {
+  assert.match(indexJs, /CREATE TABLE IF NOT EXISTS public_id_sequence_8digit/);
+  assert.match(indexJs, /VALUES\('main',10000001\)/);
   assert.match(indexJs, /RETURNING next_value-1 AS value/);
-  assert.match(indexJs, /value < 1000001/);
+  assert.match(indexJs, /value < 10000001/);
   assert.doesNotMatch(indexJs, /Math\.floor\(1000000 \+ Math\.random\(\) \* 9000000\)/);
   assert.match(indexJs, /SELECT id,public_id,display_name,role,coins/);
 });
@@ -23,6 +23,8 @@ test("one user owns an ID permanently across public, VIP and purchased ID paths"
   assert.match(indexJs, /unique_id_purchases WHERE public_id=\? AND buyer_user_id<>\?/);
   assert.match(ownerApi, /public_id_reserved_by_history/);
   assert.match(ownerApi, /public_id_owned_by_another_user/);
+  assert.match(ownerApi, /public_id_must_be_10000001_to_99999999/);
+  assert.match(panelApp, /Public ID must be between 10000001 and 99999999/);
   assert.match(uniqueIdStore, /purchaseOwner/);
   assert.match(uniqueIdStore, /unique_id_taken/);
   assert.match(vipActions, /unique_id_purchases WHERE public_id=\? AND buyer_user_id<>\?/);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app/app_state.dart';
+import '../utils/public_user_id.dart';
 import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
 import '../infra/livekit_rtc.dart';
@@ -415,7 +416,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
   }
 
   Future<void> _shareRoom() async {
-    await Clipboard.setData(ClipboardData(text: widget.roomId));
+    await Clipboard.setData(ClipboardData(text: formatPublicUserId(widget.roomId)));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Game Room ID copied')),

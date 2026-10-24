@@ -784,12 +784,14 @@ async function initializeUsersSchema(db) {
   await db.prepare(
     "CREATE INDEX IF NOT EXISTS idx_owner_old_public_id ON owner_public_id_history(public_id)"
   ).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS public_id_sequence (
+  // Preserve the legacy sequence for existing installations and use a
+  // separate eight-digit allocator for new public IDs.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS public_id_sequence_8digit (
     id TEXT PRIMARY KEY,
-    next_value INTEGER NOT NULL CHECK(next_value BETWEEN 1000001 AND 10000000)
+    next_value INTEGER NOT NULL CHECK(next_value BETWEEN 10000001 AND 100000000)
   )`).run();
   await db.prepare(
-    "INSERT OR IGNORE INTO public_id_sequence(id,next_value) VALUES('main',1000001)"
+    "INSERT OR IGNORE INTO public_id_sequence_8digit(id,next_value) VALUES('main',10000001)"
   ).run();
 }
 
@@ -823,19 +825,35 @@ async function publicIdOwnedByAnotherUser(db, candidate, userId) {
   return false;
 }
 
+function formatPublicIdForDisplay(value) {
+  const raw = String(value ?? "").trim();
+  if (/^[1-9]\d{6}$/.test(raw) && Number(raw) >= 1000001) return raw.padStart(8, "0");
+  if (/^[1-9]\d{7}$/.test(raw) && Number(raw) >= 10000001) return raw;
+  return raw;
+}
+
+function normalizePublicIdLookup(value) {
+  const raw = String(value ?? "").trim();
+  // Displayed legacy IDs are zero-padded; resolve those aliases to stored IDs.
+  return /^0[1-9]\d{6}$/.test(raw) ? raw.slice(1) : raw;
+}
+
 async function ensureUserPublicId(db, userId) {
   const row = await db.prepare(
     "SELECT public_id FROM users WHERE id=? LIMIT 1"
   ).bind(userId).first();
   const current = String(row?.public_id ?? "").trim();
+  // Keep legacy values canonical in storage: existing room rows may use them.
+  // The client pads legacy seven-digit values only when displaying them.
   if (/^\d{7}$/.test(current) && Number(current) >= 1000001) return current;
+  if (/^\d{8}$/.test(current) && Number(current) >= 10000001) return current;
 
   for (let attempt = 0; attempt < 100000; attempt += 1) {
     const allocated = await db.prepare(
-      "UPDATE public_id_sequence SET next_value=next_value+1 WHERE id='main' AND next_value<=9999999 RETURNING next_value-1 AS value"
+      "UPDATE public_id_sequence_8digit SET next_value=next_value+1 WHERE id='main' AND next_value<=99999999 RETURNING next_value-1 AS value"
     ).first();
     const value = Number(allocated?.value ?? 0);
-    if (!Number.isSafeInteger(value) || value < 1000001 || value > 9999999) {
+    if (!Number.isSafeInteger(value) || value < 10000001 || value > 99999999) {
       throw new Error("public_id_sequence_exhausted");
     }
     const candidate = String(value);
@@ -846,7 +864,13 @@ async function ensureUserPublicId(db, userId) {
         `UPDATE users
             SET public_id=?,updated_at=?
           WHERE id=?
-            AND (public_id IS NULL OR public_id='' OR LENGTH(public_id)<>7 OR public_id GLOB '*[^0-9]*' OR substr(public_id,1,1)='0')`
+            AND (
+              public_id IS NULL OR public_id=''
+              OR LENGTH(public_id) NOT IN (7,8)
+              OR public_id GLOB '*[^0-9]*'
+              OR (LENGTH(public_id)=7 AND CAST(public_id AS INTEGER)<1000001)
+              OR (LENGTH(public_id)=8 AND CAST(public_id AS INTEGER)<10000001)
+            )`
       ).bind(candidate,now(),userId).run();
       if (Number(update.meta?.changes ?? 0) === 1) return candidate;
 
@@ -855,6 +879,7 @@ async function ensureUserPublicId(db, userId) {
       ).bind(userId).first();
       const latestId = String(latest?.public_id ?? "").trim();
       if (/^\d{7}$/.test(latestId) && Number(latestId) >= 1000001) return latestId;
+      if (/^\d{8}$/.test(latestId) && Number(latestId) >= 10000001) return latestId;
     } catch (error) {
       if (String(error?.message ?? error).toLowerCase().includes("unique")) continue;
       throw error;
@@ -1461,9 +1486,10 @@ async function listRooms(db, viewerUserId) {
   const rows = result.results ?? [];
   for (const row of rows) {
     const currentDisplayId = String(row.display_id ?? "").trim();
-    if (Number(row.owner_invisible_id ?? 0) !== 1 && !/^[1-9]\d{6}$/.test(currentDisplayId)) {
+    if (Number(row.owner_invisible_id ?? 0) !== 1 && !/^(?:[1-9]\d{6}|[1-9]\d{7})$/.test(currentDisplayId)) {
       row.display_id = await ensureUserPublicId(db, String(row.owner_user_id ?? ""));
     }
+    if (Number(row.owner_invisible_id ?? 0) !== 1) row.display_id = formatPublicIdForDisplay(row.display_id);
     delete row.owner_invisible_id;
   }
   return rows;
@@ -3418,14 +3444,17 @@ async function handleApi(request, env, url) {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    await ensureOwnerControlSchema(db);
     await ensureUserBlockTable(db);
     const rows = await db.prepare(
       `SELECT b.blocked_user_id AS user_id,
               COALESCE(u.display_name,'User') AS display_name,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
               u.avatar_key,
               b.created_at
          FROM user_blocks b
          LEFT JOIN users u ON u.id=b.blocked_user_id
+         LEFT JOIN owner_user_overrides io ON io.user_id=b.blocked_user_id
         WHERE b.user_id=?
         ORDER BY b.created_at DESC`
     ).bind(userId).all();
@@ -4016,9 +4045,10 @@ async function handleApi(request, env, url) {
     const followedRooms = rows.results ?? [];
     for (const room of followedRooms) {
       const currentDisplayId = String(room.display_id ?? "").trim();
-      if (Number(room.owner_invisible_id ?? 0) !== 1 && !/^[1-9]\d{6}$/.test(currentDisplayId)) {
+      if (Number(room.owner_invisible_id ?? 0) !== 1 && !/^(?:[1-9]\d{6}|[1-9]\d{7})$/.test(currentDisplayId)) {
         room.display_id = await ensureUserPublicId(db, String(room.owner_user_id ?? ""));
       }
+      if (Number(room.owner_invisible_id ?? 0) !== 1) room.display_id = formatPublicIdForDisplay(room.display_id);
       delete room.owner_invisible_id;
     }
     return json({ ok:true,rooms:followedRooms });
@@ -4736,7 +4766,7 @@ async function handleApi(request, env, url) {
     if (!user && requestedUserId) {
       const byStablePublicId = await db.prepare(
         "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE public_id=? LIMIT 1"
-      ).bind(requestedUserId).first();
+      ).bind(normalizePublicIdLookup(requestedUserId)).first();
       if (byStablePublicId) {
         user = byStablePublicId;
         viewedUserId = String(byStablePublicId.id);
@@ -5701,7 +5731,7 @@ async function handleApi(request, env, url) {
       "SELECT country_code,public_id FROM users WHERE id=? LIMIT 1"
     ).bind(ownerId).first();
     const ownerCountry = String(ownerProfile?.country_code ?? "").trim().toUpperCase();
-    const ownerPublicId = /^[1-9]\d{6}$/.test(String(ownerProfile?.public_id ?? "").trim())
+    const ownerPublicId = /^(?:[1-9]\d{6}|[1-9]\d{7})$/.test(String(ownerProfile?.public_id ?? "").trim())
       ? String(ownerProfile.public_id).trim()
       : await ensureUserPublicId(db, ownerId);
     if (!ownerCountry) {
@@ -6126,7 +6156,7 @@ async function handleApi(request, env, url) {
                      THEN 1 ELSE 0 END AS invisible_entry,
                 CASE WHEN COALESCE(io.invisible_id,0)=1
                      THEN 'Hidden'
-                     ELSE COALESCE(NULLIF(u.public_id,''), m.user_id)
+                     ELSE COALESCE(NULLIF(u.public_id,''), '')
                 END AS public_id,
                 COALESCE(io.invisible_id,0) AS owner_invisible_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
@@ -6279,9 +6309,11 @@ async function handleApi(request, env, url) {
       const rows = await db.prepare(
         `SELECT b.user_id,b.banned_by,b.created_at,
                 COALESCE(u.display_name,'User') AS display_name,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 u.avatar_key
            FROM room_bans b
            LEFT JOIN users u ON u.id=b.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=b.user_id
           WHERE b.room_id=?
           ORDER BY b.created_at DESC
           LIMIT 200`
@@ -6565,9 +6597,12 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
+    await ensureOwnerControlSchema(db);
     const rows = await db.prepare(
-      `SELECT u.id,u.display_name,u.avatar_key,u.role
+      `SELECT u.id,u.public_id,u.display_name,u.avatar_key,u.role,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_public_id
          FROM users u
+         LEFT JOIN owner_user_overrides io ON io.user_id=u.id
         WHERE u.role IN ('coin_seller','merchant')
         ORDER BY CASE u.role WHEN 'coin_seller' THEN 0 ELSE 1 END,
                  u.updated_at DESC
@@ -6577,6 +6612,7 @@ async function handleApi(request, env, url) {
       ok: true,
       providers: (rows.results ?? []).map((row) => ({
         user_id: row.id,
+        public_id: row.display_public_id,
         display_name: row.display_name,
         avatar_key: row.avatar_key,
         role: row.role,
@@ -6867,7 +6903,8 @@ async function handleApi(request, env, url) {
     const user=await ensureUser(db,userId);
     const gifts=await db.prepare(
       `SELECT g.id,g.gift_id,
-              COALESCE(u.display_name,g.receiver_user_id) AS receiver_name,
+              COALESCE(u.display_name,'User') AS receiver_name,
+              u.public_id AS receiver_public_id,
               g.receiver_user_id,g.coin_cost AS coins,g.created_at
          FROM gift_events g
          LEFT JOIN users u ON u.id=g.receiver_user_id
@@ -6897,7 +6934,8 @@ async function handleApi(request, env, url) {
     const user=await ensureUser(db,userId);
     const gifts=await db.prepare(
       `SELECT g.id,g.gift_id,
-              COALESCE(u.display_name,g.sender_user_id) AS sender_name,
+              COALESCE(u.display_name,'User') AS sender_name,
+              u.public_id AS sender_public_id,
               g.sender_user_id,g.coin_cost AS diamonds,g.created_at
          FROM gift_events g
          LEFT JOIN users u ON u.id=g.sender_user_id
@@ -7620,6 +7658,7 @@ async function handleApi(request, env, url) {
         `SELECT r.id AS room_id,
                 r.name AS room_name,
                 r.owner_user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
                 COALESCE(u.display_name,'Owner') AS owner_name,
                 u.avatar_key,
                 r.seat_count,
@@ -7627,6 +7666,7 @@ async function handleApi(request, env, url) {
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=r.owner_user_id
            LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
           WHERE r.country_code=?
             AND COALESCE(rc.banned,0)=0
@@ -7640,20 +7680,23 @@ async function handleApi(request, env, url) {
     } else if (kind === "charm") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 COALESCE(u.display_name,'User') AS display_name,
                 u.avatar_key,
                 COALESCE(SUM(g.coin_cost),0) AS score,
                 COUNT(*) AS gift_count
            FROM gift_events g
            JOIN users u ON u.id=g.receiver_user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=u.id
           WHERE g.created_at>=?
-          GROUP BY u.id,u.display_name,u.avatar_key
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
           ORDER BY score DESC,gift_count DESC
           LIMIT 100`
       ).bind(cutoff).all();
     } else if (kind === "game") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 COALESCE(u.display_name,'User') AS display_name,
                 u.avatar_key,
                 COALESCE(SUM(b.payout),0) AS score,
@@ -7661,22 +7704,25 @@ async function handleApi(request, env, url) {
                 COUNT(*) AS bet_count
            FROM game_bets b
            JOIN users u ON u.id=b.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=u.id
           WHERE b.created_at>=?
-          GROUP BY u.id,u.display_name,u.avatar_key
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
           ORDER BY score DESC,bet_count DESC
           LIMIT 100`
       ).bind(cutoff).all();
     } else {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 COALESCE(u.display_name,'User') AS display_name,
                 u.avatar_key,
                 COALESCE(SUM(g.coin_cost),0) AS score,
                 COUNT(*) AS gift_count
            FROM gift_events g
            JOIN users u ON u.id=g.sender_user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=u.id
           WHERE g.created_at>=?
-          GROUP BY u.id,u.display_name,u.avatar_key
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
           ORDER BY score DESC,gift_count DESC
           LIMIT 100`
       ).bind(cutoff).all();
