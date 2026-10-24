@@ -3940,6 +3940,7 @@ class _RoomScreenState extends State<RoomScreen> {
           state: widget.state,
           roomId: widget.room.id,
           roomOwnerUserId: widget.room.ownerUserId,
+          onGameRoom: () => Navigator.pop(context, 'convert-game-room'),
           onFruitParty: () => Navigator.pop(context, 'fruit-party'),
           onGreedyGirl: () => Navigator.pop(context, 'greedy-girl'),
           onToggleMic: _toggleMic,
@@ -3949,7 +3950,20 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
     );
     if (!mounted) return;
-    if (selection == 'fruit-party') {
+    if (selection == 'convert-game-room') {
+      if (roomMode == 'game') return;
+      final ok = await _saveRoomConfiguration(nextRoomMode: 'game');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? 'This room is now a Game Room.'
+                : 'This room could not be converted to Game Room.',
+          ),
+        ),
+      );
+    } else if (selection == 'fruit-party') {
       await showFruitParty(context, widget.state);
     } else if (selection == 'greedy-girl') {
       await showGreedyGirl(context, widget.state);
