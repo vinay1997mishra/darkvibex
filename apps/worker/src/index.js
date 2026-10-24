@@ -6594,6 +6594,7 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
+    await ensureOwnerControlSchema(db);
     const rows = await db.prepare(
       `SELECT u.id,u.public_id,u.display_name,u.avatar_key,u.role,
               CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_public_id
