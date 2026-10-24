@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
@@ -1119,11 +1120,19 @@ class _CpScreenState extends State<CpScreen> {
         : cp!['user_a']?.toString() ?? '';
   }
 
+  String _partnerPublicId() {
+    if (cp == null) return '—';
+    final raw = cp!['user_a']?.toString() == widget.state.userId
+        ? cp!['user_b_public_id']
+        : cp!['user_a_public_id'];
+    return formatPublicUserId(raw);
+  }
+
   String _partnerName() {
     if (cp == null) return '';
     return cp!['user_a']?.toString() == widget.state.userId
-        ? cp!['user_b_name']?.toString() ?? _partnerId()
-        : cp!['user_a_name']?.toString() ?? _partnerId();
+        ? cp!['user_b_name']?.toString() ?? 'User'
+        : cp!['user_a_name']?.toString() ?? 'User';
   }
 
   String? _partnerAvatarKey() {
@@ -1717,7 +1726,7 @@ class _CpScreenState extends State<CpScreen> {
                                           ),
                                         ),
                                         Text(
-                                          'ID ${friend['id'] ?? ''}',
+                                          'ID ${formatPublicUserId(friend['public_id'])}',
                                           style: const TextStyle(
                                             color: TinniPalette.muted,
                                             fontSize: 10,
@@ -1782,7 +1791,7 @@ class _CpScreenState extends State<CpScreen> {
                                           ),
                                         ),
                                         Text(
-                                          'ID ${widget.state.publicId}',
+                                          'ID ${formatPublicUserId(widget.state.publicId)}',
                                           style: const TextStyle(
                                             color: TinniPalette.muted,
                                             fontSize: 10,
@@ -1859,7 +1868,7 @@ class _CpScreenState extends State<CpScreen> {
                                           ),
                                         ),
                                         Text(
-                                          'ID ${_partnerId()}',
+                                          'ID ${_partnerPublicId()}',
                                           style: const TextStyle(
                                             color: TinniPalette.muted,
                                             fontSize: 10,
@@ -1902,7 +1911,7 @@ class _CpScreenState extends State<CpScreen> {
                                 ),
                               ),
                               Text(
-                                'ID ${_partnerId()} • ${relationState ?? ''}',
+                                'ID ${_partnerPublicId()} • ${relationState ?? ''}',
                                 style: const TextStyle(
                                   color: TinniPalette.muted,
                                 ),
@@ -2519,11 +2528,19 @@ class _VsScreenState extends State<VsScreen> {
         : vs!['user_a']?.toString() ?? '';
   }
 
+  String _rivalPublicId() {
+    if (vs == null) return '—';
+    final raw = vs!['user_a']?.toString() == widget.state.userId
+        ? vs!['user_b_public_id']
+        : vs!['user_a_public_id'];
+    return formatPublicUserId(raw);
+  }
+
   String _rivalName() {
     if (vs == null) return '';
     return vs!['user_a']?.toString() == widget.state.userId
-        ? vs!['user_b_name']?.toString() ?? _rivalId()
-        : vs!['user_a_name']?.toString() ?? _rivalId();
+        ? vs!['user_b_name']?.toString() ?? 'User'
+        : vs!['user_a_name']?.toString() ?? 'User';
   }
 
   String? _rivalAvatarKey() {
@@ -2591,7 +2608,7 @@ class _VsScreenState extends State<VsScreen> {
                       ? friend['display_name'].toString()
                       : 'User',
                 ),
-                subtitle: Text('ID ${friend['id'] ?? ''}'),
+                subtitle: Text('ID ${formatPublicUserId(friend['public_id'])}'),
                 trailing: const Icon(
                   Icons.bolt_rounded,
                   color: Color(0xFFFF202D),
@@ -3042,7 +3059,7 @@ class _VsScreenState extends State<VsScreen> {
                             ),
                           ),
                           Text(
-                            'ID ${_rivalId()} • ${relationState ?? ''}',
+                            'ID ${_rivalPublicId()} • ${relationState ?? ''}',
                             style: const TextStyle(
                               color: Color(0xFF9A8285),
                             ),
