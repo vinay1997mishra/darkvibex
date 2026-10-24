@@ -70,7 +70,7 @@ class AppState extends ChangeNotifier {
   final BackendApi backend = const BackendApi();
 
   String userId = '91000001';
-  String publicId = '10000001';
+  String publicId = '9100001';
   String displayName = 'DarkVibeX User';
   String userRole = 'user';
   String? avatarKey;
