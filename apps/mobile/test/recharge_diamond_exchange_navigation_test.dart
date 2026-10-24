@@ -19,7 +19,11 @@ void main() {
       expect(find.text('Tap to exchange'), findsOneWidget);
 
       await tester.tap(diamondCard);
-      await tester.pumpAndSettle(const Duration(milliseconds: 100));
+      // The screen shows an indeterminate progress bar while wallet history
+      // loads, so pump the route transition without waiting for all animations
+      // to settle.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
 
       expect(find.byKey(const Key('diamond-exchange-panel')), findsOneWidget);
       expect(find.text('Exchange Diamonds to Coins'), findsOneWidget);
