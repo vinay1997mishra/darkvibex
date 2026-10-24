@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../ui/currency_badge.dart';
 import 'wallet_detail_screens.dart';
 
 class WalletScreen extends StatelessWidget {
@@ -239,7 +240,7 @@ class _BalanceCard extends StatelessWidget {
           children: [
             Row(
             children: [
-              TinniGlowIcon(icon: icon, size: 20, boxSize: 36),
+              CurrencyBadge(icon: icon, isDiamond: label == 'Diamonds', size: 36),
               const Spacer(),
               const Icon(
                 Icons.chevron_right_rounded,
