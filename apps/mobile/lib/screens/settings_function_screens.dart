@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../utils/public_user_id.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
+import '../utils/public_user_id.dart';
 import '../ui/tinni_style.dart';
 import 'cosmetics_shop_screen.dart';
 import 'profile_screen.dart';
