@@ -140,14 +140,36 @@ class _RechargeScreenState extends State<RechargeScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: TinniPanel(
+                            key: const Key('recharge-diamonds-card'),
+                            onTap: () async {
+                              await Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      DiamondsWalletScreen(state: state),
+                                ),
+                              );
+                              if (mounted) await state.refreshWallet();
+                            },
                             child: Column(
                               children: [
-                                const Text(
-                                  'Diamonds',
-                                  style: TextStyle(
-                                    color: TinniPalette.muted,
-                                    fontSize: 11,
-                                  ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      'Diamonds',
+                                      style: TextStyle(
+                                        color: TinniPalette.muted,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    const Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: TinniPalette.gold,
+                                      size: 16,
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
@@ -156,6 +178,14 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                     color: TinniPalette.gold,
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                const Text(
+                                  'Tap to exchange',
+                                  style: TextStyle(
+                                    color: TinniPalette.muted,
+                                    fontSize: 9,
                                   ),
                                 ),
                               ],
