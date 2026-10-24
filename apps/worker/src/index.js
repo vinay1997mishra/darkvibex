@@ -3444,14 +3444,17 @@ async function handleApi(request, env, url) {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    await ensureOwnerControlSchema(db);
     await ensureUserBlockTable(db);
     const rows = await db.prepare(
       `SELECT b.blocked_user_id AS user_id,
               COALESCE(u.display_name,'User') AS display_name,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
               u.avatar_key,
               b.created_at
          FROM user_blocks b
          LEFT JOIN users u ON u.id=b.blocked_user_id
+         LEFT JOIN owner_user_overrides io ON io.user_id=b.blocked_user_id
         WHERE b.user_id=?
         ORDER BY b.created_at DESC`
     ).bind(userId).all();
