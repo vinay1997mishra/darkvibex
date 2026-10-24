@@ -272,7 +272,23 @@ async function ownerSetting(db, key, fallback = {}) {
   }
 }
 
-async function ensureOwnerControlSchema(db) {
+const ownerControlSchemaPromises = new WeakMap();
+
+function ensureOwnerControlSchema(db) {
+  // Cache per D1 binding, rather than globally, so tests and alternate
+  // environments using different databases still initialize their own schema.
+  let promise = ownerControlSchemaPromises.get(db);
+  if (!promise) {
+    promise = initializeOwnerControlSchema(db).catch((error) => {
+      ownerControlSchemaPromises.delete(db);
+      throw error;
+    });
+    ownerControlSchemaPromises.set(db, promise);
+  }
+  return promise;
+}
+
+async function initializeOwnerControlSchema(db) {
   await ensureUsersSchema(db);
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
@@ -681,7 +697,24 @@ const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
   "Korean",
 ]);
 
-async function ensureUsersSchema(db) {
+const usersSchemaPromises = new WeakMap();
+
+function ensureUsersSchema(db) {
+  // Schema checks include CREATE TABLE, PRAGMA and potential ALTER statements.
+  // Cache per D1 binding so requests in one isolate reuse setup without causing
+  // alternate database instances (such as test fixtures) to share schema state.
+  let promise = usersSchemaPromises.get(db);
+  if (!promise) {
+    promise = initializeUsersSchema(db).catch((error) => {
+      usersSchemaPromises.delete(db);
+      throw error;
+    });
+    usersSchemaPromises.set(db, promise);
+  }
+  return promise;
+}
+
+async function initializeUsersSchema(db) {
   // Worker deploys do not automatically apply schema.sql to D1. Make the
   // authentication path self-healing without issuing duplicate ALTER writes.
   await db.prepare(
