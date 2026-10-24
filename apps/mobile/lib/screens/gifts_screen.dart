@@ -129,7 +129,7 @@ class _GiftsScreenState extends State<GiftsScreen> {
                 ),
                 title: Text(room.name),
                 subtitle: Text(
-                  'ID ' + formatPublicUserId(room.id) + ' • ' + room.online.toString() + ' online',
+                  'ID ' + formatPublicUserId(room.roomNumber) + ' • ' + room.online.toString() + ' online',
                 ),
                 onTap: () => Navigator.pop(sheetContext, room),
               ),
