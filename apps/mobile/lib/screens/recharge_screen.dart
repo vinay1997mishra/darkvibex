@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
@@ -351,7 +352,7 @@ class _ProviderTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    roleLabel + ' • ID ' + id,
+                    roleLabel + ' • ID ' + formatPublicUserId(row['public_id']),
                     style: const TextStyle(
                       color: TinniPalette.muted,
                       fontSize: 10,
