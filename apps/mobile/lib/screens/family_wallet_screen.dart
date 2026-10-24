@@ -98,7 +98,7 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(
-          'Send coins to ${targetName == null || targetName.isEmpty ? targetId : targetName}',
+          'Send coins to ${targetName == null || targetName.isEmpty ? 'User' : targetName}',
         ),
         content: TextField(
           key: const Key('family-wallet-amount'),
