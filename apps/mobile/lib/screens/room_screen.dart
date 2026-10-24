@@ -32,6 +32,7 @@ import 'greedy_girl_screen.dart';
 import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
+import '../utils/rocket_progress.dart';
 import 'conversation_screen.dart';
 
 class RoomScreen extends StatefulWidget {
@@ -50,18 +51,7 @@ class RoomScreen extends StatefulWidget {
 
 class _RoomScreenState extends State<RoomScreen> {
   static final Set<String> _acceptedLegalInSession = <String>{};
-  static const List<int> _rocketStageTargets = <int>[
-    8000000,
-    15000000,
-    30000000,
-    50000000,
-    90000000,
-    150000000,
-    200000000,
-    250000000,
-    350000000,
-    500000000,
-  ];
+  static const List<int> _rocketStageTargets = rocketStageTargets;
   int? mySeat;
   bool muted = true;
   String voiceStatus = 'Connecting…';
@@ -520,36 +510,8 @@ class _RoomScreenState extends State<RoomScreen> {
     return value.toString();
   }
 
-  Map<String, num> _rocketProgressState(int total) {
-    var remaining = total < 0 ? 0 : total;
-    var completed = 0;
-    var currentProgress = 0;
-    var currentTarget = _rocketStageTargets.last;
-    for (var index = 0; index < _rocketStageTargets.length; index++) {
-      final target = _rocketStageTargets[index];
-      if (remaining >= target) {
-        remaining -= target;
-        completed++;
-        continue;
-      }
-      currentProgress = remaining;
-      currentTarget = target;
-      break;
-    }
-    if (completed >= _rocketStageTargets.length) {
-      currentProgress = _rocketStageTargets.last;
-      currentTarget = _rocketStageTargets.last;
-    }
-    final percent = completed >= _rocketStageTargets.length
-        ? 1.0
-        : (currentProgress / currentTarget).clamp(0.0, 1.0);
-    return <String, num>{
-      'completed': completed,
-      'current_progress': currentProgress,
-      'current_target': currentTarget,
-      'percent': percent,
-    };
-  }
+  Map<String, num> _rocketProgressState(int total) =>
+      calculateRocketProgress(total);
 
   Future<void> _showRocketPanel() async {
     await _loadRoomGiftRanking();
