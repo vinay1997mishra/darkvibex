@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../ui/currency_badge.dart';
 import 'conversation_screen.dart';
 import 'wallet_detail_screens.dart';
 
@@ -117,6 +118,12 @@ class _RechargeScreenState extends State<RechargeScreen> {
                           child: TinniPanel(
                             child: Column(
                               children: [
+                                const CurrencyBadge(
+                                  icon: Icons.monetization_on_rounded,
+                                  isDiamond: false,
+                                  size: 38,
+                                ),
+                                const SizedBox(height: 6),
                                 const Text(
                                   'Coins',
                                   style: TextStyle(
@@ -128,7 +135,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                 Text(
                                   state.coins.toString(),
                                   style: const TextStyle(
-                                    color: TinniPalette.gold,
+                                    color: Color(0xFFFFC928),
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -152,6 +159,12 @@ class _RechargeScreenState extends State<RechargeScreen> {
                             },
                             child: Column(
                               children: [
+                                const CurrencyBadge(
+                                  icon: Icons.diamond_rounded,
+                                  isDiamond: true,
+                                  size: 38,
+                                ),
+                                const SizedBox(height: 6),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
@@ -175,7 +188,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                 Text(
                                   state.diamonds.toString(),
                                   style: const TextStyle(
-                                    color: TinniPalette.gold,
+                                    color: Color(0xFF8DEBFF),
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                   ),
