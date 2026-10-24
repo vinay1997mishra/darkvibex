@@ -21,7 +21,7 @@ Cloudflare Workers Builds is connected to the `main` branch. Production Worker s
 
 ## Games
 - Fruit Party: half-screen server-settled fruit game.
-- Greedy Girl: half-screen 30-second food-multiplier game with server-authoritative bets, payouts, records, room Game Center entry, and an adult 21+ anime-style center character.
+- Greedy Girl: half-screen 30-second food-multiplier game with server-authoritative bets, payouts, records, and room Game Center entry.
 
 ## Latest stability fix (2026-10-21)
 
