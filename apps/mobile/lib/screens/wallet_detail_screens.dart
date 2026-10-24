@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/diamond_exchange.dart';
 
 int _walletInt(dynamic value) =>
     value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
@@ -265,12 +266,36 @@ class DiamondsWalletScreen extends StatefulWidget {
 
 class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
   bool loading = true;
+  bool converting = false;
   Map<String, dynamic> data = const {};
+  final TextEditingController _exchangeAmountController =
+      TextEditingController();
+
+  int get _exchangeAmount =>
+      int.tryParse(_exchangeAmountController.text.trim()) ?? 0;
+
+  int get _exchangeCoins =>
+      DiamondExchange.coinsForDiamonds(_exchangeAmount);
+
+  bool get _canExchange {
+    final available = _walletInt(data['current_diamonds']);
+    return !loading &&
+        !converting &&
+        DiamondExchange.isExactAmount(_exchangeAmount) &&
+        _exchangeAmount <= available &&
+        _exchangeCoins > 0;
+  }
 
   @override
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    _exchangeAmountController.dispose();
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -285,42 +310,40 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
   }
 
   Future<void> convert() async {
-    final controller = TextEditingController();
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Convert Diamonds'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: InputDecoration(
-            labelText:
-                'Diamond amount (available ${data['current_diamonds'] ?? 0})',
-          ),
+    final amount = _exchangeAmount;
+    final available = _walletInt(data['current_diamonds']);
+    if (!DiamondExchange.isExactAmount(amount)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a multiple of 5 diamonds for an exact 60% exchange.'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              int.tryParse(controller.text.trim()) ?? 0,
-            ),
-            child: const Text('Convert'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (amount == null || amount <= 0 || !mounted) return;
-    final result = await widget.state.backend.convertDiamonds(
-      userId: widget.state.userId,
-      diamonds: amount,
-    );
+      );
+      return;
+    }
+    if (amount > available) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough diamonds.')),
+      );
+      return;
+    }
+    if (!_canExchange) return;
+
+    setState(() => converting = true);
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.state.backend.convertDiamonds(
+        userId: widget.state.userId,
+        diamonds: amount,
+      );
+    } catch (_) {
+      result = null;
+    }
     if (!mounted) return;
+    setState(() {
+      converting = false;
+      if (result?['ok'] == true) _exchangeAmountController.clear();
+    });
+
     if (result?['ok'] == true) {
       final coins = _walletInt(result?['current_coins']);
       final diamonds = _walletInt(result?['current_diamonds']);
@@ -329,22 +352,23 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '$amount diamonds converted to ${result?['coins'] ?? 0} coins.',
+            '$amount diamonds exchanged for ${result?['coins'] ?? _exchangeCoins} coins.',
           ),
         ),
       );
       await load();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result?['error'] == 'insufficient_diamonds'
-                ? 'Not enough diamonds.'
-                : 'Diamonds could not be converted.',
-          ),
-        ),
-      );
+      return;
     }
+
+    final error = result?['error']?.toString() ?? '';
+    final message = error == 'insufficient_diamonds'
+        ? 'Not enough diamonds.'
+        : error == 'diamonds_must_be_multiple_of_5'
+            ? 'Exchange amount must be a multiple of 5 diamonds.'
+            : 'Diamond exchange failed. Check your connection and try again.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -390,12 +414,117 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                               ],
                             ),
                           ),
-                          FilledButton(
-                            onPressed:
-                                _walletInt(data['current_diamonds']) > 0
-                                    ? convert
-                                    : null,
-                            child: const Text('Convert'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TinniPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const TinniGlowIcon(
+                                icon: Icons.currency_exchange_rounded,
+                                size: 22,
+                                boxSize: 44,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Exchange Diamonds to Coins',
+                                      style: TextStyle(
+                                        color: TinniPalette.gold,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      'Rate: 100 Diamonds = 60 Coins (60%)',
+                                      style: TextStyle(
+                                        color: TinniPalette.muted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _exchangeAmountController,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(12),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: 'Diamonds to exchange',
+                              hintText: 'e.g. 100',
+                              helperText:
+                                  'Use multiples of 5 so the 60% rate converts to whole coins.',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: TinniPalette.gold.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: TinniPalette.gold.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'You will receive',
+                                    style: TextStyle(
+                                      color: TinniPalette.muted,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${_walletNumber(_exchangeCoins)} Coins',
+                                  style: const TextStyle(
+                                    color: TinniPalette.gold,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _canExchange ? convert : null,
+                              icon: converting
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.currency_exchange_rounded),
+                              label: Text(
+                                converting ? 'Exchanging...' : 'Exchange Now',
+                              ),
+                            ),
                           ),
                         ],
                       ),

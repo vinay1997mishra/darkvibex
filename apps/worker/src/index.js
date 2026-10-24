@@ -6924,42 +6924,60 @@ async function handleApi(request, env, url) {
     if(!Number.isSafeInteger(diamonds)||diamonds<=0){
       return json({ok:false,error:"invalid_diamond_amount"},{status:400});
     }
+    // Coin balances are integers: requiring a multiple of five preserves the
+    // exact 60% rate (5 diamonds = 3 coins; 100 diamonds = 60 coins).
+    if(diamonds % 5 !== 0){
+      return json({ok:false,error:"diamonds_must_be_multiple_of_5"},{status:400});
+    }
+    const rate=0.6;
+    const coins=(diamonds/5)*3;
+    if(!Number.isSafeInteger(coins)||coins<=0){
+      return json({ok:false,error:"invalid_diamond_amount"},{status:400});
+    }
     await ensureDiamondConversionTable(db);
-    const user=await ensureUser(db,userId);
-    if(Number(user?.diamonds ?? 0)<diamonds){
-      return json({ok:false,error:"insufficient_diamonds"},{status:409});
-    }
-    const policy=await ownerSetting(
-      db,
-      "economy.diamond_conversion",
-      {coins_per_diamond:1},
-    );
-    const rate=Math.max(0,Number(policy?.coins_per_diamond ?? 1));
-    const coins=Math.floor(diamonds*rate);
-    if(!Number.isSafeInteger(coins)||coins<0){
-      return json({ok:false,error:"invalid_conversion_policy"},{status:500});
-    }
-    const nextDiamonds=Number(user.diamonds)-diamonds;
-    const nextCoins=Number(user.coins ?? 0)+coins;
+    await ensureUser(db,userId);
     const conversionId=id();
     const ts=now();
+    // Conditional INSERT + guarded UPDATE are grouped into a single D1 batch,
+    // so concurrent exchanges cannot spend the same diamonds twice.
     await db.batch([
-      db.prepare("UPDATE users SET diamonds=?,coins=?,updated_at=? WHERE id=?")
-        .bind(nextDiamonds,nextCoins,ts,userId),
       db.prepare(
-        "INSERT INTO diamond_conversions(id,user_id,diamonds,coins,rate,created_at) VALUES(?,?,?,?,?,?)"
-      ).bind(conversionId,userId,diamonds,coins,rate,ts),
+        `INSERT INTO diamond_conversions(id,user_id,diamonds,coins,rate,created_at)
+         SELECT ?,?,?,?,?,?
+          WHERE EXISTS(SELECT 1 FROM users WHERE id=? AND diamonds>=?)`
+      ).bind(conversionId,userId,diamonds,coins,rate,ts,userId,diamonds),
       db.prepare(
-        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
-      ).bind(id(),userId,"diamond_conversion",coins,nextCoins,conversionId,ts),
+        `UPDATE users
+            SET diamonds=diamonds-?,coins=coins+?,updated_at=?
+          WHERE id=? AND diamonds>=?
+            AND EXISTS(SELECT 1 FROM diamond_conversions WHERE id=? AND user_id=?)`
+      ).bind(diamonds,coins,ts,userId,diamonds,conversionId,userId),
+      db.prepare(
+        `INSERT INTO wallet_ledger(
+          id,user_id,kind,amount,balance_after,reference_id,created_at
+        )
+        SELECT ?,u.id,'diamond_conversion',?,u.coins,?,?
+          FROM users u
+         WHERE u.id=?
+           AND EXISTS(SELECT 1 FROM diamond_conversions WHERE id=? AND user_id=?)`
+      ).bind(id(),coins,conversionId,ts,userId,conversionId,userId),
     ]);
+    const completed=await db.prepare(
+      "SELECT id FROM diamond_conversions WHERE id=? AND user_id=? LIMIT 1"
+    ).bind(conversionId,userId).first();
+    if(!completed){
+      return json({ok:false,error:"insufficient_diamonds"},{status:409});
+    }
+    const current=await db.prepare(
+      "SELECT diamonds,coins FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
     return json({
       ok:true,
       conversion_id:conversionId,
       diamonds,
       coins,
-      current_diamonds:nextDiamonds,
-      current_coins:nextCoins,
+      current_diamonds:Number(current?.diamonds ?? 0),
+      current_coins:Number(current?.coins ?? 0),
       rate,
     });
   }

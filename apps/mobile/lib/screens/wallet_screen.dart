@@ -237,8 +237,18 @@ class _BalanceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TinniGlowIcon(icon: icon, size: 20, boxSize: 36),
-            const Spacer(),
+            Row(
+            children: [
+              TinniGlowIcon(icon: icon, size: 20, boxSize: 36),
+              const Spacer(),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: TinniPalette.muted,
+                size: 20,
+              ),
+            ],
+          ),
+          const Spacer(),
             Text(
               label,
               style: const TextStyle(
