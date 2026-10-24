@@ -92,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             : null,
                       ),
                       title: Text(name),
-                      subtitle: Text('ID $id'),
+                      subtitle: Text('ID ${formatPublicUserId(friend['public_id'])}'),
                       onTap: id.isEmpty
                           ? null
                           : () => Navigator.of(sheetContext).push(
@@ -341,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'ID: ${state.publicId}',
+                          'ID: ${formatPublicUserId(state.publicId)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -2636,7 +2636,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                'ID:' + id,
+                'ID:' + formatPublicUserId(friend['public_id']),
                 style: const TextStyle(
                   color: Color(0xFFB5B5BA),
                   fontSize: 12,
@@ -2859,7 +2859,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                'ID:$id',
+                'ID:${formatPublicUserId(friend['public_id'])}',
                 style: const TextStyle(
                   color: Color(0xFFB5B5BA),
                   fontSize: 12,
