@@ -410,10 +410,10 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
               TinniPanel(
                       child: Row(
                         children: [
-                          const TinniGlowIcon(
+                          const CurrencyBadge(
                             icon: Icons.diamond_rounded,
-                            size: 24,
-                            boxSize: 48,
+                            isDiamond: true,
+                            size: 48,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
