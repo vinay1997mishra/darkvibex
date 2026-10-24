@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../utils/public_user_id.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 import 'recharge_screen.dart';
 
 class InviteShareScreen extends StatefulWidget {
