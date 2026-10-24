@@ -1869,26 +1869,29 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                for (final mode in const ['voice', 'live'])
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        avatar: Icon(
-                          mode == 'voice'
-                              ? Icons.mic_rounded
-                              : Icons.videocam_rounded,
-                          size: 18,
-                        ),
-                        label: Text(
-                          mode == 'voice' ? 'Voice Room' : 'Live Room',
-                        ),
-                        selected: _roomMode == mode,
-                        onSelected: (_) => setState(() => _roomMode = mode),
-                      ),
+                for (final mode in const ['voice', 'game', 'live'])
+                  ChoiceChip(
+                    avatar: Icon(
+                      switch (mode) {
+                        'game' => Icons.sports_esports_rounded,
+                        'live' => Icons.videocam_rounded,
+                        _ => Icons.mic_rounded,
+                      },
+                      size: 18,
                     ),
+                    label: Text(
+                      switch (mode) {
+                        'game' => 'Game Room',
+                        'live' => 'Live Room',
+                        _ => 'Voice Room',
+                      },
+                    ),
+                    selected: _roomMode == mode,
+                    onSelected: (_) => setState(() => _roomMode = mode),
                   ),
               ],
             ),
