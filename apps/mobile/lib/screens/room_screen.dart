@@ -3361,10 +3361,13 @@ class _RoomScreenState extends State<RoomScreen> {
             final visible = query.isEmpty
                 ? eligible
                 : eligible
-                    .where(
-                      (member) =>
-                          (member['user_id']?.toString() ?? '').contains(query),
-                    )
+                    .where((member) {
+                      final publicId = formatPublicUserId(member['public_id']);
+                      final name = member['display_name']?.toString() ?? '';
+                      final q = query.toLowerCase();
+                      return publicId.contains(query) ||
+                          name.toLowerCase().contains(q);
+                    })
                     .toList(growable: false);
 
             return SafeArea(
