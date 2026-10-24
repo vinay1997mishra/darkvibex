@@ -272,19 +272,20 @@ async function ownerSetting(db, key, fallback = {}) {
   }
 }
 
-let ownerControlSchemaPromise = null;
+const ownerControlSchemaPromises = new WeakMap();
 
 function ensureOwnerControlSchema(db) {
-  // Schema setup is only needed once per Worker isolate/deployment. Sharing
-  // the promise also prevents concurrent first requests from running the same
-  // DDL/ALTER statements repeatedly.
-  if (!ownerControlSchemaPromise) {
-    ownerControlSchemaPromise = initializeOwnerControlSchema(db).catch((error) => {
-      ownerControlSchemaPromise = null;
+  // Cache per D1 binding, rather than globally, so tests and alternate
+  // environments using different databases still initialize their own schema.
+  let promise = ownerControlSchemaPromises.get(db);
+  if (!promise) {
+    promise = initializeOwnerControlSchema(db).catch((error) => {
+      ownerControlSchemaPromises.delete(db);
       throw error;
     });
+    ownerControlSchemaPromises.set(db, promise);
   }
-  return ownerControlSchemaPromise;
+  return promise;
 }
 
 async function initializeOwnerControlSchema(db) {
@@ -696,19 +697,21 @@ const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
   "Korean",
 ]);
 
-let usersSchemaPromise = null;
+const usersSchemaPromises = new WeakMap();
 
 function ensureUsersSchema(db) {
   // Schema checks include CREATE TABLE, PRAGMA and potential ALTER statements.
-  // Cache their successful initialization for this isolate instead of repeating
-  // those database operations on every request.
-  if (!usersSchemaPromise) {
-    usersSchemaPromise = initializeUsersSchema(db).catch((error) => {
-      usersSchemaPromise = null;
+  // Cache per D1 binding so requests in one isolate reuse setup without causing
+  // alternate database instances (such as test fixtures) to share schema state.
+  let promise = usersSchemaPromises.get(db);
+  if (!promise) {
+    promise = initializeUsersSchema(db).catch((error) => {
+      usersSchemaPromises.delete(db);
       throw error;
     });
+    usersSchemaPromises.set(db, promise);
   }
-  return usersSchemaPromise;
+  return promise;
 }
 
 async function initializeUsersSchema(db) {
