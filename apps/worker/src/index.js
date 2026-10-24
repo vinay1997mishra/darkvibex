@@ -7749,51 +7749,75 @@ async function handleApi(request, env, url) {
     await ensureWalletAllowed(db, sender);
     await ensureUserAllowed(db, receiver);
     const eventId = id();
-    const balance = await walletChange(db, sender, -cost, "gift_sent", eventId);
     const giftCreatedAt = now();
-    // Every paid coin spent on a gift must become one diamond for the exact
-    // receiver ID. Keep the credit and gift receipt tied to the same event.
+
+    // Commit the debit, sender ledger, gift receipt and receiver diamond credit
+    // as one D1 batch. The conditional UPDATE prevents concurrent sends from
+    // spending the same balance, and changes() gates all follow-up writes.
     await db.batch([
-      db.prepare("UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ?")
-        .bind(cost, giftCreatedAt, receiver),
       db.prepare(
-        "INSERT INTO gift_events (id, room_id, sender_user_id, receiver_user_id, gift_id, coin_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, giftCreatedAt),
+        "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+      ).bind(cost, giftCreatedAt, sender, cost),
+      db.prepare(
+        "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+        "SELECT ?,u.id,'gift_sent',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
+      ).bind(id(), -cost, eventId, giftCreatedAt, sender),
+      db.prepare(
+        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,created_at) " +
+        "SELECT ?,?,?,?,?,?,? WHERE EXISTS (" +
+        "SELECT 1 FROM wallet_ledger WHERE reference_id=? AND kind='gift_sent')"
+      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, giftCreatedAt, eventId),
+      db.prepare(
+        "UPDATE users SET diamonds=diamonds+?,updated_at=? WHERE id=? AND EXISTS (" +
+        "SELECT 1 FROM gift_events WHERE id=?)"
+      ).bind(cost, giftCreatedAt, receiver, eventId),
     ]);
+
+    const committedGift = await db.prepare(
+      "SELECT id FROM gift_events WHERE id=? LIMIT 1"
+    ).bind(eventId).first();
+    if (!committedGift) {
+      return json({ ok: false, error: "insufficient_coins" }, { status: 409 });
+    }
+
+    const senderWallet = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(sender).first();
     const receiverWallet = await db.prepare(
       "SELECT diamonds FROM users WHERE id=? LIMIT 1"
     ).bind(receiver).first();
-    await awardIdLevelGift(db, sender, cost, eventId, giftCreatedAt);
-    await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, now());
+
+    // Once the gift is committed, secondary progression failures must not tell
+    // the client the paid send failed (which could cause a duplicate charge).
     let cpProgress = null;
     let vsProgress = null;
-    if (giftId !== "cp-invite") {
-      cpProgress = await recordCpGiftProgress(
-        db,
-        sender,
-        receiver,
-        cost,
-        eventId,
-      );
-      vsProgress = await recordVsGiftProgress(
-        db,
-        sender,
-        receiver,
-        cost,
-        eventId,
-      );
+    let progressPending = false;
+    try {
+      await awardIdLevelGift(db, sender, cost, eventId, giftCreatedAt);
+      await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, giftCreatedAt);
+      if (giftId !== "cp-invite") {
+        cpProgress = await recordCpGiftProgress(db, sender, receiver, cost, eventId);
+        vsProgress = await recordVsGiftProgress(db, sender, receiver, cost, eventId);
+      }
+    } catch (error) {
+      progressPending = true;
+      console.error("gift_post_commit_processing_failed", {
+        event_id: eventId,
+        message: String(error?.message ?? error),
+      });
     }
     return json({
       ok: true,
       event_id: eventId,
-      gift_cost:cost,
-      owner_price_override:pricing.overridden,
-      sender_coin_balance: balance,
+      gift_cost: cost,
+      owner_price_override: pricing.overridden,
+      sender_coin_balance: Number(senderWallet?.coins ?? 0),
       receiver_diamond_balance: Number(receiverWallet?.diamonds ?? 0),
       cp_progress: Number(cpProgress?.progress ?? 0),
       cp_state: cpProgress?.cp ?? null,
       vs_progress: Number(vsProgress?.progress ?? 0),
       vs_state: vsProgress?.vs ?? null,
+      progress_pending: progressPending,
     });
   }
 
