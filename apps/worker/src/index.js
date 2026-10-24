@@ -6595,8 +6595,10 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env);
     if (authError) return authError;
     const rows = await db.prepare(
-      `SELECT u.id,u.display_name,u.avatar_key,u.role
+      `SELECT u.id,u.public_id,u.display_name,u.avatar_key,u.role,
+              CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_public_id
          FROM users u
+         LEFT JOIN owner_user_overrides io ON io.user_id=u.id
         WHERE u.role IN ('coin_seller','merchant')
         ORDER BY CASE u.role WHEN 'coin_seller' THEN 0 ELSE 1 END,
                  u.updated_at DESC
@@ -6606,6 +6608,7 @@ async function handleApi(request, env, url) {
       ok: true,
       providers: (rows.results ?? []).map((row) => ({
         user_id: row.id,
+        public_id: row.display_public_id,
         display_name: row.display_name,
         avatar_key: row.avatar_key,
         role: row.role,
