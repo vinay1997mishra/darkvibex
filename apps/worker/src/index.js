@@ -832,6 +832,12 @@ function formatPublicIdForDisplay(value) {
   return raw;
 }
 
+function normalizePublicIdLookup(value) {
+  const raw = String(value ?? "").trim();
+  // Displayed legacy IDs are zero-padded; resolve those aliases to stored IDs.
+  return /^0[1-9]\d{6}$/.test(raw) ? raw.slice(1) : raw;
+}
+
 async function ensureUserPublicId(db, userId) {
   const row = await db.prepare(
     "SELECT public_id FROM users WHERE id=? LIMIT 1"
@@ -4757,7 +4763,7 @@ async function handleApi(request, env, url) {
     if (!user && requestedUserId) {
       const byStablePublicId = await db.prepare(
         "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE public_id=? LIMIT 1"
-      ).bind(requestedUserId).first();
+      ).bind(normalizePublicIdLookup(requestedUserId)).first();
       if (byStablePublicId) {
         user = byStablePublicId;
         viewedUserId = String(byStablePublicId.id);
