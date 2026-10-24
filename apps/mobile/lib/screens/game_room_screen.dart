@@ -171,8 +171,8 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
                 onRefresh: _refresh,
                 child: rooms.isEmpty
                     ? ListView(
-                        children: const [
-                          SizedBox(height: 180),
+                        children: [
+                          const SizedBox(height: 180),
                           Center(
                             child: Text(
                               loadError ?? 'No public game rooms yet. Create one to start.',
