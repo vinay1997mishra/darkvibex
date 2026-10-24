@@ -273,7 +273,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
     final text = 'Join my DarkVibeX room "' +
         widget.room.name +
         '" • Room ID ' +
-        formatPublicUserId(widget.room.id);
+        formatPublicUserId(widget.room.roomNumber);
 
     var shared = false;
     if (platform == 'whatsapp') {
