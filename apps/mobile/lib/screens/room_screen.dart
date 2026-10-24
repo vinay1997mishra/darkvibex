@@ -211,6 +211,10 @@ class _RoomScreenState extends State<RoomScreen> {
     setState(() {
       _roomChatClearedAtMs = clearedAt;
       chat.clear();
+      for (final timer in seatReactionTimers.values) {
+        timer.cancel();
+      }
+      seatReactionTimers.clear();
       activeSeatReactions.clear();
       activeSeatReactionMessageIds.clear();
       seenSeatReactionMessageIds.clear();
