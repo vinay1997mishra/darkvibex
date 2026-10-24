@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../utils/public_user_id.dart';
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -191,7 +192,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
                   (member['display_name']?.toString().trim().isNotEmpty ??
                           false)
                       ? member['display_name'].toString()
-                      : 'User ' + (member['user_id']?.toString() ?? ''),
+                      : 'User',
                 ),
                 subtitle: Text(
                   member['seat_index'] == null
@@ -272,7 +273,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
     final text = 'Join my DarkVibeX room "' +
         widget.room.name +
         '" • Room ID ' +
-        widget.room.id;
+        formatPublicUserId(widget.room.id);
 
     var shared = false;
     if (platform == 'whatsapp') {
