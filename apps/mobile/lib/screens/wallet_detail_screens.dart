@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../ui/currency_badge.dart';
 import '../utils/diamond_exchange.dart';
 
 int _walletInt(dynamic value) =>
@@ -81,10 +82,10 @@ class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
                     TinniPanel(
                       child: Row(
                         children: [
-                          const TinniGlowIcon(
+                          const CurrencyBadge(
                             icon: Icons.monetization_on_rounded,
-                            size: 24,
-                            boxSize: 48,
+                            isDiamond: false,
+                            size: 48,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -409,10 +410,10 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
               TinniPanel(
                       child: Row(
                         children: [
-                          const TinniGlowIcon(
+                          const CurrencyBadge(
                             icon: Icons.diamond_rounded,
-                            size: 24,
-                            boxSize: 48,
+                            isDiamond: true,
+                            size: 48,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -425,7 +426,7 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                                     _walletInt(data['current_diamonds']),
                                   ),
                                   style: const TextStyle(
-                                    color: TinniPalette.gold,
+                                    color: Color(0xFF8DEBFF),
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                   ),
