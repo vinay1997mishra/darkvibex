@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../utils/public_user_id.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -2410,12 +2411,7 @@ class _RoomScreenState extends State<RoomScreen> {
         ? profile['display_name']!.toString().trim()
         : fallbackName;
     final avatar = profile['avatar_key']?.toString() ?? '';
-    final publicId = (profile['vip_custom_id']?.toString().trim().isNotEmpty == true
-            ? profile['vip_custom_id']
-            : profile['public_id'])
-        ?.toString()
-        .trim();
-    final shownId = publicId == null || publicId.isEmpty ? userId : publicId;
+    final shownId = formatPublicUserId(profile['public_id']);
     final country = profile['country_name']?.toString().trim() ?? '';
     final flag = profile['flag_emoji']?.toString().trim() ?? '';
     final gender = profile['gender']?.toString().trim().toLowerCase() ?? '';
@@ -3421,7 +3417,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     member['display_name']?.toString().trim();
                                 final name =
                                     rawName == null || rawName.isEmpty
-                                        ? 'User $userId'
+                                        ? 'User'
                                         : rawName;
                                 final avatar =
                                     member['avatar_key']?.toString();
@@ -3447,7 +3443,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                   title: Text(
                                     '$name${isAdmin ? ' • Admin' : ''}',
                                   ),
-                                  subtitle: Text('ID $userId • Audience'),
+                                  subtitle: Text('ID ${formatPublicUserId(member['public_id'])} • Audience'),
                                   trailing: TextButton(
                                     key: Key(
                                       'room-seat-$seat-invite-user-$userId',
@@ -3566,7 +3562,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     : null,
                               ),
                               title: Text(name),
-                              subtitle: Text('ID ${userId}'),
+                              subtitle: Text('ID ${formatPublicUserId(row['public_id'])}'),
                               trailing: TextButton(
                                 onPressed: () async {
                                   final ok = await widget.state.backend
@@ -3648,12 +3644,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                 child: avatar == null || avatar.isEmpty ? const Icon(Icons.person_rounded, size: 20) : null,
                               ),
                             ),
-                            title: Text('${name == null || name.isEmpty ? 'User $userId' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
+                            title: Text('${name == null || name.isEmpty ? 'User' : name}${isOwner ? ' • Owner' : (member['is_admin'] == true || member['is_admin']?.toString() == '1' ? ' • Admin' : '')}${(int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 9 && member['mic_muted'] != 1 && member['mic_muted']?.toString() != '1' ? '  🎤✨' : ''}'),
                             subtitle: Row(
                               children: [
                                 Expanded(
                                   child: Text(
-                                    'ID $userId • ' +
+                                    'ID ${formatPublicUserId(member['public_id'])} • ' +
                                         (seat == null
                                             ? 'Audience'
                                             : 'Seat ${seat + 1} • ${member['mic_muted'] == 1 || member['mic_muted']?.toString() == '1' ? 'Mic off' : 'Mic on'}') +
@@ -6657,7 +6653,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 children: [
                   Text(roomName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text(
-                    'ID ${widget.room.roomNumber} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
+                    'ID ${formatPublicUserId(widget.room.roomNumber)} • ${switch (roomMode) { 'game' => 'Game Room', 'live' => 'Live Room', _ => 'Voice Room' }} • ${roomPartyMode == 'Event hosting mode' ? 'Event Mode' : 'Friends Party'} • $voiceStatus',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
