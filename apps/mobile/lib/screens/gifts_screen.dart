@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 import '../widgets/gift_media_preview.dart';
 
 class GiftsScreen extends StatefulWidget {
