@@ -145,10 +145,10 @@
             </div>
             <div class="action-row"><button id="saveUserProfile" class="primary">Save profile</button><button id="saveModeration" class="secondary">Save moderation</button></div>
             <hr />
-            <h3>Public 7-digit ID</h3>
-            <p class="muted">Profile ID and room ID use the same public 7-digit identity. Old IDs remain searchable from the Owner Panel.</p>
+            <h3>Public 8-digit ID</h3>
+            <p class="muted">Profile ID and room ID use the same public 8-digit identity. Existing legacy IDs are displayed as eight digits. Old IDs remain searchable from the Owner Panel.</p>
             <div class="form-grid compact">
-              <label>Current / new public ID<input id="editPublicId" inputmode="numeric" maxlength="7" placeholder="7-digit ID" /></label>
+              <label>Current / new public ID<input id="editPublicId" inputmode="numeric" maxlength="8" placeholder="8-digit ID" /></label>
               <div><span class="muted">Previous IDs</span><div id="oldPublicIds" class="stack compact-stack"></div></div>
             </div>
             <button id="savePublicId" class="primary">Change Public ID</button>
@@ -285,8 +285,8 @@
             <button id="saveGameConfig" class="primary">Save Game Config</button><div id="gameList" class="stack"></div>
             <h3>Game Stats</h3><div id="gameStats" class="stack"></div>
             <hr />
-            <div class="panel-head"><div><h3>User Betting Investigation</h3><p>Search by internal ID or current 7-digit public ID.</p></div></div>
-            <div class="search-row"><input id="gameInvestigationUser" placeholder="User ID / 7-digit public ID" /><button id="loadGameInvestigation" class="primary">Investigate</button></div>
+            <div class="panel-head"><div><h3>User Betting Investigation</h3><p>Search by internal ID or current 8-digit public ID.</p></div></div>
+            <div class="search-row"><input id="gameInvestigationUser" placeholder="User ID / 8-digit public ID" /><button id="loadGameInvestigation" class="primary">Investigate</button></div>
             <div id="gameUserStats" class="stack"></div>
           </article>
         </section>
@@ -299,7 +299,7 @@
           <article class="panel">
             <div class="panel-head"><div><h2>Per-user Price / Free / Validity</h2><p>Override live store pricing for a specific user and item, or use * to apply to every item of that type. Gifts support custom price but not zero-cost/free accounting.</p></div><button id="reloadPricingOverrides" class="secondary">Reload</button></div>
             <div class="form-grid">
-              <label>User internal/public ID<input id="pricingUserId" placeholder="User ID or 7-digit public ID" /></label>
+              <label>User internal/public ID<input id="pricingUserId" placeholder="User ID or 8-digit public ID" /></label>
               <label>Type<select id="pricingKind"><option value="frame">Frame</option><option value="vehicle">Vehicle</option><option value="entry">Entry effect</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="profile_card">Profile card</option><option value="profile_background">Profile background</option><option value="theme">Theme store item</option><option value="gift">Gift</option><option value="unique_id">Unique ID</option><option value="room_theme">Room theme upload</option></select></label>
               <label>Item ID<input id="pricingItemId" value="*" placeholder="* or specific item ID" /></label>
               <label>Price coins<input id="pricingPrice" type="number" min="0" placeholder="Blank = base price" /></label>
@@ -343,15 +343,15 @@
         <section class="view" data-view-panel="economy">
           <div class="two-col">
             <article class="panel">
-              <div class="panel-head"><div><h2>Unique / Public ID Control</h2><p>Automatic Public IDs are assigned in login/signup order as 1000001, 1000002, 1000003… One ID stays reserved to one user. Search by internal/current/old ID or name; Owner changes are audited and old IDs stay reserved.</p></div><span class="badge">Master identity</span></div>
-              <div class="search-row"><input id="economyUserSearch" placeholder="Internal ID, current/old 7-digit ID, or name" /><button id="searchEconomyUsers" class="primary">Find User</button></div>
+              <div class="panel-head"><div><h2>Unique / Public ID Control</h2><p>Automatic Public IDs are assigned in login/signup order as 10000001, 10000002, 10000003… One ID stays reserved to one user. Search by internal/current/old ID or name; Owner changes are audited and old IDs stay reserved.</p></div><span class="badge">Master identity</span></div>
+              <div class="search-row"><input id="economyUserSearch" placeholder="Internal ID, current/old 8-digit ID, or name" /><button id="searchEconomyUsers" class="primary">Find User</button></div>
               <div id="economyUserResults" class="stack compact-stack"></div>
               <div id="economySelectedUser" hidden>
                 <hr />
                 <h3 id="economySelectedUserName">Selected user</h3>
                 <p id="economySelectedUserMeta" class="muted"></p>
                 <div class="form-grid compact">
-                  <label>New unique 7-digit ID<input id="economyPublicId" inputmode="numeric" maxlength="7" placeholder="e.g. 1234567" /></label>
+                  <label>New unique 8-digit ID<input id="economyPublicId" inputmode="numeric" maxlength="8" placeholder="e.g. 12345678" /></label>
                 </div>
                 <button id="saveEconomyPublicId" class="primary">Change Unique ID</button>
               </div>
