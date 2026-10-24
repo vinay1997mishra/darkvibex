@@ -1350,16 +1350,18 @@ async function handleUsers(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "users.search");
     const query = String(url.searchParams.get("q") ?? "").trim();
+    const normalizedQuery = normalizePublicIdLookup(query);
     const limit = clampInt(url.searchParams.get("limit"), 1, 200, 100);
     const pattern = `%${query}%`;
+    const publicPattern = `%${normalizedQuery}%`;
     const rows = await db.prepare(
       `SELECT u.id, u.public_id, u.display_name, u.role, u.coins, u.diamonds, u.vip_level, u.updated_at,
               COALESCE(c.status,'active') AS status, c.muted_until, c.banned_until
          FROM users u LEFT JOIN owner_user_controls c ON c.user_id = u.id
-        WHERE (? = '' OR u.id LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR u.display_name LIKE ?
-          OR EXISTS (SELECT 1 FROM owner_public_id_history h WHERE h.user_id = u.id AND h.public_id LIKE ?))
+        WHERE (? = '' OR u.id LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR COALESCE(u.public_id,'') LIKE ? OR u.display_name LIKE ?
+          OR EXISTS (SELECT 1 FROM owner_public_id_history h WHERE h.user_id = u.id AND (h.public_id LIKE ? OR h.public_id LIKE ?)))
         ORDER BY u.updated_at DESC LIMIT ?`
-    ).bind(query, pattern, pattern, pattern, pattern, limit).all();
+    ).bind(query, pattern, pattern, publicPattern, pattern, pattern, publicPattern, limit).all();
     return json({ ok: true, users: rows.results ?? [] });
   }
 
