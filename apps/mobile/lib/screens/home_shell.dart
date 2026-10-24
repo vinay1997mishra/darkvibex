@@ -454,7 +454,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
     final roomId = link.startsWith('room:') ? link.substring(5).trim() : '';
     if (roomId.isNotEmpty) {
       for (final room in state.rooms) {
-        if (room.id == roomId || room.roomNumber == roomId) {
+        if (room.id == roomId ||
+            formatPublicUserId(room.roomNumber) == formatPublicUserId(roomId)) {
           _openRoom(room);
           return;
         }
