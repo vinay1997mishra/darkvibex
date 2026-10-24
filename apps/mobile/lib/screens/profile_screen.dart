@@ -2148,7 +2148,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((row) {
             if (q.isEmpty) return true;
             final id = row['id']?.toString().toLowerCase() ?? '';
-            final publicId = row['public_id']?.toString().toLowerCase() ?? '';
+            final publicId = formatPublicUserId(row['public_id']).toLowerCase();
             final name = row['display_name']?.toString().toLowerCase() ?? '';
             return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
@@ -2369,7 +2369,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final filtered = rows.where((row) {
             if (q.isEmpty) return true;
             final id = row['id']?.toString().toLowerCase() ?? '';
-            final publicId = row['public_id']?.toString().toLowerCase() ?? '';
+            final publicId = formatPublicUserId(row['public_id']).toLowerCase();
             final name = row['display_name']?.toString().toLowerCase() ?? '';
             return id.contains(q) || publicId.contains(q) || name.contains(q);
           }).toList(growable: false);
