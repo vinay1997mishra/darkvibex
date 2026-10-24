@@ -207,9 +207,6 @@ class _RankingScreenState extends State<RankingScreen> {
                               final title = room
                                   ? row['room_name']?.toString() ?? 'Room'
                                   : row['display_name']?.toString() ?? 'User';
-                              final id = room
-                                  ? row['room_id']?.toString() ?? ''
-                                  : row['user_id']?.toString() ?? '';
                               final score = int.tryParse(
                                     row['score']?.toString() ?? '',
                                   ) ??
