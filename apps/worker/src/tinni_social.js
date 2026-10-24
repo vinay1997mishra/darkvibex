@@ -550,6 +550,7 @@ export async function familyState(db, userId) {
   }
   const members = await db.prepare(
     `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
             COALESCE((
               SELECT SUM(t.coins)
                 FROM family_wallet_transfers t
@@ -557,6 +558,7 @@ export async function familyState(db, userId) {
                  AND t.receiver_user_id=fm.user_id
             ),0) AS received_coins
        FROM family_members fm JOIN users u ON u.id=fm.user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id=fm.user_id
       WHERE fm.family_id=?
       ORDER BY CASE fm.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
                fm.joined_at ASC`
@@ -778,7 +780,9 @@ export async function familyWalletTransfers(db, userId, limitValue = 100) {
   const rows = await db.prepare(
     `SELECT t.id,t.sender_user_id,t.receiver_user_id,t.coins,t.created_at,
             su.display_name AS sender_name,su.avatar_key AS sender_avatar_key,
-            ru.display_name AS receiver_name,ru.avatar_key AS receiver_avatar_key
+            su.public_id AS sender_public_id,
+            ru.display_name AS receiver_name,ru.avatar_key AS receiver_avatar_key,
+            ru.public_id AS receiver_public_id
        FROM family_wallet_transfers t
        JOIN users su ON su.id=t.sender_user_id
        JOIN users ru ON ru.id=t.receiver_user_id
