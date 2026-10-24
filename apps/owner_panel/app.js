@@ -41,7 +41,7 @@ const staffPermissionOptions = [
   ["users.name.edit","Users · change display name"],
   ["users.role.edit","Users · change role"],
   ["users.vip.edit","Users · change VIP level"],
-  ["users.public_id.change","Users · change 7-digit Public ID"],
+  ["users.public_id.change","Users · change 8-digit Public ID"],
   ["users.moderation","Users · ban/suspend/moderation"],
   ["users.wallet.adjust","Users · normal wallet coin/diamond adjustment"],
   ["users.role_wallet.adjust","Users · Coin Seller/Merchant wallet balance"],
@@ -692,7 +692,7 @@ async function saveUserProfile(){
   toast("User profile saved");await openUser(state.selectedUser.id);if(can("users.search"))await loadUsers();
 }
 async function saveModeration(){if(!state.selectedUser)return;if(!can("users.moderation"))return toast("Moderation permission required",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
-async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim();if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Public ID must be between 1000001 and 9999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
+async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim();if(!/^\d{8}$/.test(publicId)||Number(publicId)<10000001)return toast("Public ID must be between 10000001 and 99999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
 async function applyWallet(){if(!state.selectedUser)return;if(!can("users.wallet.adjust"))return toast("Wallet adjustment permission required",false);const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
 async function applyRoleWallet(){
   if(!state.selectedUser)return;
@@ -812,7 +812,7 @@ async function saveEconomyPublicId(){
   if(!state.economyUser)return toast("Select a user first",false);
   if(!can("users.public_id.change"))return toast("Users write permission required",false);
   const publicId=$("#economyPublicId").value.trim();
-  if(!/^\d{7}$/.test(publicId)||Number(publicId)<1000001)return toast("Unique ID must be between 1000001 and 9999999",false);
+  if(!/^\d{8}$/.test(publicId)||Number(publicId)<10000001)return toast("Unique ID must be between 10000001 and 99999999",false);
   await api(`/api/owner/users/${encodeURIComponent(state.economyUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});
   toast("Unique ID changed");
   await selectEconomyUser(state.economyUser.id);
