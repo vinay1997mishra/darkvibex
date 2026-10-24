@@ -7768,7 +7768,7 @@ async function handleApi(request, env, url) {
         "SELECT 1 FROM wallet_ledger WHERE reference_id=? AND kind='gift_sent')"
       ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, giftCreatedAt, eventId),
       db.prepare(
-        "UPDATE users SET diamonds=diamonds+?,updated_at=? WHERE id=? AND EXISTS (" +
+        "UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ? AND EXISTS (" +
         "SELECT 1 FROM gift_events WHERE id=?)"
       ).bind(cost, giftCreatedAt, receiver, eventId),
     ]);
