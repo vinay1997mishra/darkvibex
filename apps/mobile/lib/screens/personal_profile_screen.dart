@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import '../utils/public_user_id.dart';
 
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 
 class PersonalProfileScreen extends StatefulWidget {
   const PersonalProfileScreen({super.key, required this.state});
