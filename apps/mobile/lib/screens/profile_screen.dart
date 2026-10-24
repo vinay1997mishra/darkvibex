@@ -456,215 +456,296 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             const SizedBox(height: 13),
-            TinniPanel(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => RechargeScreen(state: state),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.monetization_on_rounded,
-                    color: TinniPalette.gold,
-                    size: 38,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(15),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => RechargeScreen(state: state),
                   ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Coins',
-                        style: TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 10,
-                        ),
-                      ),
-                      Text(
-                        state.coins.toString(),
-                        style: const TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[Color(0xF51A2148), Color(0xF50D1532)],
+                    ),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: _MineMenuPalette.blue.withValues(alpha: .52),
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: _MineMenuPalette.blue.withValues(alpha: .08),
+                        blurRadius: 18,
+                        offset: const Offset(0, 5),
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: <Color>[Color(0xFF253A77), Color(0xFF392D70)],
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: _MineMenuPalette.blue.withValues(alpha: .7),
-                          ),
-                        ),
-                        child: const Text(
-                          'First Recharge',
-                          style: TextStyle(
-                            color: Color(0xFFB8CAFF),
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                      const Icon(
+                        Icons.monetization_on_rounded,
+                        color: TinniPalette.gold,
+                        size: 38,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        darkVibeXText(language, 'wallet'),
-                        style: TextStyle(
-                          color: _MineMenuPalette.purple,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Coins',
+                            style: TextStyle(
+                              color: TinniPalette.muted,
+                              fontSize: 10,
+                            ),
+                          ),
+                          Text(
+                            state.coins.toString(),
+                            style: const TextStyle(
+                              color: TinniPalette.gold,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: <Color>[Color(0xFF253A77), Color(0xFF392D70)],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _MineMenuPalette.blue.withValues(alpha: .7),
+                              ),
+                            ),
+                            child: const Text(
+                              'First Recharge',
+                              style: TextStyle(
+                                color: Color(0xFFB8CAFF),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            darkVibeXText(language, 'wallet'),
+                            style: const TextStyle(
+                              color: _MineMenuPalette.purple,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            TinniPanel(
-              key: const Key('mine-friends-calls'),
-              onTap: () => _showFriends(context),
-              child: const Row(
-                children: [
-                  TinniGlowIcon(
-                    icon: Icons.call_rounded,
-                    size: 27,
-                    boxSize: 52,
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Friends & Calls',
-                          style: TextStyle(
-                            color: TinniPalette.gold,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Only mutual friends can call each other',
-                          style: TextStyle(
-                            color: TinniPalette.muted,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: TinniPalette.gold,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            TinniPanel(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => VsScreen(state: state),
-                ),
-              ).then((_) => _loadSocialStats()),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.bolt_rounded,
-                    color: Color(0xFFFF202D),
-                    size: 34,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'VS',
-                          style: TextStyle(
-                            color: Color(0xFFFF202D),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          vsRelation == null
-                              ? 'Not connected'
-                              : 'Lv.${vsRelation?['level'] ?? 1} • ${vsRelation?['state'] ?? 'pending'}',
-                          style: const TextStyle(
-                            color: TinniPalette.muted,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFFFF202D),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            TinniPanel(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => CpScreen(state: state),
                 ),
               ),
-              child: const Row(
-                children: [
-                  TinniGlowIcon(
-                    icon: Icons.favorite_rounded,
-                    size: 28,
-                    boxSize: 52,
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'My CP',
-                          style: TextStyle(
-                            color: TinniPalette.gold,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'CP Nest • intimacy • memories • details',
-                          style: TextStyle(
-                            color: TinniPalette.muted,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
+            ),
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: const Key('mine-friends-calls'),
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _showFriends(context),
+                child: Container(
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[Color(0xF5172147), Color(0xF50D1530)],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _MineMenuPalette.blue.withValues(alpha: .42),
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: TinniPalette.gold,
+                  child: Row(
+                    children: [
+                      const _MineMenuIcon(
+                        icon: Icons.call_rounded,
+                        accent: _MineMenuPalette.blue,
+                        size: 48,
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Friends & Calls',
+                              style: TextStyle(
+                                color: _MineMenuPalette.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Only mutual friends can call each other',
+                              style: TextStyle(
+                                color: _MineMenuPalette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: _MineMenuPalette.muted,
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => VsScreen(state: state),
+                  ),
+                ).then((_) => _loadSocialStats()),
+                child: Container(
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF5161738),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFFFF536B).withValues(alpha: .44),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const _MineMenuIcon(
+                        icon: Icons.bolt_rounded,
+                        accent: Color(0xFFFF536B),
+                        size: 48,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'VS',
+                              style: TextStyle(
+                                color: Color(0xFFFF7B8C),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              vsRelation == null
+                                  ? 'Not connected'
+                                  : 'Lv.${vsRelation?['level'] ?? 1} • ${vsRelation?['state'] ?? 'pending'}',
+                              style: const TextStyle(
+                                color: _MineMenuPalette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Color(0xFFFF7B8C),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => CpScreen(state: state),
+                  ),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[Color(0xF5251A43), Color(0xF5111835)],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _MineMenuPalette.pink.withValues(alpha: .45),
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: _MineMenuPalette.pink.withValues(alpha: .07),
+                        blurRadius: 16,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const _MineMenuIcon(
+                        icon: Icons.favorite_rounded,
+                        accent: _MineMenuPalette.pink,
+                        size: 48,
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'My CP',
+                              style: TextStyle(
+                                color: _MineMenuPalette.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'CP Nest • intimacy • memories • details',
+                              style: TextStyle(
+                                color: _MineMenuPalette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: _MineMenuPalette.muted,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
