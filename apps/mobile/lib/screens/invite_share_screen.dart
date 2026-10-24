@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/public_user_id.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -602,7 +603,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
               decoration: const BoxDecoration(color: Color(0xFF7A1320)),
               children: [
                 _inviteTableCell('DP / Name', header: true),
-                _inviteTableCell('7-digit ID', header: true),
+                _inviteTableCell('8-digit ID', header: true),
                 _inviteTableCell('Invite Date & Time', header: true),
                 _inviteTableCell('Coin Seller Coins', header: true),
                 _inviteTableCell('Commission', header: true),
@@ -615,9 +616,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                 children: [
                   _inviteUserCell(row),
                   _inviteTableCell(
-                    row['public_id']?.toString().trim().isNotEmpty == true
-                        ? row['public_id'].toString()
-                        : '-',
+                    formatPublicUserId(row['public_id']),
                   ),
                   _inviteTableCell(_formatDateTime(row['bound_at'])),
                   _inviteTableCell(
