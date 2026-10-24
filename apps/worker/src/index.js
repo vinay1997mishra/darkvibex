@@ -6300,9 +6300,11 @@ async function handleApi(request, env, url) {
       const rows = await db.prepare(
         `SELECT b.user_id,b.banned_by,b.created_at,
                 COALESCE(u.display_name,'User') AS display_name,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 u.avatar_key
            FROM room_bans b
            LEFT JOIN users u ON u.id=b.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=b.user_id
           WHERE b.room_id=?
           ORDER BY b.created_at DESC
           LIMIT 200`
@@ -7643,6 +7645,7 @@ async function handleApi(request, env, url) {
         `SELECT r.id AS room_id,
                 r.name AS room_name,
                 r.owner_user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
                 COALESCE(u.display_name,'Owner') AS owner_name,
                 u.avatar_key,
                 r.seat_count,
@@ -7650,6 +7653,7 @@ async function handleApi(request, env, url) {
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
            FROM rooms r
            LEFT JOIN users u ON u.id=r.owner_user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=r.owner_user_id
            LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
           WHERE r.country_code=?
             AND COALESCE(rc.banned,0)=0
@@ -7663,20 +7667,23 @@ async function handleApi(request, env, url) {
     } else if (kind === "charm") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 COALESCE(u.display_name,'User') AS display_name,
                 u.avatar_key,
                 COALESCE(SUM(g.coin_cost),0) AS score,
                 COUNT(*) AS gift_count
            FROM gift_events g
            JOIN users u ON u.id=g.receiver_user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=u.id
           WHERE g.created_at>=?
-          GROUP BY u.id,u.display_name,u.avatar_key
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
           ORDER BY score DESC,gift_count DESC
           LIMIT 100`
       ).bind(cutoff).all();
     } else if (kind === "game") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 COALESCE(u.display_name,'User') AS display_name,
                 u.avatar_key,
                 COALESCE(SUM(b.payout),0) AS score,
@@ -7684,22 +7691,25 @@ async function handleApi(request, env, url) {
                 COUNT(*) AS bet_count
            FROM game_bets b
            JOIN users u ON u.id=b.user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=u.id
           WHERE b.created_at>=?
-          GROUP BY u.id,u.display_name,u.avatar_key
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
           ORDER BY score DESC,bet_count DESC
           LIMIT 100`
       ).bind(cutoff).all();
     } else {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
                 COALESCE(u.display_name,'User') AS display_name,
                 u.avatar_key,
                 COALESCE(SUM(g.coin_cost),0) AS score,
                 COUNT(*) AS gift_count
            FROM gift_events g
            JOIN users u ON u.id=g.sender_user_id
+           LEFT JOIN owner_user_overrides io ON io.user_id=u.id
           WHERE g.created_at>=?
-          GROUP BY u.id,u.display_name,u.avatar_key
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
           ORDER BY score DESC,gift_count DESC
           LIMIT 100`
       ).bind(cutoff).all();
