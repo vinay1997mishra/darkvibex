@@ -484,7 +484,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          'ID ${boundMap['inviter_public_id'] ?? boundMap['invitation_code'] ?? ''}',
+                          'ID ${formatPublicUserId(boundMap['inviter_public_id'], fallback: boundMap['invitation_code']?.toString() ?? '')}',
                           style: const TextStyle(color: Color(0xFFFFD7B0)),
                         ),
                         trailing: const Icon(
