@@ -19,7 +19,7 @@ void main() {
       expect(find.text('Tap to exchange'), findsOneWidget);
 
       await tester.tap(diamondCard);
-      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
       expect(find.byKey(const Key('diamond-exchange-panel')), findsOneWidget);
       expect(find.text('Exchange Diamonds to Coins'), findsOneWidget);
