@@ -4,7 +4,6 @@ import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import 'fruit_party_screen.dart';
 import 'greedy_girl_screen.dart';
-import 'game_room_screen.dart';
 import 'ludo_screen.dart';
 
 class GamesScreen extends StatefulWidget {
@@ -15,6 +14,7 @@ class GamesScreen extends StatefulWidget {
     this.onFruitParty,
     this.onGreedyGirl,
     this.roomOwnerUserId,
+    this.onGameRoom,
     this.onToggleMic,
     this.micOn,
     this.hasMicSeat,
@@ -25,6 +25,7 @@ class GamesScreen extends StatefulWidget {
   final VoidCallback? onFruitParty;
   final VoidCallback? onGreedyGirl;
   final String? roomOwnerUserId;
+  final VoidCallback? onGameRoom;
   final Future<void> Function()? onToggleMic;
   final bool Function()? micOn;
   final bool Function()? hasMicSeat;
@@ -113,22 +114,18 @@ class _GamesScreenState extends State<GamesScreen> {
           const SizedBox(height: 10),
           Card(
             child: ListTile(
+              key: const Key('convert-current-room-to-game'),
               leading: const Icon(
-                Icons.groups_2_rounded,
+                Icons.sports_esports_rounded,
                 size: 32,
                 color: Color(0xFFFFD36A),
               ),
-              title: const Text('Shared Game Room'),
+              title: const Text('Use this room as Game Room'),
               subtitle: const Text(
-                'Create or join a public room · 15 seats · play together',
+                'Convert this room in place — no second room is created.',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => GameRoomLobbyScreen(state: widget.state),
-                ),
-              ),
+              onTap: widget.onGameRoom,
             ),
           ),
           const SizedBox(height: 10),
