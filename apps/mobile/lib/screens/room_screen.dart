@@ -87,7 +87,12 @@ class _RoomScreenState extends State<RoomScreen> {
   List<Map<String, dynamic>> roomGiftRanking = <Map<String, dynamic>>[];
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
+  // Room polling is split by data freshness needs. Polling every 4 seconds
+  // for all four resources multiplied Worker requests for every connected user.
   Timer? memberRefreshTimer;
+  Timer? messageRefreshTimer;
+  Timer? settingsRefreshTimer;
+  Timer? controlsRefreshTimer;
   Timer? arrivalEffectTimer;
   Map<String, dynamic>? arrivalEffectMember;
   String? roomAvatarKey;
@@ -238,15 +243,27 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(_connectVoice());
     unawaited(_loadRoomFollow());
     unawaited(_loadRoomMembers());
+    unawaited(_loadRoomSettings());
     unawaited(_loadRoomControls());
     unawaited(_loadRoomGiftRanking());
-    memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      unawaited(_loadRoomMembers());
-      unawaited(_loadRoomMessages());
-      unawaited(_loadRoomSettings());
-      unawaited(_loadRoomControls());
-    });
     unawaited(_loadRoomMessages());
+
+    // Keep responsive fallback polling, but avoid refetching every resource
+    // every 4 seconds. User actions still refresh data immediately.
+    bool appIsActive() =>
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    memberRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (appIsActive()) unawaited(_loadRoomMembers());
+    });
+    messageRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (appIsActive()) unawaited(_loadRoomMessages());
+    });
+    controlsRefreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (appIsActive()) unawaited(_loadRoomControls());
+    });
+    settingsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (appIsActive()) unawaited(_loadRoomSettings());
+    });
   }
 
   Future<void> _loadRoomMembers() async {
@@ -1546,6 +1563,9 @@ class _RoomScreenState extends State<RoomScreen> {
   @override
   void dispose() {
     memberRefreshTimer?.cancel();
+    messageRefreshTimer?.cancel();
+    settingsRefreshTimer?.cancel();
+    controlsRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
     for (final timer in seatReactionTimers.values) {
