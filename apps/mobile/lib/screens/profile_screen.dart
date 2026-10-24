@@ -2248,7 +2248,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final friend = filtered[index];
                                 final avatarKey =
                                     friend['avatar_key']?.toString() ?? '';
-                                final id = friend['id']?.toString() ?? '';
                                 final displayId = formatPublicUserId(friend['public_id']);
                                 final name = friend['display_name']
                                         ?.toString()
@@ -2458,7 +2457,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final friend = filtered[index];
                                 final avatarKey =
                                     friend['avatar_key']?.toString() ?? '';
-                                final id = friend['id']?.toString() ?? '';
                                 final displayId = formatPublicUserId(friend['public_id']);
                                 final name = friend['display_name']
                                         ?.toString()
