@@ -1857,7 +1857,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
     RoomSummary? cached;
     for (final item in widget.state.rooms) {
-      if (item.id == roomId || item.roomNumber == roomId) {
+      if (item.id == roomId ||
+          formatPublicUserId(item.roomNumber) == formatPublicUserId(roomId)) {
         cached = item;
         break;
       }
