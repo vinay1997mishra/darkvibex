@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
 import 'vip_support_screen.dart';
+import 'medal_gallery_screen.dart';
+import '../widgets/level_medal.dart';
 
 class VipScreen extends StatelessWidget {
   const VipScreen({super.key, required this.state});
@@ -67,6 +69,21 @@ class VipScreen extends StatelessWidget {
                   target: target,
                   progress: progress,
                   activeUntil: state.vipActiveUntil,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MedalGalleryScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.auto_awesome_rounded),
+                  label: const Text('VIP & Rocket Medal Collection'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFDAD0FF),
+                    side: const BorderSide(color: Color(0x665B65D8)),
+                    padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 10),
+                  ),
                 ),
                 if (state.hasVipPrivilege('customer_service')) ...[
                   const SizedBox(height: 12),
@@ -467,24 +484,25 @@ class _HeroCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Container(
-                width: 86,
-                height: 86,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [Color(0xFFFFE7A7), Color(0xFF8A6429)],
+              if (level > 0)
+                LevelMedal(series: MedalSeries.vip, level: level, size: 86)
+              else
+                Container(
+                  width: 86,
+                  height: 86,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [Color(0xFF7B82C9), Color(0xFF282B5A)],
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.workspace_premium_rounded,
+                    size: 42,
+                    color: Color(0xFFE8E3FF),
                   ),
                 ),
-                child: Text(
-                  level == 0 ? 'VIP' : 'VIP$level',
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 28),
