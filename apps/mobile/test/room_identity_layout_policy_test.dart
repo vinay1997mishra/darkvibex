@@ -39,7 +39,7 @@ void main() {
     final personal =
         File('lib/screens/personal_profile_screen.dart').readAsStringSync();
 
-    expect(appState, contains("String publicId = '10000001'"));
+    expect(appState, contains("String publicId = '9100001'"));
     expect(appState, contains('String get roomNumber'));
     expect(appState, contains("row['display_id']"));
     expect(profile, contains('state.publicId'));
