@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
 import 'family_wallet_screen.dart';
 import 'gifts_screen.dart';
