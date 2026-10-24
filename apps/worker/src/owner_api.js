@@ -1350,7 +1350,7 @@ async function handleUsers(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "users.search");
     const query = String(url.searchParams.get("q") ?? "").trim();
-    const normalizedQuery = normalizePublicIdLookup(query);
+    const normalizedQuery = /^0[1-9]\\d{6}$/.test(query) ? query.slice(1) : query;
     const limit = clampInt(url.searchParams.get("limit"), 1, 200, 100);
     const pattern = `%${query}%`;
     const publicPattern = `%${normalizedQuery}%`;
