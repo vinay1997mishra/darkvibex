@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import '../ui/currency_badge.dart';
+import '../utils/public_user_id.dart';
 import 'conversation_screen.dart';
 import 'wallet_detail_screens.dart';
 
