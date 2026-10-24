@@ -1113,13 +1113,6 @@ class _CpScreenState extends State<CpScreen> {
     });
   }
 
-  String _partnerId() {
-    if (cp == null) return '';
-    return cp!['user_a']?.toString() == widget.state.userId
-        ? cp!['user_b']?.toString() ?? ''
-        : cp!['user_a']?.toString() ?? '';
-  }
-
   String _partnerPublicId() {
     if (cp == null) return '—';
     final raw = cp!['user_a']?.toString() == widget.state.userId
@@ -2519,13 +2512,6 @@ class _VsScreenState extends State<VsScreen> {
       friends = friendRows;
       loading = false;
     });
-  }
-
-  String _rivalId() {
-    if (vs == null) return '';
-    return vs!['user_a']?.toString() == widget.state.userId
-        ? vs!['user_b']?.toString() ?? ''
-        : vs!['user_a']?.toString() ?? '';
   }
 
   String _rivalPublicId() {
