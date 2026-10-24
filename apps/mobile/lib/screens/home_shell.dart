@@ -1266,7 +1266,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
           (room) =>
               q.isEmpty ||
               room.name.toLowerCase().contains(q) ||
-              room.roomNumber.toLowerCase().contains(q) ||
+              formatPublicUserId(room.roomNumber).toLowerCase().contains(q) ||
               room.ownerName.toLowerCase().contains(q),
         )
         .toList();
