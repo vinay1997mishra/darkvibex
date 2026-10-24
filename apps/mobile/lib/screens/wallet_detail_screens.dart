@@ -299,12 +299,28 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
   }
 
   Future<void> load() async {
-    final value = await widget.state.backend.diamondsHistory(
-      userId: widget.state.userId,
-    );
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend
+          .diamondsHistory(userId: widget.state.userId)
+          .timeout(const Duration(seconds: 12));
+    } catch (_) {
+      value = null;
+    }
     if (!mounted) return;
     setState(() {
-      data = value ?? const {};
+      if (value != null && value['ok'] == true) {
+        data = value;
+      } else {
+        data = <String, dynamic>{
+          ...data,
+          'current_diamonds':
+              data['current_diamonds'] ?? widget.state.diamonds,
+          'gifts': data['gifts'] ?? const <Map<String, dynamic>>[],
+          'conversions':
+              data['conversions'] ?? const <Map<String, dynamic>>[],
+        };
+      }
       loading = false;
     });
   }
@@ -379,15 +395,18 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Diamonds')),
       body: TinniBackground(
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: load,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(14),
-                  children: [
-                    TinniPanel(
+        child: RefreshIndicator(
+          onRefresh: load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(14),
+            children: [
+              if (loading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: LinearProgressIndicator(),
+                ),
+              TinniPanel(
                       child: Row(
                         children: [
                           const TinniGlowIcon(
@@ -417,12 +436,13 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TinniPanel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+              const SizedBox(height: 12),
+              TinniPanel(
+                key: const Key('diamond-exchange-panel'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                             children: [
                               const TinniGlowIcon(
                                 icon: Icons.currency_exchange_rounded,
@@ -600,9 +620,9 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                             ),
                           ),
                         ),
-                  ],
-                ),
-              ),
+            ],
+          ),
+        ),
       ),
     );
   }
