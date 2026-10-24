@@ -1,11 +1,11 @@
 import 'dart:async';
-import '../utils/public_user_id.dart';
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_state.dart';
+import '../utils/public_user_id.dart';
 
 class AladdinLampScreen extends StatefulWidget {
   const AladdinLampScreen({
