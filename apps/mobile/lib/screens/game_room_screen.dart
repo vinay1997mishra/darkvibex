@@ -24,6 +24,7 @@ class GameRoomLobbyScreen extends StatefulWidget {
 class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
   List<Map<String, dynamic>> rooms = const [];
   bool loading = true;
+  String? loadError;
 
   @override
   void initState() {
@@ -32,13 +33,22 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
   }
 
   Future<void> _refresh() async {
-    final result =
-        await widget.state.backend.gameRooms(userId: widget.state.userId);
-    if (!mounted) return;
-    setState(() {
-      rooms = result;
-      loading = false;
-    });
+    try {
+      final result =
+          await widget.state.backend.gameRooms(userId: widget.state.userId);
+      if (!mounted) return;
+      setState(() {
+        rooms = result;
+        loading = false;
+        loadError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        loadError = 'Game rooms could not be loaded. Check your connection and retry.';
+      });
+    }
   }
 
   Future<void> _create() async {
@@ -68,15 +78,43 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
     );
     input.dispose();
     if (name == null || name.isEmpty || !mounted) return;
-    final result = await widget.state.backend.createGameRoom(
-      userId: widget.state.userId,
-      name: name,
-    );
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connect to DarkVibeX and try again.')),
+      );
+      return;
+    }
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.state.backend.createGameRoom(
+        userId: widget.state.userId,
+        name: name,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Game Room could not be created. Check your connection and retry.'),
+          ),
+        );
+      }
+      return;
+    }
     final id = result?['room_id']?.toString();
     if (id == null || id.isEmpty) {
       if (mounted) {
+        final code = result?['error']?.toString().trim() ?? '';
+        final message = switch (code) {
+          'games_disabled' =>
+            'Game Rooms are temporarily disabled by the owner.',
+          'unauthorized' || 'forbidden' =>
+            'Your login session expired. Sign in again and retry.',
+          'user_banned' || 'user_suspended' =>
+            'This account cannot create a Game Room right now.',
+          _ => 'Game Room could not be created. Check your connection and retry.',
+        };
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not create game room')),
+          SnackBar(content: Text(message)),
         );
       }
       return;
@@ -137,7 +175,7 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
                           SizedBox(height: 180),
                           Center(
                             child: Text(
-                              'No public game rooms yet. Create one to start.',
+                              loadError ?? 'No public game rooms yet. Create one to start.',
                             ),
                           ),
                         ],
