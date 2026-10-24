@@ -22,7 +22,7 @@ test('gift debit, sender ledger, receipt and receiver diamonds are committed tog
   assert.match(batch, /changes\(\)=1/);
   assert.match(batch, /INSERT INTO gift_events/);
   assert.match(batch, /UPDATE users SET diamonds = diamonds \+ \?/);
-  assert.match(batch, /SELECT 1 FROM gift_events WHERE id=\\?/);
+  assert.match(batch, /SELECT 1 FROM gift_events WHERE id=\?/);
 });
 
 test('failed secondary gift progression does not report the committed gift as failed', () => {
