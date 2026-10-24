@@ -5,6 +5,7 @@ import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import '../ui/currency_badge.dart';
 import '../utils/diamond_exchange.dart';
+import '../utils/public_user_id.dart';
 
 int _walletInt(dynamic value) =>
     value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
@@ -151,8 +152,8 @@ class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
                                 row['gift_id']?.toString() ?? 'Gift',
                               ),
                               subtitle: Text(
-                                '${row['receiver_name'] ?? row['receiver_user_id']} • '
-                                'ID ${row['receiver_user_id'] ?? ''}\n'
+                                '${row['receiver_name'] ?? 'User'} • '
+                                'ID ${formatPublicUserId(row['receiver_public_id'])}\n'
                                 '${_walletDateTime(_walletInt(row['created_at']))}',
                               ),
                               trailing: Text(
@@ -572,7 +573,7 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                                 row['sender_name']?.toString() ?? 'User',
                               ),
                               subtitle: Text(
-                                'ID ${row['sender_user_id'] ?? ''} • '
+                                'ID ${formatPublicUserId(row['sender_public_id'])} • '
                                 '${_walletDateTime(_walletInt(row['created_at']))}',
                               ),
                               trailing: Text(
@@ -959,7 +960,7 @@ class _RoleWalletDetailScreenState
                                               ?.toString() ??
                                           '')
                                       .isNotEmpty)
-                                    'ID ${row['counterparty_user_id']}',
+                                    'ID ${formatPublicUserId(row['counterparty_public_id'])}',
                                   _walletDateTime(
                                     _walletInt(row['created_at']),
                                   ),
