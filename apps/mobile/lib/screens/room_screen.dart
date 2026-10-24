@@ -4458,7 +4458,7 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                               title: Text(
                                 displayName == null || displayName.isEmpty
-                                    ? 'User ${userId}'
+                                    ? 'User'
                                     : displayName,
                               ),
                               subtitle: Text('Requests Seat ${seat + 1}'),
