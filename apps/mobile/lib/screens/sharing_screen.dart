@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 
 class SharingScreen extends StatelessWidget {
   const SharingScreen({
@@ -18,7 +19,7 @@ class SharingScreen extends StatelessWidget {
   final Future<void> Function(String platform)? onShared;
 
   String get shareText =>
-      'Join my DarkVibeX room: $title\nRoom ID: $roomId';
+      'Join my DarkVibeX room: $title\nRoom ID: ${formatPublicUserId(roomId)}';
 
   Future<void> _record(String platform) async {
     try {
@@ -32,7 +33,7 @@ class SharingScreen extends StatelessWidget {
   }
 
   Future<void> _copy(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: roomId));
+    await Clipboard.setData(ClipboardData(text: formatPublicUserId(roomId)));
     await _record('copy');
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -60,7 +61,7 @@ class SharingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final encoded = Uri.encodeComponent(shareText);
     final telegramText = Uri.encodeComponent(
-      'Join my DarkVibeX room: $title — Room ID: $roomId',
+      'Join my DarkVibeX room: $title — Room ID: ${formatPublicUserId(roomId)}',
     );
 
     final actions = <(String, IconData, Future<void> Function())>[
