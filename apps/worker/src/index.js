@@ -827,8 +827,8 @@ async function publicIdOwnedByAnotherUser(db, candidate, userId) {
 
 function formatPublicIdForDisplay(value) {
   const raw = String(value ?? "").trim();
-  if (/^[1-9]\\d{6}$/.test(raw) && Number(raw) >= 1000001) return raw.padStart(8, "0");
-  if (/^[1-9]\\d{7}$/.test(raw) && Number(raw) >= 10000001) return raw;
+  if (/^[1-9]\d{6}$/.test(raw) && Number(raw) >= 1000001) return raw.padStart(8, "0");
+  if (/^[1-9]\d{7}$/.test(raw) && Number(raw) >= 10000001) return raw;
   return raw;
 }
 
