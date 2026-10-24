@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
@@ -87,6 +88,7 @@ class _RankingScreenState extends State<RankingScreen> {
         avatarKey: row['avatar_key']?.toString().trim().isNotEmpty == true
             ? row['avatar_key']?.toString()
             : null,
+        displayId: row['display_id']?.toString(),
       );
       Navigator.of(context).pop(room);
       return;
@@ -269,8 +271,8 @@ class _RankingScreenState extends State<RankingScreen> {
                                   ),
                                   subtitle: Text(
                                     room
-                                        ? 'ID $id • ${row['online'] ?? 0} online'
-                                        : 'ID $id',
+                                        ? 'ID ${formatPublicUserId(row['display_id'] ?? row['room_id'])} • ${row['online'] ?? 0} online'
+                                        : 'ID ${formatPublicUserId(row['public_id'])}',
                                   ),
                                   trailing: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
