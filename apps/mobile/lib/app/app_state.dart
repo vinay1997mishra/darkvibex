@@ -145,11 +145,9 @@ class AppState extends ChangeNotifier {
 
   final List<Map<String, dynamic>> walletLedger = <Map<String, dynamic>>[];
 
-  final List<RoomSummary> rooms = <RoomSummary>[
-    const RoomSummary(id: '100001', name: 'Dark Lounge', ownerName: 'Alex', ownerUserId: '92000001', online: 18, seatCount: 12),
-    const RoomSummary(id: '100002', name: 'Music Night', ownerName: 'Mika', ownerUserId: '92000002', online: 9, seatCount: 10),
-    const RoomSummary(id: '100003', name: 'Chill Zone', ownerName: 'Sara', ownerUserId: '92000003', online: 24, seatCount: 15),
-  ];
+  // Only server-confirmed rooms or the owner's cached room belong in live UI.
+  // Starting with demo rooms can show fake people/rooms during network failures.
+  final List<RoomSummary> rooms = <RoomSummary>[];
 
   RoomSummary? minimizedRoom;
   VoidCallback? minimizedRoomResume;
@@ -686,15 +684,29 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _loadRemoteData() async {
-    await refreshWallet(notify: false);
-    await refreshWeeklySignIn(notify: false);
-    await refreshVip(notify: false);
-    await refreshIdLevel(notify: false);
-    await refreshCosmetics(notify: false);
+    // These are optional dashboard resources. One failed endpoint must not
+    // prevent the remaining functions from refreshing after login/reconnect.
+    Future<void> loadOptional(
+      String resource,
+      Future<void> Function() operation,
+    ) async {
+      try {
+        await operation();
+      } catch (error) {
+        debugPrint('DarkVibeX $resource refresh failed: $error');
+      }
+    }
 
-    await _replaceRoomsFromRemote(await backend.listRooms());
-
-    await refreshInbox(notify: false);
+    // Keep requests sequential to avoid a startup burst against the Worker.
+    await loadOptional('wallet', () => refreshWallet(notify: false));
+    await loadOptional('weekly sign-in', () => refreshWeeklySignIn(notify: false));
+    await loadOptional('VIP', () => refreshVip(notify: false));
+    await loadOptional('ID level', () => refreshIdLevel(notify: false));
+    await loadOptional('cosmetics', () => refreshCosmetics(notify: false));
+    await loadOptional('rooms', () async {
+      await _replaceRoomsFromRemote(await backend.listRooms());
+    });
+    await loadOptional('inbox', () => refreshInbox(notify: false));
   }
 
   Future<void> refreshRooms({bool notify = true}) async {
