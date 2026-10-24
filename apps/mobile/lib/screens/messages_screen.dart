@@ -88,7 +88,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
     incomingCallOpen = true;
     final callerName =
-        call['caller_name']?.toString() ?? call['caller_user_id']?.toString() ?? 'User';
+        call['caller_name']?.toString().trim().isNotEmpty == true ? call['caller_name'].toString() : 'User';
     final accept = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
