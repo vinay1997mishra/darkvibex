@@ -272,7 +272,22 @@ async function ownerSetting(db, key, fallback = {}) {
   }
 }
 
-async function ensureOwnerControlSchema(db) {
+let ownerControlSchemaPromise = null;
+
+function ensureOwnerControlSchema(db) {
+  // Schema setup is only needed once per Worker isolate/deployment. Sharing
+  // the promise also prevents concurrent first requests from running the same
+  // DDL/ALTER statements repeatedly.
+  if (!ownerControlSchemaPromise) {
+    ownerControlSchemaPromise = initializeOwnerControlSchema(db).catch((error) => {
+      ownerControlSchemaPromise = null;
+      throw error;
+    });
+  }
+  return ownerControlSchemaPromise;
+}
+
+async function initializeOwnerControlSchema(db) {
   await ensureUsersSchema(db);
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_overrides (
@@ -681,7 +696,22 @@ const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
   "Korean",
 ]);
 
-async function ensureUsersSchema(db) {
+let usersSchemaPromise = null;
+
+function ensureUsersSchema(db) {
+  // Schema checks include CREATE TABLE, PRAGMA and potential ALTER statements.
+  // Cache their successful initialization for this isolate instead of repeating
+  // those database operations on every request.
+  if (!usersSchemaPromise) {
+    usersSchemaPromise = initializeUsersSchema(db).catch((error) => {
+      usersSchemaPromise = null;
+      throw error;
+    });
+  }
+  return usersSchemaPromise;
+}
+
+async function initializeUsersSchema(db) {
   // Worker deploys do not automatically apply schema.sql to D1. Make the
   // authentication path self-healing without issuing duplicate ALTER writes.
   await db.prepare(
