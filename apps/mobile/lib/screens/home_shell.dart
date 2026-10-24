@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../utils/public_user_id.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -1636,7 +1637,7 @@ class _RoomCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'ID ${room.roomNumber} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
+                    'ID ${formatPublicUserId(room.roomNumber)} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
                     style: const TextStyle(
                       color: TinniPalette.muted,
                       fontSize: 10,
