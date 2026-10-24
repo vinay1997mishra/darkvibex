@@ -24,6 +24,18 @@ import '../ui/intimacy_cp_art_b64.dart';
 final _intimacyVsArtBytes = base64Decode(intimacyVsArtBase64);
 final _intimacyCpArtBytes = base64Decode(intimacyCpArtBase64);
 
+abstract final class _MineMenuPalette {
+  static const navy = Color(0xFF101832);
+  static const navyDeep = Color(0xFF0B1128);
+  static const blue = Color(0xFF5D86FF);
+  static const purple = Color(0xFF9C75FF);
+  static const cyan = Color(0xFF58D7F4);
+  static const pink = Color(0xFFFF80D0);
+  static const white = Color(0xFFF4F6FF);
+  static const muted = Color(0xFFA7B4D5);
+  static const border = Color(0xFF40558E);
+}
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.state});
 
@@ -489,16 +501,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0A0804),
+                          gradient: const LinearGradient(
+                            colors: <Color>[Color(0xFF253A77), Color(0xFF392D70)],
+                          ),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: TinniPalette.deepGold),
+                          border: Border.all(
+                            color: _MineMenuPalette.blue.withValues(alpha: .7),
+                          ),
                         ),
                         child: const Text(
                           'First Recharge',
                           style: TextStyle(
-                            color: TinniPalette.gold,
+                            color: Color(0xFFB8CAFF),
                             fontSize: 9,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
@@ -506,9 +522,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(
                         darkVibeXText(language, 'wallet'),
                         style: TextStyle(
-                          color: TinniPalette.gold,
+                          color: _MineMenuPalette.purple,
                           fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ],
@@ -688,13 +704,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 9),
             _mineMenuGroup([
-              ListTile(
-                leading: const Icon(
-                  Icons.hexagon_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: Text(darkVibeXText(language, 'medal_of_honor')),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              _MineMenuTile(
+                icon: Icons.hexagon_rounded,
+                accent: _MineMenuPalette.purple,
+                title: darkVibeXText(language, 'medal_of_honor'),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -709,20 +722,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 darkVibeXText(language, 'shop'),
                 'Frames, vehicles and entry effects',
               ),
-              ListTile(
-                leading: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: Text(darkVibeXText(language, 'trends')),
-                subtitle: const Text(
-                  'Profile posts and updates',
-                  style: TextStyle(
-                    color: TinniPalette.muted,
-                    fontSize: 10,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              _MineMenuTile(
+                icon: Icons.auto_awesome_rounded,
+                accent: _MineMenuPalette.cyan,
+                title: darkVibeXText(language, 'trends'),
+                subtitle: 'Profile posts and updates',
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -733,13 +737,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
-              ListTile(
-                leading: const Icon(
-                  Icons.task_alt_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: Text(darkVibeXText(language, 'task')),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              _MineMenuTile(
+                icon: Icons.task_alt_rounded,
+                accent: _MineMenuPalette.blue,
+                title: darkVibeXText(language, 'task'),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -750,13 +751,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
-              ListTile(
-                leading: const Icon(
-                  Icons.home_work_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: Text(darkVibeXText(language, 'family')),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              _MineMenuTile(
+                icon: Icons.home_work_rounded,
+                accent: _MineMenuPalette.purple,
+                title: darkVibeXText(language, 'family'),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -764,13 +762,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              ListTile(
-                leading: const Icon(
-                  Icons.favorite_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: Text(darkVibeXText(language, 'cp_nest')),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              _MineMenuTile(
+                icon: Icons.favorite_rounded,
+                accent: _MineMenuPalette.pink,
+                title: darkVibeXText(language, 'cp_nest'),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -781,13 +776,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
             const SizedBox(height: 9),
             _mineMenuGroup([
-              ListTile(
-                leading: const Icon(
-                  Icons.chat_bubble_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: Text(darkVibeXText(language, 'feedback')),
-                trailing: const Icon(Icons.chevron_right_rounded),
+              _MineMenuTile(
+                icon: Icons.chat_bubble_rounded,
+                accent: _MineMenuPalette.cyan,
+                title: darkVibeXText(language, 'feedback'),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -795,17 +787,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              ListTile(
+              _MineMenuTile(
                 key: const Key('mine-invite-share'),
-                leading: const Icon(
-                  Icons.card_giftcard_rounded,
-                  color: TinniPalette.gold,
-                ),
-                title: const Text('Invite & Share'),
-                subtitle: const Text(
-                  'Invite friends and earn Coin Seller recharge commission',
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
+                icon: Icons.card_giftcard_rounded,
+                accent: _MineMenuPalette.purple,
+                title: 'Invite & Share',
+                subtitle: 'Invite friends and earn Coin Seller recharge commission',
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -862,88 +849,145 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
 
-  Widget _mineTag(String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(
-          color: TinniPalette.panel,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: TinniPalette.deepGold),
+  Widget _mineTag(String label) {
+    final accent = label.startsWith('VIP') || label == 'King of VIP'
+        ? _MineMenuPalette.purple
+        : _MineMenuPalette.blue;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: <Color>[
+            accent.withValues(alpha: .26),
+            _MineMenuPalette.blue.withValues(alpha: .16),
+          ],
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: TinniPalette.gold,
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-          ),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accent.withValues(alpha: .68), width: .8),
+        boxShadow: <BoxShadow>[
+          BoxShadow(color: accent.withValues(alpha: .10), blurRadius: 8),
+        ],
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: _MineMenuPalette.white,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
         ),
-      );
+      ),
+    );
+  }
 
   Widget _mineStatusCard({
     required String title,
     required String subtitle,
     required IconData icon,
     required VoidCallback onTap,
-  }) =>
-      TinniPanel(
+  }) {
+    final accent =
+        title == 'VIP' ? _MineMenuPalette.purple : _MineMenuPalette.cyan;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(13),
         onTap: onTap,
-        padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-        child: SizedBox(
-          height: 45,
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: TinniPalette.gold,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(11, 9, 9, 9),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[Color(0xF5172044), Color(0xF50D1531)],
+            ),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: accent.withValues(alpha: .48)),
+          ),
+          child: SizedBox(
+            height: 48,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _MineMenuPalette.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: TinniPalette.muted,
-                        fontSize: 10,
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _MineMenuPalette.muted,
+                          fontSize: 10,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Icon(icon, color: TinniPalette.gold, size: 28),
-            ],
+                _MineMenuIcon(icon: icon, accent: accent, size: 38),
+              ],
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
   Widget _mineMenuGroup(List<Widget> rows) => Container(
         decoration: BoxDecoration(
-          color: const Color(0xE60A0804),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: TinniPalette.bronze),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[Color(0xF5131B3A), Color(0xF50B122B)],
+          ),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: _MineMenuPalette.border.withValues(alpha: .76),
+          ),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: _MineMenuPalette.purple.withValues(alpha: .08),
+              blurRadius: 18,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
         child: Column(children: rows),
       );
 
-  Widget _item(BuildContext context, AppState state, IconData icon, String title, String subtitle) {
-    return ListTile(
-      leading: Icon(icon, color: TinniPalette.gold),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right_rounded),
+  Widget _item(
+    BuildContext context,
+    AppState state,
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    final accent = icon == Icons.shopping_bag_rounded
+        ? _MineMenuPalette.blue
+        : _MineMenuPalette.cyan;
+    return _MineMenuTile(
+      icon: icon,
+      accent: accent,
+      title: title,
+      subtitle: subtitle,
       onTap: () async {
-        if (title == 'Setting') {
+        if (icon == Icons.settings_rounded) {
           await Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => AppSettingsScreen(state: state),
           ));
           return;
         }
-        if (title == 'Shop') {
+        if (icon == Icons.shopping_bag_rounded) {
           await Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => CosmeticsShopScreen(state: state),
           ));
@@ -953,7 +997,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
-            content: Text('$subtitle is not connected to the current DarkVibeX server yet.'),
+            content: Text(
+              '$subtitle is not connected to the current DarkVibeX server yet.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
@@ -963,6 +1009,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _MineMenuIcon extends StatelessWidget {
+  const _MineMenuIcon({
+    required this.icon,
+    required this.accent,
+    this.size = 42,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            accent.withValues(alpha: .34),
+            _MineMenuPalette.purple.withValues(alpha: .22),
+            _MineMenuPalette.blue.withValues(alpha: .24),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(size * .28),
+        border: Border.all(color: accent.withValues(alpha: .68), width: .9),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: accent.withValues(alpha: .12),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Icon(
+        icon,
+        size: size * .48,
+        color: _MineMenuPalette.white,
+      ),
+    );
+  }
+}
+
+class _MineMenuTile extends StatelessWidget {
+  const _MineMenuTile({
+    super.key,
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              _MineMenuIcon(icon: icon, accent: accent, size: 42),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _MineMenuPalette.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _MineMenuPalette.muted,
+                          fontSize: 10,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: _MineMenuPalette.muted,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
