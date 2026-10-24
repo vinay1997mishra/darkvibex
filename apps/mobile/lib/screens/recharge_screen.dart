@@ -319,7 +319,6 @@ class _ProviderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final id = row['user_id']?.toString() ?? '';
     final name = row['display_name']?.toString().trim();
     final avatar = row['avatar_key']?.toString() ?? '';
     return Padding(
