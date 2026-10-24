@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/public_user_id.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
@@ -152,7 +153,7 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
       SnackBar(
         content: Text(
           ok
-              ? 'Google account linked to ID ${widget.state.userId}'
+              ? 'Google account linked to ID ${formatPublicUserId(widget.state.publicId)}'
               : widget.state.authError ?? 'Google account could not be linked',
         ),
       ),
@@ -467,7 +468,7 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
                             title: Text(
                               row['display_name']?.toString() ?? 'User',
                             ),
-                            subtitle: Text('ID $id'),
+                            subtitle: Text('ID ${formatPublicUserId(row['public_id'])}'),
                             trailing: TextButton(
                               onPressed: id.isEmpty || busy.contains(id)
                                   ? null
