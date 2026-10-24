@@ -33,13 +33,13 @@ void main() {
     expect(notice, isNot(contains("Text('Terms')")));
   });
 
-  test('profile and room UI use stable seven-digit public IDs', () {
+  test('profile and room UI display eight-digit public IDs', () {
     final appState = File('lib/app/app_state.dart').readAsStringSync();
     final profile = File('lib/screens/profile_screen.dart').readAsStringSync();
     final personal =
         File('lib/screens/personal_profile_screen.dart').readAsStringSync();
 
-    expect(appState, contains("String publicId = '9100001'"));
+    expect(appState, contains("String publicId = '10000001'"));
     expect(appState, contains('String get roomNumber'));
     expect(appState, contains("row['display_id']"));
     expect(profile, contains('state.publicId'));
