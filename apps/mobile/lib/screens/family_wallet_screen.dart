@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../utils/public_user_id.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
+import '../utils/public_user_id.dart';
 
 class FamilyWalletScreen extends StatefulWidget {
   const FamilyWalletScreen({
