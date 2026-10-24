@@ -1,5 +1,4 @@
 import 'dart:async';
-import '../utils/public_user_id.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -11,6 +10,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart' as gift_video; // Avoid LiveKit's VideoTrack name collision.
 
+import '../utils/public_user_id.dart';
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
 import '../background/room_permission_bridge.dart';
