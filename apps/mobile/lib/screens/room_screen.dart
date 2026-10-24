@@ -3952,7 +3952,7 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _shareRoomId() async {
-    await Clipboard.setData(ClipboardData(text: widget.room.roomNumber));
+    await Clipboard.setData(ClipboardData(text: formatPublicUserId(widget.room.roomNumber)));
     final result = widget.state.backendConnected
         ? await widget.state.backend.shareRoomForIdLevel(
             userId: widget.state.userId,
@@ -5955,7 +5955,7 @@ class _RoomScreenState extends State<RoomScreen> {
             ListTile(
               leading: const Icon(Icons.copy_rounded),
               title: const Text('Copy room ID'),
-              subtitle: Text(widget.room.roomNumber),
+              subtitle: Text(formatPublicUserId(widget.room.roomNumber)),
               onTap: () async {
                 await Clipboard.setData(ClipboardData(text: widget.room.roomNumber));
                 if (!mounted) return;
