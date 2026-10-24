@@ -1325,7 +1325,7 @@ class AppState extends ChangeNotifier {
         'invalid_seat_count' =>
           'Choose a room size between 8 and 42 seats.',
         'invalid_create_room_mode' =>
-          'Choose Voice Room or Live Room.',
+          'Choose Voice Room, Game Room or Live Room.',
         'owner_and_name_required' =>
           'Room name is required.',
         'country_required_for_room' =>

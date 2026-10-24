@@ -5652,7 +5652,7 @@ async function handleApi(request, env, url) {
     const requestedPartyMode = String(body.party_mode ?? "Friends-making Party").trim();
     const partyMode = requestedPartyMode === "Event hosting mode" ? "Event hosting mode" : "Friends-making Party";
     const requestedRoomMode = String(body.room_mode ?? "voice").trim().toLowerCase();
-    if (!new Set(["voice", "live"]).has(requestedRoomMode)) {
+    if (!new Set(["voice", "game", "live"]).has(requestedRoomMode)) {
       return json({ ok: false, error: "invalid_create_room_mode" }, { status: 400 });
     }
     const roomMode = requestedRoomMode;
