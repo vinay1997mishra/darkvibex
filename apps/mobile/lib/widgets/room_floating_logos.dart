@@ -487,7 +487,7 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1750),
+      duration: const Duration(milliseconds: 2200),
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
           widget.onFinished();
@@ -510,21 +510,33 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
           builder: (context, constraints) => AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
-              final progress = Curves.easeInCubic.transform(_controller.value);
-              final fade = (1.0 - ((_controller.value - .72) / .28))
+              final rawProgress = _controller.value;
+              final progress = Curves.easeInCubic.transform(rawProgress);
+              final fade = (1.0 - ((rawProgress - .70) / .30))
                   .clamp(0.0, 1.0)
                   .toDouble();
-              final rocketSize = 56.0 + progress * 22.0;
-              final trailHeight = 16.0 + progress * 88.0;
+              final rocketSize = 58.0 + progress * 24.0;
+              final trailHeight = 24.0 + (1.0 - progress) * 58.0;
               final left = constraints.maxWidth -
                   rocketSize -
                   12.0 -
                   constraints.maxWidth * .42 * progress;
-              final bottom = 90.0 + constraints.maxHeight * 1.02 * progress;
+              final bottom =
+                  88.0 + constraints.maxHeight * 1.02 * progress;
+              final accent = accentColorForLevel(widget.level);
 
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _RocketLaunchTrailPainter(
+                        progress: progress,
+                        fade: fade,
+                        color: accent,
+                      ),
+                    ),
+                  ),
                   Positioned(
                     left: math.max(0.0, left),
                     bottom: bottom,
@@ -540,30 +552,11 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
                               size: rocketSize,
                               level: widget.level,
                             ),
-                            Container(
-                              width: rocketSize * .12,
-                              height: trailHeight,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(rocketSize),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    accentColorForLevel(widget.level)
-                                        .withValues(alpha: .86 * fade),
-                                    accentColorForLevel(widget.level)
-                                        .withValues(alpha: .42 * fade),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: accentColorForLevel(widget.level)
-                                        .withValues(alpha: .48 * fade),
-                                    blurRadius: 12,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
+                            CustomPaint(
+                              size: Size(rocketSize * .58, trailHeight),
+                              painter: _RocketExhaustPainter(
+                                progress: rawProgress,
+                                color: accent,
                               ),
                             ),
                           ],
@@ -579,6 +572,193 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
       ),
     );
   }
+}
+
+class _RocketExhaustPainter extends CustomPainter {
+  const _RocketExhaustPainter({
+    required this.progress,
+    required this.color,
+  });
+
+  final double progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final pulse = .82 + .18 * math.sin(progress * 42);
+    final w = size.width;
+    final h = size.height;
+    final outerFlame = Path()
+      ..moveTo(w * .39, 0)
+      ..cubicTo(
+        w * .31, h * .18,
+        w * .10, h * .52,
+        w * .50, h * pulse,
+      )
+      ..cubicTo(
+        w * .91, h * .50,
+        w * .69, h * .18,
+        w * .61, 0,
+      )
+      ..close();
+
+    canvas.drawPath(
+      outerFlame,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            Colors.white.withValues(alpha: .98),
+            color.withValues(alpha: .98),
+            const Color(0xFFFF7A28).withValues(alpha: .95),
+            const Color(0xFFFFD05A).withValues(alpha: .72),
+          ],
+          stops: const <double>[0, .25, .66, 1],
+        ).createShader(Offset.zero & size),
+    );
+
+    final coreFlame = Path()
+      ..moveTo(w * .43, h * .02)
+      ..cubicTo(
+        w * .41, h * .24,
+        w * .35, h * .42,
+        w * .50, h * (pulse * .72),
+      )
+      ..cubicTo(
+        w * .65, h * .42,
+        w * .59, h * .24,
+        w * .57, h * .02,
+      )
+      ..close();
+    canvas.drawPath(
+      coreFlame,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            Colors.white,
+            Color(0xFFFFF3B1),
+            Color(0xFFFFA02E),
+          ],
+        ).createShader(Offset.zero & size),
+    );
+
+    // Small hot sparks flick away from the exhaust instead of a flat beam.
+    for (var i = 0; i < 9; i++) {
+      final seed = i.toDouble();
+      final flicker = math.sin(progress * 35 + seed * 2.4);
+      final x = w * (.16 + (seed % 5) * .17) + flicker * w * .09;
+      final y = h * (.23 + (seed % 4) * .18) * pulse;
+      final radius = w * (.018 + ((i % 3) * .008));
+      canvas.drawCircle(
+        Offset(x, y),
+        radius,
+        Paint()
+          ..color = (i.isEven ? Colors.white : color).withValues(
+            alpha: (.72 - (i % 4) * .12).clamp(.20, .72),
+          ),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RocketExhaustPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.color != color;
+}
+
+class _RocketLaunchTrailPainter extends CustomPainter {
+  const _RocketLaunchTrailPainter({
+    required this.progress,
+    required this.fade,
+    required this.color,
+  });
+
+  final double progress;
+  final double fade;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0 || size.isEmpty) return;
+
+    final start = Offset(size.width * .94, size.height * .80);
+    final finish = Offset(size.width * .56, size.height * -.10);
+    final head = Offset.lerp(start, finish, progress)!;
+    final trajectory = Path()
+      ..moveTo(start.dx, start.dy)
+      ..lineTo(head.dx, head.dy);
+
+    canvas.drawPath(
+      trajectory,
+      Paint()
+        ..color = color.withValues(alpha: .16 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 18
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+    );
+    canvas.drawPath(
+      trajectory,
+      Paint()
+        ..color = const Color(0xFFFF8C32).withValues(alpha: .25 * fade)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Particles appear behind the moving rocket, glow briefly, then fade.
+    for (var i = 0; i < 48; i++) {
+      final fraction = progress * (i / 48);
+      final age = progress - fraction;
+      if (age > .27) continue;
+      final base = Offset.lerp(start, finish, fraction)!;
+      final drift = math.sin(i * 2.13 + progress * 29) * age * 72;
+      final position = Offset(
+        base.dx + drift,
+        base.dy + age * 54,
+      );
+      final particleFade = ((1 - age / .27) * fade).clamp(0.0, 1.0);
+      final particleColor = switch (i % 4) {
+        0 => Colors.white,
+        1 => color,
+        2 => const Color(0xFFFF8C32),
+        _ => const Color(0xFF63DFFF),
+      };
+      canvas.drawCircle(
+        position,
+        (1.3 + (i % 3) * .65) * (1 - age * 1.3),
+        Paint()
+          ..color = particleColor.withValues(alpha: particleFade * .95)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.4),
+      );
+    }
+
+    // A few bright glints make each target launch feel like a celebration.
+    final glintFade = ((1 - progress) * fade).clamp(0.0, 1.0);
+    for (var i = 0; i < 6; i++) {
+      final angle = i * math.pi / 3 + progress * 8;
+      final distance = 11 + progress * 15 + (i % 2) * 4;
+      final point = Offset(
+        head.dx + math.cos(angle) * distance,
+        head.dy + math.sin(angle) * distance,
+      );
+      canvas.drawCircle(
+        point,
+        1.2 + (i % 2) * .7,
+        Paint()..color = Colors.white.withValues(alpha: glintFade * .85),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RocketLaunchTrailPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.fade != fade ||
+      oldDelegate.color != color;
 }
 
 Color accentColorForLevel(int level) {
