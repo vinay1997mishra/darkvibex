@@ -200,11 +200,30 @@ class _MessagesScreenState extends State<MessagesScreen> {
         child: Column(
           children: [
             ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: TinniPalette.gold,
-                child: Icon(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [TinniPalette.gold, TinniPalette.brightGold],
+                  ),
+                  border: Border.all(
+                    color: TinniPalette.brightGold.withValues(alpha: .72),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: TinniPalette.gold.withValues(alpha: .22),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: const Icon(
                   Icons.verified_rounded,
-                  color: Colors.black,
+                  color: Colors.white,
+                  size: 23,
                 ),
               ),
               title: const Text(
@@ -226,11 +245,27 @@ class _MessagesScreenState extends State<MessagesScreen> {
             ),
             const Divider(height: 1),
             ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFF321C0A),
-                child: Icon(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF5B52C9), Color(0xFF218EBE)],
+                  ),
+                  border: Border.all(
+                    color: TinniPalette.brightGold.withValues(alpha: .52),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x303E8BFF), blurRadius: 12),
+                  ],
+                ),
+                child: const Icon(
                   Icons.notifications_active_rounded,
-                  color: TinniPalette.gold,
+                  color: Colors.white,
+                  size: 22,
                 ),
               ),
               title: const Text(
