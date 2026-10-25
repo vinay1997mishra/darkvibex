@@ -25,8 +25,6 @@ final _intimacyVsArtBytes = base64Decode(intimacyVsArtBase64);
 final _intimacyCpArtBytes = base64Decode(intimacyCpArtBase64);
 
 abstract final class _MineMenuPalette {
-  static const navy = Color(0xFF101832);
-  static const navyDeep = Color(0xFF0B1128);
   static const blue = Color(0xFF5D86FF);
   static const purple = Color(0xFF9C75FF);
   static const cyan = Color(0xFF58D7F4);
