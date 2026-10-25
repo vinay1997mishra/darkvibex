@@ -697,6 +697,10 @@ class _RoomScreenState extends State<RoomScreen> {
                               roomId: widget.room.id,
                               rocketLevel: level,
                             );
+                            if (result?['ok'] == true &&
+                                result?['reward_type']?.toString() == 'coins') {
+                              await widget.state.refreshWallet();
+                            }
                             if (!dialogContext.mounted) return;
                             setDialogState(() {
                               claiming = false;
@@ -707,7 +711,9 @@ class _RoomScreenState extends State<RoomScreen> {
                                   message = 'You won a frame reward for ${claim?['frame_days'] ?? tier['frame_days']} day(s). The frame artwork and inventory delivery will be added in the next phase. No Coins were awarded for this claim.';
                                 } else {
                                   final amount = int.tryParse(claim?['coins']?.toString() ?? '') ?? 0;
-                                  message = 'Congratulations! ${_formatRocketRewardCoins(amount)} Coins have been added to your wallet.';
+                                  message = result?['already_claimed'] == true
+                                      ? 'This reward was already claimed. Your wallet has been refreshed: ${_formatRocketRewardCoins(amount)} Coins.'
+                                      : 'Congratulations! ${_formatRocketRewardCoins(amount)} Coins have been added to your wallet.';
                                 }
                               } else if (result?['error']?.toString() == 'reward_claims_full') {
                                 message = 'All rewards for this Rocket chest have already been claimed.';
