@@ -8092,7 +8092,7 @@ class _LiveMicWavePainter extends CustomPainter {
     final outerPadding = compact ? 9.0 : 12.0;
     final baseRadius = avatarDiameter / 2 + (compact ? 1.2 : 1.8);
     final liveColor = Color.lerp(
-      const Color(0xFFFFD76A),
+      Color(0xFF8B7CFF),
       const Color(0xFF56F2C2),
       (.30 + normalized * .70).clamp(0.0, 1.0),
     )!;
