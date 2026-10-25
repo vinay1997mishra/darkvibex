@@ -582,7 +582,7 @@ class _RoomScreenState extends State<RoomScreen> {
             surfaceTintColor: Colors.transparent,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
-              side: const BorderSide(color: Color(0xFFFFC94A), width: 1.2),
+              side: const BorderSide(color: TinniPalette.brightGold, width: 1.2),
             ),
             titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
             contentPadding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
@@ -697,7 +697,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   child: ElevatedButton(
                     key: const Key('rocket-reward-claim-now'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFC94A),
+                      backgroundColor: TinniPalette.brightGold,
                       foregroundColor: const Color(0xFF302000),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
@@ -868,7 +868,7 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
             border: Border.all(
-              color: const Color(0xFFFFC94A),
+              color: TinniPalette.brightGold,
               width: 1.1,
             ),
             boxShadow: const <BoxShadow>[
@@ -1040,7 +1040,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFFFFD778),
                             side: BorderSide(
-                              color: const Color(0xFFFFC94A).withValues(alpha: .55),
+                              color: TinniPalette.brightGold.withValues(alpha: .55),
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                             minimumSize: const Size(44, 38),
