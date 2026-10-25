@@ -635,7 +635,7 @@ class _RoomScreenState extends State<RoomScreen> {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
-                  '${tier['max_winners']} winners • ${status?['remaining_winners'] ?? 0} spots left',
+                  '${tier['max_winners']} winners • ${status['remaining_winners'] ?? 0} spots left',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFFE0E7FF),
