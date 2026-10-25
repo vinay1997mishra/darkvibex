@@ -69,12 +69,14 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
-  Duration _durationFor(String? styleId) => Duration(
-        milliseconds: _freeAnimatedFrameIds.contains(styleId) ||
-                isRocketRewardFrameId(styleId)
-            ? 2000
-            : 3200,
-      );
+  Duration _durationFor(String? styleId) {
+    if (isRocketRewardFrameId(styleId)) {
+      return const Duration(milliseconds: 2000);
+    }
+    return Duration(
+      milliseconds: _freeAnimatedFrameIds.contains(styleId) ? 2000 : 3200,
+    );
+  }
 
   @override
   void initState() {
