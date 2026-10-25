@@ -824,13 +824,55 @@ class _PremiumVectorFramePainter extends CustomPainter {
       ..lineTo(center.dx, center.dy + length)
       ..lineTo(center.dx - length * .62, center.dy)
       ..close();
-    canvas.drawPath(path, Paint()..color = fill);
+    final bounds = path.getBounds();
+    canvas.drawPath(
+      path.shift(Offset(0, length * .12)),
+      Paint()
+        ..color = edge.withValues(alpha: .55)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, length * .18),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Colors.white, fill, edge, fill],
+        ).createShader(bounds),
+    );
+    final leftFacet = Path()
+      ..moveTo(center.dx, center.dy - length)
+      ..lineTo(center.dx - length * .62, center.dy)
+      ..lineTo(center.dx, center.dy + length)
+      ..lineTo(center.dx + length * .04, center.dy)
+      ..close();
+    canvas.drawPath(
+      leftFacet,
+      Paint()..color = Colors.white.withValues(alpha: .34),
+    );
+    final rightFacet = Path()
+      ..moveTo(center.dx, center.dy - length)
+      ..lineTo(center.dx + length * .62, center.dy)
+      ..lineTo(center.dx + length * .04, center.dy)
+      ..close();
+    canvas.drawPath(
+      rightFacet,
+      Paint()..color = edge.withValues(alpha: .58),
+    );
     canvas.drawPath(
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = length * .14
+        ..strokeWidth = length * .10
         ..color = edge,
+    );
+    canvas.drawLine(
+      Offset(center.dx - length * .12, center.dy - length * .52),
+      Offset(center.dx - length * .02, center.dy - length * .12),
+      Paint()
+        ..color = Colors.white.withValues(alpha: .95)
+        ..strokeWidth = length * .12
+        ..strokeCap = StrokeCap.round,
     );
   }
 
