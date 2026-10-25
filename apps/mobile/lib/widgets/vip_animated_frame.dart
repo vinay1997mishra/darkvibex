@@ -51,6 +51,7 @@ const Set<String> _premiumButterflyFrameIds = <String>{
   'frame_blue_magic_butterfly',
   'frame_golden_butterfly_queen',
   'frame_purple_dream_butterfly',
+  'frame_neon_butterfly',
 };
 
 /// Ornate, animated frame used on room seats and profile avatars.
