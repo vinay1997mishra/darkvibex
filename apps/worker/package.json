@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js && node --check src/invite_rewards.js && node ../../tools/check-no-legacy-hierarchy.mjs",
+    "check": "node --check src/index.js && node --check src/invite_rewards.js && node --check src/rocket_rewards.js && node ../../tools/check-no-legacy-hierarchy.mjs",
     "test": "node --test test/*.test.js"
   },
   "devDependencies": {
