@@ -132,7 +132,31 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
     assert.equal(result.body.reward_type, "frame");
     assert.equal(result.body.coins, 0);
     assert.equal(result.body.frame_days, 1);
+    assert.equal(result.body.frame_id, "rocket_frame_aurora");
+    assert.equal(result.body.frame_name, "Rocket Aurora");
+    assert.equal(result.body.frame_delivery_status, "delivered");
   }
+
+  const earnedFrame = sqlite.prepare(
+    "SELECT item_id,expires_at,active FROM user_cosmetics WHERE user_id=? AND kind='frame'",
+  ).get("rocket-user-1");
+  assert.equal(earnedFrame.item_id, "rocket_frame_aurora");
+  assert.ok(earnedFrame.expires_at > Date.now());
+  assert.equal(earnedFrame.active, 0);
+
+  const equip = await request("/api/cosmetics/equip", {
+    method: "POST",
+    userId: "rocket-user-1",
+    body: { user_id: "rocket-user-1", item_id: "rocket_frame_aurora" },
+  });
+  assert.equal(equip.status, 200);
+  assert.equal(equip.body.ok, true);
+  assert.equal(
+    sqlite.prepare("SELECT active FROM user_cosmetics WHERE user_id=? AND item_id=?")
+      .get("rocket-user-1", "rocket_frame_aurora").active,
+    1,
+  );
+
   assert.equal(
     sqlite.prepare("SELECT coins FROM users WHERE id='rocket-user-1'").get().coins,
     beforeFrameWinner,
@@ -183,6 +207,42 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
   });
   assert.equal(full.status, 409);
   assert.equal(full.body.error, "reward_claims_full");
+  sqlite.close();
+});
+
+test("legacy pending frame claims are delivered to inventory when checked", async () => {
+  const { sqlite, roomId, request, timestamp } = await fixture();
+  sqlite.prepare(`INSERT INTO rocket_reward_claims
+    (id,room_id,rocket_level,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at)
+    VALUES(?,?,?,?,?,'frame',0,1,'pending_assets',?)`).run(
+      "legacy-frame-claim", roomId, 1, "1-3", "rocket-user-0", timestamp - 86400000 * 30,
+    );
+
+  const status = await request(
+    `/api/rooms/${roomId}/rocket-reward?level=1`,
+    { userId: "rocket-user-0" },
+  );
+  assert.equal(status.status, 200);
+  assert.equal(status.body.claim.reward_type, "frame");
+  assert.equal(status.body.claim.frame_id, "rocket_frame_aurora");
+  assert.equal(status.body.claim.frame_delivery_status, "delivered");
+  const inventory = sqlite.prepare(
+    "SELECT item_id,expires_at FROM user_cosmetics WHERE user_id=? AND kind='frame'",
+  ).get("rocket-user-0");
+  assert.equal(inventory.item_id, "rocket_frame_aurora");
+  assert.ok(inventory.expires_at > Date.now());
+  sqlite.close();
+});
+
+test("Rocket reward-only frames cannot be purchased from the Store", async () => {
+  const { sqlite, request } = await fixture();
+  const result = await request("/api/cosmetics/purchase", {
+    method: "POST",
+    userId: "rocket-user-0",
+    body: { user_id: "rocket-user-0", item_id: "rocket_frame_aurora" },
+  });
+  assert.equal(result.status, 403);
+  assert.equal(result.body.error, "reward_only_item");
   sqlite.close();
 });
 
