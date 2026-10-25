@@ -557,6 +557,14 @@ class _RoomScreenState extends State<RoomScreen> {
   Map<String, num> _rocketProgressState(int total) =>
       calculateRocketProgress(total);
 
+  int get _currentRocketLevel {
+    final completed =
+        _rocketProgressState(roomGiftLifetimeTotal)['completed']!.toInt();
+    return completed >= _rocketStageTargets.length
+        ? _rocketStageTargets.length
+        : completed + 1;
+  }
+
   Future<void> _showRocketPanel() async {
     await _loadRoomGiftRanking();
     if (!mounted) return;
@@ -693,7 +701,10 @@ class _RoomScreenState extends State<RoomScreen> {
                       ),
                       const Expanded(
                         child: Center(
-                          child: RoomStealthRocketLogo(size: 132),
+                          child: RoomStealthRocketLogo(
+                            size: 132,
+                            level: currentLevel,
+                          ),
                         ),
                       ),
                     ],
@@ -7365,7 +7376,10 @@ class _RoomScreenState extends State<RoomScreen> {
                     key: const Key('room-rocket-floating-button'),
                     radius: 24,
                     onTap: _showRocketPanel,
-                    child: const RoomStealthRocketLogo(size: 42),
+                    child: RoomStealthRocketLogo(
+                      size: 42,
+                      level: _currentRocketLevel,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 3),
