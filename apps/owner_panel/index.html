@@ -274,8 +274,26 @@
 
         <section class="view" data-view-panel="banners">
           <article class="panel"><div class="panel-head"><div><h2>Banners</h2><p>Create/edit/schedule/disable app banners.</p></div><button id="reloadBanners" class="secondary">Reload</button></div>
-            <div class="form-grid"><label>ID<input id="bannerId" /></label><label>Name<input id="bannerName" /></label><label>Asset key<input id="bannerAsset" /></label><label>Link<input id="bannerLink" placeholder="welcome / officials / rankings / discover / room:ID" /></label><label>Start timestamp (ms)<input id="bannerStart" type="number" /></label><label>End timestamp (ms)<input id="bannerEnd" type="number" /></label><label class="check"><input id="bannerEnabled" type="checkbox" checked /> Enabled</label></div>
-            <div class="action-row"><button id="saveBanner" class="primary">Save Banner</button><button id="addDefaultBanners" class="secondary">Add Welcome + Official Banners</button></div><div id="bannerList" class="stack"></div>
+            <div class="form-grid">
+              <label>ID<input id="bannerId" placeholder="e.g. summer-event" /></label>
+              <label>Name<input id="bannerName" placeholder="Banner title" /></label>
+              <label class="span-2">Banner image<input id="bannerImageFile" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" /></label>
+              <label class="span-2">Asset key / image URL<input id="bannerAsset" placeholder="Upload an image or paste an existing asset key / https URL" /></label>
+              <label class="span-2">Tap destination<input id="bannerLink" placeholder="welcome / officials / rankings / discover / room:ID / https://..." /></label>
+              <label>Start timestamp (ms)<input id="bannerStart" type="number" /></label>
+              <label>End timestamp (ms)<input id="bannerEnd" type="number" /></label>
+              <label class="check"><input id="bannerEnabled" type="checkbox" checked /> Enabled</label>
+            </div>
+            <div class="action-row">
+              <button id="uploadBannerImage" class="secondary">Upload Custom Image</button>
+              <button id="saveBanner" class="primary">Save Banner</button>
+              <button id="addDefaultBanners" class="secondary">Add Welcome + Official Banners</button>
+            </div>
+            <p id="bannerImageStatus" class="muted" role="status">Custom banner images: JPG, PNG or WebP, maximum 5 MB. Upload then Save Banner.</p>
+            <div id="bannerImagePreviewWrap" hidden style="margin:12px 0;max-width:480px;">
+              <img id="bannerImagePreview" alt="Banner image preview" style="display:block;width:100%;max-height:180px;object-fit:cover;border-radius:12px;border:1px solid #555a9b;" />
+            </div>
+            <div id="bannerList" class="stack"></div>
           </article>
         </section>
 
