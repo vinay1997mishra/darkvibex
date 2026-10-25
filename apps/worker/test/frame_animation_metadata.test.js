@@ -20,10 +20,18 @@ test("accepted frames expose per-element animation metadata", () => {
     "frame_golden_butterfly_queen",
     "frame_purple_dream_butterfly",
     "frame_neon_butterfly",
+    "frame_crystal_aurora",
+    "frame_neon_comet",
+    "frame_rose_galaxy",
+    "frame_solar_empress",
+    "frame_emerald_dragon",
   ]) {
     assert.ok(cosmeticsSource.includes(`id: "${id}"`), `missing catalog item ${id}`);
   }
   assert.ok(cosmeticsSource.includes('animation_type: "butterfly_wings_flight"'));
+  for (const type of ["aurora_orbit", "comet_trail", "rose_orbit", "crown_radiance", "dragon_wings"]) {
+    assert.ok(cosmeticsSource.includes(`animation_type: "${type}"`), `missing animation type ${type}`);
+  }
 });
 
 // Deploy gate: frame animation metadata is live with the mobile motif renderer.
