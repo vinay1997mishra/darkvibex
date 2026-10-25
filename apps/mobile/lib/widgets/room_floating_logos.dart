@@ -534,8 +534,9 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
               final bottom =
                   74.0 + constraints.maxHeight * 1.15 * flight;
               final accent = accentColorForLevel(widget.level);
-              final rocketScale = 1.0 +
-                  .11 * (1.0 - ((raw - .07) / .2).clamp(0.0, 1.0));
+              final rocketScale = (1.0 +
+                      .11 * (1.0 - ((raw - .07) / .2).clamp(0.0, 1.0)))
+                  .toDouble();
 
               return Transform.translate(
                 offset: Offset(shakeX, shakeY),
@@ -869,7 +870,9 @@ class _RocketLaunchTrailPainter extends CustomPainter {
           ..color = (i.isEven
                   ? const Color(0xFFB7C7E5)
                   : const Color(0xFF8B8DEB))
-              .withValues(alpha: ((.19 - age * .45).clamp(0.0, .19)) * fade)
+              .withValues(
+                alpha: ((.19 - age * .45).clamp(0.0, .19).toDouble()) * fade,
+              )
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
       );
     }
