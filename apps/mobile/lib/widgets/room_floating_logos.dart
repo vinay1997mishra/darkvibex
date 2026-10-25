@@ -125,11 +125,11 @@ class _StealthRocketPainter extends CustomPainter {
       Color(0xFF713BC0),
       Color(0xFF0A9479),
       Color(0xFFB8294B),
-      Color(0xFFB87917),
+      Color(0xFF8B7CFF),
       Color(0xFFB52FB3),
       Color(0xFF078DAE),
       Color(0xFF5842C8),
-      Color(0xFFCBB66D),
+      Color(0xFF50D8FF),
     ];
     const accentColors = <Color>[
       Color(0xFF57E9FF),
@@ -137,11 +137,11 @@ class _StealthRocketPainter extends CustomPainter {
       Color(0xFFD06BFF),
       Color(0xFF62FFD1),
       Color(0xFFFF5B83),
-      Color(0xFFFFD45A),
+      Color(0xFF50D8FF),
       Color(0xFFFF83E6),
       Color(0xFF54F4FF),
       Color(0xFFAFA0FF),
-      Color(0xFFFFF0A5),
+      Color(0xFFEAF5FF),
     ];
     final bodyColor = bodyColors[stage - 1];
     final accentColor = accentColors[stage - 1];
