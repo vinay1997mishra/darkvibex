@@ -561,6 +561,7 @@ class _RoomScreenState extends State<RoomScreen> {
           ? Map<String, dynamic>.from(rawClaim)
           : null;
       var alreadyClaimed = claim != null;
+      var canClaim = status['can_claim'] == true;
       var claiming = false;
       var message = '';
       if (claim != null) {
@@ -661,7 +662,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     ),
                   ),
                 ],
-                if (status['can_claim'] != true && !alreadyClaimed && message.isEmpty) ...<Widget>[
+                if (!canClaim && !alreadyClaimed && message.isEmpty) ...<Widget>[
                   const SizedBox(height: 12),
                   const Text(
                     'This chest has no claimable rewards remaining.',
@@ -672,7 +673,7 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
             actions: <Widget>[
-              if (!alreadyClaimed && status['can_claim'] == true)
+              if (!alreadyClaimed && canClaim)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -705,6 +706,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             setDialogState(() {
                               claiming = false;
                               if (result?['ok'] == true) {
+                                canClaim = false;
                                 claim = Map<String, dynamic>.from(result!);
                                 alreadyClaimed = true;
                                 if (claim['reward_type']?.toString() == 'frame') {
@@ -716,8 +718,10 @@ class _RoomScreenState extends State<RoomScreen> {
                                       : 'Congratulations! ${_formatRocketRewardCoins(amount)} Coins have been added to your wallet.';
                                 }
                               } else if (result?['error']?.toString() == 'reward_claims_full') {
+                                canClaim = false;
                                 message = 'All rewards for this Rocket chest have already been claimed.';
                               } else if (result?['error']?.toString() == 'rocket_target_not_reached') {
+                                canClaim = false;
                                 message = 'This Rocket target has not been reached yet.';
                               } else {
                                 message = 'The reward could not be claimed. Please try again.';
