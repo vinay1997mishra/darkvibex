@@ -538,7 +538,7 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
                     ),
                   ),
                   Positioned(
-                    left: math.max(0.0, left),
+                    left: math.max(0.0, left).toDouble(),
                     bottom: bottom,
                     child: Opacity(
                       opacity: fade,
@@ -653,7 +653,7 @@ class _RocketExhaustPainter extends CustomPainter {
       final flicker = math.sin(progress * 35 + seed * 2.4);
       final x = w * (.16 + (seed % 5) * .17) + flicker * w * .09;
       final y = h * (.23 + (seed % 4) * .18) * pulse;
-      final radius = w * (.018 + ((i % 3) * .008));
+      final radius = (w * (.018 + ((i % 3) * .008))).toDouble();
       canvas.drawCircle(
         Offset(x, y),
         radius,
@@ -732,7 +732,7 @@ class _RocketLaunchTrailPainter extends CustomPainter {
       };
       canvas.drawCircle(
         position,
-        (1.3 + (i % 3) * .65) * (1.0 - age * 1.3),
+        ((1.3 + (i % 3) * .65) * (1.0 - age * 1.3)).toDouble(),
         Paint()
           ..color = particleColor.withValues(alpha: particleFade * .95)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.4),
@@ -752,7 +752,7 @@ class _RocketLaunchTrailPainter extends CustomPainter {
       );
       canvas.drawCircle(
         point,
-        1.2 + (i % 2) * .7,
+        (1.2 + (i % 2) * .7).toDouble(),
         Paint()..color = Colors.white.withValues(alpha: glintFade * .85),
       );
     }
