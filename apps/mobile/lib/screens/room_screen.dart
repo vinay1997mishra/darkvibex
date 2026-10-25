@@ -76,6 +76,9 @@ class _RoomScreenState extends State<RoomScreen> {
   List<Map<String, dynamic>> roomMembers = <Map<String, dynamic>>[];
   int roomGiftLifetimeTotal = 0;
   List<Map<String, dynamic>> roomGiftRanking = <Map<String, dynamic>>[];
+  bool _roomGiftRankingInitialized = false;
+  int _lastObservedRocketCompleted = 0;
+  OverlayEntry? _rocketLaunchOverlay;
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
@@ -384,6 +387,22 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  String _roomMessageEventKey(Map<String, dynamic> message) {
+    final id = message['id'] ?? message['message_id'] ?? message['messageId'];
+    if (id != null && id.toString().isNotEmpty) return 'id:${id.toString()}';
+    return <String>[
+      message['user_id']?.toString() ?? '',
+      message['created_at']?.toString() ?? '',
+      message['text']?.toString() ?? '',
+      message['image_key']?.toString() ?? '',
+    ].join('|');
+  }
+
+  bool _isRoomGiftAnnouncement(Map<String, dynamic> message) {
+    final text = message['text']?.toString() ?? '';
+    return text.startsWith('🎁 ') && text.contains(' sent ') && text.contains(' to ');
+  }
+
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     await _ensureRoomChatClearMarkerLoaded();
@@ -409,12 +428,21 @@ class _RoomScreenState extends State<RoomScreen> {
         .toList();
     _syncSeatReactions(next);
     if (!mounted || next.toString() == chat.toString()) return;
+    final previousMessageKeys = chat.map(_roomMessageEventKey).toSet();
+    final hasNewGiftAnnouncement = next.any(
+      (message) => _isRoomGiftAnnouncement(message) &&
+          !previousMessageKeys.contains(_roomMessageEventKey(message)),
+    );
     setState(() {
       chat
         ..clear()
         ..addAll(next);
     });
     _scrollChatToLatest();
+    // Other room members learn about a gift through the existing room-chat
+    // polling. Refresh totals only when a new gift event arrives, rather than
+    // adding a high-frequency room-ranking poll for every participant.
+    if (hasNewGiftAnnouncement) unawaited(_loadRoomGiftRanking());
   }
 
   static const _legalVersion = 'darkvibex-terms-privacy-2026-10-v1';
@@ -480,22 +508,69 @@ class _RoomScreenState extends State<RoomScreen> {
     return true;
   }
 
+  void _showRocketLaunch(int level) {
+    if (!mounted || !effectsEnabled || !rocketDrawNoticeEnabled) return;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    final previous = _rocketLaunchOverlay;
+    if (previous != null) {
+      previous.remove();
+      previous.dispose();
+      _rocketLaunchOverlay = null;
+    }
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => RoomRocketLaunchEffect(
+        level: level,
+        onFinished: () {
+          if (!identical(_rocketLaunchOverlay, entry)) return;
+          _rocketLaunchOverlay = null;
+          entry.remove();
+          entry.dispose();
+        },
+      ),
+    );
+    _rocketLaunchOverlay = entry;
+    overlay.insert(entry);
+  }
+
   Future<void> _loadRoomGiftRanking() async {
     if (!widget.state.backendConnected) return;
     final value =
         await widget.state.backend.roomGiftRanking(roomId: widget.room.id);
     if (!mounted || value?['ok'] != true) return;
     final rawRanking = value?['ranking'];
+    final nextTotal =
+        int.tryParse(value?['lifetime_total']?.toString() ?? '') ?? 0;
+    final nextCompleted = _rocketProgressState(nextTotal)['completed']!.toInt();
+    final wasInitialized = _roomGiftRankingInitialized;
+    final previouslyObservedCompleted = _lastObservedRocketCompleted;
+
     setState(() {
-      roomGiftLifetimeTotal =
-          int.tryParse(value?['lifetime_total']?.toString() ?? '') ?? 0;
+      // Lifetime room totals should never move backwards if overlapping API
+      // responses return out of order.
+      if (nextTotal >= roomGiftLifetimeTotal) {
+        roomGiftLifetimeTotal = nextTotal;
+      }
       roomGiftRanking = rawRanking is List
           ? rawRanking
               .whereType<Map>()
               .map((row) => Map<String, dynamic>.from(row))
               .toList(growable: false)
           : <Map<String, dynamic>>[];
+      _roomGiftRankingInitialized = true;
+      if (nextCompleted > _lastObservedRocketCompleted) {
+        _lastObservedRocketCompleted = nextCompleted;
+      }
     });
+
+    // Do not fire old milestones on initial room load. A shared guard makes
+    // concurrent refreshes launch only once per newly reached stage.
+    if (wasInitialized && nextCompleted > previouslyObservedCompleted) {
+      _showRocketLaunch(nextCompleted.clamp(1, _rocketStageTargets.length).toInt());
+    }
   }
 
   String _compactRoomCoins(int value) {
@@ -513,6 +588,14 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Map<String, num> _rocketProgressState(int total) =>
       calculateRocketProgress(total);
+
+  int get _currentRocketLevel {
+    final completed =
+        _rocketProgressState(roomGiftLifetimeTotal)['completed']!.toInt();
+    return completed >= _rocketStageTargets.length
+        ? _rocketStageTargets.length
+        : completed + 1;
+  }
 
   Future<void> _showRocketPanel() async {
     await _loadRoomGiftRanking();
@@ -648,9 +731,12 @@ class _RoomScreenState extends State<RoomScreen> {
                           },
                         ),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Center(
-                          child: RoomStealthRocketLogo(size: 132),
+                          child: RoomStealthRocketLogo(
+                            size: 132,
+                            level: currentLevel,
+                          ),
                         ),
                       ),
                     ],
@@ -1525,6 +1611,12 @@ class _RoomScreenState extends State<RoomScreen> {
 
   @override
   void dispose() {
+    final rocketOverlay = _rocketLaunchOverlay;
+    _rocketLaunchOverlay = null;
+    if (rocketOverlay != null) {
+      rocketOverlay.remove();
+      rocketOverlay.dispose();
+    }
     memberRefreshTimer?.cancel();
     messageRefreshTimer?.cancel();
     settingsRefreshTimer?.cancel();
@@ -7316,7 +7408,10 @@ class _RoomScreenState extends State<RoomScreen> {
                     key: const Key('room-rocket-floating-button'),
                     radius: 24,
                     onTap: _showRocketPanel,
-                    child: const RoomStealthRocketLogo(size: 42),
+                    child: RoomStealthRocketLogo(
+                      size: 42,
+                      level: _currentRocketLevel,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 3),
