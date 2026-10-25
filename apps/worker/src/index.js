@@ -81,6 +81,7 @@ import {
   roomFollowState,
   sampleLampMicProgress,
 } from "./aladdin_lamp.js";
+import { handleRocketRewardRoute } from "./rocket_rewards.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -3211,6 +3212,12 @@ async function handleApi(request, env, url) {
       return json({ok:false,error:guardedFeature[1]},{status:403});
     }
   }
+
+  const rocketRewardResponse = await handleRocketRewardRoute({
+    request, env, url, parts, db, json, requireSession,
+    verifySessionToken, bearerToken, now, newId: id, ownerSetting,
+  });
+  if (rocketRewardResponse) return rocketRewardResponse;
 
   if (url.pathname === "/api/push/device" && request.method === "POST") {
     const body = await bodyJson(request);

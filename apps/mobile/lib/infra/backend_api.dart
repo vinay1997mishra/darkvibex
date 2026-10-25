@@ -658,6 +658,27 @@ class BackendApi {
         '/api/rooms/${Uri.encodeComponent(roomId)}/gift-ranking',
       );
 
+  Future<Map<String, dynamic>?> roomRocketRewardStatus({
+    required String roomId,
+    required int rocketLevel,
+  }) =>
+      _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/rocket-reward?level=$rocketLevel',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> claimRoomRocketReward({
+    required String roomId,
+    required int rocketLevel,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/rocket-reward/claim',
+        body: <String, dynamic>{'rocket_level': rocketLevel},
+        returnErrorBody: true,
+      );
+
   Future<List<Map<String, dynamic>>> roomMessages({required String roomId}) async {
     final value = await _json(
       'GET',
