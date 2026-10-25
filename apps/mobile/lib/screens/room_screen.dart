@@ -539,7 +539,7 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   String _formatRocketRewardCoins(int value) => value.toString().replaceAllMapped(
-        RegExp(r'(\\d)(?=(\\d{3})+(?!\\d))'),
+        RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
         (match) => '${match[1]},',
       );
 
