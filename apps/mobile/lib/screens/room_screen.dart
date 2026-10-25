@@ -79,6 +79,8 @@ class _RoomScreenState extends State<RoomScreen> {
   bool _roomGiftRankingInitialized = false;
   int _lastObservedRocketCompleted = 0;
   OverlayEntry? _rocketLaunchOverlay;
+  bool _rocketRewardDialogShowing = false;
+  final Set<int> _shownRocketRewardDialogs = <int>{};
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
@@ -536,6 +538,208 @@ class _RoomScreenState extends State<RoomScreen> {
     overlay.insert(entry);
   }
 
+  String _formatRocketRewardCoins(int value) => value.toString().replaceAllMapped(
+        RegExp(r'(\\d)(?=(\\d{3})+(?!\\d))'),
+        (match) => '${match[1]},',
+      );
+
+  Future<void> _showRocketRewardChest(int level) async {
+    if (!mounted || _rocketRewardDialogShowing ||
+        _shownRocketRewardDialogs.contains(level)) {
+      return;
+    }
+    _rocketRewardDialogShowing = true;
+    try {
+      final status = await widget.state.backend.roomRocketRewardStatus(
+        roomId: widget.room.id,
+        rocketLevel: level,
+      );
+      if (!mounted || status?['ok'] != true) return;
+      final rawTier = status?['tier'];
+      if (rawTier is! Map) return;
+      final tier = Map<String, dynamic>.from(rawTier);
+      final rawClaim = status?['claim'];
+      Map<String, dynamic>? claim = rawClaim is Map
+          ? Map<String, dynamic>.from(rawClaim)
+          : null;
+      var alreadyClaimed = claim != null;
+      var claiming = false;
+      var message = '';
+      if (claim != null) {
+        final type = claim['reward_type']?.toString() ?? '';
+        message = type == 'frame'
+            ? 'You already claimed a frame reward. The frame artwork will be added in the next phase; this claim does not award coins.'
+            : 'You already claimed ${_formatRocketRewardCoins(int.tryParse(claim['coins']?.toString() ?? '') ?? 0)} Coins.';
+      }
+      _shownRocketRewardDialogs.add(level);
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF08173E),
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+              side: const BorderSide(color: Color(0xFFFFC94A), width: 1.2),
+            ),
+            titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
+            contentPadding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
+            actionsPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            title: Column(
+              children: <Widget>[
+                Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: <Color>[Color(0xFFFFE8A1), Color(0xFFFFB52E), Color(0xFFEC6B2D)],
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: const Color(0xFFFFB52E).withValues(alpha: .3),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.card_giftcard_rounded,
+                    color: Color(0xFF422000),
+                    size: 42,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'ROCKET REWARD CHEST',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFFFD778),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Rocket Level $level',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  '${tier['max_winners']} winners • ${status?['remaining_winners'] ?? 0} spots left',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFFE0E7FF),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'First ${tier['frame_winners']} successful claims are frame rewards (${tier['frame_days']} day validity, no Coins). Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFFBFCDF3),
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
+                ),
+                if (message.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFFFD778),
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+                if (status['can_claim'] != true && !alreadyClaimed && message.isEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'This chest has no claimable rewards remaining.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFFFFC7B8), fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+            actions: <Widget>[
+              if (!alreadyClaimed && status['can_claim'] == true)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    key: const Key('rocket-reward-claim-now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFC94A),
+                      foregroundColor: const Color(0xFF302000),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    onPressed: claiming
+                        ? null
+                        : () async {
+                            setDialogState(() {
+                              claiming = true;
+                              message = '';
+                            });
+                            final result = await widget.state.backend.claimRoomRocketReward(
+                              roomId: widget.room.id,
+                              rocketLevel: level,
+                            );
+                            if (!dialogContext.mounted) return;
+                            setDialogState(() {
+                              claiming = false;
+                              if (result?['ok'] == true) {
+                                claim = Map<String, dynamic>.from(result!);
+                                alreadyClaimed = true;
+                                if (claim?['reward_type']?.toString() == 'frame') {
+                                  message = 'You won a frame reward for ${claim?['frame_days'] ?? tier['frame_days']} day(s). The frame artwork and inventory delivery will be added in the next phase. No Coins were awarded for this claim.';
+                                } else {
+                                  final amount = int.tryParse(claim?['coins']?.toString() ?? '') ?? 0;
+                                  message = 'Congratulations! ${_formatRocketRewardCoins(amount)} Coins have been added to your wallet.';
+                                }
+                              } else if (result?['error']?.toString() == 'reward_claims_full') {
+                                message = 'All rewards for this Rocket chest have already been claimed.';
+                              } else if (result?['error']?.toString() == 'rocket_target_not_reached') {
+                                message = 'This Rocket target has not been reached yet.';
+                              } else {
+                                message = 'The reward could not be claimed. Please try again.';
+                              }
+                            });
+                          },
+                    child: Text(claiming ? 'CLAIMING…' : 'CLAIM NOW'),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text(
+                  'CLOSE',
+                  style: TextStyle(color: Color(0xFFBFCDF3), fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      _rocketRewardDialogShowing = false;
+    }
+  }
+
   Future<void> _loadRoomGiftRanking() async {
     if (!widget.state.backendConnected) return;
     final value =
@@ -569,7 +773,13 @@ class _RoomScreenState extends State<RoomScreen> {
     // Do not fire old milestones on initial room load. A shared guard makes
     // concurrent refreshes launch only once per newly reached stage.
     if (wasInitialized && nextCompleted > previouslyObservedCompleted) {
-      _showRocketLaunch(nextCompleted.clamp(1, _rocketStageTargets.length).toInt());
+      final reachedLevel =
+          nextCompleted.clamp(1, _rocketStageTargets.length).toInt();
+      _showRocketLaunch(reachedLevel);
+      // Let the launch animation finish before showing the reward chest.
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 2400), () {
+        if (mounted) unawaited(_showRocketRewardChest(reachedLevel));
+      }));
     }
   }
 
