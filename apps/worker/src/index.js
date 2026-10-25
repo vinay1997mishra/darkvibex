@@ -4112,7 +4112,30 @@ async function handleApi(request, env, url) {
       ...item,
       ...pricing[index],
     }));
-    return json({ ok: true, items: pricedItems, owned });
+    // Rocket frames appear only in the owner's Frames inventory after a
+    // valid reward claim; they do not become purchasable Store products.
+    const rocketFrameItems = owned
+      .filter((row) => row.kind === "frame" &&
+        /^rocket_frame_g[1-4]_(?:0[1-9]|1[0-9]|2[0-5])$/.test(String(row.item_id ?? "")))
+      .map((row) => {
+        const match = /^rocket_frame_g([1-4])_(\d{2})$/.exec(String(row.item_id));
+        const group = Number(match?.[1] ?? 1);
+        const slot = Number(match?.[2] ?? 1);
+        const labels = ["Levels 1–3", "Levels 4–6", "Levels 7–9", "Levels 10–12"];
+        return {
+          id: String(row.item_id),
+          kind: "frame",
+          name: `Rocket ${labels[group - 1]} • Frame ${String(slot).padStart(2, "0")}`,
+          price_coins: 0,
+          min_vip_level: 0,
+          duration_days: 0,
+          tier: group * 4,
+          animation_type: "rocket_level_frame",
+          animation_ms: 2000,
+          rocket_reward_only: true,
+        };
+      });
+    return json({ ok: true, items: [...pricedItems, ...rocketFrameItems], owned });
   }
 
   if (url.pathname === "/api/cosmetics/purchase" && request.method === "POST") {
@@ -4220,7 +4243,12 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db,userId);
     await ensureCosmeticsSchema(db);
     await ensureVipSchema(db);
-    const item=(await effectiveCosmeticCatalog(db)).find((product)=>product.id===itemId);
+    const isRocketRewardFrame =
+      /^rocket_frame_g[1-4]_(?:0[1-9]|1[0-9]|2[0-5])$/.test(itemId);
+    const item=(await effectiveCosmeticCatalog(db)).find((product)=>product.id===itemId) ??
+      (isRocketRewardFrame
+        ? { id:itemId, kind:"frame", min_vip_level:0, price_coins:0, duration_days:0 }
+        : null);
     if (!item) return json({ok:false,error:"cosmetic_not_found"}, {status:404});
     const vip=await getVipStatus(db,userId,now());
     if (Number(item.min_vip_level ?? 0)>0 &&
