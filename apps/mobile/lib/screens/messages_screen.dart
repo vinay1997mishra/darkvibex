@@ -221,7 +221,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ],
                 ),
                 child: const Icon(
-                  Icons.graphic_eq_rounded,
+                  Icons.verified_rounded,
                   color: Colors.white,
                   size: 25,
                 ),
