@@ -316,7 +316,7 @@ export async function handleRocketRewardRoute({
       tier.frameWinners,
       tier.frameWinners, randomCoins,
       tier.frameWinners, tier.frameDays,
-      tier.frameWinners, frameGroupKey, timestamp,
+      tier.frameWinners, tier.frameWinners, frameGroupKey, timestamp,
       tier.maxWinners, target,
       roomId, userId,
       roomId, tier.group, userId,
