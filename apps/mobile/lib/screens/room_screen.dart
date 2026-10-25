@@ -80,7 +80,6 @@ class _RoomScreenState extends State<RoomScreen> {
   int _lastObservedRocketCompleted = 0;
   OverlayEntry? _rocketLaunchOverlay;
   bool _rocketRewardDialogShowing = false;
-  final Set<int> _shownRocketRewardDialogs = <int>{};
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
@@ -544,8 +543,7 @@ class _RoomScreenState extends State<RoomScreen> {
       );
 
   Future<void> _showRocketRewardChest(int level) async {
-    if (!mounted || _rocketRewardDialogShowing ||
-        _shownRocketRewardDialogs.contains(level)) {
+    if (!mounted || _rocketRewardDialogShowing) {
       return;
     }
     _rocketRewardDialogShowing = true;
@@ -571,7 +569,6 @@ class _RoomScreenState extends State<RoomScreen> {
             ? 'You already claimed a frame reward. The frame artwork will be added in the next phase; this claim does not award coins.'
             : 'You already claimed ${_formatRocketRewardCoins(int.tryParse(claim['coins']?.toString() ?? '') ?? 0)} Coins.';
       }
-      _shownRocketRewardDialogs.add(level);
       await showDialog<void>(
         context: context,
         barrierDismissible: true,
