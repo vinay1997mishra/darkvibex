@@ -516,7 +516,7 @@ class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
                   .clamp(0.0, 1.0)
                   .toDouble();
               final rocketSize = 58.0 + progress * 24.0;
-              final trailHeight = 24.0 + (1.0 - progress) * 58.0;
+              final trailHeight = 18.0 + progress * 96.0;
               final left = constraints.maxWidth -
                   rocketSize -
                   12.0 -
