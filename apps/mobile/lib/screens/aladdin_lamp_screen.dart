@@ -349,7 +349,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFFFDE4D);
+    const gold = Color(0xFF8B7CFF);
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: DecoratedBox(
@@ -599,7 +599,7 @@ class _LampTaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFFFD94A);
+    const gold = Color(0xFF50D8FF);
     final showGoFinish =
         isHost && !task.completed && !task.claimed;
     return Container(
@@ -755,7 +755,7 @@ class _MagicLampPainter extends CustomPainter {
       ..shader = const LinearGradient(
         colors: <Color>[
           Color(0xFFFFF09B),
-          Color(0xFFFFC31F),
+          Color(0xFF8B7CFF),
           Color(0xFFDA8D00),
         ],
       ).createShader(
