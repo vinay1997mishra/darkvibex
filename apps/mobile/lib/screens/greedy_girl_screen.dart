@@ -499,7 +499,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                         : 'Greedy Girl',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Color(0xFFFFE09A),
+                  color: Color(0xFF50D8FF),
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                   letterSpacing: .4,
@@ -620,7 +620,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                                 spreadRadius: 2,
                               ),
                               BoxShadow(
-                                color: Color(0x88FFCF4A),
+                                color: Color(0x8850D8FF),
                                 blurRadius: 8,
                               ),
                             ],
@@ -630,7 +630,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                               '$seconds',
                               key: const Key('greedy-girl-countdown-number'),
                               style: TextStyle(
-                                color: const Color(0xFFFFE7A2),
+                                color: const Color(0xFF50D8FF),
                                 fontSize: timerSize * .44,
                                 fontWeight: FontWeight.w900,
                                 height: 1,
@@ -665,7 +665,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                       ? 'Choose amount  →  Choose food'
                       : 'Result time • next round in ${(remainingMs / 1000).ceil()}s',
                   style: const TextStyle(
-                    color: Color(0xFFFFE4A8),
+                    color: Color(0xFF50D8FF),
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
