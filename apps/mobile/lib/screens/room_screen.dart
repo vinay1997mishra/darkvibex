@@ -674,7 +674,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     child: VipAnimatedFrame(
                                       size: 44,
                                       enabled: true,
-                                      level: (rocketFrameGroupIndex(frameId) * 4).clamp(1, 18),
+                                      level: (rocketFrameGroupIndex(frameId) * 4).clamp(1, 18).toInt(),
                                       styleId: frameId,
                                       child: Container(
                                         decoration: BoxDecoration(
