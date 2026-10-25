@@ -31,12 +31,12 @@ class VehicleShowcase extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = level >= 18
-        ? const [Color(0xFFFFE8A3), Color(0xFFFF922E), Color(0xFFFF3E84)]
+        ? const [Color(0xFFBFA7FF), Color(0xFFFF922E), Color(0xFFFF3E84)]
         : level >= 16
-            ? const [Color(0xFFFFE8A3), Color(0xFFEC4B69), Color(0xFFFF8E40)]
+            ? const [Color(0xFFBFA7FF), Color(0xFFEC4B69), Color(0xFFFF8E40)]
             : level >= 12
-            ? const [Color(0xFFFFE8A3), Color(0xFFFFB52E), Color(0xFFB675FF)]
-            : const [Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFFFFD36A)];
+            ? const [Color(0xFFBFA7FF), Color(0xFFFFB52E), Color(0xFFB675FF)]
+            : const [Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFF50D8FF)];
     return SizedBox.expand(child: CustomPaint(painter: _EntryVehiclePainter(.2, colors, level)));
   }
 }
@@ -63,12 +63,12 @@ class _VehicleEntryEffectState extends State<VehicleEntryEffect>
   @override
   Widget build(BuildContext context) {
     final colors = widget.level >= 18
-        ? const [Color(0xFFFFE8A3), Color(0xFFFF922E), Color(0xFFFF3E84)]
+        ? const [Color(0xFFBFA7FF), Color(0xFFFF922E), Color(0xFFFF3E84)]
         : widget.level >= 16
-            ? const [Color(0xFFFFE8A3), Color(0xFFEC4B69), Color(0xFFFF8E40)]
+            ? const [Color(0xFFBFA7FF), Color(0xFFEC4B69), Color(0xFFFF8E40)]
             : widget.level >= 12
-            ? const [Color(0xFFFFE8A3), Color(0xFFFFB52E), Color(0xFFB675FF)]
-            : const [Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFFFFD36A)];
+            ? const [Color(0xFFBFA7FF), Color(0xFFFFB52E), Color(0xFFB675FF)]
+            : const [Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFF50D8FF)];
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
