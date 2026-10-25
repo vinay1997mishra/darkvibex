@@ -81,7 +81,7 @@ class _VipSupportScreenState extends State<VipSupportScreen> {
               final ticket = rows[index];
               final open = ticket['status'] == 'open';
               return Card(child: ListTile(
-                leading: Icon(open ? Icons.support_agent : Icons.check_circle_outline, color: open ? const Color(0xFFFFD36A) : null),
+                leading: Icon(open ? Icons.support_agent : Icons.check_circle_outline, color: open ? const TinniPalette.brightGold : null),
                 title: Text(ticket['subject']?.toString() ?? 'Support ticket'),
                 subtitle: Text('Updated ${_date(ticket['updated_at'])}'),
                 trailing: Chip(label: Text(open ? 'Open' : 'Closed')),
