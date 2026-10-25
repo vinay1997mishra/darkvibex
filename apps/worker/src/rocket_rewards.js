@@ -78,18 +78,19 @@ async function ensureRocketRewardSchema(db) {
       id TEXT PRIMARY KEY,
       room_id TEXT NOT NULL,
       rocket_level INTEGER NOT NULL CHECK (rocket_level BETWEEN 1 AND 12),
+      reward_group TEXT NOT NULL CHECK (reward_group IN ('1-3','4-6','7-9','10-12')),
       user_id TEXT NOT NULL,
       reward_type TEXT NOT NULL CHECK (reward_type IN ('coins','frame')),
       coin_amount INTEGER NOT NULL DEFAULT 0 CHECK (coin_amount >= 0),
       frame_days INTEGER NOT NULL DEFAULT 0 CHECK (frame_days >= 0),
       frame_delivery_status TEXT NOT NULL DEFAULT 'not_applicable',
       claimed_at INTEGER NOT NULL,
-      UNIQUE (room_id, rocket_level, user_id),
+      UNIQUE (room_id, reward_group, user_id),
       FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_rocket_reward_claims_pool
-      ON rocket_reward_claims(room_id, rocket_level, claimed_at)`),
+      ON rocket_reward_claims(room_id, reward_group, claimed_at)`),
   ]);
 }
 
@@ -159,12 +160,12 @@ export async function handleRocketRewardRoute({
   ).bind(roomId).first();
   const lifetimeTotal = Number(totalRow?.lifetime_total ?? 0);
   const poolRow = await db.prepare(
-    "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND rocket_level=?",
-  ).bind(roomId, requestedLevel).first();
+    "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND reward_group=?",
+  ).bind(roomId, tier.group).first();
   const claimedCount = Number(poolRow?.claimed_count ?? 0);
   const existingRow = await db.prepare(
-    "SELECT reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND rocket_level=? AND user_id=? LIMIT 1",
-  ).bind(roomId, requestedLevel, userId).first();
+    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+  ).bind(roomId, tier.group, userId).first();
   const existingClaim = asPublicClaim(existingRow);
 
   if (isStatus) {
@@ -229,12 +230,12 @@ export async function handleRocketRewardRoute({
   await db.batch([
     db.prepare(`WITH pool_state AS (
         SELECT
-          (SELECT COUNT(*) FROM rocket_reward_claims WHERE room_id=? AND rocket_level=?) AS claimed_count,
+          (SELECT COUNT(*) FROM rocket_reward_claims WHERE room_id=? AND reward_group=?) AS claimed_count,
           (SELECT COALESCE(SUM(coin_cost),0) FROM gift_events WHERE room_id=?) AS lifetime_total
       )
       INSERT OR IGNORE INTO rocket_reward_claims
-        (id,room_id,rocket_level,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at)
-      SELECT ?,?,?,?,
+        (id,room_id,rocket_level,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at)
+      SELECT ?,?,?,?,?, 
         CASE WHEN claimed_count < ? THEN 'frame' ELSE 'coins' END,
         CASE WHEN claimed_count < ? THEN 0 ELSE ? END,
         CASE WHEN claimed_count < ? THEN ? ELSE 0 END,
@@ -245,17 +246,17 @@ export async function handleRocketRewardRoute({
         AND lifetime_total >= ?
         AND EXISTS (SELECT 1 FROM room_members WHERE room_id=? AND user_id=?)
         AND NOT EXISTS (
-          SELECT 1 FROM rocket_reward_claims WHERE room_id=? AND rocket_level=? AND user_id=?
+          SELECT 1 FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=?
         )`).bind(
-      roomId, requestedLevel, roomId,
-      claimId, roomId, requestedLevel, userId,
+      roomId, tier.group, roomId,
+      claimId, roomId, requestedLevel, tier.group, userId,
       tier.frameWinners,
       tier.frameWinners, randomCoins,
       tier.frameWinners, tier.frameDays,
       tier.frameWinners, timestamp,
       tier.maxWinners, target,
       roomId, userId,
-      roomId, requestedLevel, userId,
+      roomId, tier.group, userId,
     ),
     db.prepare(`UPDATE users
       SET coins = coins + (
@@ -281,12 +282,12 @@ export async function handleRocketRewardRoute({
   ]);
 
   const finalRow = await db.prepare(
-    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND rocket_level=? AND user_id=? LIMIT 1",
-  ).bind(roomId, requestedLevel, userId).first();
+    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+  ).bind(roomId, tier.group, userId).first();
   if (!finalRow) {
     const latestCount = await db.prepare(
-      "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND rocket_level=?",
-    ).bind(roomId, requestedLevel).first();
+      "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND reward_group=?",
+    ).bind(roomId, tier.group).first();
     return json({
       ok: false,
       error: Number(latestCount?.claimed_count ?? 0) >= tier.maxWinners
@@ -297,8 +298,8 @@ export async function handleRocketRewardRoute({
 
   const claim = asPublicClaim(finalRow);
   const finalCount = await db.prepare(
-    "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND rocket_level=?",
-  ).bind(roomId, requestedLevel).first();
+    "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND reward_group=?",
+  ).bind(roomId, tier.group).first();
   return json({
     ok: true,
     already_claimed: String(finalRow.id ?? "") !== claimId,
