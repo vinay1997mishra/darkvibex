@@ -45,6 +45,19 @@ const Set<String> _freeAnimatedFrameIds = <String>{
   'frame_golden_butterfly_queen',
   'frame_purple_dream_butterfly',
   'frame_neon_butterfly',
+  'frame_crystal_aurora',
+  'frame_neon_comet',
+  'frame_rose_galaxy',
+  'frame_solar_empress',
+  'frame_emerald_dragon',
+};
+
+const Set<String> _premiumVectorFrameIds = <String>{
+  'frame_crystal_aurora',
+  'frame_neon_comet',
+  'frame_rose_galaxy',
+  'frame_solar_empress',
+  'frame_emerald_dragon',
 };
 
 const Set<String> _premiumButterflyFrameIds = <String>{
@@ -121,6 +134,38 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   Widget build(BuildContext context) {
     final visualStyleId = _visualFrameStyleId(widget.styleId);
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
+
+    if (widget.enabled && _premiumVectorFrameIds.contains(widget.styleId)) {
+      // These five shop frames use native vector artwork so every ornament can
+      // animate smoothly without rotating or shrinking the user's avatar.
+      return SizedBox.square(
+        dimension: widget.size,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            SizedBox.square(dimension: widget.size, child: widget.child),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: 1.42,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => CustomPaint(
+                      painter: _PremiumVectorFramePainter(
+                        styleId: widget.styleId!,
+                        phase: _controller.value,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (widget.enabled &&
         _premiumButterflyFrameIds.contains(visualStyleId)) {
@@ -265,6 +310,433 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
       ),
     );
   }
+}
+
+
+class _PremiumVectorPalette {
+  const _PremiumVectorPalette({
+    required this.light,
+    required this.accent,
+    required this.deep,
+  });
+
+  final Color light;
+  final Color accent;
+  final Color deep;
+
+  static _PremiumVectorPalette forStyle(String styleId) => switch (styleId) {
+        'frame_crystal_aurora' => const _PremiumVectorPalette(
+            light: Color(0xFFE3FDFF),
+            accent: Color(0xFF5AD7FF),
+            deep: Color(0xFF5645F5),
+          ),
+        'frame_neon_comet' => const _PremiumVectorPalette(
+            light: Color(0xFFD7FFFF),
+            accent: Color(0xFF00E9FF),
+            deep: Color(0xFF1263FF),
+          ),
+        'frame_rose_galaxy' => const _PremiumVectorPalette(
+            light: Color(0xFFFFE0F5),
+            accent: Color(0xFFFF54C8),
+            deep: Color(0xFF8A35EF),
+          ),
+        'frame_solar_empress' => const _PremiumVectorPalette(
+            light: Color(0xFFFFF7C3),
+            accent: Color(0xFFFFC247),
+            deep: Color(0xFFE56A11),
+          ),
+        'frame_emerald_dragon' => const _PremiumVectorPalette(
+            light: Color(0xFFD8FFE8),
+            accent: Color(0xFF36F39B),
+            deep: Color(0xFF087B59),
+          ),
+        _ => const _PremiumVectorPalette(
+            light: Color(0xFFC7F8FF),
+            accent: Color(0xFF36B6FF),
+            deep: Color(0xFF344CEB),
+          ),
+      };
+}
+
+/// Premium circular vector frames with distinct, seamless 2-second motifs.
+class _PremiumVectorFramePainter extends CustomPainter {
+  const _PremiumVectorFramePainter({
+    required this.styleId,
+    required this.phase,
+  });
+
+  final String styleId;
+  final double phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final side = size.shortestSide;
+    if (side <= 0) return;
+    final palette = _PremiumVectorPalette.forStyle(styleId);
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = side * .385;
+    final cycle = phase * math.pi * 2;
+    final pulse = .88 + .12 * ((math.sin(cycle) + 1) / 2);
+    final ringRect = Rect.fromCircle(center: center, radius: radius);
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .082
+        ..color = palette.accent.withValues(alpha: .18 * pulse)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .032
+        ..shader = SweepGradient(
+          startAngle: cycle,
+          endAngle: cycle + math.pi * 2,
+          colors: <Color>[
+            palette.light,
+            palette.accent,
+            palette.deep,
+            palette.light,
+          ],
+        ).createShader(ringRect),
+    );
+    canvas.drawCircle(
+      center,
+      radius - side * .024,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .006
+        ..color = palette.light.withValues(alpha: .88),
+    );
+
+    // Short glowing arc segments orbit the circular rim; no hard line sweeps
+    // across the avatar itself.
+    final orbitRect = Rect.fromCircle(center: center, radius: radius * 1.095);
+    for (var i = 0; i < 4; i++) {
+      canvas.drawArc(
+        orbitRect,
+        cycle + i * math.pi / 2,
+        math.pi * .16,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = side * .016
+          ..color = palette.light.withValues(alpha: .38 + .35 * pulse)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
+      );
+    }
+
+    switch (styleId) {
+      case 'frame_crystal_aurora':
+        _paintAuroraCrystals(canvas, center, radius, side, cycle, palette);
+        break;
+      case 'frame_neon_comet':
+        _paintComets(canvas, center, radius, side, cycle, palette);
+        break;
+      case 'frame_rose_galaxy':
+        _paintRoseOrbit(canvas, center, radius, side, cycle, palette);
+        break;
+      case 'frame_solar_empress':
+        _paintSolarCrown(canvas, center, radius, side, cycle, palette);
+        break;
+      case 'frame_emerald_dragon':
+        _paintDragonWings(canvas, center, radius, side, cycle, palette);
+        break;
+    }
+
+    _paintOrbitingSparkles(canvas, center, radius, side, cycle, palette);
+  }
+
+  void _paintAuroraCrystals(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    for (var i = 0; i < 8; i++) {
+      final angle = cycle / 8 + i * math.pi / 4;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * (radius * 1.105);
+      _drawDiamond(canvas, point, side * .030, palette.light, palette.accent);
+    }
+    _drawDiamond(
+      canvas,
+      center + Offset(0, -radius * 1.015),
+      side * .071,
+      palette.light,
+      palette.accent,
+    );
+    _drawDiamond(
+      canvas,
+      center + Offset(0, radius * 1.015),
+      side * .058,
+      palette.light,
+      palette.deep,
+    );
+  }
+
+  void _paintComets(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    for (var i = 0; i < 3; i++) {
+      final angle = -math.pi / 2 + cycle + i * math.pi * 2 / 3;
+      for (var trail = 4; trail >= 1; trail--) {
+        final trailAngle = angle - trail * .075;
+        final point = center +
+            Offset(math.cos(trailAngle), math.sin(trailAngle)) *
+                (radius * 1.12);
+        final alpha = .12 + .12 * (5 - trail);
+        canvas.drawCircle(
+          point,
+          side * (.008 + .0018 * (5 - trail)),
+          Paint()
+            ..color = palette.accent.withValues(alpha: alpha)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+        );
+      }
+      final head = center +
+          Offset(math.cos(angle), math.sin(angle)) * (radius * 1.12);
+      canvas.drawCircle(
+        head,
+        side * .027,
+        Paint()
+          ..color = palette.accent.withValues(alpha: .26)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      canvas.drawCircle(
+        head,
+        side * .012,
+        Paint()..color = Colors.white.withValues(alpha: .96),
+      );
+    }
+  }
+
+  void _paintRoseOrbit(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    for (var i = 0; i < 6; i++) {
+      final angle = cycle / 6 + i * math.pi / 3;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * (radius * 1.075);
+      canvas.save();
+      canvas.translate(point.dx, point.dy);
+      canvas.rotate(angle + math.pi / 2);
+      final petal = Rect.fromCenter(
+        center: Offset.zero,
+        width: side * .034,
+        height: side * .069,
+      );
+      canvas.drawOval(
+        petal,
+        Paint()
+          ..color = palette.accent.withValues(alpha: .25)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      );
+      canvas.drawOval(
+        petal,
+        Paint()..color = palette.accent.withValues(alpha: .78),
+      );
+      canvas.drawOval(
+        petal,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = side * .004
+          ..color = palette.light,
+      );
+      canvas.restore();
+    }
+    final bloom = center + Offset(0, -radius * 1.02);
+    canvas.drawCircle(
+      bloom,
+      side * (.026 + .005 * math.sin(cycle).abs()),
+      Paint()
+        ..color = palette.accent.withValues(alpha: .28)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    canvas.drawCircle(
+      bloom,
+      side * .011,
+      Paint()..color = palette.light.withValues(alpha: .96),
+    );
+  }
+
+  void _paintSolarCrown(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    final crownCenter = center + Offset(0, -radius * .935);
+    final crown = Path()
+      ..moveTo(crownCenter.dx - side * .125, crownCenter.dy + side * .035)
+      ..lineTo(crownCenter.dx - side * .105, crownCenter.dy - side * .035)
+      ..lineTo(crownCenter.dx - side * .045, crownCenter.dy + side * .005)
+      ..lineTo(crownCenter.dx - side * .018, crownCenter.dy - side * .082)
+      ..lineTo(crownCenter.dx + side * .025, crownCenter.dy + side * .002)
+      ..lineTo(crownCenter.dx + side * .077, crownCenter.dy - side * .040)
+      ..lineTo(crownCenter.dx + side * .112, crownCenter.dy + side * .035)
+      ..close();
+    canvas.drawPath(
+      crown,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[palette.light, palette.accent, palette.deep],
+        ).createShader(crown.getBounds()),
+    );
+    canvas.drawPath(
+      crown,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .006
+        ..color = palette.light.withValues(alpha: .92),
+    );
+    for (var i = 0; i < 5; i++) {
+      final x = crownCenter.dx + side * (-.09 + i * .045);
+      final y = crownCenter.dy + side * (.012 + math.sin(cycle + i) * .006);
+      canvas.drawCircle(
+        Offset(x, y),
+        side * .009,
+        Paint()
+          ..color = palette.light.withValues(alpha: .4 + .5 * ((math.sin(cycle + i) + 1) / 2)),
+      );
+    }
+  }
+
+  void _paintDragonWings(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    void wing(bool left) {
+      final anchor = center +
+          Offset(left ? -radius * .63 : radius * .63, -radius * .43);
+      canvas.save();
+      canvas.translate(anchor.dx, anchor.dy);
+      canvas.scale(left ? -1.0 : 1.0, 1);
+      final flap = .90 + .10 * math.sin(cycle * 2);
+      canvas.scale(flap, 1);
+      final path = Path()
+        ..moveTo(0, 0)
+        ..cubicTo(side * .045, -side * .080, side * .115, -side * .105, side * .155, -side * .045)
+        ..cubicTo(side * .125, -side * .020, side * .115, side * .025, side * .070, side * .030)
+        ..cubicTo(side * .045, side * .028, side * .018, side * .012, 0, 0)
+        ..close();
+      canvas.drawPath(
+        path,
+        Paint()..color = palette.accent.withValues(alpha: .68),
+      );
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = side * .006
+          ..color = palette.light.withValues(alpha: .92),
+      );
+      for (var i = 1; i <= 3; i++) {
+        canvas.drawCircle(
+          Offset(side * (.035 * i), -side * (.015 + .014 * i)),
+          side * .0045,
+          Paint()..color = palette.light.withValues(alpha: .9),
+        );
+      }
+      canvas.restore();
+    }
+
+    wing(true);
+    wing(false);
+    for (var i = 0; i < 4; i++) {
+      final angle = -math.pi / 2 + cycle / 4 + i * math.pi / 2;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * (radius * 1.08);
+      canvas.drawCircle(
+        point,
+        side * .021,
+        Paint()
+          ..color = palette.accent.withValues(alpha: .22)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
+      canvas.drawCircle(
+        point,
+        side * .009,
+        Paint()..color = palette.light.withValues(alpha: .96),
+      );
+    }
+  }
+
+  void _paintOrbitingSparkles(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    for (var i = 0; i < 8; i++) {
+      final angle = cycle / 8 + i * math.pi / 4;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * (radius * 1.13);
+      final twinkle = .20 + .60 * ((math.sin(cycle * 2 + i) + 1) / 2);
+      _drawDiamond(
+        canvas,
+        point,
+        side * (.008 + .004 * twinkle),
+        palette.light.withValues(alpha: twinkle),
+        palette.accent.withValues(alpha: twinkle),
+      );
+    }
+  }
+
+  void _drawDiamond(
+    Canvas canvas,
+    Offset center,
+    double length,
+    Color fill,
+    Color edge,
+  ) {
+    final path = Path()
+      ..moveTo(center.dx, center.dy - length)
+      ..lineTo(center.dx + length * .62, center.dy)
+      ..lineTo(center.dx, center.dy + length)
+      ..lineTo(center.dx - length * .62, center.dy)
+      ..close();
+    canvas.drawPath(path, Paint()..color = fill);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = length * .14
+        ..color = edge,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PremiumVectorFramePainter oldDelegate) =>
+      oldDelegate.styleId != styleId || oldDelegate.phase != phase;
 }
 
 class _FrameElementPainter extends CustomPainter {

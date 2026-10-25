@@ -38,6 +38,14 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     _StoreCategory('Frame', 'frame', Icons.account_box_rounded),
   ];
 
+  static const _zeroCoinBuyFrameIds = <String>{
+    'frame_crystal_aurora',
+    'frame_neon_comet',
+    'frame_rose_galaxy',
+    'frame_solar_empress',
+    'frame_emerald_dragon',
+  };
+
   List<Map<String, dynamic>> _items = const [];
   List<Map<String, dynamic>> _owned = const [];
   bool _loading = true;
@@ -574,6 +582,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     final durationDays =
         int.tryParse(item['duration_days']?.toString() ?? '') ?? 0;
     final rewardOnly = item['reward_only'] == true;
+    final zeroCoinBuy = price == 0 && _zeroCoinBuyFrameIds.contains(id);
     final canUse = requiredLevel <= 0 ||
         (widget.state.vipIsActive &&
             widget.state.vipLevel >= requiredLevel);
@@ -635,7 +644,9 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 Text(
                   rewardOnly
                       ? 'ROCKET REWARD'
-                      : (price <= 0 ? 'FREE' : '$price coins'),
+                      : zeroCoinBuy
+                          ? '0 COINS'
+                          : (price <= 0 ? 'FREE' : '$price coins'),
                   style: const TextStyle(
                     color: TinniPalette.gold,
                     fontWeight: FontWeight.w800,
@@ -682,7 +693,9 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                                     child: Text(
                                       busy
                                           ? '…'
-                                          : (price <= 0 ? 'Get Free' : 'Buy'),
+                                          : (zeroCoinBuy
+                                          ? 'Buy'
+                                          : (price <= 0 ? 'Get Free' : 'Buy')),
                                       maxLines: 1,
                                       softWrap: false,
                                     ),
