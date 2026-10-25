@@ -749,13 +749,13 @@ class _RocketExhaustPainter extends CustomPainter {
     canvas.drawPath(
       coreFlame,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: <Color>[
-            Colors.white,
-            Color(0xFFFFF6C4),
-            Color(0xFFFFA02E),
+            Colors.white.withValues(alpha: ignition),
+            const Color(0xFFFFF6C4).withValues(alpha: ignition),
+            const Color(0xFFFFA02E).withValues(alpha: ignition),
           ],
         ).createShader(Offset.zero & size),
     );
@@ -772,7 +772,7 @@ class _RocketExhaustPainter extends CustomPainter {
         radius,
         Paint()
           ..color = (i.isEven ? Colors.white : color).withValues(
-            alpha: (.78 - (i % 4) * .13).clamp(.22, .78).toDouble(),
+            alpha: (.78 - (i % 4) * .13).clamp(.22, .78).toDouble() * ignition,
           ),
       );
     }
@@ -856,9 +856,9 @@ class _RocketLaunchTrailPainter extends CustomPainter {
     // launch trail look like a single static colored line.
     for (var i = 0; i < 16; i++) {
       final lag = .015 + i * .019;
-      final fraction = (progress - lag).clamp(0.0, 1.0).toDouble();
-      final age = progress - fraction;
+      final age = progress - lag;
       if (age <= 0) continue;
+      final fraction = age.clamp(0.0, 1.0).toDouble();
       final point = Offset.lerp(start, finish, fraction)!;
       final drift = math.sin(i * 1.9 + progress * 21) * age * 45;
       final puff = Offset(point.dx + drift, point.dy + age * 42);
