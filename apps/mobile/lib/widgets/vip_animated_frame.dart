@@ -474,7 +474,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeWidth = side * .024
-        ..color = palette.light.withValues(alpha: .48)
+        ..color = palette.light.withValues(alpha: .48 * pulse)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .018),
     );
     canvas.drawArc(
