@@ -489,6 +489,8 @@ class _PremiumVectorFramePainter extends CustomPainter {
         ..color = Colors.white.withValues(alpha: .96),
     );
 
+    _paintRingRivets(canvas, center, radius, side, cycle, palette);
+
     switch (styleId) {
       case 'frame_crystal_aurora':
         _paintAuroraCrystals(canvas, center, radius, side, cycle, palette);
@@ -508,6 +510,47 @@ class _PremiumVectorFramePainter extends CustomPainter {
     }
 
     _paintOrbitingSparkles(canvas, center, radius, side, cycle, palette);
+  }
+
+  void _paintRingRivets(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    for (var i = 0; i < 12; i++) {
+      final angle = i * math.pi / 6 - math.pi / 2;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * radius;
+      final shine = .62 + .32 * ((math.sin(cycle + i * .72) + 1) / 2);
+      canvas.drawCircle(
+        point + Offset(side * .002, side * .003),
+        side * .012,
+        Paint()..color = palette.deep.withValues(alpha: .9),
+      );
+      canvas.drawCircle(
+        point,
+        side * .0085,
+        Paint()
+          ..shader = RadialGradient(
+            colors: <Color>[
+              palette.light.withValues(alpha: shine),
+              palette.accent,
+              palette.deep,
+            ],
+            stops: const <double>[0, .42, 1],
+          ).createShader(
+            Rect.fromCircle(center: point, radius: side * .009),
+          ),
+      );
+      canvas.drawCircle(
+        point + Offset(-side * .002, -side * .002),
+        side * .0024,
+        Paint()..color = Colors.white.withValues(alpha: .9 * shine),
+      );
+    }
   }
 
   void _paintAuroraCrystals(
