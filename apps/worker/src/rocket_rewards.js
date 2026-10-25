@@ -1,5 +1,5 @@
-// Rocket target chest rewards. Reward pools are per room + reached rocket level.
-// Frame reward slots are persisted now; the visual frame catalog is added in a later phase.
+// Rocket target chest rewards. Reward pools are per room + reached Rocket level.
+// Frame wins are persisted into the user's time-limited frame inventory immediately.
 export const ROCKET_REWARD_TIERS = Object.freeze([
   Object.freeze({
     minLevel: 1, maxLevel: 3, group: "1-3", label: "Rocket Levels 1–3",
@@ -49,6 +49,15 @@ export function rocketTargetForLevel(level) {
   return ROCKET_MILESTONE_TARGETS[safeLevel - 1] ?? null;
 }
 
+export function rocketFrameIdForGroup(group, slot) {
+  const groupKey = ({ "1-3": "g1", "4-6": "g2", "7-9": "g3", "10-12": "g4" })[String(group)];
+  const safeSlot = Number(slot);
+  if (!groupKey || !Number.isInteger(safeSlot) || safeSlot < 1 || safeSlot > 25) {
+    throw new TypeError("A valid Rocket reward group and frame slot are required.");
+  }
+  return `rocket_frame_${groupKey}_${String(safeSlot).padStart(2, "0")}`;
+}
+
 export function assignRocketReward(tier, claimedCount, randomValue = 0) {
   if (!tier || !Number.isInteger(claimedCount) || claimedCount < 0) {
     throw new TypeError("A reward tier and non-negative claimed count are required.");
@@ -59,7 +68,8 @@ export function assignRocketReward(tier, claimedCount, randomValue = 0) {
       reward_type: "frame",
       coin_amount: 0,
       frame_days: tier.frameDays,
-      frame_delivery_status: "pending_assets",
+      frame_id: rocketFrameIdForGroup(tier.group, claimedCount + 1),
+      frame_delivery_status: "delivered",
     };
   }
   const normalized = Math.max(0, Math.min(0.999999999999, Number(randomValue) || 0));
@@ -68,12 +78,24 @@ export function assignRocketReward(tier, claimedCount, randomValue = 0) {
     reward_type: "coins",
     coin_amount: tier.coinMin + Math.floor(normalized * range),
     frame_days: 0,
+    frame_id: null,
     frame_delivery_status: "not_applicable",
   };
 }
 
 async function ensureRocketRewardSchema(db) {
   await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_cosmetics (
+      user_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('frame','vehicle')),
+      acquired_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0,1)),
+      PRIMARY KEY (user_id, item_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_user_cosmetics_active ON user_cosmetics(user_id, kind, active, expires_at)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS rocket_reward_claims (
       id TEXT PRIMARY KEY,
       room_id TEXT NOT NULL,
@@ -83,6 +105,7 @@ async function ensureRocketRewardSchema(db) {
       reward_type TEXT NOT NULL CHECK (reward_type IN ('coins','frame')),
       coin_amount INTEGER NOT NULL DEFAULT 0 CHECK (coin_amount >= 0),
       frame_days INTEGER NOT NULL DEFAULT 0 CHECK (frame_days >= 0),
+      frame_id TEXT,
       frame_delivery_status TEXT NOT NULL DEFAULT 'not_applicable',
       claimed_at INTEGER NOT NULL,
       UNIQUE (room_id, reward_group, user_id),
@@ -92,6 +115,43 @@ async function ensureRocketRewardSchema(db) {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_rocket_reward_claims_pool
       ON rocket_reward_claims(room_id, reward_group, claimed_at)`),
   ]);
+
+  // Existing deployments may already have the table without frame_id.
+  try {
+    await db.prepare("ALTER TABLE rocket_reward_claims ADD COLUMN frame_id TEXT").run();
+  } catch (error) {
+    if (!String(error?.message ?? error).toLowerCase().includes("duplicate column")) {
+      throw error;
+    }
+  }
+
+  // Backfill frame claims created before Rocket frame artwork was integrated.
+  const pending = await db.prepare(`SELECT id,room_id,reward_group,user_id,frame_days,claimed_at
+    FROM rocket_reward_claims
+    WHERE reward_type='frame' AND frame_id IS NULL
+    ORDER BY room_id,reward_group,claimed_at,id`).all();
+  const slots = new Map();
+  const migrationStatements = [];
+  for (const row of pending.results ?? []) {
+    const poolKey = `${row.room_id}:${row.reward_group}`;
+    const slot = (slots.get(poolKey) ?? 0) + 1;
+    slots.set(poolKey, slot);
+    if (slot > 25) continue;
+    const groupKey = ({ "1-3": "g1", "4-6": "g2", "7-9": "g3", "10-12": "g4" })[String(row.reward_group)];
+    if (!groupKey) continue;
+    const frameId = `rocket_frame_${groupKey}_${String(slot).padStart(2, "0")}`;
+    migrationStatements.push(
+      db.prepare("UPDATE rocket_reward_claims SET frame_id=?,frame_delivery_status='delivered' WHERE id=? AND frame_id IS NULL")
+        .bind(frameId, row.id),
+      db.prepare(`INSERT INTO user_cosmetics(user_id,item_id,kind,acquired_at,expires_at,active)
+        SELECT user_id,?,'frame',claimed_at,claimed_at + frame_days * 86400000,0
+        FROM rocket_reward_claims WHERE id=? AND reward_type='frame'
+        ON CONFLICT(user_id,item_id) DO UPDATE SET
+          kind='frame',acquired_at=excluded.acquired_at,
+          expires_at=excluded.expires_at,active=0`).bind(frameId, row.id),
+    );
+  }
+  if (migrationStatements.length > 0) await db.batch(migrationStatements);
 }
 
 function asPublicClaim(row) {
@@ -100,6 +160,7 @@ function asPublicClaim(row) {
     reward_type: String(row.reward_type ?? ""),
     coins: Number(row.coin_amount ?? 0),
     frame_days: Number(row.frame_days ?? 0),
+    frame_id: row.frame_id == null ? null : String(row.frame_id),
     frame_delivery_status: String(row.frame_delivery_status ?? "not_applicable"),
     claimed_at: Number(row.claimed_at ?? 0),
   };
@@ -164,7 +225,7 @@ export async function handleRocketRewardRoute({
   ).bind(roomId, tier.group).first();
   const claimedCount = Number(poolRow?.claimed_count ?? 0);
   const existingRow = await db.prepare(
-    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+    "SELECT id,reward_type,coin_amount,frame_days,frame_id,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
   ).bind(roomId, tier.group, userId).first();
   const existingClaim = asPublicClaim(existingRow);
 
@@ -227,6 +288,7 @@ export async function handleRocketRewardRoute({
   const claimId = newId();
   const timestamp = now();
   const randomCoins = secureRandomInt(tier.coinMin, tier.coinMax);
+  const frameGroupKey = ({ "1-3": "g1", "4-6": "g2", "7-9": "g3", "10-12": "g4" })[tier.group];
   await db.batch([
     db.prepare(`WITH pool_state AS (
         SELECT
@@ -234,12 +296,13 @@ export async function handleRocketRewardRoute({
           (SELECT COALESCE(SUM(coin_cost),0) FROM gift_events WHERE room_id=?) AS lifetime_total
       )
       INSERT OR IGNORE INTO rocket_reward_claims
-        (id,room_id,rocket_level,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at)
+        (id,room_id,rocket_level,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,frame_id,claimed_at)
       SELECT ?,?,?,?,?, 
         CASE WHEN claimed_count < ? THEN 'frame' ELSE 'coins' END,
         CASE WHEN claimed_count < ? THEN 0 ELSE ? END,
         CASE WHEN claimed_count < ? THEN ? ELSE 0 END,
-        CASE WHEN claimed_count < ? THEN 'pending_assets' ELSE 'not_applicable' END,
+        CASE WHEN claimed_count < ? THEN 'delivered' ELSE 'not_applicable' END,
+        CASE WHEN claimed_count < ? THEN ('rocket_frame_' || ? || '_' || printf('%02d', claimed_count + 1)) ELSE NULL END,
         ?
       FROM pool_state
       WHERE claimed_count < ?
@@ -253,7 +316,7 @@ export async function handleRocketRewardRoute({
       tier.frameWinners,
       tier.frameWinners, randomCoins,
       tier.frameWinners, tier.frameDays,
-      tier.frameWinners, timestamp,
+      tier.frameWinners, tier.frameWinners, frameGroupKey, timestamp,
       tier.maxWinners, target,
       roomId, userId,
       roomId, tier.group, userId,
@@ -279,10 +342,18 @@ export async function handleRocketRewardRoute({
       WHERE changes()=1 AND c.reward_type='coins' AND c.coin_amount>0`).bind(
       newId(), timestamp, claimId,
     ),
+    db.prepare(`INSERT INTO user_cosmetics
+        (user_id,item_id,kind,acquired_at,expires_at,active)
+      SELECT user_id,frame_id,'frame',claimed_at,claimed_at + frame_days * 86400000,0
+      FROM rocket_reward_claims
+      WHERE id=? AND reward_type='frame' AND frame_id IS NOT NULL
+      ON CONFLICT(user_id,item_id) DO UPDATE SET
+        kind='frame',acquired_at=excluded.acquired_at,
+        expires_at=excluded.expires_at,active=0`).bind(claimId),
   ]);
 
   const finalRow = await db.prepare(
-    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+    "SELECT id,reward_type,coin_amount,frame_days,frame_id,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
   ).bind(roomId, tier.group, userId).first();
   if (!finalRow) {
     const latestCount = await db.prepare(

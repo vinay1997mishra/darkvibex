@@ -588,6 +588,7 @@ CREATE TABLE IF NOT EXISTS rocket_reward_claims (
   reward_type TEXT NOT NULL CHECK (reward_type IN ('coins','frame')),
   coin_amount INTEGER NOT NULL DEFAULT 0 CHECK (coin_amount >= 0),
   frame_days INTEGER NOT NULL DEFAULT 0 CHECK (frame_days >= 0),
+  frame_id TEXT,
   frame_delivery_status TEXT NOT NULL DEFAULT 'not_applicable',
   claimed_at INTEGER NOT NULL,
   UNIQUE (room_id, reward_group, user_id),

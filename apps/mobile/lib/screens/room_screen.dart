@@ -34,6 +34,7 @@ import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
 import '../utils/rocket_progress.dart';
+import '../utils/rocket_frame_catalog.dart';
 import 'conversation_screen.dart';
 
 class RoomScreen extends StatefulWidget {
@@ -556,6 +557,8 @@ class _RoomScreenState extends State<RoomScreen> {
       final rawTier = status['tier'];
       if (rawTier is! Map) return;
       final tier = Map<String, dynamic>.from(rawTier);
+      final rewardGroup = tier['group']?.toString() ?? '1-3';
+      final sampleRocketFrameIds = rocketFrameSampleIds(rewardGroup);
       final rawClaim = status['claim'];
       Map<String, dynamic>? claim = rawClaim is Map
           ? Map<String, dynamic>.from(rawClaim)
@@ -567,7 +570,7 @@ class _RoomScreenState extends State<RoomScreen> {
       if (claim != null) {
         final type = claim['reward_type']?.toString() ?? '';
         message = type == 'frame'
-            ? 'You already claimed a frame reward. The frame artwork will be added in the next phase; this claim does not award coins.'
+            ? 'You already claimed a premium animated frame. It is in your Frames inventory; open Store → Frames to equip it.'
             : 'You already claimed ${_formatRocketRewardCoins(int.tryParse(claim['coins']?.toString() ?? '') ?? 0)} Coins.';
       }
       await showDialog<void>(
@@ -642,13 +645,67 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'First ${tier['frame_winners']} successful claims are frame rewards (${tier['frame_days']} day validity, no Coins). Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
+                  'First ${tier['frame_winners']} successful claims receive a circular animated frame (${tier['frame_days']} day validity, no Coins). Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFFBFCDF3),
                     fontSize: 12,
                     height: 1.45,
                   ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 5,
+                  children: (claim?['reward_type']?.toString() == 'frame' &&
+                          isRocketRewardFrameId(claim?['frame_id']?.toString())
+                      ? <String>[claim!['frame_id'].toString()]
+                      : sampleRocketFrameIds)
+                      .map((frameId) => SizedBox(
+                            width: 68,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 64,
+                                  height: 64,
+                                  child: Center(
+                                    child: VipAnimatedFrame(
+                                      size: 44,
+                                      enabled: true,
+                                      level: (rocketFrameGroupIndex(frameId) * 4).clamp(1, 18).toInt(),
+                                      styleId: frameId,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: const Color(0xFF121A3A),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(alpha: .18),
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.person_rounded,
+                                          color: Color(0xFF8FA8E8),
+                                          size: 23,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  'Frame ${rocketFrameVariant(frameId).toString().padLeft(2, '0')}',
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: Color(0xFFBFCDF3),
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ))
+                      .toList(),
                 ),
                 if (message.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 12),
@@ -711,7 +768,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 claim = claimed;
                                 alreadyClaimed = true;
                                 if (claimed['reward_type']?.toString() == 'frame') {
-                                  message = 'You won a frame reward for ${claimed['frame_days'] ?? tier['frame_days']} day(s). The frame artwork and inventory delivery will be added in the next phase. No Coins were awarded for this claim.';
+                                  message = 'You won Rocket Frame ${rocketFrameVariant(claimed['frame_id']?.toString()).toString().padLeft(2, '0')} for ${claimed['frame_days'] ?? tier['frame_days']} day(s). It has been added to your Frames inventory. Open Store → Frames to equip it.';
                                 } else {
                                   final amount = int.tryParse(claimed['coins']?.toString() ?? '') ?? 0;
                                   message = claimed['already_claimed'] == true
