@@ -578,6 +578,10 @@ export async function effectiveCosmeticCatalog(db) {
       (endsAt != null && endsAt > 0 && endsAt < ts);
     const existing = map.get(itemId);
 
+    // Rocket reward frames are earned through a verified chest claim only.
+    // Keep them out of Owner catalog overrides as well as the purchase route.
+    if (existing?.reward_only === true) continue;
+
     // Owner catalog rows must never hide or overwrite a built-in item from
     // another category just because their IDs happen to collide.
     if (existing && String(existing.kind ?? "") !== kind) continue;
@@ -4124,6 +4128,9 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const product = (await effectiveCosmeticCatalog(db)).find((item) => item.id === itemId);
     if (!product) return json({ ok:false,error:"cosmetic_not_found" }, { status:404 });
+    if (product.reward_only === true) {
+      return json({ ok:false,error:"reward_only_item" }, { status:403 });
+    }
     await ensureUser(db,userId);
     if (!recipientId) return json({ ok:false,error:"recipient_required" }, { status:400 });
     if (recipientId !== userId) {
