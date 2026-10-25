@@ -38,7 +38,7 @@ class RocketRewardFramePreview extends StatelessWidget {
           child: Icon(
             Icons.rocket_launch_rounded,
             size: size * .42,
-            color: const Color(0xFFFFD878),
+            color: const Color(0xFF50D8FF),
           ),
         ),
       ),
