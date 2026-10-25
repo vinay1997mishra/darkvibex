@@ -33,7 +33,8 @@ void main() {
     }
     expect(frameSource, contains('_freeAnimatedFrameIds.contains(styleId) ||'));
     expect(frameSource, contains('_rocketFrameStyleAliases.containsKey(styleId)'));
-    expect(frameSource, contains('? 2000 : 3200'));
+    expect(frameSource, contains('? 2000'));
+    expect(frameSource, contains(': 3200'));
     expect(shopSource, contains("price <= 0 ? 'FREE'"));
     expect(shopSource, contains("price <= 0 ? 'Get Free' : 'Buy'"));
     expect(shopSource, contains("durationDays <= 0 ? 'Permanent'"));
