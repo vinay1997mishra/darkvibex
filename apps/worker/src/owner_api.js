@@ -10,7 +10,7 @@ import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 const corsHeaders = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "authorization,content-type,x-file-key,x-gift-id,x-theme-id",
+  "access-control-allow-headers": "authorization,content-type,x-file-key,x-gift-id,x-theme-id,x-banner-id",
 };
 
 const json = (data, init = {}) =>
@@ -1318,6 +1318,71 @@ async function handleGiftMediaUpload(request, env, db, actor) {
     },
   });
   await audit(db, actor, "gift_video_upload", "gift", giftId, key);
+  return json({ ok: true, key }, { status: 201 });
+}
+
+
+async function handleBannerMediaUpload(request, env, db, actor) {
+  if (request.method !== "PUT") return null;
+  requirePermission(actor, "banners.save");
+  if (!env.FILES) {
+    return json({ ok: false, error: "file_storage_not_bound" }, { status: 503 });
+  }
+
+  const bannerId = String(request.headers.get("x-banner-id") ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  if (!bannerId) {
+    return json({ ok: false, error: "banner_id_required" }, { status: 400 });
+  }
+
+  const type = String(request.headers.get("content-type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  const extensions = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+  };
+  const extension = extensions[type];
+  if (!extension) {
+    return json({ ok: false, error: "banner_image_type_invalid" }, { status: 400 });
+  }
+
+  const maxBytes = 5 * 1024 * 1024;
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (declared > maxBytes) {
+    return json({ ok: false, error: "banner_image_max_5mb" }, { status: 413 });
+  }
+  const body = new Uint8Array(await request.arrayBuffer());
+  if (!body.length || body.length > maxBytes) {
+    return json({ ok: false, error: "banner_image_max_5mb" }, { status: 413 });
+  }
+
+  const isPng = body.length >= 8 && body[0] === 137 && body[1] === 80 &&
+    body[2] === 78 && body[3] === 71 && body[4] === 13 && body[5] === 10 &&
+    body[6] === 26 && body[7] === 10;
+  const isJpeg = body.length >= 3 && body[0] === 255 &&
+    body[1] === 216 && body[2] === 255;
+  const isWebp = body.length >= 12 &&
+    String.fromCharCode(...body.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...body.slice(8, 12)) === "WEBP";
+  if ((type === "image/jpeg" && !isJpeg) ||
+      (type === "image/png" && !isPng) ||
+      (type === "image/webp" && !isWebp)) {
+    return json({ ok: false, error: "banner_image_invalid" }, { status: 400 });
+  }
+
+  const key = "banners/owner-panel/" + bannerId + "/banner-" +
+    now() + "-" + randomHex(6) + "." + extension;
+  await env.FILES.put(key, body, {
+    httpMetadata: { contentType: type, cacheControl: "public, max-age=3600" },
+  });
+  await audit(db, actor, "banner_image_upload", "banner", bannerId, key);
   return json({ ok: true, key }, { status: 201 });
 }
 
@@ -2794,6 +2859,7 @@ export async function handleOwnerApi(request, env, url) {
     let response = null;
     if (parts[2] === "theme-media") response = await handleThemeMediaUpload(request, env, db, actor);
     else if (parts[2] === "gift-media") response = await handleGiftMediaUpload(request, env, db, actor);
+    else if (parts[2] === "banner-media") response = await handleBannerMediaUpload(request, env, db, actor);
     else if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
     else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
