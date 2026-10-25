@@ -687,6 +687,15 @@ class _PremiumVectorFramePainter extends CustomPainter {
     _PremiumVectorPalette palette,
   ) {
     final crownCenter = center + Offset(0, -radius * .935);
+    for (var i = 0; i < 7; i++) {
+      final angle = -math.pi / 2 + (i - 3) * .22;
+      final ray = crownCenter +
+          Offset(math.cos(angle), math.sin(angle)) * side * .13;
+      canvas.drawLine(crownCenter, ray, Paint()
+        ..color = palette.light.withValues(alpha: .55)
+        ..strokeWidth = side * .005
+        ..strokeCap = StrokeCap.round);
+    }
     final crown = Path()
       ..moveTo(crownCenter.dx - side * .125, crownCenter.dy + side * .035)
       ..lineTo(crownCenter.dx - side * .105, crownCenter.dy - side * .035)
