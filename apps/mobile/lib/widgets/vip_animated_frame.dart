@@ -379,58 +379,117 @@ class _PremiumVectorFramePainter extends CustomPainter {
     final pulse = .88 + .12 * ((math.sin(cycle) + 1) / 2);
     final ringRect = Rect.fromCircle(center: center, radius: radius);
 
+    // Layered metallic annulus: shadow extrusion, beveled face and inner lip.
+    final outerRadius = radius + side * .045;
+    final innerRadius = radius - side * .045;
+    final outerRect = Rect.fromCircle(center: center, radius: outerRadius);
+    final innerRect = Rect.fromCircle(center: center, radius: innerRadius);
+    final annulus = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addOval(outerRect)
+      ..addOval(innerRect);
+
     canvas.drawCircle(
       center,
-      radius,
+      outerRadius + side * .008,
+      Paint()
+        ..color = palette.deep.withValues(alpha: .72)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .025),
+    );
+    canvas.drawPath(
+      annulus,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            palette.light,
+            palette.accent,
+            palette.deep,
+            palette.accent,
+            palette.light.withValues(alpha: .94),
+          ],
+          stops: const <double>[0, .20, .48, .76, 1],
+        ).createShader(outerRect),
+    );
+    canvas.drawCircle(
+      center,
+      outerRadius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .082
-        ..color = palette.accent.withValues(alpha: .18 * pulse)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+        ..strokeWidth = side * .008
+        ..color = palette.light.withValues(alpha: .94),
+    );
+    canvas.drawCircle(
+      center,
+      outerRadius - side * .012,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .006
+        ..color = palette.deep.withValues(alpha: .85),
     );
     canvas.drawCircle(
       center,
       radius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .032
+        ..strokeWidth = side * .012
         ..shader = SweepGradient(
           startAngle: cycle,
           endAngle: cycle + math.pi * 2,
           colors: <Color>[
-            palette.light,
-            palette.accent,
             palette.deep,
             palette.light,
+            palette.accent,
+            palette.light,
+            palette.deep,
           ],
         ).createShader(ringRect),
     );
     canvas.drawCircle(
       center,
-      radius - side * .024,
+      innerRadius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .006
-        ..color = palette.light.withValues(alpha: .88),
+        ..strokeWidth = side * .010
+        ..color = palette.deep.withValues(alpha: .88)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .008),
+    );
+    canvas.drawCircle(
+      center,
+      innerRadius + side * .006,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .005
+        ..color = palette.light.withValues(alpha: .96),
     );
 
-    // Short glowing arc segments orbit the circular rim; no hard line sweeps
-    // across the avatar itself.
-    final orbitRect = Rect.fromCircle(center: center, radius: radius * 1.095);
-    for (var i = 0; i < 4; i++) {
-      canvas.drawArc(
-        orbitRect,
-        cycle + i * math.pi / 2,
-        math.pi * .16,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeWidth = side * .016
-          ..color = palette.light.withValues(alpha: .38 + .35 * pulse)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
-      );
-    }
+    // A moving specular highlight glides around the circular metal lip.
+    canvas.drawArc(
+      outerRect,
+      cycle - .20,
+      math.pi * .28,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = side * .024
+        ..color = palette.light.withValues(alpha: .48 * pulse)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .018),
+    );
+    canvas.drawArc(
+      outerRect,
+      cycle - .14,
+      math.pi * .17,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = side * .008
+        ..color = Colors.white.withValues(alpha: .96),
+    );
+
+    _paintRingRivets(canvas, center, radius, side, cycle, palette);
 
     switch (styleId) {
       case 'frame_crystal_aurora':
@@ -451,6 +510,47 @@ class _PremiumVectorFramePainter extends CustomPainter {
     }
 
     _paintOrbitingSparkles(canvas, center, radius, side, cycle, palette);
+  }
+
+  void _paintRingRivets(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double side,
+    double cycle,
+    _PremiumVectorPalette palette,
+  ) {
+    for (var i = 0; i < 12; i++) {
+      final angle = i * math.pi / 6 - math.pi / 2;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) * radius;
+      final shine = .62 + .32 * ((math.sin(cycle + i * .72) + 1) / 2);
+      canvas.drawCircle(
+        point + Offset(side * .002, side * .003),
+        side * .012,
+        Paint()..color = palette.deep.withValues(alpha: .9),
+      );
+      canvas.drawCircle(
+        point,
+        side * .0085,
+        Paint()
+          ..shader = RadialGradient(
+            colors: <Color>[
+              palette.light.withValues(alpha: shine),
+              palette.accent,
+              palette.deep,
+            ],
+            stops: const <double>[0, .42, 1],
+          ).createShader(
+            Rect.fromCircle(center: point, radius: side * .009),
+          ),
+      );
+      canvas.drawCircle(
+        point + Offset(-side * .002, -side * .002),
+        side * .0024,
+        Paint()..color = Colors.white.withValues(alpha: .9 * shine),
+      );
+    }
   }
 
   void _paintAuroraCrystals(
@@ -587,6 +687,15 @@ class _PremiumVectorFramePainter extends CustomPainter {
     _PremiumVectorPalette palette,
   ) {
     final crownCenter = center + Offset(0, -radius * .935);
+    for (var i = 0; i < 7; i++) {
+      final angle = -math.pi / 2 + (i - 3) * .22;
+      final ray = crownCenter +
+          Offset(math.cos(angle), math.sin(angle)) * side * .13;
+      canvas.drawLine(crownCenter, ray, Paint()
+        ..color = palette.light.withValues(alpha: .55)
+        ..strokeWidth = side * .005
+        ..strokeCap = StrokeCap.round);
+    }
     final crown = Path()
       ..moveTo(crownCenter.dx - side * .125, crownCenter.dy + side * .035)
       ..lineTo(crownCenter.dx - side * .105, crownCenter.dy - side * .035)
@@ -634,7 +743,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
   ) {
     void wing(bool left) {
       final anchor = center +
-          Offset(left ? -radius * .63 : radius * .63, -radius * .43);
+          Offset(left ? -radius * .65 : radius * .65, -radius * .57);
       canvas.save();
       canvas.translate(anchor.dx, anchor.dy);
       canvas.scale(left ? -1.0 : 1.0, 1);
@@ -642,14 +751,31 @@ class _PremiumVectorFramePainter extends CustomPainter {
       canvas.scale(flap, 1);
       final path = Path()
         ..moveTo(0, 0)
-        ..cubicTo(side * .045, -side * .080, side * .115, -side * .105, side * .155, -side * .045)
-        ..cubicTo(side * .125, -side * .020, side * .115, side * .025, side * .070, side * .030)
-        ..cubicTo(side * .045, side * .028, side * .018, side * .012, 0, 0)
+        ..cubicTo(side * .025, -side * .100, side * .085, -side * .205, side * .175, -side * .220)
+        ..cubicTo(side * .226, -side * .214, side * .194, -side * .145, side * .230, -side * .106)
+        ..cubicTo(side * .188, -side * .070, side * .193, -side * .035, side * .144, -side * .008)
+        ..cubicTo(side * .090, side * .026, side * .035, side * .028, 0, 0)
         ..close();
       canvas.drawPath(
         path,
-        Paint()..color = palette.accent.withValues(alpha: .68),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[palette.light, palette.accent, palette.deep],
+          ).createShader(path.getBounds()),
       );
+      // Veins catch the light along the layered dragon-wing membranes.
+      for (var i = 1; i <= 3; i++) {
+        canvas.drawLine(
+          Offset(side * (.025 * i), side * .006),
+          Offset(side * (.052 * i), -side * (.045 * i)),
+          Paint()
+            ..color = palette.light.withValues(alpha: .82)
+            ..strokeWidth = side * .003
+            ..strokeCap = StrokeCap.round,
+        );
+      }
       canvas.drawPath(
         path,
         Paint()
@@ -724,13 +850,55 @@ class _PremiumVectorFramePainter extends CustomPainter {
       ..lineTo(center.dx, center.dy + length)
       ..lineTo(center.dx - length * .62, center.dy)
       ..close();
-    canvas.drawPath(path, Paint()..color = fill);
+    final bounds = path.getBounds();
+    canvas.drawPath(
+      path.shift(Offset(0, length * .12)),
+      Paint()
+        ..color = edge.withValues(alpha: .55)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, length * .18),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Colors.white, fill, edge, fill],
+        ).createShader(bounds),
+    );
+    final leftFacet = Path()
+      ..moveTo(center.dx, center.dy - length)
+      ..lineTo(center.dx - length * .62, center.dy)
+      ..lineTo(center.dx, center.dy + length)
+      ..lineTo(center.dx + length * .04, center.dy)
+      ..close();
+    canvas.drawPath(
+      leftFacet,
+      Paint()..color = Colors.white.withValues(alpha: .34),
+    );
+    final rightFacet = Path()
+      ..moveTo(center.dx, center.dy - length)
+      ..lineTo(center.dx + length * .62, center.dy)
+      ..lineTo(center.dx + length * .04, center.dy)
+      ..close();
+    canvas.drawPath(
+      rightFacet,
+      Paint()..color = edge.withValues(alpha: .58),
+    );
     canvas.drawPath(
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = length * .14
+        ..strokeWidth = length * .10
         ..color = edge,
+    );
+    canvas.drawLine(
+      Offset(center.dx - length * .12, center.dy - length * .52),
+      Offset(center.dx - length * .02, center.dy - length * .12),
+      Paint()
+        ..color = Colors.white.withValues(alpha: .95)
+        ..strokeWidth = length * .12
+        ..strokeCap = StrokeCap.round,
     );
   }
 
