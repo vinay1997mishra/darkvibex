@@ -981,6 +981,48 @@ class _RoomScreenState extends State<RoomScreen> {
                     fontSize: 11,
                   ),
                 ),
+                if (completed > 0) ...<Widget>[
+                  const SizedBox(height: 7),
+                  const Text(
+                    'REWARD CHESTS',
+                    style: TextStyle(
+                      color: Color(0xFFFFD778),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 5,
+                      runSpacing: 4,
+                      children: List<Widget>.generate(completed, (index) {
+                        final level = index + 1;
+                        return OutlinedButton.icon(
+                          key: Key('room-rocket-reward-chest-$level'),
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            unawaited(_showRocketRewardChest(level));
+                          },
+                          icon: const Icon(Icons.card_giftcard_rounded, size: 14),
+                          label: Text('L$level'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFFFD778),
+                            side: BorderSide(
+                              color: const Color(0xFFFFC94A).withValues(alpha: .55),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            minimumSize: const Size(44, 38),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ],
                 const Padding(
                   padding: EdgeInsets.fromLTRB(18, 8, 18, 14),
                   child: Text(
