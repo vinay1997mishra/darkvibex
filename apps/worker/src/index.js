@@ -615,9 +615,12 @@ export async function effectiveCosmeticCatalog(db) {
   );
 
   // Fail safe: stale/accidental disabled overrides must not blank the entire
-  // Store. Keep the canonical catalog available if every built-in entry was
-  // filtered out; owner pricing overrides are still applied by the API route.
-  if (items.length === 0 && COSMETIC_CATALOG.length > 0) {
+  // Store. Reward-only Rocket frames remain reserved in the catalog, but they
+  // must not prevent fallback when every regular built-in Store item is hidden.
+  if (
+    items.filter((item) => item.reward_only !== true).length === 0 &&
+    COSMETIC_CATALOG.length > 0
+  ) {
     return COSMETIC_CATALOG.map((item) => ({ ...item }));
   }
   return items;
