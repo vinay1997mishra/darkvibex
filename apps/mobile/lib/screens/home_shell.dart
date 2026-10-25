@@ -1785,22 +1785,23 @@ class _RoomCard extends StatelessWidget {
                           : null,
                     ),
                   ),
-                  Positioned(
-                    right: 3,
-                    bottom: 2,
-                    child: Container(
-                      width: 13,
-                      height: 13,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF55F0B5),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF111831),
-                          width: 2,
+                  if (room.online > 0)
+                    Positioned(
+                      right: 3,
+                      bottom: 2,
+                      child: Container(
+                        width: 13,
+                        height: 13,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF55F0B5),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF111831),
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
