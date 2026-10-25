@@ -129,7 +129,9 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
       return const <Map<String, dynamic>>[];
     }
     final rows = _items
-        .where((item) => item['kind']?.toString() == _category.kind)
+        .where((item) =>
+            item['kind']?.toString() == _category.kind &&
+            (_inventoryOnly || item['reward_only'] != true))
         .toList();
     if (!_inventoryOnly) return rows;
     return rows
@@ -571,6 +573,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     final price = int.tryParse(item['price_coins']?.toString() ?? '') ?? 0;
     final durationDays =
         int.tryParse(item['duration_days']?.toString() ?? '') ?? 0;
+    final rewardOnly = item['reward_only'] == true;
     final canUse = requiredLevel <= 0 ||
         (widget.state.vipIsActive &&
             widget.state.vipLevel >= requiredLevel);
@@ -618,9 +621,11 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  requiredLevel > 0
-                      ? 'VIP$requiredLevel • ${durationDays <= 0 ? 'Permanent' : '$durationDays days'}'
-                      : (durationDays <= 0 ? 'Permanent' : '$durationDays days'),
+                  rewardOnly
+                      ? 'Rocket reward • limited time'
+                      : requiredLevel > 0
+                          ? 'VIP$requiredLevel • ${durationDays <= 0 ? 'Permanent' : '$durationDays days'}'
+                          : (durationDays <= 0 ? 'Permanent' : '$durationDays days'),
                   style: const TextStyle(
                     fontSize: 10,
                     color: Color(0xFFD0BBFF),
@@ -628,7 +633,9 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  price <= 0 ? 'FREE' : '$price coins',
+                  rewardOnly
+                      ? 'ROCKET REWARD'
+                      : (price <= 0 ? 'FREE' : '$price coins'),
                   style: const TextStyle(
                     color: TinniPalette.gold,
                     fontWeight: FontWeight.w800,
