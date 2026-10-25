@@ -935,11 +935,11 @@ Color accentColorForLevel(int level) {
     Color(0xFFD06BFF),
     Color(0xFF62FFD1),
     Color(0xFFFF5B83),
-    Color(0xFFFFD45A),
+    Color(0xFF50D8FF),
     Color(0xFFFF83E6),
     Color(0xFF54F4FF),
     Color(0xFFAFA0FF),
-    Color(0xFFFFF0A5),
+    Color(0xFFEAF5FF),
   ];
   return colors[level.clamp(1, 10).toInt() - 1];
 }
