@@ -301,7 +301,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
             silver ? 'Silver\nLucky' : 'Gold\nLucky',
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF291208),
+              color: Color(0xFFF5F7FF),
               fontSize: 14,
               fontWeight: FontWeight.w900,
             ),
@@ -530,7 +530,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                         ),
                                                     border: Border.all(
                                                       color: const Color(
-                                                        0xFFFFCF84,
+                                                        0xFF7BE7FF,
                                                       ),
                                                       width: 2,
                                                     ),
@@ -546,7 +546,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                             .padLeft(2, '0'),
                                                         style: const TextStyle(
                                                           color: Color(
-                                                            0xFFFFE598,
+                                                            0xFFF5F7FF,
                                                           ),
                                                           fontSize: 30,
                                                           height: 1,
@@ -600,7 +600,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                 0xFF7662D5,
                                               ),
                                               backgroundColor: const Color(
-                                                0xFF784A22,
+                                                0xFF292E55,
                                               ),
                                               labelStyle: const TextStyle(
                                                 color: Colors.white,
