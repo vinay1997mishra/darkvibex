@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 class RoomGameKeyboardLogo extends StatelessWidget {
@@ -81,9 +83,14 @@ class RoomGameKeyboardLogo extends StatelessWidget {
 }
 
 class RoomStealthRocketLogo extends StatelessWidget {
-  const RoomStealthRocketLogo({super.key, required this.size});
+  const RoomStealthRocketLogo({
+    super.key,
+    required this.size,
+    this.level = 1,
+  });
 
   final double size;
+  final int level;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +101,7 @@ class RoomStealthRocketLogo extends StatelessWidget {
       child: Transform.rotate(
         angle: 0.42,
         child: CustomPaint(
-          painter: const _StealthRocketPainter(),
+          painter: _StealthRocketPainter(level: level),
           size: Size.square(size),
         ),
       ),
@@ -103,18 +110,86 @@ class RoomStealthRocketLogo extends StatelessWidget {
 }
 
 class _StealthRocketPainter extends CustomPainter {
-  const _StealthRocketPainter();
+  const _StealthRocketPainter({required this.level});
+
+  final int level;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
+    final stage = level.clamp(1, 10).toInt();
+    const bodyColors = <Color>[
+      Color(0xFF61758D),
+      Color(0xFF1768D2),
+      Color(0xFF713BC0),
+      Color(0xFF0A9479),
+      Color(0xFFB8294B),
+      Color(0xFFB87917),
+      Color(0xFFB52FB3),
+      Color(0xFF078DAE),
+      Color(0xFF5842C8),
+      Color(0xFFCBB66D),
+    ];
+    const accentColors = <Color>[
+      Color(0xFF57E9FF),
+      Color(0xFF4BA8FF),
+      Color(0xFFD06BFF),
+      Color(0xFF62FFD1),
+      Color(0xFFFF5B83),
+      Color(0xFFFFD45A),
+      Color(0xFFFF83E6),
+      Color(0xFF54F4FF),
+      Color(0xFFAFA0FF),
+      Color(0xFFFFF0A5),
+    ];
+    final bodyColor = bodyColors[stage - 1];
+    final accentColor = accentColors[stage - 1];
+    final bodyDark = Color.lerp(bodyColor, Colors.black, .72)!;
+    final bodyLight = Color.lerp(
+      bodyColor,
+      Colors.white,
+      stage >= 8 ? .66 : .38,
+    )!;
+
+    if (stage >= 7) {
+      canvas.save();
+      canvas.translate(w * .50, h * .46);
+      canvas.rotate(-.55);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: w * (1.04 + (stage - 7) * .045),
+          height: h * (.22 + (stage - 7) * .025),
+        ),
+        Paint()
+          ..color = accentColor.withValues(alpha: stage >= 9 ? .74 : .52)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * (stage >= 9 ? .026 : .018),
+      );
+      canvas.restore();
+      final stars = <Offset>[
+        Offset(w * .13, h * .24),
+        Offset(w * .83, h * .30),
+        Offset(w * .17, h * .59),
+        Offset(w * .80, h * .65),
+        Offset(w * .50, h * .10),
+      ];
+      final starCount = stage >= 9 ? stars.length : 3;
+      for (var index = 0; index < starCount; index++) {
+        canvas.drawCircle(
+          stars[index],
+          w * (stage >= 9 ? .035 : .025),
+          Paint()..color = accentColor.withValues(alpha: .82),
+        );
+      }
+    }
 
     final flameGlow = Paint()
       ..shader = RadialGradient(
         colors: <Color>[
-          const Color(0x99FF8A1F),
-          const Color(0x33FF5A1F),
+          accentColor.withValues(alpha: .78),
+          accentColor.withValues(alpha: .24),
           Colors.transparent,
         ],
         stops: const <double>[0, 0.48, 1],
@@ -148,14 +223,14 @@ class _StealthRocketPainter extends CustomPainter {
     canvas.drawPath(
       outerFlame,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: <Color>[
-            Color(0xFFFFF6C8),
-            Color(0xFFFFC13B),
-            Color(0xFFFF7A1A),
-            Color(0xFFFF3B12),
+            Color.lerp(accentColor, Colors.white, .76)!,
+            accentColor,
+            Color.lerp(accentColor, Colors.black, .12)!,
+            Color.lerp(accentColor, Colors.black, .38)!,
           ],
         ).createShader(Rect.fromLTWH(0, h * 0.76, w, h * 0.24)),
     );
@@ -167,13 +242,13 @@ class _StealthRocketPainter extends CustomPainter {
     canvas.drawPath(
       innerFlame,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: <Color>[
             Colors.white,
-            Color(0xFFFFF2A8),
-            Color(0xFFFFA62B),
+            Color.lerp(accentColor, Colors.white, .58)!,
+            accentColor,
           ],
         ).createShader(Rect.fromLTWH(0, h * 0.78, w, h * 0.18)),
     );
@@ -190,30 +265,30 @@ class _StealthRocketPainter extends CustomPainter {
       ..close();
 
     final finPaint = Paint()
-      ..shader = const LinearGradient(
+      ..shader = LinearGradient(
         colors: <Color>[
-          Color(0xFF050505),
-          Color(0xFF26282C),
-          Color(0xFF080808),
+          bodyDark,
+          Color.lerp(bodyColor, Colors.white, .12)!,
+          bodyDark,
         ],
       ).createShader(Rect.fromLTWH(0, h * 0.55, w, h * 0.26));
     canvas.drawPath(leftFin, finPaint);
     canvas.drawPath(rightFin, finPaint);
 
-    final redEdge = Paint()
-      ..color = const Color(0xFF9E1C16)
+    final finEdge = Paint()
+      ..color = accentColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.035
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       Offset(w * 0.15, h * 0.78),
       Offset(w * 0.37, h * 0.62),
-      redEdge,
+      finEdge,
     );
     canvas.drawLine(
       Offset(w * 0.85, h * 0.78),
       Offset(w * 0.63, h * 0.62),
-      redEdge,
+      finEdge,
     );
 
     final body = Path()
@@ -242,24 +317,24 @@ class _StealthRocketPainter extends CustomPainter {
     canvas.drawPath(
       body,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: <Color>[
-            Color(0xFF050505),
-            Color(0xFF15171A),
-            Color(0xFF34373C),
-            Color(0xFF101113),
-            Color(0xFF030303),
+            bodyDark,
+            Color.lerp(bodyColor, Colors.black, .30)!,
+            bodyLight,
+            bodyColor,
+            bodyDark,
           ],
-          stops: <double>[0, 0.24, 0.48, 0.72, 1],
+          stops: const <double>[0, 0.24, 0.48, 0.72, 1],
         ).createShader(bodyRect),
     );
 
     canvas.drawPath(
       body,
       Paint()
-        ..color = const Color(0xFF777B82)
+        ..color = Color.lerp(bodyColor, Colors.white, .62)!
         ..style = PaintingStyle.stroke
         ..strokeWidth = w * 0.025,
     );
@@ -277,7 +352,8 @@ class _StealthRocketPainter extends CustomPainter {
     canvas.drawPath(
       highlight,
       Paint()
-        ..color = const Color(0x55FFFFFF)
+        ..color = Color.lerp(accentColor, Colors.white, .52)!
+            .withValues(alpha: .76)
         ..style = PaintingStyle.stroke
         ..strokeWidth = w * 0.035
         ..strokeCap = StrokeCap.round,
@@ -290,11 +366,11 @@ class _StealthRocketPainter extends CustomPainter {
         Radius.circular(w * 0.025),
       ),
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           colors: <Color>[
-            Color(0xFF5C0907),
-            Color(0xFFE33A24),
-            Color(0xFF6C0A08),
+            Color.lerp(accentColor, Colors.black, .42)!,
+            accentColor,
+            Color.lerp(accentColor, Colors.white, .22)!,
           ],
         ).createShader(
           Rect.fromLTWH(w * 0.34, accentY, w * 0.32, h * 0.06),
@@ -302,7 +378,7 @@ class _StealthRocketPainter extends CustomPainter {
     );
 
     final panelLine = Paint()
-      ..color = const Color(0x665D6065)
+      ..color = accentColor.withValues(alpha: .48)
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.014;
     canvas.drawLine(
@@ -321,11 +397,11 @@ class _StealthRocketPainter extends CustomPainter {
       windowCenter,
       w * 0.135,
       Paint()
-        ..shader = const RadialGradient(
+        ..shader = RadialGradient(
           colors: <Color>[
-            Color(0xFFCBD2D7),
-            Color(0xFF606870),
-            Color(0xFF17191C),
+            Color.lerp(bodyColor, Colors.white, .78)!,
+            Color.lerp(bodyColor, Colors.white, .24)!,
+            bodyDark,
           ],
         ).createShader(
           Rect.fromCircle(center: windowCenter, radius: w * 0.135),
@@ -335,23 +411,23 @@ class _StealthRocketPainter extends CustomPainter {
       windowCenter,
       w * 0.095,
       Paint()
-        ..shader = const RadialGradient(
+        ..shader = RadialGradient(
           center: Alignment(-0.35, -0.40),
           colors: <Color>[
-            Color(0xFFD9FAFF),
-            Color(0xFF39CFFF),
-            Color(0xFF007AAE),
-            Color(0xFF00263A),
+            Color.lerp(accentColor, Colors.white, .78)!,
+            Color.lerp(accentColor, Colors.white, .22)!,
+            accentColor,
+            bodyDark,
           ],
-          stops: <double>[0, 0.22, 0.60, 1],
+          stops: const <double>[0, 0.22, 0.60, 1],
         ).createShader(
           Rect.fromCircle(center: windowCenter, radius: w * 0.095),
         ),
     );
     canvas.drawCircle(
-      Offset(windowCenter.dx - w * 0.026, windowCenter.dy - w * 0.032),
+      Offset(windowCenter.dx - w * 0.026, windowCenter.dy - h * 0.032),
       w * 0.022,
-      Paint()..color = const Color(0xBBFFFFFF),
+      Paint()..color = Colors.white.withValues(alpha: .9),
     );
 
     final nozzleRect =
@@ -362,14 +438,14 @@ class _StealthRocketPainter extends CustomPainter {
         Radius.circular(w * 0.04),
       ),
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: <Color>[
-            Color(0xFF4A4D50),
-            Color(0xFFD0D2D3),
-            Color(0xFF666A6E),
-            Color(0xFF1E2022),
+            bodyDark,
+            Color.lerp(bodyColor, Colors.white, .86)!,
+            Color.lerp(bodyColor, Colors.white, .26)!,
+            bodyDark,
           ],
         ).createShader(nozzleRect),
     );
@@ -377,11 +453,146 @@ class _StealthRocketPainter extends CustomPainter {
       Offset(w * 0.39, h * 0.755),
       Offset(w * 0.61, h * 0.755),
       Paint()
-        ..color = const Color(0xFF181A1C)
+        ..color = accentColor.withValues(alpha: .78)
         ..strokeWidth = w * 0.025,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _StealthRocketPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _StealthRocketPainter oldDelegate) =>
+      oldDelegate.level != level;
+}
+
+class RoomRocketLaunchEffect extends StatefulWidget {
+  const RoomRocketLaunchEffect({
+    super.key,
+    required this.level,
+    required this.onFinished,
+  });
+
+  final int level;
+  final VoidCallback onFinished;
+
+  @override
+  State<RoomRocketLaunchEffect> createState() =>
+      _RoomRocketLaunchEffectState();
+}
+
+class _RoomRocketLaunchEffectState extends State<RoomRocketLaunchEffect>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1750),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          widget.onFinished();
+        }
+      });
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (context, constraints) => AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final progress = Curves.easeInCubic.transform(_controller.value);
+              final fade = (1.0 - ((_controller.value - .72) / .28))
+                  .clamp(0.0, 1.0)
+                  .toDouble();
+              final rocketSize = 56.0 + progress * 22.0;
+              final trailHeight = 16.0 + progress * 88.0;
+              final left = constraints.maxWidth -
+                  rocketSize -
+                  12.0 -
+                  constraints.maxWidth * .42 * progress;
+              final bottom = 90.0 + constraints.maxHeight * 1.02 * progress;
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: math.max(0.0, left),
+                    bottom: bottom,
+                    child: Opacity(
+                      opacity: fade,
+                      child: Transform.rotate(
+                        angle: -.84,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            RoomStealthRocketLogo(
+                              key: const Key('room-rocket-launching-art'),
+                              size: rocketSize,
+                              level: widget.level,
+                            ),
+                            Container(
+                              width: rocketSize * .12,
+                              height: trailHeight,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(rocketSize),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    accentColorForLevel(widget.level)
+                                        .withValues(alpha: .86 * fade),
+                                    accentColorForLevel(widget.level)
+                                        .withValues(alpha: .42 * fade),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: accentColorForLevel(widget.level)
+                                        .withValues(alpha: .48 * fade),
+                                    blurRadius: 12,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Color accentColorForLevel(int level) {
+  const colors = <Color>[
+    Color(0xFF57E9FF),
+    Color(0xFF4BA8FF),
+    Color(0xFFD06BFF),
+    Color(0xFF62FFD1),
+    Color(0xFFFF5B83),
+    Color(0xFFFFD45A),
+    Color(0xFFFF83E6),
+    Color(0xFF54F4FF),
+    Color(0xFFAFA0FF),
+    Color(0xFFFFF0A5),
+  ];
+  return colors[level.clamp(1, 10).toInt() - 1];
 }
