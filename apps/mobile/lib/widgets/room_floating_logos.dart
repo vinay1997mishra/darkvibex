@@ -659,7 +659,7 @@ class _RocketExhaustPainter extends CustomPainter {
         radius,
         Paint()
           ..color = (i.isEven ? Colors.white : color).withValues(
-            alpha: (.72 - (i % 4) * .12).clamp(.20, .72),
+            alpha: (.72 - (i % 4) * .12).clamp(.20, .72).toDouble(),
           ),
       );
     }
@@ -721,7 +721,9 @@ class _RocketLaunchTrailPainter extends CustomPainter {
         base.dx + drift,
         base.dy + age * 54,
       );
-      final particleFade = ((1 - age / .27) * fade).clamp(0.0, 1.0);
+      final particleFade = ((1.0 - age / .27) * fade)
+          .clamp(0.0, 1.0)
+          .toDouble();
       final particleColor = switch (i % 4) {
         0 => Colors.white,
         1 => color,
@@ -730,7 +732,7 @@ class _RocketLaunchTrailPainter extends CustomPainter {
       };
       canvas.drawCircle(
         position,
-        (1.3 + (i % 3) * .65) * (1 - age * 1.3),
+        (1.3 + (i % 3) * .65) * (1.0 - age * 1.3),
         Paint()
           ..color = particleColor.withValues(alpha: particleFade * .95)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.4),
@@ -738,10 +740,12 @@ class _RocketLaunchTrailPainter extends CustomPainter {
     }
 
     // A few bright glints make each target launch feel like a celebration.
-    final glintFade = ((1 - progress) * fade).clamp(0.0, 1.0);
+    final glintFade = ((1.0 - progress) * fade)
+        .clamp(0.0, 1.0)
+        .toDouble();
     for (var i = 0; i < 6; i++) {
       final angle = i * math.pi / 3 + progress * 8;
-      final distance = 11 + progress * 15 + (i % 2) * 4;
+      final distance = 11.0 + progress * 15 + (i % 2) * 4.0;
       final point = Offset(
         head.dx + math.cos(angle) * distance,
         head.dy + math.sin(angle) * distance,
