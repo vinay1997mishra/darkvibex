@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
-import '../ui/tinni_style.dart';
 
 Future<void> showFruitParty(BuildContext context, AppState state) async {
   await showModalBottomSheet<void>(
