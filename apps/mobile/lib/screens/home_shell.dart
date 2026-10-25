@@ -488,7 +488,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   void _openOwnerBanner(Map<String, dynamic> banner) {
-    final link = (banner['link']?.toString().trim() ?? '').toLowerCase();
+    final rawLink = banner['link']?.toString().trim() ?? '';
+    final link = rawLink.toLowerCase();
     if (link == 'welcome' || link == 'welcome-info') {
       _openWelcomePage();
       return;
@@ -497,7 +498,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
       _openOfficialInfoPage();
       return;
     }
-    final roomId = link.startsWith('room:') ? link.substring(5).trim() : '';
+    final roomId = rawLink.startsWith('room:')
+        ? rawLink.substring(5).trim()
+        : '';
     if (roomId.isNotEmpty) {
       for (final room in state.rooms) {
         if (room.id == roomId ||
