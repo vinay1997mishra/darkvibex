@@ -9,6 +9,15 @@ import {
 } from "../src/rocket_rewards.js";
 
 test("rocket reward tiers match the configured winner and coin ranges", () => {
+  assert.equal(rocketRewardConfigForLevel(1).group, "1-3");
+  assert.equal(rocketRewardConfigForLevel(2).group, "1-3");
+  assert.equal(rocketRewardConfigForLevel(3).group, "1-3");
+  assert.equal(rocketRewardConfigForLevel(4).group, "4-6");
+  assert.equal(rocketRewardConfigForLevel(6).group, "4-6");
+  assert.equal(rocketRewardConfigForLevel(7).group, "7-9");
+  assert.equal(rocketRewardConfigForLevel(9).group, "7-9");
+  assert.equal(rocketRewardConfigForLevel(10).group, "10-12");
+  assert.equal(rocketRewardConfigForLevel(12).group, "10-12");
   assert.deepEqual(
     ROCKET_REWARD_TIERS.map((tier) => [
       tier.minLevel, tier.maxLevel, tier.maxWinners, tier.frameWinners,
