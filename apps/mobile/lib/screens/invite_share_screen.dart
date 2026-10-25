@@ -656,7 +656,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: const Color(0xFFFF9E1B),
+            backgroundColor: TinniPalette.brightGold,
             foregroundColor: const Color(0xFF7A160C),
             child: Text(
               'L$level',
