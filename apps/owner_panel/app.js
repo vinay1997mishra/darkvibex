@@ -229,8 +229,8 @@ const selectorPermissionRules = [
   ["#rolePostKind",["roles.view","roles.save","roles.delete"],"label"],["#rolePostId",["roles.save"],"label"],["#rolePostName",["roles.save"],"label"],
   ["#rolePostOrder",["roles.save"],"label"],["#rolePostEnabled",["roles.save"],"label"],["#rolePostDetails",["roles.save"],"label"],["#saveRolePost",["roles.save"],"self"],["#reloadRolesPosts",["roles.view"],"self"],
 
-  ["#bannerId",["banners.save"],"label"],["#bannerName",["banners.save"],"label"],["#bannerAsset",["banners.save"],"label"],["#bannerLink",["banners.save"],"label"],
-  ["#bannerStart",["banners.save"],"label"],["#bannerEnd",["banners.save"],"label"],["#bannerEnabled",["banners.save"],"label"],["#saveBanner",["banners.save"],"self"],["#addDefaultBanners",["banners.save"],"self"],["#reloadBanners",["banners.view"],"self"],
+  ["#bannerId",["banners.save"],"label"],["#bannerName",["banners.save"],"label"],["#bannerAsset",["banners.save"],"label"],["#bannerLink",["banners.save"],"label"],["#bannerImageFile",["banners.save"],"label"],
+  ["#bannerStart",["banners.save"],"label"],["#bannerEnd",["banners.save"],"label"],["#bannerEnabled",["banners.save"],"label"],["#uploadBannerImage",["banners.save"],"self"],["#saveBanner",["banners.save"],"self"],["#addDefaultBanners",["banners.save"],"self"],["#reloadBanners",["banners.view"],"self"],
 
   ["#gameConfigId",["games.configure"],"label"],["#gameConfigName",["games.configure"],"label"],["#gameMinBet",["games.configure"],"label"],["#gameMaxBet",["games.configure"],"label"],
   ["#gameEnabled",["games.configure"],"label"],["#saveGameConfig",["games.configure"],"self"],["#reloadGames",["games.view"],"self"],["#gameInvestigationUser",["games.view"],"label"],["#loadGameInvestigation",["games.view"],"self"],
@@ -1411,13 +1411,51 @@ async function saveRolePost(){
   await loadRolesPosts();
 }
 
+function setBannerImagePreview(assetKey){
+  const key=String(assetKey||"").trim();
+  const wrap=$("#bannerImagePreviewWrap"),img=$("#bannerImagePreview");
+  if(!key){wrap.hidden=true;img.removeAttribute("src");return;}
+  img.src=/^https?:\/\//i.test(key)?key:"/api/files?key="+encodeURIComponent(key);
+  wrap.hidden=false;
+}
 async function loadBanners(){
   if(!can("banners.view"))return;
   const d=await api("/api/owner/banners");
   state.banners=d.banners||[];
   $("#bannerList").innerHTML=state.banners.length?state.banners.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · ${esc(item.data?.asset_key||"")}${item.data?.link?" · "+esc(item.data.link):""}</div></div><div class="item-actions"><button class="secondary mini" data-banner-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-banner-delete="${esc(item.id)}">Delete</button></div></div></div>`).join(""):empty("No banners configured");
-  $$("[data-banner-edit]").forEach(b=>b.onclick=()=>{const x=state.banners.find(i=>i.id===b.dataset.bannerEdit);if(!x)return;$("#bannerId").value=x.id;$("#bannerName").value=x.name||"";$("#bannerAsset").value=x.data?.asset_key||"";$("#bannerLink").value=x.data?.link||"";$("#bannerStart").value=x.data?.starts_at||"";$("#bannerEnd").value=x.data?.ends_at||"";$("#bannerEnabled").checked=Number(x.enabled)!==0;});
+  $$("[data-banner-edit]").forEach(b=>b.onclick=()=>{const x=state.banners.find(i=>i.id===b.dataset.bannerEdit);if(!x)return;$("#bannerId").value=x.id;$("#bannerName").value=x.name||"";$("#bannerAsset").value=x.data?.asset_key||"";$("#bannerLink").value=x.data?.link||"";$("#bannerStart").value=x.data?.starts_at||"";$("#bannerEnd").value=x.data?.ends_at||"";$("#bannerEnabled").checked=Number(x.enabled)!==0;$("#bannerImageFile").value="";$("#bannerImageStatus").textContent=x.data?.asset_key?"Existing banner image attached. Upload another image to replace it.":"No uploaded banner image.";setBannerImagePreview(x.data?.asset_key||"");});
   $$("[data-banner-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this banner?"))return;await api("/api/owner/banners/"+encodeURIComponent(b.dataset.bannerDelete),{method:"DELETE"});toast("Banner deleted");await loadBanners();});
+}
+async function uploadBannerImage(){
+  if(!can("banners.save"))return toast("Banner write permission required",false);
+  const bannerId=$("#bannerId").value.trim();
+  const file=$("#bannerImageFile").files?.[0];
+  if(!bannerId)return toast("Enter Banner ID before uploading its image",false);
+  if(!file)return toast("Choose a banner image first",false);
+  const extension=(file.name.split(".").pop()||"").toLowerCase();
+  const types={"jpg":"image/jpeg","jpeg":"image/jpeg","png":"image/png","webp":"image/webp"};
+  const type=types[extension]||file.type;
+  if(!["image/jpeg","image/png","image/webp"].includes(type))return toast("Use a JPG, PNG or WebP banner image",false);
+  if(file.size<=0||file.size>5*1024*1024)return toast("Banner image must be at most 5 MB",false);
+  $("#bannerImageStatus").textContent="Uploading image to storage…";
+  const res=await fetch("/api/owner/banner-media",{
+    method:"PUT",
+    headers:{"authorization":"Bearer "+state.token,"content-type":type,"x-banner-id":bannerId},
+    body:file
+  });
+  const data=await res.json().catch(()=>({ok:false,error:"invalid_response"}));
+  if(!res.ok||!data.ok){
+    $("#bannerImageStatus").textContent="";
+    const message=data.error==="banner_image_max_5mb"?"Banner image must be at most 5 MB."
+      :data.error==="banner_image_type_invalid"?"Use a JPG, PNG or WebP banner image."
+      :data.error==="banner_image_invalid"?"The selected file does not look like a valid image."
+      :data.error;
+    throw new Error(message||("HTTP "+res.status));
+  }
+  $("#bannerAsset").value=String(data.key||"");
+  $("#bannerImageStatus").textContent="Image uploaded. Press Save Banner to publish it.";
+  setBannerImagePreview(data.key||"");
+  toast("Custom banner image uploaded");
 }
 async function saveBanner(){
   if(!can("banners.save"))return toast("Banner write permission required",false);
@@ -1852,7 +1890,7 @@ $("#clearGlobalTheme").onclick=clearGlobalThemeForm;
 drawGlobalThemeCropPreview();
 
 $("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
-$("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));$("#addDefaultBanners").onclick=()=>addDefaultBanners().catch(e=>toast(e.message,false));
+$("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#uploadBannerImage").onclick=()=>uploadBannerImage().catch(e=>{ $("#bannerImageStatus").textContent=""; toast(e.message,false); });$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));$("#addDefaultBanners").onclick=()=>addDefaultBanners().catch(e=>toast(e.message,false));
 $("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));$("#loadGameInvestigation").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#gameInvestigationUser").addEventListener("keydown",e=>{if(e.key==="Enter")loadGames().catch(x=>toast(x.message,false));});
 $("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));$("#reloadPricingOverrides").onclick=()=>loadPricingOverrides().catch(e=>toast(e.message,false));$("#savePricingOverride").onclick=()=>savePricingOverride().catch(e=>toast(e.message,false));$("#clearPricingOverride").onclick=clearPricingOverride;$("#pricingKind").onchange=()=>{updatePricingFreeState();loadPricingOverrides().catch(e=>toast(e.message,false));};
 
