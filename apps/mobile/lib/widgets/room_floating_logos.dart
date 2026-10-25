@@ -734,8 +734,8 @@ class _RocketExhaustPainter extends CustomPainter {
           colors: <Color>[
             Colors.white.withValues(alpha: .98 * ignition),
             color.withValues(alpha: .96 * ignition),
-            const Color(0xFFFF702A).withValues(alpha: .96 * ignition),
-            const Color(0xFFFFD65B).withValues(alpha: .76 * ignition),
+            const Color(0xFF53D9FF).withValues(alpha: .96 * ignition),
+            const Color(0xFF8B7CFF).withValues(alpha: .76 * ignition),
           ],
           stops: const <double>[0, .24, .64, 1],
         ).createShader(Offset.zero & size),
@@ -754,8 +754,8 @@ class _RocketExhaustPainter extends CustomPainter {
           end: Alignment.bottomCenter,
           colors: <Color>[
             Colors.white.withValues(alpha: ignition),
-            const Color(0xFFFFF6C4).withValues(alpha: ignition),
-            const Color(0xFFFFA02E).withValues(alpha: ignition),
+            const Color(0xFFEAF5FF).withValues(alpha: ignition),
+            const Color(0xFF50D8FF).withValues(alpha: ignition),
           ],
         ).createShader(Offset.zero & size),
     );
@@ -837,7 +837,7 @@ class _RocketLaunchTrailPainter extends CustomPainter {
     canvas.drawPath(
       trajectory,
       Paint()
-        ..color = const Color(0xFFFF8C32).withValues(alpha: .34 * fade)
+        ..color = const Color(0xFFD06BFF).withValues(alpha: .34 * fade)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 8
         ..strokeCap = StrokeCap.round
@@ -890,7 +890,7 @@ class _RocketLaunchTrailPainter extends CustomPainter {
       final particleColor = switch (i % 5) {
         0 => Colors.white,
         1 => color,
-        2 => const Color(0xFFFF8C32),
+        2 => const Color(0xFFD06BFF),
         3 => const Color(0xFF63DFFF),
         _ => const Color(0xFFD65DFF),
       };
