@@ -695,19 +695,33 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     ChoiceChip(
                       label: const Text('🔥 Popular'),
                       selected: popular,
+                      selectedColor: const Color(0xFF5148C8),
+                      backgroundColor: const Color(0xFF192143),
+                      side: const BorderSide(color: Color(0xFF54518D)),
+                      labelStyle: const TextStyle(
+                        color: Color(0xFFF1F4FF),
+                        fontWeight: FontWeight.w700,
+                      ),
                       onSelected: (_) => setState(() => popular = true),
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
                       label: const Text('✨ New'),
                       selected: !popular,
+                      selectedColor: const Color(0xFF5148C8),
+                      backgroundColor: const Color(0xFF192143),
+                      side: const BorderSide(color: Color(0xFF54518D)),
+                      labelStyle: const TextStyle(
+                        color: Color(0xFFF1F4FF),
+                        fontWeight: FontWeight.w700,
+                      ),
                       onSelected: (_) => setState(() => popular = false),
                     ),
                     const Spacer(),
                     Text(
                       '${publicRooms.length} rooms',
                       style: const TextStyle(
-                        color: TinniPalette.muted,
+                        color: Color(0xFF8ECFFF),
                         fontSize: 11,
                       ),
                     ),
@@ -724,7 +738,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     const Text(
                       'Top 3 Rooms',
                       style: TextStyle(
-                        color: TinniPalette.gold,
+                        color: const Color(0xFFB1A6FF),
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
@@ -862,7 +876,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
                       onPressed: () => setState(() => topPage = i),
                       style: TextButton.styleFrom(
                         foregroundColor: topPage == i
-                            ? TinniPalette.gold
+                            ? (i == 1
+                                ? const Color(0xFF9B91FF)
+                                : TinniPalette.gold)
                             : TinniPalette.muted,
                       ),
                       child: Column(
@@ -882,7 +898,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
                             width: topPage == i ? 22 : 0,
                             height: 2,
                             decoration: BoxDecoration(
-                              color: TinniPalette.gold,
+                              color: topPage == i
+                                  ? (i == 1
+                                      ? const Color(0xFF70E8FF)
+                                      : TinniPalette.gold)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -1329,6 +1349,89 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
   }
 }
 
+class _PartyPanel extends StatelessWidget {
+  const _PartyPanel({
+    required this.child,
+    this.onTap,
+    this.padding = const EdgeInsets.all(12),
+    this.radius = 14,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsets padding;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xE61D2452),
+            Color(0xE6121836),
+            Color(0xDD171638),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: const Color(0x664F59AD)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x332F36FF), blurRadius: 13),
+          BoxShadow(color: Color(0x2225C6F7), blurRadius: 16),
+        ],
+      ),
+      child: child,
+    );
+    if (onTap == null) return body;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(radius),
+        onTap: onTap,
+        child: body,
+      ),
+    );
+  }
+}
+
+class _PartyGlowIcon extends StatelessWidget {
+  const _PartyGlowIcon({
+    required this.icon,
+    this.size = 20,
+    this.boxSize = 36,
+    this.color = const Color(0xFF9B91FF),
+  });
+
+  final IconData icon;
+  final double size;
+  final double boxSize;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: boxSize,
+        height: boxSize,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color.withValues(alpha: .7)),
+          boxShadow: [
+            BoxShadow(color: color.withValues(alpha: .20), blurRadius: 12),
+          ],
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: .24),
+              const Color(0x00101835),
+            ],
+          ),
+        ),
+        child: Icon(icon, color: color, size: size),
+      );
+}
+
 class _TopRoomCard extends StatelessWidget {
   const _TopRoomCard({
     required this.state,
@@ -1343,37 +1446,71 @@ class _TopRoomCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => TinniPanel(
+  Widget build(BuildContext context) => _PartyPanel(
         onTap: onTap,
         padding: const EdgeInsets.fromLTRB(7, 8, 7, 9),
+        radius: 15,
         child: Column(
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: TinniPalette.panel2,
-                  backgroundImage: room.avatarKey == null
-                      ? null
-                      : NetworkImage(
-                          state.backend.fileUrl(room.avatarKey!),
-                          headers: state.backend.fileHeaders,
-                        ),
-                  child: room.avatarKey == null
-                      ? const Icon(Icons.mic_rounded, color: TinniPalette.gold)
-                      : null,
+                Container(
+                  width: 60,
+                  height: 60,
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0xFF9B8CFF),
+                        Color(0xFF4D91FF),
+                        Color(0xFF70E8FF),
+                      ],
+                    ),
+                  ),
+                  child: CircleAvatar(
+                    radius: 27,
+                    backgroundColor: const Color(0xFF171E3D),
+                    backgroundImage: room.avatarKey == null
+                        ? null
+                        : NetworkImage(
+                            state.backend.fileUrl(room.avatarKey!),
+                            headers: state.backend.fileHeaders,
+                          ),
+                    child: room.avatarKey == null
+                        ? const Icon(
+                            Icons.mic_rounded,
+                            color: Color(0xFF9B91FF),
+                          )
+                        : null,
+                  ),
                 ),
                 Positioned(
-                  right: -5,
-                  top: -6,
-                  child: CircleAvatar(
-                    radius: 11,
-                    backgroundColor: TinniPalette.gold,
+                  right: -4,
+                  top: -5,
+                  child: Container(
+                    width: 23,
+                    height: 23,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: rank == 1
+                            ? const [Color(0xFF70E8FF), Color(0xFF4D91FF)]
+                            : rank == 2
+                                ? const [Color(0xFFB9B0FF), Color(0xFF7567E8)]
+                                : const [Color(0xFF718BFF), Color(0xFF5148C8)],
+                      ),
+                      border: Border.all(
+                        color: const Color(0xFF111831),
+                        width: 2,
+                      ),
+                    ),
+                    alignment: Alignment.center,
                     child: Text(
                       rank.toString(),
                       style: const TextStyle(
-                        color: Colors.black,
+                        color: Colors.white,
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1389,7 +1526,7 @@ class _TopRoomCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: TinniPalette.cream,
+                color: Color(0xFFF1F4FF),
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
               ),
@@ -1397,7 +1534,7 @@ class _TopRoomCard extends StatelessWidget {
             Text(
               '${room.online} online',
               style: const TextStyle(
-                color: TinniPalette.muted,
+                color: Color(0xFF8ECFFF),
                 fontSize: 9,
               ),
             ),
@@ -1429,7 +1566,7 @@ class _OwnerBannerCard extends StatelessWidget {
             : state.backend.fileUrl(asset));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: TinniPanel(
+      child: _PartyPanel(
         onTap: onTap,
         padding: EdgeInsets.zero,
         child: ClipRRect(
@@ -1449,7 +1586,11 @@ class _OwnerBannerCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
-                    colors: [Color(0xDD090909), Color(0x66090909)],
+                    colors: [
+                      Color(0xEE0B1028),
+                      Color(0xAA241B58),
+                      Color(0x662D3D92),
+                    ],
                   ),
                 ),
               ),
@@ -1464,7 +1605,7 @@ class _OwnerBannerCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: TinniPalette.gold,
+                        color: const Color(0xFFB1A6FF),
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1503,11 +1644,16 @@ class _PromoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: TinniPanel(
+        child: _PartyPanel(
           onTap: onTap,
           child: Row(
             children: [
-              TinniGlowIcon(icon: icon, size: 30, boxSize: 58),
+              _PartyGlowIcon(
+                icon: icon,
+                size: 30,
+                boxSize: 58,
+                color: const Color(0xFF9B91FF),
+              ),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -1517,7 +1663,7 @@ class _PromoCard extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        color: TinniPalette.gold,
+                        color: const Color(0xFFB1A6FF),
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                         letterSpacing: .4,
@@ -1527,7 +1673,7 @@ class _PromoCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        color: TinniPalette.muted,
+                        color: const Color(0xFFA9B5DD),
                         fontSize: 11,
                       ),
                     ),
@@ -1536,7 +1682,7 @@ class _PromoCard extends StatelessWidget {
               ),
               const Icon(
                 Icons.chevron_right_rounded,
-                color: TinniPalette.gold,
+                color: const Color(0xFF70E8FF),
               ),
             ],
           ),
@@ -1556,17 +1702,22 @@ class _QuickCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => TinniPanel(
+  Widget build(BuildContext context) => _PartyPanel(
         onTap: onTap,
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
         child: Column(
           children: [
-            TinniGlowIcon(icon: icon, size: 19, boxSize: 36),
+            _PartyGlowIcon(
+              icon: icon,
+              size: 19,
+              boxSize: 36,
+              color: const Color(0xFF70E8FF),
+            ),
             const SizedBox(height: 5),
             Text(
               label,
               style: const TextStyle(
-                color: TinniPalette.gold,
+                color: const Color(0xFFB1A6FF),
                 fontWeight: FontWeight.w800,
                 fontSize: 11,
               ),
@@ -1588,37 +1739,70 @@ class _RoomCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => TinniPanel(
+  Widget build(BuildContext context) => _PartyPanel(
         onTap: onTap,
         child: Row(
           children: [
-            Container(
-              width: 58,
-              height: 58,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: TinniPalette.gold),
-              ),
-              child: CircleAvatar(
-                backgroundColor: TinniPalette.panel2,
-                backgroundImage: room.avatarKey == null
-                    ? null
-                    : NetworkImage(
-                        state.backend.fileUrl(room.avatarKey!),
-                        headers: state.backend.fileHeaders,
+            SizedBox(
+              width: 62,
+              height: 62,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          Color(0xFF9B8CFF),
+                          Color(0xFF4D91FF),
+                          Color(0xFF70E8FF),
+                        ],
                       ),
-                child: room.avatarKey == null
-                    ? Text(
-                        room.name.isEmpty
-                            ? '?'
-                            : room.name.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(
-                          color: TinniPalette.gold,
-                          fontWeight: FontWeight.w900,
+                    ),
+                    child: CircleAvatar(
+                      backgroundColor: const Color(0xFF171E3D),
+                      backgroundImage: room.avatarKey == null
+                          ? null
+                          : NetworkImage(
+                              state.backend.fileUrl(room.avatarKey!),
+                              headers: state.backend.fileHeaders,
+                            ),
+                      child: room.avatarKey == null
+                          ? Text(
+                              room.name.isEmpty
+                                  ? '?'
+                                  : room.name.substring(0, 1).toUpperCase(),
+                              style: const TextStyle(
+                                color: Color(0xFFB1A6FF),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 19,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                  if (room.online > 0)
+                    Positioned(
+                      right: 3,
+                      bottom: 2,
+                      child: Container(
+                        width: 13,
+                        height: 13,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF55F0B5),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF111831),
+                            width: 2,
+                          ),
                         ),
-                      )
-                    : null,
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 11),
@@ -1631,7 +1815,7 @@ class _RoomCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: TinniPalette.cream,
+                      color: const Color(0xFFF1F4FF),
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1640,7 +1824,7 @@ class _RoomCard extends StatelessWidget {
                   Text(
                     'ID ${formatPublicUserId(room.roomNumber)} • ${room.online} online • ${room.seatCount} seats • ${room.partyMode == 'Event hosting mode' ? 'Event' : 'Friends'}',
                     style: const TextStyle(
-                      color: TinniPalette.muted,
+                      color: const Color(0xFFA9B5DD),
                       fontSize: 10,
                     ),
                   ),
@@ -1648,17 +1832,18 @@ class _RoomCard extends StatelessWidget {
                   Text(
                     room.ownerName,
                     style: const TextStyle(
-                      color: TinniPalette.deepGold,
+                      color: const Color(0xFF8ECFFF),
                       fontSize: 10,
                     ),
                   ),
                 ],
               ),
             ),
-            const TinniGlowIcon(
+            const _PartyGlowIcon(
               icon: Icons.mic_external_on_rounded,
               size: 17,
               boxSize: 34,
+              color: Color(0xFF70E8FF),
             ),
           ],
         ),

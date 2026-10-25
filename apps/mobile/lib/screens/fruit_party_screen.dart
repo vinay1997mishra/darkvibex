@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
-import '../ui/tinni_style.dart';
 
 Future<void> showFruitParty(BuildContext context, AppState state) async {
   await showModalBottomSheet<void>(
@@ -286,22 +285,22 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
               end: Alignment.bottomRight,
               colors: silver
                   ? const [Color(0xFFE2E8FF), Color(0xFF625DD5)]
-                  : const [Color(0xFFFFE996), Color(0xFFC77A18)],
+                  : const [Color(0xFF6D63F5), Color(0xFF2C8FE8)],
             ),
             borderRadius: BorderRadius.circular(9),
             border: Border.all(
-              color: active ? Colors.white : const Color(0xFFDAA54C),
+              color: active ? Colors.white : const Color(0xFF776DFF),
               width: active ? 3 : 1,
             ),
             boxShadow: active
-                ? [const BoxShadow(color: Colors.amber, blurRadius: 14)]
+                ? [const BoxShadow(color: Color(0xFF776DFF), blurRadius: 14)]
                 : null,
           ),
           child: Text(
             silver ? 'Silver\nLucky' : 'Gold\nLucky',
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF291208),
+              color: Color(0xFFF5F7FF),
               fontSize: 14,
               fontWeight: FontWeight.w900,
             ),
@@ -333,12 +332,12 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
             duration: const Duration(milliseconds: 200),
             height: 79,
             decoration: BoxDecoration(
-              color: won ? const Color(0xFF795010) : const Color(0xFF190B12),
+              color: won ? const Color(0xFF273C82) : const Color(0xFF121932),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: won || bet > 0
-                    ? const Color(0xFFFFDF83)
-                    : const Color(0xFF774A29),
+                    ? const Color(0xFF85E7FF)
+                    : const Color(0xFF46457C),
                 width: won ? 2 : 1,
               ),
             ),
@@ -350,7 +349,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: 10,
-                    color: bet > 0 ? Colors.amberAccent : TinniPalette.cream,
+                    color: bet > 0 ? Color(0xFF8BEAFF) : Color(0xFFF1F5FF),
                   ),
                 ),
                 Text(
@@ -360,7 +359,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                 Text(
                   '${fruit['multiplier']}×',
                   style: const TextStyle(
-                    color: Color(0xFFFFDD80),
+                    color: Color(0xFFBBD8FF),
                     fontWeight: FontWeight.w900,
                     fontSize: 12,
                   ),
@@ -382,7 +381,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     final winnings =
         int.tryParse(game['today_winnings']?.toString() ?? '') ?? 0;
     return Material(
-      color: Colors.transparent,
+      color: const Color(0xFF0B1028),
       child: SafeArea(
         top: false,
         child: Column(
@@ -400,7 +399,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                       panel == 'game'
                           ? Icons.history_rounded
                           : Icons.arrow_back_rounded,
-                      color: TinniPalette.gold,
+                      color: Color(0xFF9A8CFF),
                       size: 20,
                     ),
                   ),
@@ -413,7 +412,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                           : 'Game records',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        color: Color(0xFFFFDD80),
+                        color: Color(0xFFBBD8FF),
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                       ),
@@ -425,7 +424,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                     icon: const Icon(
                       Icons.help_outline,
                       size: 20,
-                      color: TinniPalette.gold,
+                      color: Color(0xFF9A8CFF),
                     ),
                   ),
                   IconButton(
@@ -434,7 +433,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                     icon: const Icon(
                       Icons.close,
                       size: 20,
-                      color: TinniPalette.gold,
+                      color: Color(0xFF9A8CFF),
                     ),
                   ),
                 ],
@@ -468,7 +467,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                   Text(
                                     'Round #${_round['round_id'] ?? '-'}',
                                     style: const TextStyle(
-                                      color: TinniPalette.cream,
+                                      color: Color(0xFFF1F5FF),
                                       fontSize: 10,
                                     ),
                                   ),
@@ -478,14 +477,14 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                     decoration: BoxDecoration(
                                       gradient: const LinearGradient(
                                         colors: [
-                                          Color(0xFF642822),
-                                          Color(0xFF31131E),
+                                          Color(0xFF342F82),
+                                          Color(0xFF151A3A),
                                         ],
                                         begin: Alignment.topCenter,
                                         end: Alignment.bottomCenter,
                                       ),
                                       border: Border.all(
-                                        color: const Color(0xFFEAB95E),
+                                        color: const Color(0xFF786CFF),
                                         width: 2,
                                       ),
                                       borderRadius: BorderRadius.circular(14),
@@ -516,8 +515,8 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                     gradient:
                                                         const LinearGradient(
                                                           colors: [
-                                                            Color(0xFFBA4343),
-                                                            Color(0xFF551523),
+                                                            Color(0xFF6258E8),
+                                                            Color(0xFF25275F),
                                                           ],
                                                           begin: Alignment
                                                               .topCenter,
@@ -530,7 +529,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                         ),
                                                     border: Border.all(
                                                       color: const Color(
-                                                        0xFFFFCF84,
+                                                        0xFF7BE7FF,
                                                       ),
                                                       width: 2,
                                                     ),
@@ -546,7 +545,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                             .padLeft(2, '0'),
                                                         style: const TextStyle(
                                                           color: Color(
-                                                            0xFFFFE598,
+                                                            0xFFF5F7FF,
                                                           ),
                                                           fontSize: 30,
                                                           height: 1,
@@ -600,7 +599,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                 0xFF7662D5,
                                               ),
                                               backgroundColor: const Color(
-                                                0xFF784A22,
+                                                0xFF292E55,
                                               ),
                                               labelStyle: const TextStyle(
                                                 color: Colors.white,
@@ -627,14 +626,14 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                       Text(
                                         'Balance  ${_compact(wallet)}',
                                         style: const TextStyle(
-                                          color: TinniPalette.cream,
+                                          color: Color(0xFFF1F5FF),
                                           fontSize: 12,
                                         ),
                                       ),
                                       Text(
                                         'Today win  ${_compact(winnings)}',
                                         style: const TextStyle(
-                                          color: TinniPalette.gold,
+                                          color: Color(0xFF9A8CFF),
                                           fontSize: 12,
                                         ),
                                       ),
@@ -648,7 +647,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                         const Text(
                                           'Last 7  ',
                                           style: TextStyle(
-                                            color: TinniPalette.muted,
+                                            color: Color(0xFFA3AED6),
                                             fontSize: 10,
                                           ),
                                         ),
@@ -680,7 +679,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                                                             ? const Color(
                                                                 0xFFCCC9FF,
                                                               )
-                                                            : TinniPalette.gold,
+                                                            : Color(0xFF9A8CFF),
                                                       ),
                                                     ),
                                                   ),
@@ -711,7 +710,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
         ? [
             const Text(
               'Choose a coin amount, then tap a fruit to place a bet. A winning fruit pays the multiplier shown on its tile.',
-              style: TextStyle(color: TinniPalette.cream),
+              style: TextStyle(color: Color(0xFFF1F5FF)),
             ),
             const SizedBox(height: 14),
             Text(
@@ -721,18 +720,24 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
             const SizedBox(height: 14),
             Text(
               'Gold Lucky • ${_fruits.skip(4).map((f) => "${f['emoji']} ${f['label']}").join(', ')} all win at their displayed multipliers.',
-              style: const TextStyle(color: TinniPalette.gold),
+              style: const TextStyle(color: Color(0xFF9A8CFF)),
             ),
             const SizedBox(height: 14),
             const Text(
               'Lucky tiles show special results; bets are placed on fruits. Betting closes when the timer reaches zero. Results settle on the server. Earlier Lucky 11 records retain their original winning fruits.',
-              style: TextStyle(color: TinniPalette.cream),
+              style: TextStyle(color: Color(0xFFF1F5FF)),
             ),
           ]
         : [
             if (_history.isEmpty) const Text('No settled rounds yet.'),
             for (final result in _history)
               Card(
+                color: const Color(0xFF161D3D),
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: const BorderSide(color: Color(0xFF494780)),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -741,7 +746,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                       Text(
                         'Round #${result['round_id']} · ${_resultLabel(result)}',
                         style: const TextStyle(
-                          color: TinniPalette.gold,
+                          color: Color(0xFF9A8CFF),
                           fontWeight: FontWeight.w800,
                         ),
                       ),
