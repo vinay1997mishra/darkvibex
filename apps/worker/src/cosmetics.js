@@ -23,6 +23,11 @@ export const COSMETIC_CATALOG = [
   { id: "frame_royal_love", kind: "frame", name: "Nature Flower", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 16, animation_type: "heart_pulse", animation_ms: 2000 },
   { id: "frame_green_nature", kind: "frame", name: "Phoenix Fire", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 8, animation_type: "ember_sparkle", animation_ms: 2000 },
   { id: "frame_neon_butterfly", kind: "frame", name: "Neon Butterfly", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 14, animation_type: "butterfly_wings_flight", animation_ms: 2000 },
+  { id: "frame_crystal_aurora", kind: "frame", name: "Crystal Aurora", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 15, animation_type: "aurora_orbit", animation_ms: 2000 },
+  { id: "frame_neon_comet", kind: "frame", name: "Neon Comet", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 16, animation_type: "comet_trail", animation_ms: 2000 },
+  { id: "frame_rose_galaxy", kind: "frame", name: "Rose Galaxy", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 17, animation_type: "rose_orbit", animation_ms: 2000 },
+  { id: "frame_solar_empress", kind: "frame", name: "Solar Empress", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 18, animation_type: "crown_radiance", animation_ms: 2000 },
+  { id: "frame_emerald_dragon", kind: "frame", name: "Emerald Dragon", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 18, animation_type: "dragon_wings", animation_ms: 2000 },
 
   // Rocket-chest frames are inventory-only rewards. Their artwork aliases are
   // resolved by VipAnimatedFrame; the Worker grants them only after a chest claim.
