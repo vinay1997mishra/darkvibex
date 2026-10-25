@@ -707,13 +707,14 @@ class _RoomScreenState extends State<RoomScreen> {
                               claiming = false;
                               if (result?['ok'] == true) {
                                 canClaim = false;
-                                claim = Map<String, dynamic>.from(result!);
+                                final claimed = Map<String, dynamic>.from(result!);
+                                claim = claimed;
                                 alreadyClaimed = true;
-                                if (claim['reward_type']?.toString() == 'frame') {
-                                  message = 'You won a frame reward for ${claim['frame_days'] ?? tier['frame_days']} day(s). The frame artwork and inventory delivery will be added in the next phase. No Coins were awarded for this claim.';
+                                if (claimed['reward_type']?.toString() == 'frame') {
+                                  message = 'You won a frame reward for ${claimed['frame_days'] ?? tier['frame_days']} day(s). The frame artwork and inventory delivery will be added in the next phase. No Coins were awarded for this claim.';
                                 } else {
-                                  final amount = int.tryParse(claim['coins']?.toString() ?? '') ?? 0;
-                                  message = result?['already_claimed'] == true
+                                  final amount = int.tryParse(claimed['coins']?.toString() ?? '') ?? 0;
+                                  message = claimed['already_claimed'] == true
                                       ? 'This reward was already claimed. Your wallet has been refreshed: ${_formatRocketRewardCoins(amount)} Coins.'
                                       : 'Congratulations! ${_formatRocketRewardCoins(amount)} Coins have been added to your wallet.';
                                 }
