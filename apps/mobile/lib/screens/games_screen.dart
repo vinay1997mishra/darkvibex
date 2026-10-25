@@ -118,7 +118,7 @@ class _GamesScreenState extends State<GamesScreen> {
               leading: const Icon(
                 Icons.sports_esports_rounded,
                 size: 32,
-                color: Color(0xFFFFD36A),
+                color: TinniPalette.brightGold,
               ),
               title: const Text('Use this room as Game Room'),
               subtitle: const Text(

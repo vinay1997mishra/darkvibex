@@ -5,12 +5,12 @@ abstract final class TinniPalette {
   static const nearBlack = Color(0xE60A0D24);
   static const panel = Color(0xE6121230);
   static const panel2 = Color(0xE61A123A);
-  static const gold = Color(0xFFD09A0A);
-  static const brightGold = Color(0xFFFFC928);
-  static const deepGold = Color(0xFF8C6500);
-  static const bronze = Color(0xFF5F4600);
-  static const cream = Color(0xFFF4E9C7);
-  static const muted = Color(0xFFAA9460);
+  static const gold = Color(0xFF8B7CFF);
+  static const brightGold = Color(0xFF50D8FF);
+  static const deepGold = Color(0xFF5146A8);
+  static const bronze = Color(0xFF37376F);
+  static const cream = Color(0xFFF0F2FF);
+  static const muted = Color(0xFFA5B0D8);
   static const danger = Color(0xFFB95E5B);
 }
 
@@ -19,7 +19,7 @@ ThemeData buildTinniStyleTheme() {
     seedColor: TinniPalette.gold,
     brightness: Brightness.dark,
     primary: TinniPalette.gold,
-    secondary: TinniPalette.cream,
+    secondary: TinniPalette.brightGold,
     surface: TinniPalette.panel,
   );
   return ThemeData(
@@ -81,7 +81,7 @@ ThemeData buildTinniStyleTheme() {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: TinniPalette.gold,
-        foregroundColor: Colors.black,
+        foregroundColor: Colors.white,
         textStyle: const TextStyle(fontWeight: FontWeight.w900),
       ),
     ),
@@ -123,7 +123,8 @@ class TinniGlowIcon extends StatelessWidget {
           ],
           gradient: RadialGradient(
             colors: [
-              TinniPalette.gold.withValues(alpha: .16),
+              TinniPalette.gold.withValues(alpha: .18),
+              TinniPalette.brightGold.withValues(alpha: .08),
               Colors.transparent,
             ],
           ),

@@ -200,11 +200,30 @@ class _MessagesScreenState extends State<MessagesScreen> {
         child: Column(
           children: [
             ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: TinniPalette.gold,
-                child: Icon(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [TinniPalette.gold, TinniPalette.brightGold],
+                  ),
+                  border: Border.all(
+                    color: TinniPalette.brightGold.withValues(alpha: .72),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: TinniPalette.gold.withValues(alpha: .22),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: const Icon(
                   Icons.verified_rounded,
-                  color: Colors.black,
+                  color: Colors.white,
+                  size: 25,
                 ),
               ),
               title: const Text(
@@ -226,11 +245,27 @@ class _MessagesScreenState extends State<MessagesScreen> {
             ),
             const Divider(height: 1),
             ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFF321C0A),
-                child: Icon(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF5B52C9), Color(0xFF218EBE)],
+                  ),
+                  border: Border.all(
+                    color: TinniPalette.brightGold.withValues(alpha: .52),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x303E8BFF), blurRadius: 12),
+                  ],
+                ),
+                child: const Icon(
                   Icons.notifications_active_rounded,
-                  color: TinniPalette.gold,
+                  color: Colors.white,
+                  size: 22,
                 ),
               ),
               title: const Text(
@@ -262,19 +297,42 @@ class _MessagesScreenState extends State<MessagesScreen> {
           padding: EdgeInsets.zero,
           child: ListTile(
             key: Key('message-thread-${item.id}'),
-            leading: CircleAvatar(
-              backgroundColor: TinniPalette.panel2,
-              backgroundImage: item.avatarKey == null
-                  ? null
-                  : NetworkImage(
-                      state.backend.fileUrl(item.avatarKey!),
-                      headers: state.backend.fileHeaders,
-                    ),
-              child: item.avatarKey == null
-                  ? Text(
-                      item.name.isEmpty ? '?' : item.name.substring(0, 1),
-                    )
-                  : null,
+            leading: Container(
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [TinniPalette.gold, TinniPalette.brightGold],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: TinniPalette.gold.withValues(alpha: .2),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                backgroundColor: TinniPalette.panel2,
+                backgroundImage: item.avatarKey == null
+                    ? null
+                    : NetworkImage(
+                        state.backend.fileUrl(item.avatarKey!),
+                        headers: state.backend.fileHeaders,
+                      ),
+                child: item.avatarKey == null
+                    ? Text(
+                        item.name.isEmpty ? '?' : item.name.substring(0, 1),
+                        style: const TextStyle(
+                          color: TinniPalette.cream,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      )
+                    : null,
+              ),
             ),
             title: Text(
               item.name,

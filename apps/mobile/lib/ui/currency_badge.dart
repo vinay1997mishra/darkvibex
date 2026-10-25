@@ -17,8 +17,8 @@ class CurrencyBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = isDiamond
         ? const [Color(0xFF8DEBFF), Color(0xFF438BFF), Color(0xFF7545E8)]
-        : const [Color(0xFFFFF2A6), Color(0xFFFFC928), Color(0xFFE47B18)];
-    final edge = isDiamond ? const Color(0xFF9CEBFF) : const Color(0xFFFFE27A);
+        : const [Color(0xFFFF8FC7), Color(0xFFE84D9C), Color(0xFF8B5CF6)];
+    final edge = isDiamond ? const Color(0xFF9CEBFF) : const Color(0xFFFF9AD5);
     return Container(
       width: size,
       height: size,

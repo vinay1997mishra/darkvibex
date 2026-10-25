@@ -149,7 +149,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
               label,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFFFFD7B0),
+                color: TinniPalette.cream,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -168,7 +168,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
         icon: Icon(icon ?? Icons.card_giftcard_rounded, size: 18),
         label: Text(label),
         style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFFFFB517),
+          backgroundColor: TinniPalette.brightGold,
           foregroundColor: const Color(0xFF7A160C),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           textStyle: const TextStyle(fontWeight: FontWeight.w900),
@@ -251,7 +251,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           'Invite friends and earn commission only when they receive eligible Coin Seller coins in their normal wallet.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Color(0xFFFFE6CB),
+                            color: TinniPalette.cream,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -325,7 +325,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           const Text(
                             'No successful invites yet.',
                             style: TextStyle(
-                              color: Color(0xFFFFD7B0),
+                              color: TinniPalette.cream,
                               fontSize: 12,
                             ),
                           )
@@ -343,7 +343,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         const Text(
                           'Your invitation code',
                           style: TextStyle(
-                            color: Color(0xFFFFD7B0),
+                            color: TinniPalette.cream,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
@@ -361,7 +361,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                                   color: const Color(0x44FFFFFF),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: const Color(0x66FFD36B),
+                                    color: const Color(0x6650D8FF),
                                   ),
                                 ),
                                 child: Text(
@@ -392,7 +392,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           const Text(
                             'Your invite link',
                             style: TextStyle(
-                              color: Color(0xFFFFD7B0),
+                              color: TinniPalette.cream,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -422,7 +422,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         const Text(
                           "Each successful invite gives 300,000 coins once. Ongoing commission counts only coins credited to the invited user's normal wallet through eligible Coin Seller transfers. Merchant transfers, gifts, game winnings and other coin sources do not count. Rewards are coins only; no Entry Vehicle or other prize item is included.",
                           style: TextStyle(
-                            color: Color(0xFFFFD7B0),
+                            color: TinniPalette.cream,
                             fontSize: 11,
                             height: 1.35,
                           ),
@@ -485,7 +485,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         subtitle: Text(
                           'ID ${formatPublicUserId(boundMap['inviter_public_id'], fallback: boundMap['invitation_code']?.toString() ?? '')}',
-                          style: const TextStyle(color: Color(0xFFFFD7B0)),
+                          style: const TextStyle(color: TinniPalette.cream),
                         ),
                         trailing: const Icon(
                           Icons.verified_rounded,
@@ -572,7 +572,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
           overflow: TextOverflow.ellipsis,
           textAlign: align,
           style: TextStyle(
-            color: header ? TinniPalette.gold : const Color(0xFFFFE6CB),
+            color: header ? TinniPalette.gold : TinniPalette.cream,
             fontSize: header ? 10 : 11,
             fontWeight: header ? FontWeight.w900 : FontWeight.w700,
           ),
@@ -649,14 +649,14 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
         color: active ? const Color(0xFF8F1824) : const Color(0xFF65101B),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: active ? TinniPalette.gold : const Color(0x66FFD36B),
+          color: active ? TinniPalette.gold : const Color(0x6650D8FF),
           width: active ? 1.4 : 1,
         ),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: const Color(0xFFFF9E1B),
+            backgroundColor: TinniPalette.brightGold,
             foregroundColor: const Color(0xFF7A160C),
             child: Text(
               'L$level',
@@ -668,7 +668,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
             child: Text(
               '${_formatCoins(minCoins)} received + $minInvites invite${minInvites == 1 ? '' : 's'}',
               style: const TextStyle(
-                color: Color(0xFFFFE6CB),
+                color: TinniPalette.cream,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -677,7 +677,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFBF36),
+              color: TinniPalette.brightGold,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -698,7 +698,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF65101B),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0x66FFD36B)),
+          border: Border.all(color: const Color(0x6650D8FF)),
         ),
         child: child,
       );
@@ -723,7 +723,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
               child: Text(
                 label,
                 style: const TextStyle(
-                  color: Color(0xFFFFE6CB),
+                  color: TinniPalette.cream,
                   fontWeight: FontWeight.w700,
                 ),
               ),

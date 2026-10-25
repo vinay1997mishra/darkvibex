@@ -136,7 +136,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                 Text(
                                   state.coins.toString(),
                                   style: const TextStyle(
-                                    color: Color(0xFFFFC928),
+                                    color: TinniPalette.brightGold,
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                   ),

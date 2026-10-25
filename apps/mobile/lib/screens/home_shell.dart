@@ -145,7 +145,7 @@ class _HomeShellState extends State<HomeShell> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF17130D),
+              Color(0xFF15152F),
               TinniPalette.nearBlack,
               TinniPalette.black,
             ],

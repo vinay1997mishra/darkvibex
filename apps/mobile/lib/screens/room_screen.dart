@@ -582,7 +582,7 @@ class _RoomScreenState extends State<RoomScreen> {
             surfaceTintColor: Colors.transparent,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
-              side: const BorderSide(color: Color(0xFFFFC94A), width: 1.2),
+              side: const BorderSide(color: TinniPalette.brightGold, width: 1.2),
             ),
             titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
             contentPadding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
@@ -595,11 +595,11 @@ class _RoomScreenState extends State<RoomScreen> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: const LinearGradient(
-                      colors: <Color>[Color(0xFFFFE8A1), Color(0xFFFFB52E), Color(0xFFEC6B2D)],
+                      colors: <Color>[Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFFEC6B2D)],
                     ),
                     boxShadow: <BoxShadow>[
                       BoxShadow(
-                        color: const Color(0xFFFFB52E).withValues(alpha: .3),
+                        color: Color(0xFF53D9FF).withValues(alpha: .3),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
@@ -616,7 +616,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   'ROCKET REWARD CHEST',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFFFFD778),
+                    color: Color(0xFF50D8FF),
                     fontWeight: FontWeight.w900,
                     fontSize: 18,
                   ),
@@ -653,7 +653,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   rewardFrame['name'] ?? 'Rocket Animated Frame',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: Color(0xFFFFD778),
+                    color: Color(0xFF50D8FF),
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                   ),
@@ -674,7 +674,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     message,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Color(0xFFFFD778),
+                      color: Color(0xFF50D8FF),
                       fontWeight: FontWeight.w800,
                       height: 1.35,
                     ),
@@ -697,7 +697,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   child: ElevatedButton(
                     key: const Key('rocket-reward-claim-now'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFC94A),
+                      backgroundColor: TinniPalette.brightGold,
                       foregroundColor: const Color(0xFF302000),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
@@ -868,7 +868,7 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
             border: Border.all(
-              color: const Color(0xFFFFC94A),
+              color: TinniPalette.brightGold,
               width: 1.1,
             ),
             boxShadow: const <BoxShadow>[
@@ -886,7 +886,7 @@ class _RoomScreenState extends State<RoomScreen> {
                       Text(
                         'Rocket $currentLevel/${_rocketStageTargets.length}',
                         style: const TextStyle(
-                          color: Color(0xFFFFD45A),
+                          color: Color(0xFF50D8FF),
                           fontSize: 17,
                           fontWeight: FontWeight.w900,
                         ),
@@ -936,7 +936,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 borderRadius: BorderRadius.circular(9),
                                 border: Border.all(
                                   color: done
-                                      ? const Color(0xFFFFD45A)
+                                      ? Color(0xFF50D8FF)
                                       : current
                                           ? const Color(0xFF61D9FF)
                                           : const Color(0xFF56627E),
@@ -949,7 +949,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     'Rocket $level',
                                     style: TextStyle(
                                       color: done
-                                          ? const Color(0xFFFFD45A)
+                                          ? Color(0xFF50D8FF)
                                           : Colors.white,
                                       fontWeight: FontWeight.w900,
                                       fontSize: 10,
@@ -991,7 +991,7 @@ class _RoomScreenState extends State<RoomScreen> {
                       minHeight: 12,
                       backgroundColor: const Color(0xFF241B2C),
                       valueColor: const AlwaysStoppedAnimation<Color>(
-                        Color(0xFFFFD45A),
+                        Color(0xFF50D8FF),
                       ),
                     ),
                   ),
@@ -1005,7 +1005,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           '${(percent * 100).floor()}%',
                   key: const Key('room-rocket-progress-label'),
                   style: const TextStyle(
-                    color: Color(0xFFFFD45A),
+                    color: Color(0xFF50D8FF),
                     fontWeight: FontWeight.w900,
                     fontSize: 11,
                   ),
@@ -1015,7 +1015,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   const Text(
                     'REWARD CHESTS',
                     style: TextStyle(
-                      color: Color(0xFFFFD778),
+                      color: Color(0xFF50D8FF),
                       fontSize: 10,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1.1,
@@ -1038,9 +1038,9 @@ class _RoomScreenState extends State<RoomScreen> {
                           icon: const Icon(Icons.card_giftcard_rounded, size: 14),
                           label: Text('L$level'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFFFFD778),
+                            foregroundColor: Color(0xFF50D8FF),
                             side: BorderSide(
-                              color: const Color(0xFFFFC94A).withValues(alpha: .55),
+                              color: TinniPalette.brightGold.withValues(alpha: .55),
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                             minimumSize: const Size(44, 38),
@@ -2366,7 +2366,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                                     child: Icon(
                                                       Icons.check_rounded,
                                                       size: 29,
-                                                      color: Color(0xFFFFD45A),
+                                                      color: Color(0xFF50D8FF),
                                                     ),
                                                   ),
                                                 ),
@@ -2584,7 +2584,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           children: [
                             const Icon(
                               Icons.monetization_on_rounded,
-                              color: Color(0xFFFFD45A),
+                              color: Color(0xFF50D8FF),
                               size: 21,
                             ),
                             const SizedBox(width: 5),
@@ -2602,7 +2602,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: Color(0xFFFFD45A),
+                                      color: Color(0xFF50D8FF),
                                       fontSize: 11,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -3091,7 +3091,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                       backgroundColor: Color(0xFF2D2341),
                                       child: Icon(
                                         Icons.workspace_premium_rounded,
-                                        color: Color(0xFFFFD66B),
+                                        color: Color(0xFF8B7CFF),
                                         size: 25,
                                       ),
                                     ),
@@ -4060,7 +4060,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                       if (widget.state.hasVipPrivilege('free_say_hi') && widget.state.vipFreeSayHiRemaining > 0)
                                         IconButton(
                                           tooltip: 'Free Say Hi (${widget.state.vipFreeSayHiRemaining} left)',
-                                          icon: const Icon(Icons.waving_hand_rounded, color: Color(0xFFFFD36A)),
+                                          icon: const Icon(Icons.waving_hand_rounded, color: Color(0xFF50D8FF)),
                                           onPressed: () => _composeVipSayHi(context, userId, name?.isNotEmpty == true ? name! : 'User'),
                                         ),
                                       if (canModerate)
@@ -5045,7 +5045,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 key: const Key('seat-control-down'),
                 leading: const Icon(
                   Icons.airline_seat_recline_normal_rounded,
-                  color: Colors.orangeAccent,
+                  color: TinniPalette.brightGold,
                 ),
                 title: const Text('Seat Down'),
                 subtitle: Text(
@@ -5070,7 +5070,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 key: const Key('seat-control-leave'),
                 leading: const Icon(
                   Icons.logout_rounded,
-                  color: Colors.orangeAccent,
+                  color: TinniPalette.brightGold,
                 ),
                 title: const Text('Leave this seat'),
                 onTap: () async {
@@ -7387,7 +7387,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                                 : Icons.add_rounded,
                                         size: diameter < 48 ? 17 : 22,
                                         color: lockedSeats.contains(seat)
-                                            ? Colors.orangeAccent
+                                            ? TinniPalette.brightGold
                                             : TinniPalette.cream,
                                       ),
                               ),
@@ -8092,7 +8092,7 @@ class _LiveMicWavePainter extends CustomPainter {
     final outerPadding = compact ? 9.0 : 12.0;
     final baseRadius = avatarDiameter / 2 + (compact ? 1.2 : 1.8);
     final liveColor = Color.lerp(
-      const Color(0xFFFFD76A),
+      Color(0xFF8B7CFF),
       const Color(0xFF56F2C2),
       (.30 + normalized * .70).clamp(0.0, 1.0),
     )!;
@@ -8167,8 +8167,8 @@ class _MiniLampPainter extends CustomPainter {
     final gold = Paint()
       ..shader = const LinearGradient(
         colors: <Color>[
-          Color(0xFFFFF2A1),
-          Color(0xFFFFC62C),
+          Color(0xFFEAF5FF),
+          Color(0xFF53D9FF),
           Color(0xFFD88C00),
         ],
       ).createShader(Offset.zero & size);
@@ -8211,7 +8211,7 @@ class _MiniLampPainter extends CustomPainter {
       ..close();
     canvas.drawPath(spout, gold);
     final handle = Paint()
-      ..color = const Color(0xFFFFDD53)
+      ..color = Color(0xFF50D8FF)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4;
     canvas.drawArc(
@@ -8228,7 +8228,7 @@ class _MiniLampPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(size.width * .48, size.height * .22),
       2,
-      Paint()..color = const Color(0xFFFFFFC5),
+      Paint()..color = Color(0xFFEAF5FF),
     );
   }
 

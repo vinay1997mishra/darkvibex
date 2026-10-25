@@ -920,7 +920,7 @@ class _RoleWalletDetailScreenState
                             style: TextStyle(
                               color: credentialSet
                                   ? Colors.greenAccent
-                                  : Colors.orangeAccent,
+                                  : Color(0xFF8B7CFF),
                               fontSize: 11,
                             ),
                           ),
