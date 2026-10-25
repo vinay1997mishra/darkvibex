@@ -403,7 +403,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                 child: SizedBox(width: 230, child: Padding(
                                   padding: const EdgeInsets.all(14),
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    const Icon(Icons.redeem_rounded, color: Color(0xFFFFD36A), size: 30),
+                                    const Icon(Icons.redeem_rounded, color: Color(0xFF50D8FF), size: 30),
                                     const SizedBox(height: 6),
                                     Text(mine ? 'Red envelope sent' : 'Red envelope from ${item['sender_name'] ?? widget.otherName}', style: const TextStyle(fontWeight: FontWeight.w800)),
                                     Text(mine
