@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'frame_artwork_data.dart';
+import '../utils/rocket_frame_catalog.dart';
+import 'rocket_frame_painter.dart';
 
 final Map<String, MemoryImage> _frameArtworkCache = <String, MemoryImage>{};
 
@@ -68,7 +70,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   late final AnimationController _controller;
 
   Duration _durationFor(String? styleId) => Duration(
-        milliseconds: _freeAnimatedFrameIds.contains(styleId) ? 2000 : 3200,
+        milliseconds: _freeAnimatedFrameIds.contains(styleId) ||
+                isRocketRewardFrameId(styleId)
+            ? 2000
+            : 3200,
       );
 
   @override
@@ -104,7 +109,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
 
   @override
   Widget build(BuildContext context) {
-    final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
+    final artworkStyleId = isRocketRewardFrameId(widget.styleId)
+        ? rocketFrameArtworkStyleId(widget.styleId)
+        : widget.styleId;
+    final artwork = widget.enabled ? _frameArtwork(artworkStyleId) : null;
 
     if (widget.enabled &&
         _premiumButterflyFrameIds.contains(widget.styleId)) {
@@ -204,7 +212,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     animation: _controller,
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
-                        styleId: widget.styleId,
+                        styleId: artworkStyleId,
                         phase: _controller.value,
                       ),
                     ),
@@ -212,6 +220,25 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 ),
               ),
             ),
+            if (isRocketRewardFrameId(widget.styleId))
+              IgnorePointer(
+                child: Transform.scale(
+                  scale: 1.42,
+                  alignment: Alignment.center,
+                  child: SizedBox.square(
+                    dimension: widget.size,
+                    child: AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, child) => CustomPaint(
+                        painter: RocketFramePainter(
+                          styleId: widget.styleId!,
+                          phase: _controller.value,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       );
@@ -235,11 +262,16 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                   child: AnimatedBuilder(
                     animation: _controller,
                     builder: (context, child) => CustomPaint(
-                      painter: _VipRingPainter(
-                        _controller.value,
-                        widget.level,
-                        widget.styleId,
-                      ),
+                      painter: isRocketRewardFrameId(widget.styleId)
+                          ? RocketFramePainter(
+                              styleId: widget.styleId!,
+                              phase: _controller.value,
+                            )
+                          : _VipRingPainter(
+                              _controller.value,
+                              widget.level,
+                              widget.styleId,
+                            ),
                     ),
                   ),
                 ),
