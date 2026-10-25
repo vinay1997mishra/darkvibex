@@ -51,6 +51,9 @@ void main() {
     expect(shopSource, contains("'0 COINS'"));
     expect(shopSource, contains("zeroCoinBuy"));
     expect(frameSource, contains('_PremiumVectorFramePainter'));
+    expect(frameSource, contains('cycle / 8 + i * math.pi / 4'));
+    expect(frameSource, contains('cycle / 6 + i * math.pi / 3'));
+    expect(frameSource, contains('cycle / 4 + i * math.pi / 2'));
     expect(frameSource, contains('_ButterflyFrameBasePainter'));
     expect(frameSource, contains('_ButterflyFlightPainter'));
     expect(frameSource, contains('final flyAngle = -math.pi / 2 + cycle'));
