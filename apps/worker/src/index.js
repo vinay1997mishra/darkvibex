@@ -4128,7 +4128,7 @@ async function handleApi(request, env, url) {
           name: `Rocket ${labels[group - 1]} • Frame ${String(slot).padStart(2, "0")}`,
           price_coins: 0,
           min_vip_level: 0,
-          duration_days: 0,
+          duration_days: [1, 5, 7, 10][group - 1],
           tier: group * 4,
           animation_type: "rocket_level_frame",
           animation_ms: 2000,
