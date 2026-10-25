@@ -31,7 +31,9 @@ void main() {
     for (final id in ids) {
       expect(frameSource, contains("'$id'"));
     }
-    expect(frameSource, contains('milliseconds: _freeAnimatedFrameIds.contains(styleId) ? 2000 : 3200'));
+    expect(frameSource, contains('_freeAnimatedFrameIds.contains(styleId) ||'));
+    expect(frameSource, contains('_rocketFrameStyleAliases.containsKey(styleId)'));
+    expect(frameSource, contains('? 2000 : 3200'));
     expect(shopSource, contains("price <= 0 ? 'FREE'"));
     expect(shopSource, contains("price <= 0 ? 'Get Free' : 'Buy'"));
     expect(shopSource, contains("durationDays <= 0 ? 'Permanent'"));
