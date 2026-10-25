@@ -70,3 +70,21 @@ List<String> rocketFrameSampleIds(String rewardGroup) =>
       rocketFrameIdForSlot(rewardGroup, 13),
       rocketFrameIdForSlot(rewardGroup, 25),
     ];
+
+const List<List<String>> _rocketArtworkStylesByGroup = <List<String>>[
+  <String>['frame_golden_crown', 'frame_pink_heart', 'frame_blue_butterfly', 'frame_purple_star', 'frame_golden_flower'],
+  <String>['frame_blue_angel_crown', 'frame_purple_butterfly', 'frame_blue_magic_butterfly', 'frame_golden_butterfly_queen', 'frame_royal_love'],
+  <String>['frame_red_black_royal_wings', 'frame_red_rose', 'frame_purple_dream_butterfly', 'frame_neon_butterfly', 'frame_blue_magic_butterfly'],
+  <String>['frame_golden_crown', 'frame_blue_angel_crown', 'frame_red_black_royal_wings', 'frame_purple_dream_butterfly', 'frame_neon_butterfly'],
+];
+
+/// Reuses the app's existing high-detail transparent frame artwork, then adds
+/// Rocket-tier-specific ornaments and motion so reward frames match the premium
+/// style already used on profile and room-seat avatars.
+String rocketFrameArtworkStyleId(String? id) {
+  final group = rocketFrameGroupIndex(id);
+  final variant = rocketFrameVariant(id);
+  if (group == 0 || variant == 0) return 'frame_golden_crown';
+  final styles = _rocketArtworkStylesByGroup[group - 1];
+  return styles[(variant - 1) % styles.length];
+}
