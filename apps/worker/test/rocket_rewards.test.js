@@ -60,6 +60,7 @@ test("only the first 25 successful claims in a level pool are frame slots", () =
     reward_type: "coins",
     coin_amount: 20_000,
     frame_days: 0,
+    frame_id: null,
     frame_delivery_status: "not_applicable",
   });
   assert.equal(assignRocketReward(tier, 50, 0.5), null);
