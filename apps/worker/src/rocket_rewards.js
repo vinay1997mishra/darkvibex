@@ -281,7 +281,7 @@ export async function handleRocketRewardRoute({
   ]);
 
   const finalRow = await db.prepare(
-    "SELECT reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND rocket_level=? AND user_id=? LIMIT 1",
+    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND rocket_level=? AND user_id=? LIMIT 1",
   ).bind(roomId, requestedLevel, userId).first();
   if (!finalRow) {
     const latestCount = await db.prepare(
@@ -301,9 +301,7 @@ export async function handleRocketRewardRoute({
   ).bind(roomId, requestedLevel).first();
   return json({
     ok: true,
-    already_claimed: String(finalRow.reward_type) === "frame" || Number(finalRow.coin_amount ?? 0) > 0
-      ? String(finalRow.claimed_at) !== String(timestamp)
-      : false,
+    already_claimed: String(finalRow.id ?? "") !== claimId,
     rocket_level: requestedLevel,
     ...claim,
     claimed_count: Number(finalCount?.claimed_count ?? 0),
