@@ -4,6 +4,7 @@ import {
   ROCKET_MILESTONE_TARGETS,
   ROCKET_REWARD_TIERS,
   assignRocketReward,
+  rocketFrameIdForGroup,
   rocketRewardConfigForLevel,
   rocketTargetForLevel,
 } from "../src/rocket_rewards.js";
@@ -38,18 +39,21 @@ test("only the first 25 successful claims in a level pool are frame slots", () =
     reward_type: "frame",
     coin_amount: 0,
     frame_days: 1,
-    frame_delivery_status: "pending_assets",
+    frame_id: "rocket_frame_g1_01",
+    frame_delivery_status: "delivered",
   });
   assert.deepEqual(assignRocketReward(tier, 24, 0.5), {
     reward_type: "frame",
     coin_amount: 0,
     frame_days: 1,
-    frame_delivery_status: "pending_assets",
+    frame_id: "rocket_frame_g1_25",
+    frame_delivery_status: "delivered",
   });
   assert.deepEqual(assignRocketReward(tier, 25, 0), {
     reward_type: "coins",
     coin_amount: 10_000,
     frame_days: 0,
+    frame_id: null,
     frame_delivery_status: "not_applicable",
   });
   assert.deepEqual(assignRocketReward(tier, 49, 1), {
@@ -59,6 +63,19 @@ test("only the first 25 successful claims in a level pool are frame slots", () =
     frame_delivery_status: "not_applicable",
   });
   assert.equal(assignRocketReward(tier, 50, 0.5), null);
+});
+
+test("Rocket frame IDs are unique across the 100 catalog slots", () => {
+  const ids = new Set();
+  for (const tier of ROCKET_REWARD_TIERS) {
+    for (let slot = 1; slot <= 25; slot++) {
+      const id = rocketFrameIdForGroup(tier.group, slot);
+      assert.match(id, /^rocket_frame_g[1-4]_(?:0[1-9]|1[0-9]|2[0-5])$/);
+      ids.add(id);
+    }
+  }
+  assert.equal(ids.size, 100);
+  assert.equal(rocketFrameIdForGroup("10-12", 25), "rocket_frame_g4_25");
 });
 
 test("coin range and frame duration follow the level group", () => {
