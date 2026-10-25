@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  ROCKET_FRAME_REWARDS,
   ROCKET_MILESTONE_TARGETS,
   ROCKET_REWARD_TIERS,
   assignRocketReward,
+  rocketFrameRewardForGroup,
   rocketRewardConfigForLevel,
   rocketTargetForLevel,
 } from "../src/rocket_rewards.js";
@@ -74,12 +76,24 @@ test("coin range and frame duration follow the level group", () => {
   assert.equal(assignRocketReward(level10, 0).frame_days, 10);
 });
 
-test("unknown levels and unconfigured 11–12 thresholds stay explicit", () => {
+test("all 12 Rocket milestone thresholds are configured", () => {
   assert.equal(rocketRewardConfigForLevel(0), null);
   assert.equal(rocketRewardConfigForLevel(13), null);
-  assert.equal(ROCKET_MILESTONE_TARGETS.length, 10);
+  assert.equal(ROCKET_MILESTONE_TARGETS.length, 12);
   assert.equal(rocketTargetForLevel(1), 8_000_000);
   assert.equal(rocketTargetForLevel(10), 500_000_000);
-  assert.equal(rocketTargetForLevel(11), null);
-  assert.equal(rocketTargetForLevel(12), null);
+  assert.equal(rocketTargetForLevel(11), 650_000_000);
+  assert.equal(rocketTargetForLevel(12), 800_000_000);
+});
+
+test("each Rocket reward group maps to a matching circular frame asset", () => {
+  assert.deepEqual(ROCKET_FRAME_REWARDS, {
+    "1-3": { id: "rocket_frame_aurora", name: "Rocket Aurora" },
+    "4-6": { id: "rocket_frame_neon_wings", name: "Rocket Neon Wings" },
+    "7-9": { id: "rocket_frame_golden_comet", name: "Rocket Golden Comet" },
+    "10-12": { id: "rocket_frame_purple_nova", name: "Rocket Purple Nova" },
+  });
+  assert.equal(rocketFrameRewardForGroup("1-3").id, "rocket_frame_aurora");
+  assert.equal(rocketFrameRewardForGroup("10-12").id, "rocket_frame_purple_nova");
+  assert.equal(rocketFrameRewardForGroup("unknown"), null);
 });

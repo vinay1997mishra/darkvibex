@@ -1,5 +1,7 @@
+import { ensureCosmeticsSchema } from "./cosmetics.js";
+
 // Rocket target chest rewards. Reward pools are per room + reached rocket level.
-// Frame reward slots are persisted now; the visual frame catalog is added in a later phase.
+
 export const ROCKET_REWARD_TIERS = Object.freeze([
   Object.freeze({
     minLevel: 1, maxLevel: 3, group: "1-3", label: "Rocket Levels 1–3",
@@ -19,9 +21,18 @@ export const ROCKET_REWARD_TIERS = Object.freeze([
   }),
 ]);
 
-// These must stay aligned with apps/mobile/lib/utils/rocket_progress.dart.
-// Levels 11–12 have tier definitions, but the app does not yet define their
-// gift thresholds. They remain locked until product targets are configured.
+export const ROCKET_FRAME_REWARDS = Object.freeze({
+  "1-3": Object.freeze({ id: "rocket_frame_aurora", name: "Rocket Aurora" }),
+  "4-6": Object.freeze({ id: "rocket_frame_neon_wings", name: "Rocket Neon Wings" }),
+  "7-9": Object.freeze({ id: "rocket_frame_golden_comet", name: "Rocket Golden Comet" }),
+  "10-12": Object.freeze({ id: "rocket_frame_purple_nova", name: "Rocket Purple Nova" }),
+});
+
+export function rocketFrameRewardForGroup(group) {
+  return ROCKET_FRAME_REWARDS[String(group ?? "")] ?? null;
+}
+
+// These milestone targets must stay aligned with apps/mobile/lib/utils/rocket_progress.dart.
 export const ROCKET_MILESTONE_TARGETS = Object.freeze([
   8_000_000,
   15_000_000,
@@ -33,6 +44,8 @@ export const ROCKET_MILESTONE_TARGETS = Object.freeze([
   250_000_000,
   350_000_000,
   500_000_000,
+  650_000_000,
+  800_000_000,
 ]);
 
 export function rocketRewardConfigForLevel(level) {
@@ -94,12 +107,47 @@ async function ensureRocketRewardSchema(db) {
   ]);
 }
 
+async function deliverPendingFrameClaim(db, row, deliveryAt) {
+  if (!row || String(row.reward_type ?? "") !== "frame") return;
+  const frame = rocketFrameRewardForGroup(row.reward_group);
+  const userId = String(row.user_id ?? "");
+  const claimId = String(row.id ?? "");
+  const days = Math.max(1, Number(row.frame_days ?? 1));
+  if (!frame || !userId || !claimId) return;
+
+  // Start validity when legacy pending artwork is actually delivered so a
+  // previous placeholder claim does not lose its full advertised duration.
+  await db.batch([
+    db.prepare(`INSERT INTO user_cosmetics
+        (user_id,item_id,kind,acquired_at,expires_at,active)
+      SELECT ?,?,'frame',?,?,0 FROM users WHERE id=?
+      ON CONFLICT(user_id,item_id) DO UPDATE SET
+        acquired_at=excluded.acquired_at,
+        expires_at=MAX(user_cosmetics.expires_at,excluded.expires_at),
+        active=user_cosmetics.active`).bind(
+      userId, frame.id, deliveryAt, deliveryAt + days * 86400000, userId,
+    ),
+    db.prepare(`UPDATE rocket_reward_claims
+      SET frame_delivery_status='delivered'
+      WHERE id=? AND reward_type='frame'
+        AND EXISTS (
+          SELECT 1 FROM user_cosmetics
+          WHERE user_id=? AND item_id=? AND expires_at>?
+        )`).bind(claimId, userId, frame.id, deliveryAt),
+  ]);
+}
+
 function asPublicClaim(row) {
   if (!row) return null;
+  const frame = String(row.reward_type ?? "") === "frame"
+    ? rocketFrameRewardForGroup(row.reward_group)
+    : null;
   return {
     reward_type: String(row.reward_type ?? ""),
     coins: Number(row.coin_amount ?? 0),
     frame_days: Number(row.frame_days ?? 0),
+    frame_id: frame?.id ?? null,
+    frame_name: frame?.name ?? null,
     frame_delivery_status: String(row.frame_delivery_status ?? "not_applicable"),
     claimed_at: Number(row.claimed_at ?? 0),
   };
@@ -146,6 +194,7 @@ export async function handleRocketRewardRoute({
   }
 
   await ensureRocketRewardSchema(db);
+  await ensureCosmeticsSchema(db);
   const requestedLevel = isClaim
     ? Number((await request.clone().json().catch(() => ({})))?.rocket_level)
     : Number(url.searchParams.get("level"));
@@ -163,9 +212,16 @@ export async function handleRocketRewardRoute({
     "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND reward_group=?",
   ).bind(roomId, tier.group).first();
   const claimedCount = Number(poolRow?.claimed_count ?? 0);
-  const existingRow = await db.prepare(
-    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+  let existingRow = await db.prepare(
+    "SELECT id,room_id,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
   ).bind(roomId, tier.group, userId).first();
+  if (existingRow?.reward_type === "frame" &&
+      String(existingRow.frame_delivery_status ?? "") !== "delivered") {
+    await deliverPendingFrameClaim(db, existingRow, now());
+    existingRow = await db.prepare(
+      "SELECT id,room_id,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+    ).bind(roomId, tier.group, userId).first();
+  }
   const existingClaim = asPublicClaim(existingRow);
 
   if (isStatus) {
@@ -279,10 +335,42 @@ export async function handleRocketRewardRoute({
       WHERE changes()=1 AND c.reward_type='coins' AND c.coin_amount>0`).bind(
       newId(), timestamp, claimId,
     ),
+    db.prepare(`INSERT INTO user_cosmetics
+        (user_id,item_id,kind,acquired_at,expires_at,active)
+      SELECT c.user_id,
+        CASE c.reward_group
+          WHEN '1-3' THEN 'rocket_frame_aurora'
+          WHEN '4-6' THEN 'rocket_frame_neon_wings'
+          WHEN '7-9' THEN 'rocket_frame_golden_comet'
+          WHEN '10-12' THEN 'rocket_frame_purple_nova'
+        END,
+        'frame',?, ?,0
+      FROM rocket_reward_claims c
+      WHERE c.id=? AND c.reward_type='frame'
+      ON CONFLICT(user_id,item_id) DO UPDATE SET
+        acquired_at=excluded.acquired_at,
+        expires_at=MAX(user_cosmetics.expires_at,excluded.expires_at),
+        active=user_cosmetics.active`).bind(
+      timestamp, timestamp + tier.frameDays * 86400000, claimId,
+    ),
+    db.prepare(`UPDATE rocket_reward_claims
+      SET frame_delivery_status='delivered'
+      WHERE id=? AND reward_type='frame'
+        AND EXISTS (
+          SELECT 1 FROM user_cosmetics uc
+          WHERE uc.user_id=rocket_reward_claims.user_id
+            AND uc.item_id=CASE rocket_reward_claims.reward_group
+              WHEN '1-3' THEN 'rocket_frame_aurora'
+              WHEN '4-6' THEN 'rocket_frame_neon_wings'
+              WHEN '7-9' THEN 'rocket_frame_golden_comet'
+              WHEN '10-12' THEN 'rocket_frame_purple_nova'
+            END
+            AND uc.expires_at>?
+        )`).bind(claimId, timestamp),
   ]);
 
   const finalRow = await db.prepare(
-    "SELECT id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
+    "SELECT id,room_id,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
   ).bind(roomId, tier.group, userId).first();
   if (!finalRow) {
     const latestCount = await db.prepare(

@@ -578,6 +578,10 @@ export async function effectiveCosmeticCatalog(db) {
       (endsAt != null && endsAt > 0 && endsAt < ts);
     const existing = map.get(itemId);
 
+    // Rocket reward frames are earned through a verified chest claim only.
+    // Keep them out of Owner catalog overrides as well as the purchase route.
+    if (existing?.reward_only === true) continue;
+
     // Owner catalog rows must never hide or overwrite a built-in item from
     // another category just because their IDs happen to collide.
     if (existing && String(existing.kind ?? "") !== kind) continue;
@@ -611,9 +615,12 @@ export async function effectiveCosmeticCatalog(db) {
   );
 
   // Fail safe: stale/accidental disabled overrides must not blank the entire
-  // Store. Keep the canonical catalog available if every built-in entry was
-  // filtered out; owner pricing overrides are still applied by the API route.
-  if (items.length === 0 && COSMETIC_CATALOG.length > 0) {
+  // Store. Reward-only Rocket frames remain reserved in the catalog, but they
+  // must not prevent fallback when every regular built-in Store item is hidden.
+  if (
+    items.filter((item) => item.reward_only !== true).length === 0 &&
+    COSMETIC_CATALOG.length > 0
+  ) {
     return COSMETIC_CATALOG.map((item) => ({ ...item }));
   }
   return items;
@@ -4124,6 +4131,9 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const product = (await effectiveCosmeticCatalog(db)).find((item) => item.id === itemId);
     if (!product) return json({ ok:false,error:"cosmetic_not_found" }, { status:404 });
+    if (product.reward_only === true) {
+      return json({ ok:false,error:"reward_only_item" }, { status:403 });
+    }
     await ensureUser(db,userId);
     if (!recipientId) return json({ ok:false,error:"recipient_required" }, { status:400 });
     if (recipientId !== userId) {

@@ -34,6 +34,8 @@ import 'home_shell.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
 import '../utils/rocket_progress.dart';
+import '../utils/rocket_reward_frames.dart';
+import '../widgets/rocket_reward_frame_preview.dart';
 import 'conversation_screen.dart';
 
 class RoomScreen extends StatefulWidget {
@@ -556,6 +558,7 @@ class _RoomScreenState extends State<RoomScreen> {
       final rawTier = status['tier'];
       if (rawTier is! Map) return;
       final tier = Map<String, dynamic>.from(rawTier);
+      final rewardFrame = rocketRewardFrameForGroup(tier['group']?.toString());
       final rawClaim = status['claim'];
       Map<String, dynamic>? claim = rawClaim is Map
           ? Map<String, dynamic>.from(rawClaim)
@@ -567,7 +570,7 @@ class _RoomScreenState extends State<RoomScreen> {
       if (claim != null) {
         final type = claim['reward_type']?.toString() ?? '';
         message = type == 'frame'
-            ? 'You already claimed a frame reward. The frame artwork will be added in the next phase; this claim does not award coins.'
+            ? 'You already claimed ${claim['frame_name'] ?? rewardFrame['name']}. It is available in Store > Frame > Inventory for ${claim['frame_days'] ?? tier['frame_days']} day(s). Tap Use to equip it. No Coins were awarded.'
             : 'You already claimed ${_formatRocketRewardCoins(int.tryParse(claim['coins']?.toString() ?? '') ?? 0)} Coins.';
       }
       await showDialog<void>(
@@ -641,8 +644,23 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
+                RocketRewardFramePreview(
+                  rewardGroup: tier['group']?.toString(),
+                  size: 58,
+                ),
+                const SizedBox(height: 4),
                 Text(
-                  'First ${tier['frame_winners']} successful claims are frame rewards (${tier['frame_days']} day validity, no Coins). Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
+                  rewardFrame['name'] ?? 'Rocket Animated Frame',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFFFFD778),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'First ${tier['frame_winners']} successful claims receive this animated frame for ${tier['frame_days']} day(s), with no Coins deducted. Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFFBFCDF3),
@@ -701,6 +719,9 @@ class _RoomScreenState extends State<RoomScreen> {
                             if (result?['ok'] == true &&
                                 result?['reward_type']?.toString() == 'coins') {
                               await widget.state.refreshWallet();
+                            } else if (result?['ok'] == true &&
+                                result?['reward_type']?.toString() == 'frame') {
+                              await widget.state.refreshCosmetics();
                             }
                             if (!dialogContext.mounted) return;
                             setDialogState(() {
@@ -711,7 +732,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 claim = claimed;
                                 alreadyClaimed = true;
                                 if (claimed['reward_type']?.toString() == 'frame') {
-                                  message = 'You won a frame reward for ${claimed['frame_days'] ?? tier['frame_days']} day(s). The frame artwork and inventory delivery will be added in the next phase. No Coins were awarded for this claim.';
+                                  message = 'Congratulations! ${claimed['frame_name'] ?? rewardFrame['name']} is now in Store > Frame > Inventory for ${claimed['frame_days'] ?? tier['frame_days']} day(s). Tap Use to equip your animated frame. No Coins were awarded.';
                                 } else {
                                   final amount = int.tryParse(claimed['coins']?.toString() ?? '') ?? 0;
                                   message = claimed['already_claimed'] == true
@@ -821,7 +842,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final progress = _rocketProgressState(roomGiftLifetimeTotal);
     final completed = progress['completed']!.toInt();
     final allComplete = completed >= _rocketStageTargets.length;
-    final currentLevel = allComplete ? 10 : completed + 1;
+    final currentLevel = allComplete ? _rocketStageTargets.length : completed + 1;
     final currentProgress = progress['current_progress']!.toInt();
     final currentTarget = progress['current_target']!.toInt();
     final percent = progress['percent']!.toDouble();
@@ -863,7 +884,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   child: Row(
                     children: [
                       Text(
-                        'Rocket $currentLevel/10',
+                        'Rocket $currentLevel/${_rocketStageTargets.length}',
                         style: const TextStyle(
                           color: Color(0xFFFFD45A),
                           fontSize: 17,

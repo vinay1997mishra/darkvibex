@@ -5,14 +5,25 @@ import 'package:flutter/material.dart';
 
 import 'frame_artwork_data.dart';
 
+const Map<String, String> _rocketFrameStyleAliases = <String, String>{
+  'rocket_frame_aurora': 'frame_blue_magic_butterfly',
+  'rocket_frame_neon_wings': 'frame_neon_butterfly',
+  'rocket_frame_golden_comet': 'frame_golden_butterfly_queen',
+  'rocket_frame_purple_nova': 'frame_purple_dream_butterfly',
+};
+
+String? _visualFrameStyleId(String? styleId) =>
+    _rocketFrameStyleAliases[styleId] ?? styleId;
+
 final Map<String, MemoryImage> _frameArtworkCache = <String, MemoryImage>{};
 
 MemoryImage? _frameArtwork(String? styleId) {
-  if (styleId == null || styleId.isEmpty) return null;
-  final encoded = kFrameArtworkBase64[styleId];
+  final visualStyleId = _visualFrameStyleId(styleId);
+  if (visualStyleId == null || visualStyleId.isEmpty) return null;
+  final encoded = kFrameArtworkBase64[visualStyleId];
   if (encoded == null || encoded.isEmpty) return null;
   return _frameArtworkCache.putIfAbsent(
-    styleId,
+    visualStyleId,
     () => MemoryImage(base64Decode(encoded)),
   );
 }
@@ -40,6 +51,7 @@ const Set<String> _premiumButterflyFrameIds = <String>{
   'frame_blue_magic_butterfly',
   'frame_golden_butterfly_queen',
   'frame_purple_dream_butterfly',
+  'frame_neon_butterfly',
 };
 
 /// Ornate, animated frame used on room seats and profile avatars.
@@ -68,7 +80,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   late final AnimationController _controller;
 
   Duration _durationFor(String? styleId) => Duration(
-        milliseconds: _freeAnimatedFrameIds.contains(styleId) ? 2000 : 3200,
+        milliseconds: (_freeAnimatedFrameIds.contains(styleId) ||
+                _rocketFrameStyleAliases.containsKey(styleId))
+            ? 2000
+            : 3200,
       );
 
   @override
@@ -104,10 +119,11 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
 
   @override
   Widget build(BuildContext context) {
+    final visualStyleId = _visualFrameStyleId(widget.styleId);
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
 
     if (widget.enabled &&
-        _premiumButterflyFrameIds.contains(widget.styleId)) {
+        _premiumButterflyFrameIds.contains(visualStyleId)) {
       // The avatar itself stays at its original size. All ornamental artwork is
       // drawn in a separate layer outside the avatar circle.
       return SizedBox.square(
@@ -126,7 +142,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 child: SizedBox.square(
                   dimension: widget.size,
                   child: CustomPaint(
-                    painter: _ButterflyFrameBasePainter(widget.styleId),
+                    painter: _ButterflyFrameBasePainter(visualStyleId),
                   ),
                 ),
               ),
@@ -140,7 +156,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     animation: _controller,
                     builder: (context, child) => CustomPaint(
                       painter: _ButterflyFlightPainter(
-                        styleId: widget.styleId,
+                        styleId: visualStyleId,
                         phase: _controller.value,
                       ),
                     ),
@@ -204,7 +220,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     animation: _controller,
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
-                        styleId: widget.styleId,
+                        styleId: visualStyleId,
                         phase: _controller.value,
                       ),
                     ),
@@ -238,7 +254,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                       painter: _VipRingPainter(
                         _controller.value,
                         widget.level,
-                        widget.styleId,
+                        visualStyleId,
                       ),
                     ),
                   ),

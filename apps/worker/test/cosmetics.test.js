@@ -27,7 +27,7 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
     assert.ok(item.duration_days === 0 || item.duration_days === 30);
   }
 
-  assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "frame").length, 20);
+  assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "frame").length, 24);
   assert.ok(
     COSMETIC_CATALOG.every((item) => item.price_coins === 0),
     "all current cosmetics should stay free until the owner sets prices",
@@ -36,9 +36,28 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
     (item) =>
       item.kind === "frame" &&
       item.price_coins === 0 &&
-      item.duration_days === 0,
+      item.duration_days === 0 &&
+      item.reward_only !== true,
   );
   assert.equal(permanentFreeFrames.length, 16);
+
+  const rocketFrames = COSMETIC_CATALOG.filter((item) => item.reward_only === true);
+  assert.deepEqual(
+    rocketFrames.map((item) => item.id),
+    [
+      "rocket_frame_aurora",
+      "rocket_frame_neon_wings",
+      "rocket_frame_golden_comet",
+      "rocket_frame_purple_nova",
+    ],
+  );
+  assert.ok(rocketFrames.every((item) =>
+    item.kind === "frame" &&
+    item.price_coins === 0 &&
+    item.min_vip_level === 0 &&
+    item.duration_days === 0 &&
+    item.animation_ms === 2000
+  ));
   for (const frame of permanentFreeFrames) {
     assert.equal(frame.min_vip_level, 0);
   }
