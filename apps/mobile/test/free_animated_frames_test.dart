@@ -58,7 +58,7 @@ void main() {
     expect(frameSource, contains('RadialGradient'));
     expect(frameSource, contains('Veins catch the light'));
     expect(frameSource, contains('A moving specular highlight'));
-    expect(frameSource, contains('A softly glowing fan'));
+    expect(frameSource, contains('final ray = crownCenter +'));
     expect(frameSource, contains('cycle / 8 + i * math.pi / 4'));
     expect(frameSource, contains('cycle / 6 + i * math.pi / 3'));
     expect(frameSource, contains('cycle / 4 + i * math.pi / 2'));
