@@ -230,7 +230,7 @@ const selectorPermissionRules = [
   ["#rolePostOrder",["roles.save"],"label"],["#rolePostEnabled",["roles.save"],"label"],["#rolePostDetails",["roles.save"],"label"],["#saveRolePost",["roles.save"],"self"],["#reloadRolesPosts",["roles.view"],"self"],
 
   ["#bannerId",["banners.save"],"label"],["#bannerName",["banners.save"],"label"],["#bannerAsset",["banners.save"],"label"],["#bannerLink",["banners.save"],"label"],
-  ["#bannerStart",["banners.save"],"label"],["#bannerEnd",["banners.save"],"label"],["#bannerEnabled",["banners.save"],"label"],["#saveBanner",["banners.save"],"self"],["#reloadBanners",["banners.view"],"self"],
+  ["#bannerStart",["banners.save"],"label"],["#bannerEnd",["banners.save"],"label"],["#bannerEnabled",["banners.save"],"label"],["#saveBanner",["banners.save"],"self"],["#addDefaultBanners",["banners.save"],"self"],["#reloadBanners",["banners.view"],"self"],
 
   ["#gameConfigId",["games.configure"],"label"],["#gameConfigName",["games.configure"],"label"],["#gameMinBet",["games.configure"],"label"],["#gameMaxBet",["games.configure"],"label"],
   ["#gameEnabled",["games.configure"],"label"],["#saveGameConfig",["games.configure"],"self"],["#reloadGames",["games.view"],"self"],["#gameInvestigationUser",["games.view"],"label"],["#loadGameInvestigation",["games.view"],"self"],
@@ -1428,6 +1428,23 @@ async function saveBanner(){
   await loadBanners();
 }
 
+async function addDefaultBanners(){
+  if(!can("banners.save"))return toast("Banner write permission required",false);
+  const existing=new Set((state.banners||[]).map(item=>String(item.id||"").toLowerCase()));
+  const defaults=[
+    {id:"welcome-banner",name:"Welcome to DarkVibeX",asset_key:"",link:"welcome"},
+    {id:"official-banner",name:"DarkVibeX Officials",asset_key:"",link:"officials"}
+  ];
+  let added=0;
+  for(const banner of defaults){
+    if(existing.has(banner.id))continue;
+    await api("/api/owner/banners",{method:"POST",body:JSON.stringify({...banner,enabled:true})});
+    added++;
+  }
+  toast(added ? "Added "+added+" default banner"+(added===1?"":"s") : "Default banners already exist; edit them in the list.");
+  await loadBanners();
+}
+
 async function loadGames(){
   if(!can("games.view"))return;
   const userQuery=$("#gameInvestigationUser").value.trim();
@@ -1835,7 +1852,7 @@ $("#clearGlobalTheme").onclick=clearGlobalThemeForm;
 drawGlobalThemeCropPreview();
 
 $("#rolePostKind").onchange=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#reloadRolesPosts").onclick=()=>loadRolesPosts().catch(e=>toast(e.message,false));$("#saveRolePost").onclick=()=>saveRolePost().catch(e=>toast(e.message,false));
-$("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));
+$("#reloadBanners").onclick=()=>loadBanners().catch(e=>toast(e.message,false));$("#saveBanner").onclick=()=>saveBanner().catch(e=>toast(e.message,false));$("#addDefaultBanners").onclick=()=>addDefaultBanners().catch(e=>toast(e.message,false));
 $("#reloadGames").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#saveGameConfig").onclick=()=>saveGameConfig().catch(e=>toast(e.message,false));$("#loadGameInvestigation").onclick=()=>loadGames().catch(e=>toast(e.message,false));$("#gameInvestigationUser").addEventListener("keydown",e=>{if(e.key==="Enter")loadGames().catch(x=>toast(x.message,false));});
 $("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false));$("#savePolicy").onclick=()=>savePolicy().catch(e=>toast(e.message,false));$("#reloadPricingOverrides").onclick=()=>loadPricingOverrides().catch(e=>toast(e.message,false));$("#savePricingOverride").onclick=()=>savePricingOverride().catch(e=>toast(e.message,false));$("#clearPricingOverride").onclick=clearPricingOverride;$("#pricingKind").onchange=()=>{updatePricingFreeState();loadPricingOverrides().catch(e=>toast(e.message,false));};
 

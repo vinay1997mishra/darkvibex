@@ -396,12 +396,52 @@ class _RoomsHomeState extends State<_RoomsHome> {
   AppState get state => widget.state;
   bool popular = true;
   Timer? roomListRefreshTimer;
+  final PageController _bannerPageController = PageController();
+  Timer? _bannerAutoSlideTimer;
+  int _currentBannerPage = 0;
+
+  static const int _promoBannerCount = 3;
+
+  bool get _hasConfiguredWelcomeBanner => ownerBanners.any((banner) {
+        final id = banner['id']?.toString().trim().toLowerCase() ?? '';
+        final link = banner['link']?.toString().trim().toLowerCase() ?? '';
+        return id == 'welcome-banner' ||
+            link == 'welcome' ||
+            link == 'welcome-info';
+      });
+
+  bool get _hasConfiguredOfficialBanner => ownerBanners.any((banner) {
+        final id = banner['id']?.toString().trim().toLowerCase() ?? '';
+        final link = banner['link']?.toString().trim().toLowerCase() ?? '';
+        return id == 'official-banner' ||
+            link == 'officials' ||
+            link == 'official' ||
+            link == 'official-info';
+      });
+
+  int get _bannerSlideCount =>
+      (_hasConfiguredWelcomeBanner ? 0 : 1) +
+      (_hasConfiguredOfficialBanner ? 0 : 1) +
+      ownerBanners.length +
+      _promoBannerCount;
 
   @override
   void initState() {
     super.initState();
     _loadFollowedRooms();
     _loadBanners();
+    _bannerAutoSlideTimer =
+        Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || !_bannerPageController.hasClients) return;
+      final count = _bannerSlideCount;
+      if (count < 2) return;
+      final nextPage = (_currentBannerPage + 1) % count;
+      _bannerPageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOutCubic,
+      );
+    });
     roomListRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted || !state.backendConnected) return;
       unawaited(state.refreshRooms());
@@ -411,6 +451,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
   @override
   void dispose() {
     roomListRefreshTimer?.cancel();
+    _bannerAutoSlideTimer?.cancel();
+    _bannerPageController.dispose();
     super.dispose();
   }
 
@@ -449,9 +491,36 @@ class _RoomsHomeState extends State<_RoomsHome> {
     setState(() => ownerBanners = rows);
   }
 
+  void _openWelcomePage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const _WelcomeInfoPage(),
+      ),
+    );
+  }
+
+  void _openOfficialInfoPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const _OfficialInfoPage(),
+      ),
+    );
+  }
+
   void _openOwnerBanner(Map<String, dynamic> banner) {
-    final link = banner['link']?.toString().trim() ?? '';
-    final roomId = link.startsWith('room:') ? link.substring(5).trim() : '';
+    final rawLink = banner['link']?.toString().trim() ?? '';
+    final link = rawLink.toLowerCase();
+    if (link == 'welcome' || link == 'welcome-info') {
+      _openWelcomePage();
+      return;
+    }
+    if (link == 'officials' || link == 'official' || link == 'official-info') {
+      _openOfficialInfoPage();
+      return;
+    }
+    final roomId = rawLink.startsWith('room:')
+        ? rawLink.substring(5).trim()
+        : '';
     if (roomId.isNotEmpty) {
       for (final room in state.rooms) {
         if (room.id == roomId ||
@@ -612,36 +681,83 @@ class _RoomsHomeState extends State<_RoomsHome> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-                child: SizedBox(
-                  height: 142,
-                  child: PageView(
-                    children: [
-                      for (final banner in ownerBanners)
-                        _OwnerBannerCard(
-                          state: state,
-                          banner: banner,
-                          onTap: () => _openOwnerBanner(banner),
-                        ),
-                      _PromoCard(
-                        title: 'ROYAL PARTY',
-                        subtitle: 'Live rooms, rankings and royal rewards',
-                        icon: Icons.workspace_premium_rounded,
-                        onTap: () => _openRankings(context, initialTab: 0),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 142,
+                      child: PageView(
+                        controller: _bannerPageController,
+                        onPageChanged: (page) {
+                          if (!mounted) return;
+                          setState(() => _currentBannerPage = page);
+                        },
+                        children: [
+                          if (!_hasConfiguredWelcomeBanner)
+                            _BuiltInBannerCard(
+                              badge: 'WELCOME',
+                              title: 'WELCOME TO DARKVIBEX',
+                              subtitle: 'Voice • Chat • Vibe — your community starts here',
+                              icon: Icons.waving_hand_rounded,
+                              accent: const Color(0xFF70E8FF),
+                              onTap: _openWelcomePage,
+                            ),
+                          if (!_hasConfiguredOfficialBanner)
+                            _BuiltInBannerCard(
+                              badge: 'OFFICIAL',
+                              title: 'DARKVIBEX OFFICIALS',
+                              subtitle: 'Official contact number and ID information',
+                              icon: Icons.verified_rounded,
+                              accent: const Color(0xFFB1A6FF),
+                              onTap: _openOfficialInfoPage,
+                            ),
+                          for (final banner in ownerBanners)
+                            _OwnerBannerCard(
+                              state: state,
+                              banner: banner,
+                              onTap: () => _openOwnerBanner(banner),
+                            ),
+                          _PromoCard(
+                            title: 'ROYAL PARTY',
+                            subtitle: 'Live rooms, rankings and royal rewards',
+                            icon: Icons.workspace_premium_rounded,
+                            onTap: () => _openRankings(context, initialTab: 0),
+                          ),
+                          _PromoCard(
+                            title: 'WEEKLY STAR',
+                            subtitle: 'Weekly rankings and royal rewards',
+                            icon: Icons.emoji_events_rounded,
+                            onTap: () => _openRankings(context, initialTab: 1),
+                          ),
+                          _PromoCard(
+                            title: 'THE GREAT NAVIGATOR',
+                            subtitle: 'Featured rooms and discovery',
+                            icon: Icons.explore_rounded,
+                            onTap: () => widget.onSelect(1),
+                          ),
+                        ],
                       ),
-                      _PromoCard(
-                        title: 'WEEKLY STAR',
-                        subtitle: 'Weekly rankings and royal rewards',
-                        icon: Icons.emoji_events_rounded,
-                        onTap: () => _openRankings(context, initialTab: 1),
-                      ),
-                      _PromoCard(
-                        title: 'THE GREAT NAVIGATOR',
-                        subtitle: 'Featured rooms and discovery',
-                        icon: Icons.explore_rounded,
-                        onTap: () => widget.onSelect(1),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List<Widget>.generate(_bannerSlideCount, (page) {
+                        final selected = page == _currentBannerPage;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut,
+                          width: selected ? 16 : 6,
+                          height: 6,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? const Color(0xFF70E8FF)
+                                : const Color(0x66A9B5DD),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1543,6 +1659,383 @@ class _TopRoomCard extends StatelessWidget {
       );
 }
 
+
+class _BuiltInBannerCard extends StatelessWidget {
+  const _BuiltInBannerCard({
+    required this.badge,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String badge;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: _PartyPanel(
+          onTap: onTap,
+          padding: EdgeInsets.zero,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF101A45),
+                    Color(0xFF30236D),
+                    Color(0xFF06465A),
+                  ],
+                ),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned(
+                    right: -12,
+                    top: -28,
+                    child: Container(
+                      width: 118,
+                      height: 118,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: accent.withValues(alpha: .20),
+                          width: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: accent.withValues(alpha: .9),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(alpha: .20),
+                                blurRadius: 14,
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/branding/darkvibex_launcher.webp',
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: const Color(0xFF111A42),
+                                alignment: Alignment.center,
+                                child: Icon(icon, color: accent, size: 31),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                badge,
+                                style: TextStyle(
+                                  color: accent,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  height: 1.05,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                subtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFFD3DCFF),
+                                  fontSize: 10,
+                                  height: 1.15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: accent,
+                          size: 25,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _WelcomeInfoPage extends StatelessWidget {
+  const _WelcomeInfoPage();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFF070B24),
+        appBar: AppBar(
+          title: const Text('Welcome to DarkVibeX'),
+          backgroundColor: const Color(0xD90A0D24),
+          foregroundColor: Colors.white,
+        ),
+        body: DarkVibeXGlobalBackground(
+          child: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+              children: [
+                const Center(child: _DarkVibeXLogo(size: 88)),
+                const SizedBox(height: 16),
+                const Center(
+                  child: Text(
+                    'WELCOME TO DARKVIBEX',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF70E8FF),
+                      fontSize: 23,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: .6,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Center(
+                  child: Text(
+                    'Voice • Chat • Vibe',
+                    style: TextStyle(
+                      color: Color(0xFFD3DCFF),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                TinniPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'Your community starts here',
+                        style: TextStyle(
+                          color: Color(0xFFB1A6FF),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Join live voice rooms, chat with people, and discover new communities on DarkVibeX.',
+                        style: TextStyle(
+                          color: Color(0xFFD3DCFF),
+                          fontSize: 14,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _OfficialInfoPage extends StatelessWidget {
+  const _OfficialInfoPage();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFF070B24),
+        appBar: AppBar(
+          title: const Text('Official Information'),
+          backgroundColor: const Color(0xD90A0D24),
+          foregroundColor: Colors.white,
+        ),
+        body: DarkVibeXGlobalBackground(
+          child: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+              children: [
+                const Center(child: _DarkVibeXLogo(size: 80)),
+                const SizedBox(height: 16),
+                const Center(
+                  child: Text(
+                    'DARKVIBEX OFFICIALS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFFB1A6FF),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Center(
+                  child: Text(
+                    'Verified official contact details will appear here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFFD3DCFF),
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const _OfficialDetailPlaceholder(
+                  icon: Icons.call_rounded,
+                  label: 'Official Contact Number',
+                ),
+                const SizedBox(height: 10),
+                const _OfficialDetailPlaceholder(
+                  icon: Icons.badge_rounded,
+                  label: 'Official ID Number',
+                ),
+                const SizedBox(height: 16),
+                const TinniPanel(
+                  child: Text(
+                    'Official number and ID details will be added later. No official contact details are published on this page yet.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFFB7C2E8),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _OfficialDetailPlaceholder extends StatelessWidget {
+  const _OfficialDetailPlaceholder({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => TinniPanel(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            _PartyGlowIcon(
+              icon: icon,
+              size: 20,
+              boxSize: 40,
+              color: const Color(0xFF70E8FF),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFFD3DCFF),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  const Text(
+                    'Coming soon',
+                    style: TextStyle(
+                      color: Color(0xFF70E8FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _DarkVibeXLogo extends StatelessWidget {
+  const _DarkVibeXLogo({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFF70E8FF), width: 1.5),
+          boxShadow: const [
+            BoxShadow(color: Color(0x334FD8FF), blurRadius: 16),
+          ],
+        ),
+        child: ClipOval(
+          child: Image.asset(
+            'assets/branding/darkvibex_launcher.webp',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const ColoredBox(
+              color: Color(0xFF111A42),
+              child: Icon(
+                Icons.graphic_eq_rounded,
+                color: Color(0xFF70E8FF),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
 class _OwnerBannerCard extends StatelessWidget {
   const _OwnerBannerCard({
     required this.state,
@@ -1595,28 +2088,38 @@ class _OwnerBannerCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
                   children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: const Color(0xFFB1A6FF),
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                    if (imageUrl.isEmpty) ...[
+                      const _DarkVibeXLogo(size: 58),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFFB1A6FF),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (link.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Tap to open',
+                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (link.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      const Text(
-                        'Tap to open',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
-                      ),
-                    ],
                   ],
                 ),
               ),
