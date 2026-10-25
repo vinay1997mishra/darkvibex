@@ -691,10 +691,16 @@ class _PremiumVectorFramePainter extends CustomPainter {
       final angle = -math.pi / 2 + (i - 3) * .22;
       final ray = crownCenter +
           Offset(math.cos(angle), math.sin(angle)) * side * .13;
-      canvas.drawLine(crownCenter, ray, Paint()
-        ..color = palette.light.withValues(alpha: .55)
-        ..strokeWidth = side * .005
-        ..strokeCap = StrokeCap.round);
+      final rayPath = Path()
+        ..moveTo(crownCenter.dx, crownCenter.dy)
+        ..lineTo(ray.dx, ray.dy);
+      canvas.drawPath(
+        rayPath,
+        Paint()
+          ..color = palette.light.withValues(alpha: .55)
+          ..strokeWidth = side * .005
+          ..strokeCap = StrokeCap.round,
+      );
     }
     final crown = Path()
       ..moveTo(crownCenter.dx - side * .125, crownCenter.dy + side * .035)
@@ -767,9 +773,11 @@ class _PremiumVectorFramePainter extends CustomPainter {
       );
       // Veins catch the light along the layered dragon-wing membranes.
       for (var i = 1; i <= 3; i++) {
-        canvas.drawLine(
-          Offset(side * (.025 * i), side * .006),
-          Offset(side * (.052 * i), -side * (.045 * i)),
+        final veinPath = Path()
+          ..moveTo(side * (.025 * i), side * .006)
+          ..lineTo(side * (.052 * i), -side * (.045 * i));
+        canvas.drawPath(
+          veinPath,
           Paint()
             ..color = palette.light.withValues(alpha: .82)
             ..strokeWidth = side * .003
@@ -892,9 +900,11 @@ class _PremiumVectorFramePainter extends CustomPainter {
         ..strokeWidth = length * .10
         ..color = edge,
     );
-    canvas.drawLine(
-      Offset(center.dx - length * .12, center.dy - length * .52),
-      Offset(center.dx - length * .02, center.dy - length * .12),
+    final facetGlint = Path()
+      ..moveTo(center.dx - length * .12, center.dy - length * .52)
+      ..lineTo(center.dx - length * .02, center.dy - length * .12);
+    canvas.drawPath(
+      facetGlint,
       Paint()
         ..color = Colors.white.withValues(alpha: .95)
         ..strokeWidth = length * .12
