@@ -76,6 +76,8 @@ class _RoomScreenState extends State<RoomScreen> {
   List<Map<String, dynamic>> roomMembers = <Map<String, dynamic>>[];
   int roomGiftLifetimeTotal = 0;
   List<Map<String, dynamic>> roomGiftRanking = <Map<String, dynamic>>[];
+  bool _roomGiftRankingInitialized = false;
+  OverlayEntry? _rocketLaunchOverlay;
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
@@ -480,22 +482,63 @@ class _RoomScreenState extends State<RoomScreen> {
     return true;
   }
 
+  void _showRocketLaunch(int level) {
+    if (!mounted || !effectsEnabled || !rocketDrawNoticeEnabled) return;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    final previous = _rocketLaunchOverlay;
+    if (previous != null) {
+      previous.remove();
+      previous.dispose();
+      _rocketLaunchOverlay = null;
+    }
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => RoomRocketLaunchEffect(
+        level: level,
+        onFinished: () {
+          if (!identical(_rocketLaunchOverlay, entry)) return;
+          _rocketLaunchOverlay = null;
+          entry.remove();
+          entry.dispose();
+        },
+      ),
+    );
+    _rocketLaunchOverlay = entry;
+    overlay.insert(entry);
+  }
+
   Future<void> _loadRoomGiftRanking() async {
     if (!widget.state.backendConnected) return;
     final value =
         await widget.state.backend.roomGiftRanking(roomId: widget.room.id);
     if (!mounted || value?['ok'] != true) return;
     final rawRanking = value?['ranking'];
+    final nextTotal =
+        int.tryParse(value?['lifetime_total']?.toString() ?? '') ?? 0;
+    final previousTotal = roomGiftLifetimeTotal;
+    final wasInitialized = _roomGiftRankingInitialized;
+    final previousCompleted = _rocketProgressState(previousTotal)['completed']!.toInt();
+    final nextCompleted = _rocketProgressState(nextTotal)['completed']!.toInt();
+
     setState(() {
-      roomGiftLifetimeTotal =
-          int.tryParse(value?['lifetime_total']?.toString() ?? '') ?? 0;
+      roomGiftLifetimeTotal = nextTotal;
       roomGiftRanking = rawRanking is List
           ? rawRanking
               .whereType<Map>()
               .map((row) => Map<String, dynamic>.from(row))
               .toList(growable: false)
           : <Map<String, dynamic>>[];
+      _roomGiftRankingInitialized = true;
     });
+
+    // Do not fire old milestones on initial room load. Launch only when a new
+    // cumulative gifting target is crossed during the current room session.
+    if (wasInitialized && nextCompleted > previousCompleted) {
+      _showRocketLaunch(nextCompleted.clamp(1, _rocketStageTargets.length).toInt());
+    }
   }
 
   String _compactRoomCoins(int value) {
@@ -1525,6 +1568,12 @@ class _RoomScreenState extends State<RoomScreen> {
 
   @override
   void dispose() {
+    final rocketOverlay = _rocketLaunchOverlay;
+    _rocketLaunchOverlay = null;
+    if (rocketOverlay != null) {
+      rocketOverlay.remove();
+      rocketOverlay.dispose();
+    }
     memberRefreshTimer?.cancel();
     messageRefreshTimer?.cancel();
     settingsRefreshTimer?.cancel();
