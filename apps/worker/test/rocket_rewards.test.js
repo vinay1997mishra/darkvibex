@@ -43,7 +43,7 @@ test("only the first 25 successful claims in a level pool are frame slots", () =
     frame_days: 0,
     frame_delivery_status: "not_applicable",
   });
-  assert.deepEqual(assignRocketReward(tier, 49, 0.999), {
+  assert.deepEqual(assignRocketReward(tier, 49, 1), {
     reward_type: "coins",
     coin_amount: 20_000,
     frame_days: 0,
@@ -57,9 +57,9 @@ test("coin range and frame duration follow the level group", () => {
   const level7 = rocketRewardConfigForLevel(7);
   const level10 = rocketRewardConfigForLevel(10);
   assert.equal(assignRocketReward(level4, 25, 0).coin_amount, 30_000);
-  assert.equal(assignRocketReward(level4, 25, 0.9999).coin_amount, 60_000);
-  assert.equal(assignRocketReward(level7, 25, 0.9999).coin_amount, 200_000);
-  assert.equal(assignRocketReward(level10, 25, 0.9999).coin_amount, 300_000);
+  assert.equal(assignRocketReward(level4, 25, 1).coin_amount, 60_000);
+  assert.equal(assignRocketReward(level7, 25, 1).coin_amount, 200_000);
+  assert.equal(assignRocketReward(level10, 25, 1).coin_amount, 300_000);
   assert.equal(assignRocketReward(level4, 0).frame_days, 5);
   assert.equal(assignRocketReward(level7, 0).frame_days, 7);
   assert.equal(assignRocketReward(level10, 0).frame_days, 10);
