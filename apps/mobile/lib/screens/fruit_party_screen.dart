@@ -350,7 +350,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: 10,
-                    color: bet > 0 ? Color(0xFF776DFF)Accent : Color(0xFFF1F5FF),
+                    color: bet > 0 ? Color(0xFF8BEAFF) : Color(0xFFF1F5FF),
                   ),
                 ),
                 Text(
