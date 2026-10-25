@@ -455,7 +455,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
                             'Only the room host can complete and claim these rewards.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Color(0xFFFFE798),
+                              color: Color(0xFF50D8FF),
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -740,8 +740,8 @@ class _MagicLampPainter extends CustomPainter {
     final glow = Paint()
       ..shader = const RadialGradient(
         colors: <Color>[
-          Color(0xFFFFF39A),
-          Color(0x00FFD94A),
+          Color(0xFFBFA7FF),
+          Color(0x0050D8FF),
         ],
       ).createShader(
         Rect.fromCircle(
@@ -754,15 +754,15 @@ class _MagicLampPainter extends CustomPainter {
     final gold = Paint()
       ..shader = const LinearGradient(
         colors: <Color>[
-          Color(0xFFFFF09B),
           Color(0xFF8B7CFF),
-          Color(0xFFDA8D00),
+          Color(0xFF8B7CFF),
+          Color(0xFF5645F5),
         ],
       ).createShader(
         Rect.fromLTWH(0, 0, size.width, size.height),
       );
     final outline = Paint()
-      ..color = const Color(0xFFFFF1A5)
+      ..color = const Color(0xFF50D8FF)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2;
 
@@ -820,7 +820,7 @@ class _MagicLampPainter extends CustomPainter {
       height: size.height * .31,
     );
     final thickOutline = Paint()
-      ..color = const Color(0xFFFFF1A5)
+      ..color = const Color(0xFF50D8FF)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 10;
     canvas.drawArc(handle, -1.2, 2.5, false, thickOutline);
@@ -847,7 +847,7 @@ class _MagicLampPainter extends CustomPainter {
       canvas.drawCircle(
         Offset(x, y),
         3.2,
-        Paint()..color = const Color(0xFFFFF8C9),
+        Paint()..color = const Color(0xFFEAF5FF),
       );
     }
   }
