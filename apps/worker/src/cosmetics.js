@@ -24,6 +24,13 @@ export const COSMETIC_CATALOG = [
   { id: "frame_green_nature", kind: "frame", name: "Phoenix Fire", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 8, animation_type: "ember_sparkle", animation_ms: 2000 },
   { id: "frame_neon_butterfly", kind: "frame", name: "Neon Butterfly", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 14, animation_type: "butterfly_wings_flight", animation_ms: 2000 },
 
+  // Rocket-chest frames are inventory-only rewards. Their artwork aliases are
+  // resolved by VipAnimatedFrame; the Worker grants them only after a chest claim.
+  { id: "rocket_frame_aurora", kind: "frame", name: "Rocket Aurora", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 10, animation_type: "butterfly_wings_flight", animation_ms: 2000, reward_only: true },
+  { id: "rocket_frame_neon_wings", kind: "frame", name: "Rocket Neon Wings", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 12, animation_type: "butterfly_wings_flight", animation_ms: 2000, reward_only: true },
+  { id: "rocket_frame_golden_comet", kind: "frame", name: "Rocket Golden Comet", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 16, animation_type: "butterfly_wings_flight", animation_ms: 2000, reward_only: true },
+  { id: "rocket_frame_purple_nova", kind: "frame", name: "Rocket Purple Nova", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 18, animation_type: "butterfly_wings_flight", animation_ms: 2000, reward_only: true },
+
   { id: "vehicle_spark", kind: "vehicle", name: "Starlight Coupe", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 1 },
   { id: "vehicle_royal", kind: "vehicle", name: "Royal Chariot", price_coins: 0, min_vip_level: 4, duration_days: 30, tier: 4 },
   { id: "vehicle_phoenix", kind: "vehicle", name: "Phoenix GT", price_coins: 0, min_vip_level: 8, duration_days: 30, tier: 8 },
