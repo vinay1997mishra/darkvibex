@@ -554,11 +554,11 @@ class _RoomScreenState extends State<RoomScreen> {
         roomId: widget.room.id,
         rocketLevel: level,
       );
-      if (!mounted || status?['ok'] != true) return;
-      final rawTier = status?['tier'];
+      if (!mounted || status == null || status['ok'] != true) return;
+      final rawTier = status['tier'];
       if (rawTier is! Map) return;
       final tier = Map<String, dynamic>.from(rawTier);
-      final rawClaim = status?['claim'];
+      final rawClaim = status['claim'];
       Map<String, dynamic>? claim = rawClaim is Map
           ? Map<String, dynamic>.from(rawClaim)
           : null;
