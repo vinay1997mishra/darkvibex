@@ -221,9 +221,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ],
                 ),
                 child: const Icon(
-                  Icons.verified_rounded,
+                  Icons.graphic_eq_rounded,
                   color: Colors.white,
-                  size: 23,
+                  size: 25,
                 ),
               ),
               title: const Text(
@@ -297,19 +297,42 @@ class _MessagesScreenState extends State<MessagesScreen> {
           padding: EdgeInsets.zero,
           child: ListTile(
             key: Key('message-thread-${item.id}'),
-            leading: CircleAvatar(
-              backgroundColor: TinniPalette.panel2,
-              backgroundImage: item.avatarKey == null
-                  ? null
-                  : NetworkImage(
-                      state.backend.fileUrl(item.avatarKey!),
-                      headers: state.backend.fileHeaders,
-                    ),
-              child: item.avatarKey == null
-                  ? Text(
-                      item.name.isEmpty ? '?' : item.name.substring(0, 1),
-                    )
-                  : null,
+            leading: Container(
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [TinniPalette.gold, TinniPalette.brightGold],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: TinniPalette.gold.withValues(alpha: .2),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                backgroundColor: TinniPalette.panel2,
+                backgroundImage: item.avatarKey == null
+                    ? null
+                    : NetworkImage(
+                        state.backend.fileUrl(item.avatarKey!),
+                        headers: state.backend.fileHeaders,
+                      ),
+                child: item.avatarKey == null
+                    ? Text(
+                        item.name.isEmpty ? '?' : item.name.substring(0, 1),
+                        style: const TextStyle(
+                          color: TinniPalette.cream,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      )
+                    : null,
+              ),
             ),
             title: Text(
               item.name,
