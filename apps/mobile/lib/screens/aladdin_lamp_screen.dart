@@ -715,7 +715,7 @@ class _ProgressPill extends StatelessWidget {
                 ),
           border: Border.all(
             color:
-                enabled ? Colors.white70 : const Color(0xFFFFE172),
+                enabled ? Colors.white70 : const Color(0xFF50D8FF),
           ),
         ),
         child: Text(
