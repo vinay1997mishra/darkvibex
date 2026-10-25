@@ -191,11 +191,11 @@ class _WeeklySignInDialog extends StatelessWidget {
                         child: IgnorePointer(
                           child: Icon(
                             Icons.check_rounded,
-                            color: const Color(0xFFFFD54A),
+                            color: const Color(0xFF50D8FF),
                             size: width * .054,
                             shadows: const [
                               Shadow(
-                                color: Color(0xAAFFB300),
+                                color: Color(0x8850D8FF),
                                 blurRadius: 7,
                               ),
                             ],
