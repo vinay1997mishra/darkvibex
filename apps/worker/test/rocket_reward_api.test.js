@@ -155,6 +155,23 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
   assert.equal(firstFrame.active, 0);
   assert.equal(firstFrame.expires_at - firstFrame.acquired_at, 86400000);
 
+  const cosmetics = await request("/api/cosmetics/rocket-user-1", {
+    userId: "rocket-user-1",
+  });
+  assert.equal(cosmetics.status, 200);
+  assert.ok(cosmetics.body.items.some((item) => item.id === "rocket_frame_g1_01"));
+  const equip = await request("/api/cosmetics/equip", {
+    method: "POST",
+    userId: "rocket-user-1",
+    body: { user_id: "rocket-user-1", item_id: "rocket_frame_g1_01" },
+  });
+  assert.equal(equip.status, 200);
+  assert.equal(equip.body.ok, true);
+  assert.equal(
+    sqlite.prepare("SELECT active FROM user_cosmetics WHERE user_id='rocket-user-1' AND item_id='rocket_frame_g1_01'").get().active,
+    1,
+  );
+
   for (let i = 26; i <= 50; i++) {
     const result = await request(path(1), {
       method: "POST",
