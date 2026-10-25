@@ -743,7 +743,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
   ) {
     void wing(bool left) {
       final anchor = center +
-          Offset(left ? -radius * .63 : radius * .63, -radius * .43);
+          Offset(left ? -radius * .65 : radius * .65, -radius * .57);
       canvas.save();
       canvas.translate(anchor.dx, anchor.dy);
       canvas.scale(left ? -1.0 : 1.0, 1);
@@ -751,14 +751,31 @@ class _PremiumVectorFramePainter extends CustomPainter {
       canvas.scale(flap, 1);
       final path = Path()
         ..moveTo(0, 0)
-        ..cubicTo(side * .045, -side * .080, side * .115, -side * .105, side * .155, -side * .045)
-        ..cubicTo(side * .125, -side * .020, side * .115, side * .025, side * .070, side * .030)
-        ..cubicTo(side * .045, side * .028, side * .018, side * .012, 0, 0)
+        ..cubicTo(side * .025, -side * .100, side * .085, -side * .205, side * .175, -side * .220)
+        ..cubicTo(side * .226, -side * .214, side * .194, -side * .145, side * .230, -side * .106)
+        ..cubicTo(side * .188, -side * .070, side * .193, -side * .035, side * .144, -side * .008)
+        ..cubicTo(side * .090, side * .026, side * .035, side * .028, 0, 0)
         ..close();
       canvas.drawPath(
         path,
-        Paint()..color = palette.accent.withValues(alpha: .68),
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[palette.light, palette.accent, palette.deep],
+          ).createShader(path.getBounds()),
       );
+      // Veins catch the light along the layered dragon-wing membranes.
+      for (var i = 1; i <= 3; i++) {
+        canvas.drawLine(
+          Offset(side * (.025 * i), side * .006),
+          Offset(side * (.052 * i), -side * (.045 * i)),
+          Paint()
+            ..color = palette.light.withValues(alpha: .82)
+            ..strokeWidth = side * .003
+            ..strokeCap = StrokeCap.round,
+        );
+      }
       canvas.drawPath(
         path,
         Paint()
