@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
@@ -536,6 +537,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
     }
     if (link == 'discover') {
       widget.onSelect(1);
+      return;
+    }
+    final uri = Uri.tryParse(rawLink);
+    if (uri != null &&
+        uri.scheme.toLowerCase() == 'https' &&
+        uri.host.isNotEmpty) {
+      unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
     }
   }
 
@@ -742,17 +750,36 @@ class _RoomsHomeState extends State<_RoomsHome> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List<Widget>.generate(_bannerSlideCount, (page) {
                         final selected = page == _currentBannerPage;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOut,
-                          width: selected ? 16 : 6,
-                          height: 6,
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? const Color(0xFF70E8FF)
-                                : const Color(0x66A9B5DD),
-                            borderRadius: BorderRadius.circular(99),
+                        return Semantics(
+                          button: true,
+                          label: 'Show banner ${page + 1}',
+                          selected: selected,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (!_bannerPageController.hasClients) return;
+                              _bannerPageController.animateToPage(
+                                page,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut,
+                                width: selected ? 16 : 6,
+                                height: 6,
+                                margin: const EdgeInsets.symmetric(horizontal: 3),
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? const Color(0xFF70E8FF)
+                                      : const Color(0x66A9B5DD),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                              ),
+                            ),
                           ),
                         );
                       }),
