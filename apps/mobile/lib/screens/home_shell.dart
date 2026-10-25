@@ -400,10 +400,30 @@ class _RoomsHomeState extends State<_RoomsHome> {
   Timer? _bannerAutoSlideTimer;
   int _currentBannerPage = 0;
 
-  static const int _builtInBannerCount = 2;
   static const int _promoBannerCount = 3;
+
+  bool get _hasConfiguredWelcomeBanner => ownerBanners.any((banner) {
+        final id = banner['id']?.toString().trim().toLowerCase() ?? '';
+        final link = banner['link']?.toString().trim().toLowerCase() ?? '';
+        return id == 'welcome-banner' ||
+            link == 'welcome' ||
+            link == 'welcome-info';
+      });
+
+  bool get _hasConfiguredOfficialBanner => ownerBanners.any((banner) {
+        final id = banner['id']?.toString().trim().toLowerCase() ?? '';
+        final link = banner['link']?.toString().trim().toLowerCase() ?? '';
+        return id == 'official-banner' ||
+            link == 'officials' ||
+            link == 'official' ||
+            link == 'official-info';
+      });
+
   int get _bannerSlideCount =>
-      _builtInBannerCount + ownerBanners.length + _promoBannerCount;
+      (_hasConfiguredWelcomeBanner ? 0 : 1) +
+      (_hasConfiguredOfficialBanner ? 0 : 1) +
+      ownerBanners.length +
+      _promoBannerCount;
 
   @override
   void initState() {
@@ -672,22 +692,24 @@ class _RoomsHomeState extends State<_RoomsHome> {
                           setState(() => _currentBannerPage = page);
                         },
                         children: [
-                          _BuiltInBannerCard(
-                            badge: 'WELCOME',
-                            title: 'WELCOME TO DARKVIBEX',
-                            subtitle: 'Voice • Chat • Vibe — your community starts here',
-                            icon: Icons.waving_hand_rounded,
-                            accent: const Color(0xFF70E8FF),
-                            onTap: _openWelcomePage,
-                          ),
-                          _BuiltInBannerCard(
-                            badge: 'OFFICIAL',
-                            title: 'DARKVIBEX OFFICIALS',
-                            subtitle: 'Official contact number and ID information',
-                            icon: Icons.verified_rounded,
-                            accent: const Color(0xFFB1A6FF),
-                            onTap: _openOfficialInfoPage,
-                          ),
+                          if (!_hasConfiguredWelcomeBanner)
+                            _BuiltInBannerCard(
+                              badge: 'WELCOME',
+                              title: 'WELCOME TO DARKVIBEX',
+                              subtitle: 'Voice • Chat • Vibe — your community starts here',
+                              icon: Icons.waving_hand_rounded,
+                              accent: const Color(0xFF70E8FF),
+                              onTap: _openWelcomePage,
+                            ),
+                          if (!_hasConfiguredOfficialBanner)
+                            _BuiltInBannerCard(
+                              badge: 'OFFICIAL',
+                              title: 'DARKVIBEX OFFICIALS',
+                              subtitle: 'Official contact number and ID information',
+                              icon: Icons.verified_rounded,
+                              accent: const Color(0xFFB1A6FF),
+                              onTap: _openOfficialInfoPage,
+                            ),
                           for (final banner in ownerBanners)
                             _OwnerBannerCard(
                               state: state,
@@ -2066,28 +2088,38 @@ class _OwnerBannerCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
                   children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: const Color(0xFFB1A6FF),
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                    if (imageUrl.isEmpty) ...[
+                      const _DarkVibeXLogo(size: 58),
+                      const SizedBox(width: 12),
+                    ],
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFFB1A6FF),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (link.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Tap to open',
+                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (link.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      const Text(
-                        'Tap to open',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
-                      ),
-                    ],
                   ],
                 ),
               ),
