@@ -731,7 +731,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           },
                         ),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Center(
                           child: RoomStealthRocketLogo(
                             size: 132,
