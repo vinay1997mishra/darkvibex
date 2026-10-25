@@ -379,58 +379,115 @@ class _PremiumVectorFramePainter extends CustomPainter {
     final pulse = .88 + .12 * ((math.sin(cycle) + 1) / 2);
     final ringRect = Rect.fromCircle(center: center, radius: radius);
 
+    // Layered metallic annulus: shadow extrusion, beveled face and inner lip.
+    final outerRadius = radius + side * .045;
+    final innerRadius = radius - side * .045;
+    final outerRect = Rect.fromCircle(center: center, radius: outerRadius);
+    final innerRect = Rect.fromCircle(center: center, radius: innerRadius);
+    final annulus = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addOval(outerRect)
+      ..addOval(innerRect);
+
     canvas.drawCircle(
       center,
-      radius,
+      outerRadius + side * .008,
+      Paint()
+        ..color = palette.deep.withValues(alpha: .72)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .025),
+    );
+    canvas.drawPath(
+      annulus,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            palette.light,
+            palette.accent,
+            palette.deep,
+            palette.accent,
+            palette.light.withValues(alpha: .94),
+          ],
+          stops: const <double>[0, .20, .48, .76, 1],
+        ).createShader(outerRect),
+    );
+    canvas.drawCircle(
+      center,
+      outerRadius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .082
-        ..color = palette.accent.withValues(alpha: .18 * pulse)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+        ..strokeWidth = side * .008
+        ..color = palette.light.withValues(alpha: .94),
+    );
+    canvas.drawCircle(
+      center,
+      outerRadius - side * .012,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .006
+        ..color = palette.deep.withValues(alpha: .85),
     );
     canvas.drawCircle(
       center,
       radius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .032
+        ..strokeWidth = side * .012
         ..shader = SweepGradient(
           startAngle: cycle,
           endAngle: cycle + math.pi * 2,
           colors: <Color>[
-            palette.light,
-            palette.accent,
             palette.deep,
             palette.light,
+            palette.accent,
+            palette.light,
+            palette.deep,
           ],
         ).createShader(ringRect),
     );
     canvas.drawCircle(
       center,
-      radius - side * .024,
+      innerRadius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .006
-        ..color = palette.light.withValues(alpha: .88),
+        ..strokeWidth = side * .010
+        ..color = palette.deep.withValues(alpha: .88)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .008),
+    );
+    canvas.drawCircle(
+      center,
+      innerRadius + side * .006,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = side * .005
+        ..color = palette.light.withValues(alpha: .96),
     );
 
-    // Short glowing arc segments orbit the circular rim; no hard line sweeps
-    // across the avatar itself.
-    final orbitRect = Rect.fromCircle(center: center, radius: radius * 1.095);
-    for (var i = 0; i < 4; i++) {
-      canvas.drawArc(
-        orbitRect,
-        cycle + i * math.pi / 2,
-        math.pi * .16,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeWidth = side * .016
-          ..color = palette.light.withValues(alpha: .38 + .35 * pulse)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.8),
-      );
-    }
+    // A moving specular highlight glides around the circular metal lip.
+    canvas.drawArc(
+      outerRect,
+      cycle - .20,
+      math.pi * .28,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = side * .024
+        ..color = palette.light.withValues(alpha: .48)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, side * .018),
+    );
+    canvas.drawArc(
+      outerRect,
+      cycle - .14,
+      math.pi * .17,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = side * .008
+        ..color = Colors.white.withValues(alpha: .96),
+    );
 
     switch (styleId) {
       case 'frame_crystal_aurora':
