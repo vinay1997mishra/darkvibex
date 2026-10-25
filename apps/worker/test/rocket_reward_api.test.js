@@ -132,6 +132,8 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
     assert.equal(result.body.reward_type, "frame");
     assert.equal(result.body.coins, 0);
     assert.equal(result.body.frame_days, 1);
+    assert.equal(result.body.frame_delivery_status, "delivered");
+    assert.equal(result.body.frame_id, `rocket_frame_g1_${String(i).padStart(2, "0")}`);
   }
   assert.equal(
     sqlite.prepare("SELECT coins FROM users WHERE id='rocket-user-1'").get().coins,
@@ -141,6 +143,17 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
     sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='rocket_reward'").get().n,
     0,
   );
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM user_cosmetics WHERE kind='frame'").get().n,
+    25,
+  );
+  const firstFrame = sqlite.prepare(
+    "SELECT item_id,kind,active,expires_at,acquired_at FROM user_cosmetics WHERE user_id='rocket-user-1'",
+  ).get();
+  assert.equal(firstFrame.item_id, "rocket_frame_g1_01");
+  assert.equal(firstFrame.kind, "frame");
+  assert.equal(firstFrame.active, 0);
+  assert.equal(firstFrame.expires_at - firstFrame.acquired_at, 86400000);
 
   for (let i = 26; i <= 50; i++) {
     const result = await request(path(1), {
@@ -173,6 +186,10 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
   assert.equal(duplicate.body.reward_type, "coins");
   assert.equal(
     sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='rocket_reward'").get().n,
+    25,
+  );
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM user_cosmetics WHERE kind='frame'").get().n,
     25,
   );
 
