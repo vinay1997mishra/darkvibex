@@ -219,7 +219,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     animation: _controller,
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
-                        styleId: widget.styleId,
+                        styleId: visualStyleId,
                         phase: _controller.value,
                       ),
                     ),
