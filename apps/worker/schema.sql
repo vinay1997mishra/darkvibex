@@ -583,16 +583,17 @@ CREATE TABLE IF NOT EXISTS rocket_reward_claims (
   id TEXT PRIMARY KEY,
   room_id TEXT NOT NULL,
   rocket_level INTEGER NOT NULL CHECK (rocket_level BETWEEN 1 AND 12),
+  reward_group TEXT NOT NULL CHECK (reward_group IN ('1-3','4-6','7-9','10-12')),
   user_id TEXT NOT NULL,
   reward_type TEXT NOT NULL CHECK (reward_type IN ('coins','frame')),
   coin_amount INTEGER NOT NULL DEFAULT 0 CHECK (coin_amount >= 0),
   frame_days INTEGER NOT NULL DEFAULT 0 CHECK (frame_days >= 0),
   frame_delivery_status TEXT NOT NULL DEFAULT 'not_applicable',
   claimed_at INTEGER NOT NULL,
-  UNIQUE (room_id, rocket_level, user_id),
+  UNIQUE (room_id, reward_group, user_id),
   FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_rocket_reward_claims_pool
-  ON rocket_reward_claims(room_id, rocket_level, claimed_at);
+  ON rocket_reward_claims(room_id, reward_group, claimed_at);
