@@ -462,7 +462,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
     _PremiumVectorPalette palette,
   ) {
     for (var i = 0; i < 8; i++) {
-      final angle = cycle * .12 + i * math.pi / 4;
+      final angle = cycle / 8 + i * math.pi / 4;
       final point = center +
           Offset(math.cos(angle), math.sin(angle)) * (radius * 1.105);
       _drawDiamond(canvas, point, side * .030, palette.light, palette.accent);
@@ -533,7 +533,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
     _PremiumVectorPalette palette,
   ) {
     for (var i = 0; i < 6; i++) {
-      final angle = cycle * .16 + i * math.pi / 3;
+      final angle = cycle / 6 + i * math.pi / 3;
       final point = center +
           Offset(math.cos(angle), math.sin(angle)) * (radius * 1.075);
       canvas.save();
@@ -670,7 +670,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
     wing(true);
     wing(false);
     for (var i = 0; i < 4; i++) {
-      final angle = -math.pi / 2 + cycle * .6 + i * math.pi / 2;
+      final angle = -math.pi / 2 + cycle / 4 + i * math.pi / 2;
       final point = center +
           Offset(math.cos(angle), math.sin(angle)) * (radius * 1.08);
       canvas.drawCircle(
@@ -697,7 +697,7 @@ class _PremiumVectorFramePainter extends CustomPainter {
     _PremiumVectorPalette palette,
   ) {
     for (var i = 0; i < 8; i++) {
-      final angle = cycle * .20 + i * math.pi / 4;
+      final angle = cycle / 8 + i * math.pi / 4;
       final point = center +
           Offset(math.cos(angle), math.sin(angle)) * (radius * 1.13);
       final twinkle = .20 + .60 * ((math.sin(cycle * 2 + i) + 1) / 2);
