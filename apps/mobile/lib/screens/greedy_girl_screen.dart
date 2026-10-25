@@ -447,7 +447,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
             children: [
               const Icon(
                 Icons.wifi_off_rounded,
-                color: Color(0xFFFFD878),
+                color: Color(0xFF8B7CFF),
                 size: 36,
               ),
               const SizedBox(height: 10),
@@ -486,7 +486,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                   setState(() => panel = panel == 'game' ? 'records' : 'game'),
               icon: Icon(
                 panel == 'game' ? Icons.history_rounded : Icons.arrow_back_rounded,
-                color: const Color(0xFFFFD878),
+                color: const Color(0xFF8B7CFF),
                 size: 20,
               ),
             ),
@@ -511,7 +511,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
               onPressed: () => setState(() => panel = 'rules'),
               icon: const Icon(
                 Icons.help_outline_rounded,
-                color: Color(0xFFFFD878),
+                color: Color(0xFF8B7CFF),
                 size: 20,
               ),
             ),
@@ -520,7 +520,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
               onPressed: () => Navigator.pop(context),
               icon: const Icon(
                 Icons.close_rounded,
-                color: Color(0xFFFFD878),
+                color: Color(0xFF8B7CFF),
                 size: 20,
               ),
             ),
@@ -610,7 +610,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                               ],
                             ),
                             border: Border.all(
-                              color: const Color(0xFFFFC84A),
+                              color: const Color(0xFF50D8FF),
                               width: 2.4,
                             ),
                             boxShadow: const <BoxShadow>[
@@ -682,7 +682,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                           child: ChoiceChip(
                             selected: selectedBet == amount,
                             showCheckmark: false,
-                            selectedColor: const Color(0xFFFFB33E),
+                            selectedColor: const Color(0xFF50D8FF),
                             backgroundColor: const Color(0xFF5B2C85),
                             side: const BorderSide(color: Color(0xFFAA7EE5)),
                             label: Text(_compact(amount)),
@@ -717,7 +717,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                         'I won today  ${_compact(winnings)}',
                         textAlign: TextAlign.end,
                         style: const TextStyle(
-                          color: Color(0xFFFFD66D),
+                          color: Color(0xFF8B7CFF),
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                         ),
@@ -801,7 +801,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
           ),
           border: Border.all(
             color: active
-                ? const Color(0xFFFFD43D)
+                ? const Color(0xFF50D8FF)
                 : myAmount > 0
                     ? Colors.white
                     : const Color(0xFFB9D7FF),
@@ -810,7 +810,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
           boxShadow: <BoxShadow>[
             BoxShadow(
               color: active
-                  ? const Color(0xFFFFC400)
+                  ? const Color(0xFF50D8FF)
                   : const Color(0xFF835BFF),
               blurRadius: active ? 18 : 10,
             ),
@@ -858,7 +858,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: <Color>[Color(0xFFFFC342), Color(0xFFFF6B7D)],
+            colors: <Color>[Color(0xFF8B7CFF), Color(0xFFFF6B7D)],
           ),
           borderRadius: BorderRadius.circular(18),
           boxShadow: const <BoxShadow>[
@@ -954,7 +954,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                                 Text(
                                   'Round #${row['round_id']}   ${food['emoji'] ?? '🍽️'} ${food['label'] ?? ''} ×${food['multiplier'] ?? '-'}',
                                   style: const TextStyle(
-                                    color: Color(0xFFFFD66D),
+                                    color: Color(0xFF8B7CFF),
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
