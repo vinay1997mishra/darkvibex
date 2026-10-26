@@ -178,27 +178,51 @@ class _HomeShellState extends State<HomeShell> {
             }),
             destinations: [
               NavigationDestination(
-                icon: const Icon(Icons.groups_rounded),
-                selectedIcon:
-                    const TinniGlowIcon(icon: Icons.groups_rounded),
+                icon: const Icon(
+                  Icons.groups_rounded,
+                  color: DarkVibeXIconPalette.cyan,
+                ),
+                selectedIcon: const TinniGlowIcon(
+                  icon: Icons.groups_rounded,
+                  accentColor: DarkVibeXIconPalette.cyan,
+                  secondaryColor: DarkVibeXIconPalette.electricBlue,
+                ),
                 label: darkVibeXText(language, 'party'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.explore_rounded),
-                selectedIcon:
-                    const TinniGlowIcon(icon: Icons.explore_rounded),
+                icon: const Icon(
+                  Icons.explore_rounded,
+                  color: DarkVibeXIconPalette.violet,
+                ),
+                selectedIcon: const TinniGlowIcon(
+                  icon: Icons.explore_rounded,
+                  accentColor: DarkVibeXIconPalette.violet,
+                  secondaryColor: DarkVibeXIconPalette.lavender,
+                ),
                 label: darkVibeXText(language, 'discover'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.mail_rounded),
-                selectedIcon:
-                    const TinniGlowIcon(icon: Icons.mail_rounded),
+                icon: const Icon(
+                  Icons.mail_rounded,
+                  color: DarkVibeXIconPalette.electricBlue,
+                ),
+                selectedIcon: const TinniGlowIcon(
+                  icon: Icons.mail_rounded,
+                  accentColor: DarkVibeXIconPalette.electricBlue,
+                  secondaryColor: DarkVibeXIconPalette.cyan,
+                ),
                 label: darkVibeXText(language, 'message'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.person_rounded),
-                selectedIcon:
-                    const TinniGlowIcon(icon: Icons.person_rounded),
+                icon: const Icon(
+                  Icons.person_rounded,
+                  color: DarkVibeXIconPalette.pink,
+                ),
+                selectedIcon: const TinniGlowIcon(
+                  icon: Icons.person_rounded,
+                  accentColor: DarkVibeXIconPalette.pink,
+                  secondaryColor: DarkVibeXIconPalette.violet,
+                ),
                 label: darkVibeXText(language, 'mine'),
               ),
             ],
@@ -1545,34 +1569,43 @@ class _PartyGlowIcon extends StatelessWidget {
     required this.icon,
     this.size = 20,
     this.boxSize = 36,
-    this.color = const Color(0xFF9B91FF),
+    this.color,
   });
 
   final IconData icon;
   final double size;
   final double boxSize;
-  final Color color;
+  final Color? color;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: boxSize,
-        height: boxSize,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: color.withValues(alpha: .7)),
-          boxShadow: [
-            BoxShadow(color: color.withValues(alpha: .20), blurRadius: 12),
+  Widget build(BuildContext context) {
+    final semantic = DarkVibeXIconPalette.forIcon(icon);
+    final primary = color ?? semantic.primary;
+    final secondary = semantic.secondary;
+
+    return Container(
+      width: boxSize,
+      height: boxSize,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: primary.withValues(alpha: .72)),
+        boxShadow: [
+          BoxShadow(color: primary.withValues(alpha: .20), blurRadius: 12),
+          BoxShadow(color: secondary.withValues(alpha: .10), blurRadius: 14),
+        ],
+        gradient: RadialGradient(
+          colors: [
+            primary.withValues(alpha: .25),
+            secondary.withValues(alpha: .12),
+            const Color(0x00101835),
           ],
-          gradient: RadialGradient(
-            colors: [
-              color.withValues(alpha: .24),
-              const Color(0x00101835),
-            ],
-          ),
+          stops: const [0, .62, 1],
         ),
-        child: Icon(icon, color: color, size: size),
-      );
+      ),
+      child: Icon(icon, color: primary, size: size),
+    );
+  }
 }
 
 class _TopRoomCard extends StatelessWidget {
@@ -2182,7 +2215,6 @@ class _PromoCard extends StatelessWidget {
                 icon: icon,
                 size: 30,
                 boxSize: 58,
-                color: const Color(0xFF9B91FF),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -2241,7 +2273,6 @@ class _QuickCard extends StatelessWidget {
               icon: icon,
               size: 19,
               boxSize: 36,
-              color: const Color(0xFF70E8FF),
             ),
             const SizedBox(height: 5),
             Text(
