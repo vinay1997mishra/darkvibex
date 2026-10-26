@@ -215,7 +215,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: TinniPalette.gold.withValues(alpha: .22),
+                      color: DarkVibeXIconPalette.electricBlue.withValues(alpha: .22),
                       blurRadius: 12,
                     ),
                   ],
@@ -253,13 +253,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF5B52C9), Color(0xFF218EBE)],
+                    colors: [DarkVibeXIconPalette.pink, DarkVibeXIconPalette.violet],
                   ),
                   border: Border.all(
-                    color: TinniPalette.brightGold.withValues(alpha: .52),
+                    color: DarkVibeXIconPalette.pink.withValues(alpha: .60),
                   ),
                   boxShadow: const [
-                    BoxShadow(color: Color(0x303E8BFF), blurRadius: 12),
+                    BoxShadow(color: Color(0x30FF83D8), blurRadius: 12),
                   ],
                 ),
                 child: const Icon(
