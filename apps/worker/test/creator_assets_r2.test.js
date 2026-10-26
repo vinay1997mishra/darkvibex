@@ -12,6 +12,8 @@ const mediaPreview = await readFile(new URL("../../mobile/lib/widgets/creator_as
 const effectPlayback = await readFile(new URL("../../mobile/lib/widgets/creator_asset_effect_playback.dart", import.meta.url), "utf8");
 const frameWidget = await readFile(new URL("../../mobile/lib/widgets/vip_animated_frame.dart", import.meta.url), "utf8");
 const bubbleWidget = await readFile(new URL("../../mobile/lib/widgets/cosmetic_store_previews.dart", import.meta.url), "utf8");
+const giftPreview = await readFile(new URL("../../mobile/lib/widgets/gift_media_preview.dart", import.meta.url), "utf8");
+const giftScreen = await readFile(new URL("../../mobile/lib/screens/gifts_screen.dart", import.meta.url), "utf8");
 
 test("creator uploads are permission-gated, capped and file-signature validated", () => {
   assert.match(ownerApi, /handleCreatorMediaUpload/);
@@ -61,4 +63,9 @@ test("Store previews uploaded MP4/WebM and GLB assets with a procedural fallback
   assert.match(shop, /video_key/);
   assert.match(mediaPreview, /setLooping\(false\)/);
   assert.match(mediaPreview, /setVolume\(0\)/);
+  assert.match(giftPreview, /ModelViewer\(/);
+  assert.match(giftPreview, /glbKey/);
+  assert.match(giftScreen, /glbKey:/);
+  assert.match(room, /_playGiftGlb/);
+  assert.match(room, /ModelViewer\(/);
 });
