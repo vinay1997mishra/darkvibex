@@ -602,6 +602,10 @@ export async function effectiveCosmeticCatalog(db) {
       duration_days: Number(row.data?.duration_days ?? previous.duration_days ?? 30),
       tier: Number(row.data?.tier ?? previous.tier ?? 0),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
+      video_key: String(row.data?.video_key ?? previous.video_key ?? ""),
+      glb_key: String(row.data?.glb_key ?? previous.glb_key ?? ""),
+      media_type: String(row.data?.media_type ?? previous.media_type ?? ""),
+      preview_key: String(row.data?.preview_key ?? previous.preview_key ?? ""),
       description: String(row.data?.description ?? previous.description ?? ""),
       animation_type: String(row.data?.animation_type ?? previous.animation_type ?? ""),
       animation_ms: Number(row.data?.animation_ms ?? previous.animation_ms ?? 0),
@@ -679,6 +683,9 @@ async function effectiveGiftCatalog(db) {
       category: String(row.data?.category ?? previous.category ?? "normal"),
       asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
       video_key: String(row.data?.video_key ?? previous.video_key ?? ""),
+      glb_key: String(row.data?.glb_key ?? previous.glb_key ?? ""),
+      media_type: String(row.data?.media_type ?? previous.media_type ?? ""),
+      animation_ms: Number(row.data?.animation_ms ?? previous.animation_ms ?? 0),
       starts_at: startsAt,
       ends_at: endsAt,
       sort_order: Number(row.sort_order ?? previous.sort_order ?? 0),
@@ -6195,6 +6202,12 @@ async function handleApi(request, env, url) {
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'bubble' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_bubble_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'profile_card' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_profile_card_id,
+                (SELECT json_extract(oc.json_data,'$.video_key') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_video_key,
+                (SELECT json_extract(oc.json_data,'$.glb_key') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_glb_key,
+                (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_animation_ms,
+                (SELECT json_extract(oc.json_data,'$.video_key') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_video_key,
+                (SELECT json_extract(oc.json_data,'$.glb_key') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_glb_key,
+                (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_animation_ms,
                 m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
                 CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
                 CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin,
@@ -6212,7 +6225,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {
@@ -8569,7 +8582,7 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts|room-themes|banners)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|room-themes|banners|creator-assets)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {

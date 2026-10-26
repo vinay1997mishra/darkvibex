@@ -23,6 +23,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/creator_asset_effect_playback.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
@@ -306,7 +307,17 @@ class _RoomScreenState extends State<RoomScreen> {
     arrivalEffectTimer?.cancel();
     if (!mounted) return;
     setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
-    arrivalEffectTimer = Timer(const Duration(milliseconds: 2000), () {
+    final hasCustomMedia = [
+      member['active_entry_video_key'], member['active_entry_glb_key'],
+      member['active_vehicle_video_key'], member['active_vehicle_glb_key'],
+    ].any((value) => value?.toString().trim().isNotEmpty == true);
+    final requestedMs = int.tryParse(
+      (member['active_entry_animation_ms'] ?? member['active_vehicle_animation_ms'] ?? '').toString(),
+    ) ?? 0;
+    final durationMs = requestedMs > 0
+        ? requestedMs.clamp(2000, 10000).toInt()
+        : (hasCustomMedia ? 6000 : 2000);
+    arrivalEffectTimer = Timer(Duration(milliseconds: durationMs), () {
       if (mounted) setState(() => arrivalEffectMember = null);
     });
   }
@@ -7846,30 +7857,39 @@ class _RoomScreenState extends State<RoomScreen> {
                         ),
                       ),
                     )
-                  : VehicleEntryEffect(
-                      displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
-                          ? arrivalEffectMember!['display_name'].toString()
-                          : 'VIP member',
-                      level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
-                      showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
-                          arrivalEffectMember?['active_vehicle_id'] != null ||
-                          arrivalEffectMember?['active_entry_id'] != null,
-                      customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
-                          arrivalEffectMember?['active_entry_id'] != null ||
-                          (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
-                      vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
-                          ? arrivalEffectMember!['active_entry_id']
-                              .toString()
-                              .replaceAll('entry-', '')
-                              .replaceAll('-', ' ')
-                              .toUpperCase()
-                          : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
-                              'vehicle_king' => 'KING OF VIP',
-                              'vehicle_phoenix' => 'PHOENIX GT',
-                              'vehicle_royal' => 'ROYAL CHARIOT',
-                              'vehicle_spark' => 'STARLIGHT COUPE',
-                              _ => null,
-                            },
+                  : CreatorAssetEffectPlayback(
+                      backend: widget.state.backend,
+                      videoKey: ((arrivalEffectMember?['active_entry_video_key'] ?? '').toString().trim().isNotEmpty)
+                          ? arrivalEffectMember!['active_entry_video_key'].toString()
+                          : (arrivalEffectMember?['active_vehicle_video_key'] ?? '').toString(),
+                      glbKey: ((arrivalEffectMember?['active_entry_glb_key'] ?? '').toString().trim().isNotEmpty)
+                          ? arrivalEffectMember!['active_entry_glb_key'].toString()
+                          : (arrivalEffectMember?['active_vehicle_glb_key'] ?? '').toString(),
+                      fallback: VehicleEntryEffect(
+                        displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
+                            ? arrivalEffectMember!['display_name'].toString()
+                            : 'VIP member',
+                        level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
+                        showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
+                            arrivalEffectMember?['active_vehicle_id'] != null ||
+                            arrivalEffectMember?['active_entry_id'] != null,
+                        customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
+                            arrivalEffectMember?['active_entry_id'] != null ||
+                            (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
+                        vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
+                            ? arrivalEffectMember!['active_entry_id']
+                                .toString()
+                                .replaceAll('entry-', '')
+                                .replaceAll('-', ' ')
+                                .toUpperCase()
+                            : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
+                                'vehicle_king' => 'KING OF VIP',
+                                'vehicle_phoenix' => 'PHOENIX GT',
+                                'vehicle_royal' => 'ROYAL CHARIOT',
+                                'vehicle_spark' => 'STARLIGHT COUPE',
+                                _ => null,
+                              },
+                      ),
                     ),
             ),
         ],

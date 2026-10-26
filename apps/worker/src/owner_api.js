@@ -10,7 +10,7 @@ import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 const corsHeaders = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "authorization,content-type,x-file-key,x-gift-id,x-theme-id,x-banner-id",
+  "access-control-allow-headers": "authorization,content-type,x-file-key,x-gift-id,x-theme-id,x-banner-id,x-asset-id,x-asset-kind",
 };
 
 const json = (data, init = {}) =>
@@ -1321,6 +1321,55 @@ async function handleGiftMediaUpload(request, env, db, actor) {
   return json({ ok: true, key }, { status: 201 });
 }
 
+
+async function handleCreatorMediaUpload(request, env, db, actor) {
+  if (request.method !== "PUT") return null;
+  if (!env.FILES) return json({ ok: false, error: "file_storage_not_bound" }, { status: 503 });
+
+  const kind = String(request.headers.get("x-asset-kind") ?? "").trim().toLowerCase();
+  const assetId = String(request.headers.get("x-asset-id") ?? "")
+    .trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  const supportedKinds = new Set(["gift", "frame", "entry", "vehicle", "bubble", "ring", "profile_card", "profile_background"]);
+  if (!supportedKinds.has(kind)) return json({ ok: false, error: "creator_asset_kind_invalid" }, { status: 400 });
+  requirePermission(actor, kind === "gift" ? "gifts.save" : "assets.save");
+  if (!assetId) return json({ ok: false, error: "creator_asset_id_required" }, { status: 400 });
+
+  const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  const types = {
+    "image/jpeg": { ext: "jpg", max: 5 * 1024 * 1024 },
+    "image/png": { ext: "png", max: 5 * 1024 * 1024 },
+    "image/webp": { ext: "webp", max: 5 * 1024 * 1024 },
+    "video/mp4": { ext: "mp4", max: 11 * 1024 * 1024 },
+    "video/webm": { ext: "webm", max: 11 * 1024 * 1024 },
+    "model/gltf-binary": { ext: "glb", max: 25 * 1024 * 1024 },
+  };
+  const spec = types[type];
+  if (!spec) return json({ ok: false, error: "creator_asset_type_invalid" }, { status: 400 });
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (declared > spec.max) return json({ ok: false, error: "creator_asset_too_large", max_bytes: spec.max }, { status: 413 });
+
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (!bytes.length || bytes.length > spec.max) return json({ ok: false, error: "creator_asset_too_large", max_bytes: spec.max }, { status: 413 });
+  const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end));
+  let valid = false;
+  if (type === "video/mp4") valid = bytes.length >= 12 && ascii(4, 8) === "ftyp";
+  else if (type === "video/webm") valid = bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+  else if (type === "model/gltf-binary") {
+    const view = bytes.length >= 12 ? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength) : null;
+    valid = bytes.length >= 12 && ascii(0, 4) === "glTF" && view.getUint32(4, true) === 2 && view.getUint32(8, true) === bytes.byteLength;
+  } else if (type === "image/png") valid = bytes.length >= 8 && bytes[0] === 137 && ascii(1, 4) === "PNG";
+  else if (type === "image/jpeg") valid = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  else if (type === "image/webp") valid = bytes.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+  if (!valid) return json({ ok: false, error: "creator_asset_signature_invalid" }, { status: 400 });
+
+  const key = "creator-assets/" + kind + "/" + assetId + "/asset-" + now() + "-" + randomHex(6) + "." + spec.ext;
+  await env.FILES.put(key, bytes, {
+    httpMetadata: { contentType: type, cacheControl: "public, max-age=3600" },
+    customMetadata: { kind, assetId, uploadedBy: String(actor.id ?? actor.name ?? "staff").slice(0, 100) },
+  });
+  await audit(db, actor, "creator_asset_upload", kind, assetId, key);
+  return json({ ok: true, key, kind, id: assetId, media_type: type, extension: spec.ext, max_bytes: spec.max }, { status: 201 });
+}
 
 async function handleBannerMediaUpload(request, env, db, actor) {
   if (request.method !== "PUT") return null;
@@ -2859,6 +2908,7 @@ export async function handleOwnerApi(request, env, url) {
     let response = null;
     if (parts[2] === "theme-media") response = await handleThemeMediaUpload(request, env, db, actor);
     else if (parts[2] === "gift-media") response = await handleGiftMediaUpload(request, env, db, actor);
+    else if (parts[2] === "creator-media") response = await handleCreatorMediaUpload(request, env, db, actor);
     else if (parts[2] === "banner-media") response = await handleBannerMediaUpload(request, env, db, actor);
     else if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
     else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
