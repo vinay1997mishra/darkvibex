@@ -208,10 +208,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [TinniPalette.gold, TinniPalette.brightGold],
+                    colors: [DarkVibeXIconPalette.cyan, DarkVibeXIconPalette.electricBlue],
                   ),
                   border: Border.all(
-                    color: TinniPalette.brightGold.withValues(alpha: .72),
+                    color: DarkVibeXIconPalette.electricBlue.withValues(alpha: .72),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -306,7 +306,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [TinniPalette.gold, TinniPalette.brightGold],
+                  colors: [DarkVibeXIconPalette.violet, DarkVibeXIconPalette.pink],
                 ),
                 boxShadow: [
                   BoxShadow(
