@@ -2449,6 +2449,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                   item['asset_key']?.toString().trim() ?? '';
                               final videoKey =
                                   item['video_key']?.toString().trim() ?? '';
+                              final glbKey =
+                                  item['glb_key']?.toString().trim() ?? '';
                               final cost = giftCost(item);
                               final vipLevel = int.tryParse(
                                     item['vip_level']?.toString() ?? '',
@@ -2498,6 +2500,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                                           widget.state.backend,
                                                       videoKey: videoKey,
                                                       assetKey: assetKey,
+                                                      glbKey: glbKey,
                                                       emoji: emoji,
                                                       fit: BoxFit.contain,
                                                     ),
@@ -6527,6 +6530,136 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _playGiftGlb(
+    Map<String, dynamic> gift, {
+    required String receiverId,
+    required String glbKey,
+  }) async {
+    if (!mounted || glbKey.trim().isEmpty) return;
+    final receiver = membersBySeat.values.firstWhere(
+      (member) => member['user_id']?.toString() == receiverId,
+      orElse: () => <String, dynamic>{},
+    );
+    final receiverName = (receiver['display_name'] ??
+            receiver['name'] ??
+            receiver['nickname'] ??
+            (receiverId == widget.state.userId
+                ? widget.state.displayName
+                : receiverId))
+        .toString();
+    final giftName = (gift['name'] ?? 'Gift').toString();
+    var closeTriggered = false;
+    Timer? closeTimer;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black,
+        builder: (dialogContext) {
+          closeTimer ??= Timer(
+            Duration(
+              milliseconds: (int.tryParse(
+                        gift['animation_ms']?.toString() ?? '',
+                      ) ??
+                      5000)
+                  .clamp(2000, 10000)
+                  .toInt(),
+            ),
+            () {
+              if (!closeTriggered &&
+                  Navigator.of(dialogContext).canPop()) {
+                closeTriggered = true;
+                Navigator.of(dialogContext).pop();
+              }
+            },
+          );
+          return PopScope(
+            canPop: true,
+            child: Scaffold(
+              backgroundColor: const Color(0xFF080611),
+              body: SafeArea(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: ModelViewer(
+                        src: widget.state.backend.fileUrl(glbKey),
+                        alt: giftName,
+                        backgroundColor: const Color(0xFF080611),
+                        autoRotate: true,
+                        autoPlay: true,
+                        ar: false,
+                        cameraControls: false,
+                        disableZoom: true,
+                        shadowIntensity: 1,
+                      ),
+                    ),
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      right: 56,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xCC100D22),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0x669F88FF),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(13),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${widget.state.displayName} sent $giftName',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 17,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'To: $receiverName',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        tooltip: 'Close 3D gift',
+                        onPressed: () {
+                          closeTriggered = true;
+                          closeTimer?.cancel();
+                          Navigator.of(dialogContext).pop();
+                        },
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (_) {
+      // A malformed or unavailable GLB must not interfere with a completed gift send.
+      if (mounted) _playGiftEffect(gift, receiverId: receiverId);
+    } finally {
+      closeTimer?.cancel();
+    }
+  }
+
   Future<void> _playGiftVideo(
     Map<String, dynamic> gift, {
     required String receiverId,
@@ -6687,6 +6820,9 @@ class _RoomScreenState extends State<RoomScreen> {
       final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
           .toString()
           .trim();
+      final glbKey = (gift['glb_key'] ?? gift['glbKey'] ?? '')
+          .toString()
+          .trim();
       final receiver = membersBySeat.values.firstWhere(
         (member) => member['user_id']?.toString() == receiverId,
         orElse: () => <String, dynamic>{},
@@ -6707,6 +6843,8 @@ class _RoomScreenState extends State<RoomScreen> {
       ));
       if (videoKey.isNotEmpty) {
         await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey);
+      } else if (glbKey.isNotEmpty) {
+        await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
       } else {
         _playGiftEffect(gift, receiverId: receiverId);
       }

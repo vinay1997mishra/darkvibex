@@ -67,5 +67,6 @@ test("Store previews uploaded MP4/WebM and GLB assets with a procedural fallback
   assert.match(giftPreview, /glbKey/);
   assert.match(giftScreen, /glbKey:/);
   assert.match(room, /_playGiftGlb/);
+  assert.match(room, /glbKey: glbKey/);
   assert.match(room, /ModelViewer\(/);
 });
