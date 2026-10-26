@@ -284,6 +284,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     enabled: state.activeFrameId != null ||
                         state.hasVipPrivilege('dynamic_avatar'),
                     styleId: state.activeFrameId,
+                    assetUrl: state.activeFrameAssetKey?.isNotEmpty == true
+                        ? state.backend.fileUrl(state.activeFrameAssetKey!)
+                        : null,
+                    assetHeaders: state.backend.fileHeaders,
                     child: Container(
                       padding: EdgeInsets.all(ringId == null ? 0 : 1.5),
                       decoration: BoxDecoration(

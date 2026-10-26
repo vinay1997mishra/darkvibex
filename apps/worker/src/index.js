@@ -6761,7 +6761,11 @@ async function handleApi(request, env, url) {
               (SELECT p.item_id FROM user_props p
                 WHERE p.user_id=m.sender_user_id AND p.kind='bubble'
                   AND p.active=1 AND p.expires_at>?
-                LIMIT 1) AS active_bubble_id
+                LIMIT 1) AS active_bubble_id,
+              (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
+                WHERE oc.kind='bubble' AND oc.id=(SELECT p.item_id FROM user_props p
+                  WHERE p.user_id=m.sender_user_id AND p.kind='bubble' AND p.active=1 AND p.expires_at>? LIMIT 1)
+                LIMIT 1) AS active_bubble_asset_key
          FROM direct_messages m
          LEFT JOIN direct_message_images i ON i.message_id = m.id
         WHERE ((m.sender_user_id = ? AND m.receiver_user_id = ?)
@@ -6769,7 +6773,7 @@ async function handleApi(request, env, url) {
           AND (? = 0 OR m.created_at >= ?)
         ORDER BY m.created_at DESC
         LIMIT ?`
-    ).bind(now(), userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
+    ).bind(now(), now(), userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
     rows.results = (rows.results ?? []).reverse();
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"

@@ -423,8 +423,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           final bubbleId = mine
                               ? widget.state.activeCosmetic('bubble')
                               : item['active_bubble_id']?.toString();
+                          final bubbleAssetKey =
+                              item['active_bubble_asset_key']?.toString().trim() ?? '';
                           final hasStoreBubble =
-                              bubbleId != null && bubbleId.isNotEmpty;
+                              (bubbleId != null && bubbleId.isNotEmpty) ||
+                              bubbleAssetKey.isNotEmpty;
+                          final effectiveBubbleId = bubbleId?.isNotEmpty == true
+                              ? bubbleId!
+                              : 'bubble-dream';
                           final hasVipBubble =
                               mine && widget.state.hasVipPrivilege('chat_bubble');
                           final messageContent = Column(
@@ -462,7 +468,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           );
                           final messageBubble = hasStoreBubble
                               ? StretchableCosmeticBubble(
-                                  styleId: bubbleId,
+                                  styleId: effectiveBubbleId,
+                                  assetImageUrl: bubbleAssetKey.isNotEmpty
+                                      ? widget.state.backend.fileUrl(bubbleAssetKey)
+                                      : null,
+                                  assetImageHeaders: widget.state.backend.fileHeaders,
                                   maxWidth: 292,
                                   minWidth: 112,
                                   minHeight: 44,
