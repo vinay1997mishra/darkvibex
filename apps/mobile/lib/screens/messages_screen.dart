@@ -182,7 +182,34 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
+  int get _unreadActivityCount =>
+      activity.where((row) => row['is_read'] != true).length;
+
   Future<void> _openActivity() async {
+    final itemIds = activity
+        .map((row) => row['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (itemIds.isNotEmpty &&
+        state.backendConnected &&
+        state.isAuthenticated) {
+      final marked = await state.backend.markActivityMessagesRead(
+        userId: state.userId,
+        itemIds: itemIds,
+      );
+      if (!mounted) return;
+      if (marked) {
+        final readIds = itemIds.toSet();
+        setState(() {
+          activity = activity
+              .map((row) => readIds.contains(row['id']?.toString())
+                  ? <String, dynamic>{...row, 'is_read': true}
+                  : row)
+              .toList(growable: false);
+        });
+      }
+    }
+    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => _SystemFeedScreen(
@@ -193,6 +220,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ),
       ),
     );
+    if (!mounted) return;
+    await _loadFeeds();
   }
 
   Widget _systemFeedPanel() => TinniPanel(
@@ -282,8 +311,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              trailing: activity.isNotEmpty
-                  ? Badge(label: Text(activity.length.clamp(1, 99).toString()))
+              trailing: _unreadActivityCount > 0
+                  ? Badge(
+                      label: Text(
+                        _unreadActivityCount.clamp(1, 99).toString(),
+                      ),
+                    )
                   : const Icon(Icons.chevron_right_rounded),
               onTap: loadingFeeds ? null : _openActivity,
             ),

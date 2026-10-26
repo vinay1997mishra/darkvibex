@@ -39,4 +39,16 @@ void main() {
     expect(messages, contains('unawaited(_refreshInbox())'));
     expect(messages, contains('await _refreshInbox();'));
   });
+
+  test('activity badge counts only unread items and opening the feed marks them read', () {
+    final messages = File('lib/screens/messages_screen.dart').readAsStringSync();
+    final api = File('lib/infra/backend_api.dart').readAsStringSync();
+
+    expect(messages, contains('_unreadActivityCount'));
+    expect(messages, contains("activity.where((row) => row['is_read'] != true).length"));
+    expect(messages, contains('markActivityMessagesRead'));
+    expect(messages, contains("'is_read': true"));
+    expect(api, contains("'/api/messages/activity/read'"));
+    expect(api, contains("'item_ids': itemIds"));
+  });
 }

@@ -1602,6 +1602,23 @@ class BackendApi {
         .toList();
   }
 
+  Future<bool> markActivityMessagesRead({
+    required String userId,
+    required List<String> itemIds,
+  }) async {
+    if (itemIds.isEmpty) return true;
+    final value = await _json(
+      'POST',
+      '/api/messages/activity/read',
+      body: <String, dynamic>{
+        'user_id': userId,
+        'item_ids': itemIds,
+      },
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
   Future<Map<String, String?>> profileMedia({
     String? userId,
   }) async {

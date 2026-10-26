@@ -66,6 +66,7 @@ import {
   addProfileTrend,
   officialNotices,
   activityFeed,
+  markActivityRead,
 } from "./tinni_social.js";
 
 import {
@@ -3442,6 +3443,19 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     return json({ ok: true, activity: await activityFeed(db, userId) });
+  }
+
+  if (url.pathname === "/api/messages/activity/read" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const result = await markActivityRead(
+      db,
+      userId,
+      Array.isArray(body.item_ids) ? body.item_ids : [],
+    );
+    return json({ ok: true, ...result });
   }
 
   if (url.pathname === "/api/social/stats" && request.method === "GET") {
