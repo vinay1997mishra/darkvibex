@@ -482,6 +482,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     final id = item['id']?.toString() ?? '';
     final videoKey = item['video_key']?.toString().trim() ?? '';
     final glbKey = item['glb_key']?.toString().trim() ?? '';
+    final assetImageKey = item['asset_key']?.toString().trim() ?? '';
     if (videoKey.isNotEmpty) {
       return CreatorAssetMediaPreview(
         backend: widget.state.backend,
@@ -505,6 +506,20 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
           cameraControls: false,
           disableZoom: true,
           shadowIntensity: 0.8,
+        ),
+      );
+    }
+    if ((kind == 'frame' || kind == 'bubble') && assetImageKey.isNotEmpty) {
+      return SizedBox(
+        height: 150,
+        width: double.infinity,
+        child: Image.network(
+          widget.state.backend.fileUrl(assetImageKey),
+          headers: widget.state.backend.fileHeaders,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Center(
+            child: TinniGlowIcon(icon: _kindIcon(kind), size: 30, boxSize: 66),
+          ),
         ),
       );
     }

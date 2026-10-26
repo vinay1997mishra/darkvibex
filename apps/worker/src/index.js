@@ -6066,7 +6066,11 @@ async function handleApi(request, env, url) {
                 (SELECT p.item_id FROM user_props p
                   WHERE p.user_id=m.user_id AND p.kind='bubble'
                     AND p.active=1 AND p.expires_at>?
-                  LIMIT 1) AS active_bubble_id
+                  LIMIT 1) AS active_bubble_id,
+                (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
+                  WHERE oc.kind='bubble' AND oc.id=(SELECT p.item_id FROM user_props p
+                    WHERE p.user_id=m.user_id AND p.kind='bubble' AND p.active=1 AND p.expires_at>? LIMIT 1)
+                  LIMIT 1) AS active_bubble_asset_key
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
            LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
@@ -6074,7 +6078,7 @@ async function handleApi(request, env, url) {
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
-      ).bind(now(), now(), roomId).all();
+      ).bind(now(), now(), now(), roomId).all();
       return json({ ok: true, messages: (rows.results ?? []).reverse() });
     }
     if (request.method === "POST") {
@@ -6131,14 +6135,18 @@ async function handleApi(request, env, url) {
                 (SELECT p.item_id FROM user_props p
                   WHERE p.user_id=m.user_id AND p.kind='bubble'
                     AND p.active=1 AND p.expires_at>?
-                  LIMIT 1) AS active_bubble_id
+                  LIMIT 1) AS active_bubble_id,
+                (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
+                  WHERE oc.kind='bubble' AND oc.id=(SELECT p.item_id FROM user_props p
+                    WHERE p.user_id=m.user_id AND p.kind='bubble' AND p.active=1 AND p.expires_at>? LIMIT 1)
+                  LIMIT 1) AS active_bubble_asset_key
            FROM room_messages m
            LEFT JOIN users u ON u.id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.id = ?
           LIMIT 1`
-      ).bind(createdAt, createdAt, messageId).first();
+      ).bind(createdAt, createdAt, createdAt, messageId).first();
       return json({
         ok: true,
         message_id: messageId,
@@ -6198,6 +6206,10 @@ async function handleApi(request, env, url) {
                 END AS public_id,
                 COALESCE(io.invisible_id,0) AS owner_invisible_id,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
+                (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
+                  WHERE oc.kind='frame' AND oc.id=(SELECT c.item_id FROM user_cosmetics c
+                    WHERE c.user_id=m.user_id AND c.kind='frame' AND c.active=1 AND c.expires_at>? LIMIT 1)
+                  LIMIT 1) AS active_frame_asset_key,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'bubble' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_bubble_id,
@@ -6225,7 +6237,7 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
       return json({ ok: true, members: rows.results ?? [] });
     }
     if (request.method === "POST") {

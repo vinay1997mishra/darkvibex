@@ -10,6 +10,8 @@ const shop = await readFile(new URL("../../mobile/lib/screens/cosmetics_shop_scr
 const room = await readFile(new URL("../../mobile/lib/screens/room_screen.dart", import.meta.url), "utf8");
 const mediaPreview = await readFile(new URL("../../mobile/lib/widgets/creator_asset_media_preview.dart", import.meta.url), "utf8");
 const effectPlayback = await readFile(new URL("../../mobile/lib/widgets/creator_asset_effect_playback.dart", import.meta.url), "utf8");
+const frameWidget = await readFile(new URL("../../mobile/lib/widgets/vip_animated_frame.dart", import.meta.url), "utf8");
+const bubbleWidget = await readFile(new URL("../../mobile/lib/widgets/cosmetic_store_previews.dart", import.meta.url), "utf8");
 
 test("creator uploads are permission-gated, capped and file-signature validated", () => {
   assert.match(ownerApi, /handleCreatorMediaUpload/);
@@ -40,7 +42,13 @@ test("custom media metadata reaches room entry playback and R2 assets are public
   assert.match(worker, /active_entry_video_key/);
   assert.match(worker, /active_vehicle_glb_key/);
   assert.match(worker, /active_entry_glb_key/);
+  assert.match(worker, /active_frame_asset_key/);
+  assert.match(worker, /active_bubble_asset_key/);
   assert.match(room, /CreatorAssetEffectPlayback/);
+  assert.match(room, /assetUrl: activeFrameAssetKey/);
+  assert.match(room, /assetImageUrl: bubbleAssetKey/);
+  assert.match(frameWidget, /Image\.network\(\s*customAssetUrl/);
+  assert.match(bubbleWidget, /assetImageUrl/);
   assert.match(room, /active_entry_video_key/);
   assert.match(effectPlayback, /VideoPlayerController\.networkUrl/);
   assert.match(effectPlayback, /ModelViewer\(/);

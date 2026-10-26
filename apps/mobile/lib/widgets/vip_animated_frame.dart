@@ -76,6 +76,8 @@ class VipAnimatedFrame extends StatefulWidget {
     this.enabled = true,
     this.level = 7,
     this.styleId,
+    this.assetUrl,
+    this.assetHeaders,
   });
 
   final double size;
@@ -83,6 +85,8 @@ class VipAnimatedFrame extends StatefulWidget {
   final bool enabled;
   final int level;
   final String? styleId;
+  final String? assetUrl;
+  final Map<String, String>? assetHeaders;
 
   @override
   State<VipAnimatedFrame> createState() => _VipAnimatedFrameState();
@@ -134,6 +138,38 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   Widget build(BuildContext context) {
     final visualStyleId = _visualFrameStyleId(widget.styleId);
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
+    final customAssetUrl = widget.assetUrl?.trim() ?? '';
+
+    if (widget.enabled && customAssetUrl.isNotEmpty) {
+      // Uploaded transparent frame art overlays the original avatar. Animated
+      // WebP remains animated natively; no replacement or crop of the DP.
+      return SizedBox.square(
+        dimension: widget.size,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            SizedBox.square(dimension: widget.size, child: widget.child),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: 1.45,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: Image.network(
+                    customAssetUrl,
+                    headers: widget.assetHeaders,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (widget.enabled && _premiumVectorFrameIds.contains(widget.styleId)) {
       // These five shop frames use native vector artwork so every ornament can

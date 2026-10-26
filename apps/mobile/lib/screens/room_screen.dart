@@ -7266,6 +7266,8 @@ class _RoomScreenState extends State<RoomScreen> {
                       ) ??
                       0;
                   final activeFrame = member?['active_frame_id']?.toString();
+                  final activeFrameAssetKey =
+                      member?['active_frame_asset_key']?.toString().trim() ?? '';
                   final activeEntry = mine
                       ? widget.state.activeCosmetic('entry')
                       : member?['active_entry_id']?.toString();
@@ -7352,6 +7354,10 @@ class _RoomScreenState extends State<RoomScreen> {
                                             (vipLevel >= 16 && micOn),
                                         level: frameTier,
                                         styleId: activeFrame,
+                                        assetUrl: activeFrameAssetKey.isNotEmpty
+                                            ? widget.state.backend.fileUrl(activeFrameAssetKey)
+                                            : null,
+                                        assetHeaders: widget.state.backend.fileHeaders,
                                         child: CircleAvatar(
                                           radius: (diameter / 2) - 1,
                                           backgroundImage:
@@ -7598,8 +7604,14 @@ class _RoomScreenState extends State<RoomScreen> {
                         final bubbleId = senderId == widget.state.userId
                             ? widget.state.activeCosmetic('bubble')
                             : message['active_bubble_id']?.toString();
+                        final bubbleAssetKey =
+                            message['active_bubble_asset_key']?.toString().trim() ?? '';
                         final hasBubble =
-                            bubbleId != null && bubbleId.isNotEmpty;
+                            (bubbleId != null && bubbleId.isNotEmpty) ||
+                            bubbleAssetKey.isNotEmpty;
+                        final effectiveBubbleId = bubbleId?.isNotEmpty == true
+                            ? bubbleId!
+                            : 'bubble-dream';
                         final messageContent = Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -7647,7 +7659,11 @@ class _RoomScreenState extends State<RoomScreen> {
                             alignment: Alignment.centerLeft,
                             child: hasBubble
                                 ? StretchableCosmeticBubble(
-                                    styleId: bubbleId,
+                                    styleId: effectiveBubbleId,
+                                    assetImageUrl: bubbleAssetKey.isNotEmpty
+                                        ? widget.state.backend.fileUrl(bubbleAssetKey)
+                                        : null,
+                                    assetImageHeaders: widget.state.backend.fileHeaders,
                                     maxWidth: 280,
                                     minWidth: 112,
                                     minHeight: 44,

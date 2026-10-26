@@ -465,7 +465,7 @@
               <label>Animation type<input id="assetAnimationType" placeholder="float / orbit / portal / custom" /></label>
               <label>Animation duration (ms)<input id="assetAnimationMs" type="number" min="0" max="30000" value="5000" /></label>
               <label class="span-2">Upload file (.mp4, .webm, .glb, .jpg, .png, .webp)<input id="creatorAssetFile" type="file" accept=".mp4,.webm,.glb,.jpg,.jpeg,.png,.webp,video/mp4,video/webm,model/gltf-binary,image/jpeg,image/png,image/webp" /></label>
-              <div class="action-row span-2"><button id="uploadCreatorAsset" class="secondary">Upload to R2</button><span id="creatorAssetStatus" class="item-meta">Upload first, then press Add / Save Asset to publish to the app.</span></div>
+              <div class="action-row span-2"><button id="uploadCreatorAsset" class="secondary">Upload to R2</button><span id="creatorAssetStatus" class="item-meta">Upload first, then press Add / Save Asset to publish to the app. For frames and chat bubbles, use transparent PNG/WebP art; video transparency is not composited by the mobile UI.</span></div>
               <label>Start timestamp (ms)<input id="assetStart" type="number" /></label>
               <label>End timestamp (ms)<input id="assetEnd" type="number" /></label>
               <label class="check"><input id="assetEnabled" type="checkbox" checked /> Enabled</label>
