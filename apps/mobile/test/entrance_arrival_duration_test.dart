@@ -3,15 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('VIP entrance arrival effect lasts exactly two seconds', () {
+  test('VIP entrance effect uses bounded duration with custom media support', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
-    expect(
-      source,
-      contains('Timer(const Duration(milliseconds: 2000)'),
-    );
-    expect(
-      source,
-      isNot(contains('Timer(const Duration(milliseconds: 5000)')),
-    );
+    expect(source, contains('final durationMs = requestedMs > 0'));
+    expect(source, contains('requestedMs.clamp(2000, 10000).toInt()'));
+    expect(source, contains('Timer(Duration(milliseconds: durationMs)'));
+    expect(source, contains('(hasCustomMedia ? 6000 : 2000)'));
   });
 }

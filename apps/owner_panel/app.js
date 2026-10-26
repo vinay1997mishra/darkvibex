@@ -255,7 +255,7 @@ const selectorPermissionRules = [
 
   ["#reloadAssets",["assets.view"],"self"],["#assetKind",["assets.view","assets.save","assets.remove"],"label"],["#assetId",["assets.save"],"label"],["#assetName",["assets.save"],"label"],
   ["#assetPrice",["assets.save"],"label"],["#assetVip",["assets.save"],"label"],["#assetDuration",["assets.save"],"label"],["#assetTier",["assets.save"],"label"],["#assetOrder",["assets.save"],"label"],
-  ["#assetFileKey",["assets.save"],"label"],["#assetStart",["assets.save"],"label"],["#assetEnd",["assets.save"],"label"],["#assetEnabled",["assets.save"],"label"],["#assetDescription",["assets.save"],"label"],
+  ["#assetFileKey",["assets.save"],"label"],["#assetVideoKey",["assets.save"],"label"],["#assetGlbKey",["assets.save"],"label"],["#assetAnimationType",["assets.save"],"label"],["#assetAnimationMs",["assets.save"],"label"],["#creatorAssetFile",["assets.save"],"label"],["#uploadCreatorAsset",["assets.save"],"self"],["#assetStart",["assets.save"],"label"],["#assetEnd",["assets.save"],"label"],["#assetEnabled",["assets.save"],"label"],["#assetDescription",["assets.save"],"label"],
   ["#saveAsset",["assets.save"],"self"],["#clearAsset",["assets.save"],"self"],
 
   ["#reloadStore",["store.view"],"self"],["#storeKind",["store.view","store.save","store.remove"],"label"],["#storeId",["store.save"],"label"],["#storeName",["store.save"],"label"],
@@ -1048,18 +1048,24 @@ async function removeGift(id){
 
 function clearAssetForm(){
   $("#assetId").value="";$("#assetName").value="";$("#assetPrice").value=0;$("#assetVip").value=0;$("#assetDuration").value=30;
-  $("#assetTier").value=0;$("#assetOrder").value=0;$("#assetFileKey").value="";$("#assetStart").value="";$("#assetEnd").value="";
+  $("#assetTier").value=0;$("#assetOrder").value=0;$("#assetFileKey").value="";$("#assetVideoKey").value="";$("#assetGlbKey").value="";
+  $("#assetAnimationType").value="";$("#assetAnimationMs").value=5000;$("#creatorAssetFile").value="";$("#creatorAssetStatus").textContent="";
+  $("#assetStart").value="";$("#assetEnd").value="";
   $("#assetEnabled").checked=true;$("#assetDescription").value="";
 }
 async function loadAssets(){
-  if(!can("assets.view"))return;
+  const giftOption=$("#assetKind").querySelector('option[value="gift"]');
+  if(giftOption)giftOption.hidden=!can("gifts.view");
   const kind=$("#assetKind").value;
+  if(kind==="gift"&&!can("gifts.view")){$("#assetKind").value="entry";return loadAssets();}
+  if(!can(kind==="gift"?"gifts.view":"assets.view"))return;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.assetItems=d.items||[];
   $("#assetList").innerHTML=state.assetItems.length?state.assetItems.map(item=>{
     const data=item.data||{},enabled=Number(item.enabled)!==0;
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
-    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">${esc(kind)} · ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??0)} · ${num(data.duration_days??0)} days · tier ${num(data.tier??0)}${windowText}<br>${esc(data.description||data.asset_key||"")}</div></div><div class="item-actions"><button class="secondary mini" data-asset-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-asset-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+    const mediaText=[data.asset_key&&("image: "+data.asset_key),data.video_key&&("video: "+data.video_key),data.glb_key&&("GLB: "+data.glb_key),data.animation_ms&&("animation: "+num(data.animation_ms)+" ms")].filter(Boolean).join(" · ");
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">${esc(kind)} · ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??0)} · ${num(data.duration_days??0)} days · tier ${num(data.tier??0)}${windowText}<br>${esc(data.description||"")}<br>${esc(mediaText)}</div></div><div class="item-actions"><button class="secondary mini" data-asset-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-asset-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No assets in this type");
   $$("[data-asset-edit]").forEach(b=>b.onclick=()=>editAsset(b.dataset.assetEdit));
   $$("[data-asset-remove]").forEach(b=>b.onclick=()=>removeAsset(b.dataset.assetRemove).catch(e=>toast(e.message,false)));
@@ -1068,21 +1074,55 @@ function editAsset(id){
   const item=state.assetItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
   $("#assetId").value=item.id||"";$("#assetName").value=item.name||"";$("#assetPrice").value=Number(item.price_coins||0);
   $("#assetVip").value=Number(d.min_vip_level??d.vip_level??0);$("#assetDuration").value=Number(d.duration_days??30);$("#assetTier").value=Number(d.tier??0);
-  $("#assetOrder").value=Number(item.sort_order||0);$("#assetFileKey").value=d.asset_key||d.asset||"";$("#assetStart").value=d.starts_at||"";$("#assetEnd").value=d.ends_at||"";
+  $("#assetOrder").value=Number(item.sort_order||0);$("#assetFileKey").value=d.asset_key||d.asset||"";$("#assetVideoKey").value=d.video_key||"";$("#assetGlbKey").value=d.glb_key||"";
+  $("#assetAnimationType").value=d.animation_type||"";$("#assetAnimationMs").value=Number(d.animation_ms||5000);$("#creatorAssetFile").value="";
+  $("#creatorAssetStatus").textContent=[d.video_key&&"Video attached",d.glb_key&&"GLB attached",d.asset_key&&"Image attached"].filter(Boolean).join(" · ")||"No uploaded media";
+  $("#assetStart").value=d.starts_at||"";$("#assetEnd").value=d.ends_at||"";
   $("#assetEnabled").checked=Number(item.enabled)!==0;$("#assetDescription").value=d.description||"";
 }
 async function saveAsset(){
-  if(!can("assets.save"))return toast("Asset save permission required",false);
-  const kind=$("#assetKind").value,id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
+  const kind=$("#assetKind").value;
+  if(!can(kind==="gift"?"gifts.save":"assets.save"))return toast("Asset save permission required",false);
+  const id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
   if(!kind||!id||!name)return toast("Asset type, ID and name are required",false);
   const starts=Number($("#assetStart").value||0)||null,ends=Number($("#assetEnd").value||0)||null;
   if(starts&&ends&&ends<=starts)return toast("Asset end time must be after start time",false);
   await api("/api/owner/store",{method:"POST",body:JSON.stringify({
     kind,id,name,price_coins:Number($("#assetPrice").value||0),sort_order:Number($("#assetOrder").value||0),enabled:$("#assetEnabled").checked,
-    data:{min_vip_level:Number($("#assetVip").value||0),vip_level:Number($("#assetVip").value||0),duration_days:Number($("#assetDuration").value||0),tier:Number($("#assetTier").value||0),asset_key:$("#assetFileKey").value.trim(),asset:$("#assetFileKey").value.trim(),description:$("#assetDescription").value.trim(),starts_at:starts,ends_at:ends}
+    data:{min_vip_level:Number($("#assetVip").value||0),vip_level:Number($("#assetVip").value||0),duration_days:Number($("#assetDuration").value||0),tier:Number($("#assetTier").value||0),asset_key:$("#assetFileKey").value.trim(),asset:$("#assetFileKey").value.trim(),video_key:$("#assetVideoKey").value.trim(),glb_key:$("#assetGlbKey").value.trim(),media_type:$("#assetVideoKey").value.trim().toLowerCase().endsWith(".webm")?"video/webm":$("#assetVideoKey").value.trim()?"video/mp4":$("#assetGlbKey").value.trim()?"model/gltf-binary":"",animation_type:$("#assetAnimationType").value.trim(),animation_ms:Math.max(0,Math.min(30000,Number($("#assetAnimationMs").value||0))),description:$("#assetDescription").value.trim(),starts_at:starts,ends_at:ends}
   })});
   toast("Asset saved to live store");clearAssetForm();await loadAssets();
 }
+
+async function uploadCreatorAsset(){
+  const kind=$("#assetKind").value;
+  if(!can(kind==="gift"?"gifts.save":"assets.save"))return toast("Asset upload permission required",false);
+  const assetId=$("#assetId").value.trim();
+  const file=$("#creatorAssetFile").files?.[0];
+  if(!assetId)return toast("Enter the asset ID before uploading",false);
+  if(!file)return toast("Choose a creator asset file first",false);
+  const ext=(file.name.split(".").pop()||"").toLowerCase();
+  const types={mp4:"video/mp4",webm:"video/webm",glb:"model/gltf-binary",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp"};
+  const type=types[ext];
+  const max=ext==="glb"?25*1024*1024:["mp4","webm"].includes(ext)?11*1024*1024:5*1024*1024;
+  if(!type)return toast("Use MP4, WebM, GLB, JPG, PNG or WebP",false);
+  if(!file.size||file.size>max)return toast("File too large. Maximum for this type is "+Math.round(max/1024/1024)+" MB.",false);
+  $("#creatorAssetStatus").textContent="Validating and uploading to R2…";
+  const response=await fetch("/api/owner/creator-media",{method:"PUT",headers:{"authorization":"Bearer "+state.token,"content-type":type,"x-asset-id":assetId,"x-asset-kind":kind},body:file});
+  const data=await response.json().catch(()=>({ok:false,error:"invalid_response"}));
+  if(!response.ok||!data.ok){
+    $("#creatorAssetStatus").textContent="";
+    const messages={creator_asset_type_invalid:"That media type is not supported.",creator_asset_too_large:"The selected file is larger than the limit.",creator_asset_signature_invalid:"The file header is invalid or the file is damaged.",file_storage_not_bound:"R2 storage is not configured.",unauthorized:"Sign in again to the Owner Panel."};
+    throw new Error(messages[data.error]||data.error||("Upload failed (HTTP "+response.status+")"));
+  }
+  const key=String(data.key||"");
+  if(ext==="glb")$("#assetGlbKey").value=key;
+  else if(ext==="mp4"||ext==="webm")$("#assetVideoKey").value=key;
+  else $("#assetFileKey").value=key;
+  $("#creatorAssetStatus").textContent="Uploaded to R2. Press Add / Save Asset to publish the key into the live catalog.";
+  toast("Creator media uploaded to R2");
+}
+
 async function removeAsset(id){
   if(!can("assets.remove"))return toast("Asset remove permission required",false);
   const kind=$("#assetKind").value;if(!confirm("Remove this "+kind+" from the app?"))return;
@@ -1899,7 +1939,7 @@ $("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.leve
 $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));
 $("#uploadGiftVideo").onclick=()=>uploadGiftVideo().catch(e=>{ $("#giftVideoStatus").textContent=""; toast(e.message,false); });
 $("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
-$("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;
+$("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;$("#uploadCreatorAsset").onclick=()=>uploadCreatorAsset().catch(e=>toast(e.message,false));
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));

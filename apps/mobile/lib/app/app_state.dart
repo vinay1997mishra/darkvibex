@@ -116,6 +116,7 @@ class AppState extends ChangeNotifier {
   int idLevelExp = 0;
   int idLevelExpToNext = 10000;
   String? activeFrameId;
+  String? activeFrameAssetKey;
   String? activeVehicleId;
   final Map<String, String> activeCosmetics = <String, String>{};
 
@@ -799,6 +800,7 @@ class AppState extends ChangeNotifier {
     vipExpBalance = 0;
     vipTotalReceivedCoins = 0;
     activeFrameId = null;
+    activeFrameAssetKey = null;
     activeVehicleId = null;
     activeCosmetics.clear();
     vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
@@ -913,8 +915,18 @@ class AppState extends ChangeNotifier {
     if (!backendConnected) return;
     final value = await backend.cosmetics(userId: userId);
     final rows = value?['owned'];
+    final catalogRows = value?['items'];
+    final catalogById = <String, Map<String, dynamic>>{};
+    if (catalogRows is List) {
+      for (final item in catalogRows.whereType<Map>()) {
+        final map = Map<String, dynamic>.from(item);
+        final id = map['id']?.toString() ?? '';
+        if (id.isNotEmpty) catalogById[id] = map;
+      }
+    }
     if (rows is List) {
       activeFrameId = null;
+      activeFrameAssetKey = null;
       activeVehicleId = null;
       activeCosmetics.clear();
       for (final row in rows.whereType<Map>()) {
@@ -925,7 +937,11 @@ class AppState extends ChangeNotifier {
         final itemId = row['item_id']?.toString() ?? '';
         if (kind.isEmpty || itemId.isEmpty) continue;
         activeCosmetics[kind] = itemId;
-        if (kind == 'frame') activeFrameId = itemId;
+        if (kind == 'frame') {
+          activeFrameId = itemId;
+          activeFrameAssetKey =
+              catalogById[itemId]?['asset_key']?.toString().trim();
+        }
         if (kind == 'vehicle') activeVehicleId = itemId;
       }
     }

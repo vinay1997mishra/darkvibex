@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/creator_asset_media_preview.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/vip_animated_frame.dart';
 import 'unique_id_store_screen.dart';
@@ -478,6 +480,49 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
   Widget _preview(Map<String, dynamic> item, int tier) {
     final kind = item['kind']?.toString() ?? '';
     final id = item['id']?.toString() ?? '';
+    final videoKey = item['video_key']?.toString().trim() ?? '';
+    final glbKey = item['glb_key']?.toString().trim() ?? '';
+    final assetImageKey = item['asset_key']?.toString().trim() ?? '';
+    if (videoKey.isNotEmpty) {
+      return CreatorAssetMediaPreview(
+        backend: widget.state.backend,
+        mediaKey: videoKey,
+        fit: BoxFit.contain,
+        height: 150,
+        fallback: TinniGlowIcon(icon: _kindIcon(kind), size: 30, boxSize: 66),
+      );
+    }
+    if (glbKey.isNotEmpty) {
+      return SizedBox(
+        height: 150,
+        width: double.infinity,
+        child: ModelViewer(
+          src: widget.state.backend.fileUrl(glbKey),
+          alt: item['name']?.toString() ?? 'DarkVibeX 3D asset',
+          backgroundColor: const Color(0xFF100D1B),
+          autoRotate: true,
+          autoPlay: true,
+          ar: false,
+          cameraControls: false,
+          disableZoom: true,
+          shadowIntensity: 0.8,
+        ),
+      );
+    }
+    if ((kind == 'frame' || kind == 'bubble') && assetImageKey.isNotEmpty) {
+      return SizedBox(
+        height: 150,
+        width: double.infinity,
+        child: Image.network(
+          widget.state.backend.fileUrl(assetImageKey),
+          headers: widget.state.backend.fileHeaders,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Center(
+            child: TinniGlowIcon(icon: _kindIcon(kind), size: 30, boxSize: 66),
+          ),
+        ),
+      );
+    }
     if (kind == 'frame') {
       // Store cards must show the frame itself as a large open DP ring,
       // not as a tiny profile badge. The real user DP is only inserted

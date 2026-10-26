@@ -449,9 +449,9 @@
 
         <section class="view" data-view-panel="assets">
           <article class="panel">
-            <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Manage entry effects, profile cards, rings, chat bubbles and frames used by the live app store.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
+            <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Upload MP4/WebM playback clips, validated GLB 3D models and poster images to R2; then publish their keys to the live mobile store. Video clips run as gift/entry effects where supported.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
             <div class="form-grid">
-              <label>Asset type<select id="assetKind"><option value="entry">Entry effect</option><option value="frame">Frame</option><option value="profile_card">Profile card</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option></select></label>
+              <label>Asset type<select id="assetKind"><option value="gift">Gift effect</option><option value="frame">Profile frame</option><option value="entry">Entry effect</option><option value="vehicle">Vehicle entry</option><option value="profile_card">Profile card</option><option value="profile_background">Profile background</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option></select></label>
               <label>Item ID<input id="assetId" placeholder="Unique item ID" /></label>
               <label>Name<input id="assetName" /></label>
               <label>Price in coins<input id="assetPrice" type="number" min="0" value="0" /></label>
@@ -459,7 +459,13 @@
               <label>Validity days<input id="assetDuration" type="number" min="0" value="30" /></label>
               <label>Tier<input id="assetTier" type="number" min="0" value="0" /></label>
               <label>Sort order<input id="assetOrder" type="number" value="0" /></label>
-              <label>Asset / file key<input id="assetFileKey" placeholder="R2 / CDN / asset key" /></label>
+              <label>Poster / image key<input id="assetFileKey" placeholder="Uploaded JPG / PNG / WebP key" /></label>
+              <label>Animation video key<input id="assetVideoKey" placeholder="Uploaded MP4 / WebM key" /></label>
+              <label>3D model GLB key<input id="assetGlbKey" placeholder="Uploaded .glb key" /></label>
+              <label>Animation type<input id="assetAnimationType" placeholder="float / orbit / portal / custom" /></label>
+              <label>Animation duration (ms)<input id="assetAnimationMs" type="number" min="0" max="30000" value="5000" /></label>
+              <label class="span-2">Upload file (.mp4, .webm, .glb, .jpg, .png, .webp)<input id="creatorAssetFile" type="file" accept=".mp4,.webm,.glb,.jpg,.jpeg,.png,.webp,video/mp4,video/webm,model/gltf-binary,image/jpeg,image/png,image/webp" /></label>
+              <div class="action-row span-2"><button id="uploadCreatorAsset" class="secondary">Upload to R2</button><span id="creatorAssetStatus" class="item-meta">Upload first, then press Add / Save Asset to publish to the app. For frames and chat bubbles, use transparent PNG/WebP art; video transparency is not composited by the mobile UI.</span></div>
               <label>Start timestamp (ms)<input id="assetStart" type="number" /></label>
               <label>End timestamp (ms)<input id="assetEnd" type="number" /></label>
               <label class="check"><input id="assetEnabled" type="checkbox" checked /> Enabled</label>

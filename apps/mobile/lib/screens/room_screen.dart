@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart' as gift_video; // Avoid LiveKit's VideoTrack name collision.
 
@@ -23,6 +24,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/creator_asset_effect_playback.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
@@ -306,7 +308,17 @@ class _RoomScreenState extends State<RoomScreen> {
     arrivalEffectTimer?.cancel();
     if (!mounted) return;
     setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
-    arrivalEffectTimer = Timer(const Duration(milliseconds: 2000), () {
+    final hasCustomMedia = [
+      member['active_entry_video_key'], member['active_entry_glb_key'],
+      member['active_vehicle_video_key'], member['active_vehicle_glb_key'],
+    ].any((value) => value?.toString().trim().isNotEmpty == true);
+    final requestedMs = int.tryParse(
+      (member['active_entry_animation_ms'] ?? member['active_vehicle_animation_ms'] ?? '').toString(),
+    ) ?? 0;
+    final durationMs = requestedMs > 0
+        ? requestedMs.clamp(2000, 10000).toInt()
+        : (hasCustomMedia ? 6000 : 2000);
+    arrivalEffectTimer = Timer(Duration(milliseconds: durationMs), () {
       if (mounted) setState(() => arrivalEffectMember = null);
     });
   }
@@ -2437,6 +2449,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                   item['asset_key']?.toString().trim() ?? '';
                               final videoKey =
                                   item['video_key']?.toString().trim() ?? '';
+                              final glbKey =
+                                  item['glb_key']?.toString().trim() ?? '';
                               final cost = giftCost(item);
                               final vipLevel = int.tryParse(
                                     item['vip_level']?.toString() ?? '',
@@ -2486,6 +2500,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                                           widget.state.backend,
                                                       videoKey: videoKey,
                                                       assetKey: assetKey,
+                                                      glbKey: glbKey,
                                                       emoji: emoji,
                                                       fit: BoxFit.contain,
                                                     ),
@@ -6515,6 +6530,136 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _playGiftGlb(
+    Map<String, dynamic> gift, {
+    required String receiverId,
+    required String glbKey,
+  }) async {
+    if (!mounted || glbKey.trim().isEmpty) return;
+    final receiver = membersBySeat.values.firstWhere(
+      (member) => member['user_id']?.toString() == receiverId,
+      orElse: () => <String, dynamic>{},
+    );
+    final receiverName = (receiver['display_name'] ??
+            receiver['name'] ??
+            receiver['nickname'] ??
+            (receiverId == widget.state.userId
+                ? widget.state.displayName
+                : receiverId))
+        .toString();
+    final giftName = (gift['name'] ?? 'Gift').toString();
+    var closeTriggered = false;
+    Timer? closeTimer;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black,
+        builder: (dialogContext) {
+          closeTimer ??= Timer(
+            Duration(
+              milliseconds: (int.tryParse(
+                        gift['animation_ms']?.toString() ?? '',
+                      ) ??
+                      5000)
+                  .clamp(2000, 10000)
+                  .toInt(),
+            ),
+            () {
+              if (!closeTriggered &&
+                  Navigator.of(dialogContext).canPop()) {
+                closeTriggered = true;
+                Navigator.of(dialogContext).pop();
+              }
+            },
+          );
+          return PopScope(
+            canPop: true,
+            child: Scaffold(
+              backgroundColor: const Color(0xFF080611),
+              body: SafeArea(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: ModelViewer(
+                        src: widget.state.backend.fileUrl(glbKey),
+                        alt: giftName,
+                        backgroundColor: const Color(0xFF080611),
+                        autoRotate: true,
+                        autoPlay: true,
+                        ar: false,
+                        cameraControls: false,
+                        disableZoom: true,
+                        shadowIntensity: 1,
+                      ),
+                    ),
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      right: 56,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xCC100D22),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0x669F88FF),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(13),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${widget.state.displayName} sent $giftName',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 17,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'To: $receiverName',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        tooltip: 'Close 3D gift',
+                        onPressed: () {
+                          closeTriggered = true;
+                          closeTimer?.cancel();
+                          Navigator.of(dialogContext).pop();
+                        },
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (_) {
+      // A malformed or unavailable GLB must not interfere with a completed gift send.
+      if (mounted) _playGiftEffect(gift, receiverId: receiverId);
+    } finally {
+      closeTimer?.cancel();
+    }
+  }
+
   Future<void> _playGiftVideo(
     Map<String, dynamic> gift, {
     required String receiverId,
@@ -6675,6 +6820,9 @@ class _RoomScreenState extends State<RoomScreen> {
       final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
           .toString()
           .trim();
+      final glbKey = (gift['glb_key'] ?? gift['glbKey'] ?? '')
+          .toString()
+          .trim();
       final receiver = membersBySeat.values.firstWhere(
         (member) => member['user_id']?.toString() == receiverId,
         orElse: () => <String, dynamic>{},
@@ -6695,6 +6843,8 @@ class _RoomScreenState extends State<RoomScreen> {
       ));
       if (videoKey.isNotEmpty) {
         await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey);
+      } else if (glbKey.isNotEmpty) {
+        await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
       } else {
         _playGiftEffect(gift, receiverId: receiverId);
       }
@@ -7255,6 +7405,8 @@ class _RoomScreenState extends State<RoomScreen> {
                       ) ??
                       0;
                   final activeFrame = member?['active_frame_id']?.toString();
+                  final activeFrameAssetKey =
+                      member?['active_frame_asset_key']?.toString().trim() ?? '';
                   final activeEntry = mine
                       ? widget.state.activeCosmetic('entry')
                       : member?['active_entry_id']?.toString();
@@ -7341,6 +7493,10 @@ class _RoomScreenState extends State<RoomScreen> {
                                             (vipLevel >= 16 && micOn),
                                         level: frameTier,
                                         styleId: activeFrame,
+                                        assetUrl: activeFrameAssetKey.isNotEmpty
+                                            ? widget.state.backend.fileUrl(activeFrameAssetKey)
+                                            : null,
+                                        assetHeaders: widget.state.backend.fileHeaders,
                                         child: CircleAvatar(
                                           radius: (diameter / 2) - 1,
                                           backgroundImage:
@@ -7587,8 +7743,14 @@ class _RoomScreenState extends State<RoomScreen> {
                         final bubbleId = senderId == widget.state.userId
                             ? widget.state.activeCosmetic('bubble')
                             : message['active_bubble_id']?.toString();
+                        final bubbleAssetKey =
+                            message['active_bubble_asset_key']?.toString().trim() ?? '';
                         final hasBubble =
-                            bubbleId != null && bubbleId.isNotEmpty;
+                            (bubbleId != null && bubbleId.isNotEmpty) ||
+                            bubbleAssetKey.isNotEmpty;
+                        final effectiveBubbleId = bubbleId?.isNotEmpty == true
+                            ? bubbleId!
+                            : 'bubble-dream';
                         final messageContent = Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -7636,7 +7798,11 @@ class _RoomScreenState extends State<RoomScreen> {
                             alignment: Alignment.centerLeft,
                             child: hasBubble
                                 ? StretchableCosmeticBubble(
-                                    styleId: bubbleId,
+                                    styleId: effectiveBubbleId,
+                                    assetImageUrl: bubbleAssetKey.isNotEmpty
+                                        ? widget.state.backend.fileUrl(bubbleAssetKey)
+                                        : null,
+                                    assetImageHeaders: widget.state.backend.fileHeaders,
                                     maxWidth: 280,
                                     minWidth: 112,
                                     minHeight: 44,
@@ -7846,30 +8012,39 @@ class _RoomScreenState extends State<RoomScreen> {
                         ),
                       ),
                     )
-                  : VehicleEntryEffect(
-                      displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
-                          ? arrivalEffectMember!['display_name'].toString()
-                          : 'VIP member',
-                      level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
-                      showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
-                          arrivalEffectMember?['active_vehicle_id'] != null ||
-                          arrivalEffectMember?['active_entry_id'] != null,
-                      customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
-                          arrivalEffectMember?['active_entry_id'] != null ||
-                          (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
-                      vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
-                          ? arrivalEffectMember!['active_entry_id']
-                              .toString()
-                              .replaceAll('entry-', '')
-                              .replaceAll('-', ' ')
-                              .toUpperCase()
-                          : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
-                              'vehicle_king' => 'KING OF VIP',
-                              'vehicle_phoenix' => 'PHOENIX GT',
-                              'vehicle_royal' => 'ROYAL CHARIOT',
-                              'vehicle_spark' => 'STARLIGHT COUPE',
-                              _ => null,
-                            },
+                  : CreatorAssetEffectPlayback(
+                      backend: widget.state.backend,
+                      videoKey: ((arrivalEffectMember?['active_entry_video_key'] ?? '').toString().trim().isNotEmpty)
+                          ? arrivalEffectMember!['active_entry_video_key'].toString()
+                          : (arrivalEffectMember?['active_vehicle_video_key'] ?? '').toString(),
+                      glbKey: ((arrivalEffectMember?['active_entry_glb_key'] ?? '').toString().trim().isNotEmpty)
+                          ? arrivalEffectMember!['active_entry_glb_key'].toString()
+                          : (arrivalEffectMember?['active_vehicle_glb_key'] ?? '').toString(),
+                      fallback: VehicleEntryEffect(
+                        displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
+                            ? arrivalEffectMember!['display_name'].toString()
+                            : 'VIP member',
+                        level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
+                        showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
+                            arrivalEffectMember?['active_vehicle_id'] != null ||
+                            arrivalEffectMember?['active_entry_id'] != null,
+                        customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
+                            arrivalEffectMember?['active_entry_id'] != null ||
+                            (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
+                        vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
+                            ? arrivalEffectMember!['active_entry_id']
+                                .toString()
+                                .replaceAll('entry-', '')
+                                .replaceAll('-', ' ')
+                                .toUpperCase()
+                            : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
+                                'vehicle_king' => 'KING OF VIP',
+                                'vehicle_phoenix' => 'PHOENIX GT',
+                                'vehicle_royal' => 'ROYAL CHARIOT',
+                                'vehicle_spark' => 'STARLIGHT COUPE',
+                                _ => null,
+                              },
+                      ),
                     ),
             ),
         ],

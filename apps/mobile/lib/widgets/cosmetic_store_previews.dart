@@ -415,6 +415,8 @@ class StretchableCosmeticBubble extends StatelessWidget {
       horizontal: 34,
       vertical: 8,
     ),
+    this.assetImageUrl,
+    this.assetImageHeaders,
   });
 
   final String styleId;
@@ -423,9 +425,51 @@ class StretchableCosmeticBubble extends StatelessWidget {
   final double minWidth;
   final double minHeight;
   final EdgeInsetsGeometry contentPadding;
+  final String? assetImageUrl;
+  final Map<String, String>? assetImageHeaders;
 
   @override
   Widget build(BuildContext context) {
+    final customUrl = assetImageUrl?.trim() ?? '';
+    if (customUrl.isNotEmpty) {
+      final fallbackArtwork = _bubbleChatArtwork(styleId);
+      final theme = _bubbleTheme(styleId);
+      return RepaintBoundary(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: minWidth,
+            maxWidth: maxWidth,
+            minHeight: minHeight,
+          ),
+          child: Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: fallbackArtwork != null
+                    ? DecoratedBox(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: fallbackArtwork,
+                            fit: BoxFit.fill,
+                            centerSlice: _bubbleCenterSlice(styleId),
+                          ),
+                        ),
+                      )
+                    : CustomPaint(painter: _BubblePainter(theme)),
+              ),
+              Positioned.fill(
+                child: Image.network(
+                  customUrl,
+                  headers: assetImageHeaders,
+                  fit: BoxFit.fill,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+              Padding(padding: contentPadding, child: child),
+            ],
+          ),
+        ),
+      );
+    }
     final artwork = _bubbleChatArtwork(styleId);
     if (artwork != null) {
       return RepaintBoundary(

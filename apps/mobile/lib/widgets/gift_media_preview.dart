@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../infra/backend_api.dart';
@@ -12,12 +13,14 @@ class GiftMediaPreview extends StatefulWidget {
     required this.videoKey,
     required this.assetKey,
     required this.emoji,
+    this.glbKey = '',
     this.fit = BoxFit.cover,
   });
 
   final BackendApi backend;
   final String videoKey;
   final String assetKey;
+  final String glbKey;
   final String emoji;
   final BoxFit fit;
 
@@ -103,6 +106,21 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
             ),
           ),
         ),
+      );
+    }
+
+    final glbKey = widget.glbKey.trim();
+    if (glbKey.isNotEmpty) {
+      return ModelViewer(
+        src: widget.backend.fileUrl(glbKey),
+        alt: 'DarkVibeX 3D gift',
+        backgroundColor: const Color(0xFF21183F),
+        autoRotate: true,
+        autoPlay: true,
+        ar: false,
+        cameraControls: false,
+        disableZoom: true,
+        shadowIntensity: 0.8,
       );
     }
 
