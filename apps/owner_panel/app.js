@@ -1083,7 +1083,7 @@ function editAsset(id){
 async function saveAsset(){
   const kind=$("#assetKind").value;
   if(!can(kind==="gift"?"gifts.save":"assets.save"))return toast("Asset save permission required",false);
-  const kind=$("#assetKind").value,id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
+  const id=$("#assetId").value.trim(),name=$("#assetName").value.trim()||id;
   if(!kind||!id||!name)return toast("Asset type, ID and name are required",false);
   const starts=Number($("#assetStart").value||0)||null,ends=Number($("#assetEnd").value||0)||null;
   if(starts&&ends&&ends<=starts)return toast("Asset end time must be after start time",false);
