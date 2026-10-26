@@ -30,6 +30,12 @@ export async function ensureTinniSocialSchema(db) {
       body TEXT NOT NULL,
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS activity_read_receipts (
+      user_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      read_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, item_id)
+    )`,
     `CREATE TABLE IF NOT EXISTS profile_trends (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -1590,5 +1596,48 @@ export async function activityFeed(db, userId) {
     }
   } catch (_) {}
   items.sort((a,b) => Number(b.created_at) - Number(a.created_at));
-  return items.slice(0,100);
+  const visibleItems = items.slice(0,100);
+  const receipts = await db.prepare(
+    "SELECT item_id FROM activity_read_receipts WHERE user_id=?"
+  ).bind(userId).all();
+  const readItemIds = new Set(
+    (receipts.results ?? []).map((row) => String(row.item_id ?? ""))
+  );
+  return visibleItems.map((item) => ({
+    ...item,
+    is_read: readItemIds.has(String(item.id)),
+  }));
+}
+
+export async function markActivityRead(db, userId, itemIds) {
+  await ensureTinniSocialSchema(db);
+  const requestedIds = [...new Set(
+    (Array.isArray(itemIds) ? itemIds : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean)
+  )].slice(0, 100);
+  if (requestedIds.length === 0) return { read_count: 0 };
+
+  // Only allow read receipts for activity entries actually owned by this user.
+  const visibleIds = new Set((await activityFeed(db, userId)).map((item) => item.id));
+  const validIds = requestedIds.filter((itemId) => visibleIds.has(itemId));
+  if (validIds.length === 0) return { read_count: 0 };
+
+  const readAt = ts();
+  await db.batch(validIds.map((itemId) => db.prepare(
+    "INSERT OR IGNORE INTO activity_read_receipts(user_id,item_id,read_at) VALUES(?,?,?)"
+  ).bind(userId, itemId, readAt)));
+
+  // Keep each user's receipts bounded while preserving recent read state.
+  await db.prepare(
+    `DELETE FROM activity_read_receipts
+      WHERE user_id=?
+        AND item_id NOT IN (
+          SELECT item_id FROM activity_read_receipts
+           WHERE user_id=?
+           ORDER BY read_at DESC LIMIT 500
+        )`
+  ).bind(userId, userId).run();
+
+  return { read_count: validIds.length };
 }
