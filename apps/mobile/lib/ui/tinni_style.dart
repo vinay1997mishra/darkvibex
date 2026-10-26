@@ -14,6 +14,93 @@ abstract final class TinniPalette {
   static const danger = Color(0xFFB95E5B);
 }
 
+
+/// Semantic, non-yellow accent colours used for DarkVibeX feature logos.
+abstract final class DarkVibeXIconPalette {
+  static const cyan = Color(0xFF53D9FF);
+  static const electricBlue = Color(0xFF4BA8FF);
+  static const violet = Color(0xFF8B7CFF);
+  static const lavender = Color(0xFFBFA7FF);
+  static const pink = Color(0xFFFF83D8);
+  static const mint = Color(0xFF62FFD1);
+  static const coral = Color(0xFFFF6F91);
+
+  static DarkVibeXIconAccent forIcon(IconData icon) {
+    if (icon == Icons.groups_rounded ||
+        icon == Icons.group_rounded ||
+        icon == Icons.mic_rounded ||
+        icon == Icons.mic_external_on_rounded ||
+        icon == Icons.headset_mic_rounded ||
+        icon == Icons.meeting_room_rounded) {
+      return const DarkVibeXIconAccent(cyan, electricBlue);
+    }
+    if (icon == Icons.explore_rounded ||
+        icon == Icons.search_rounded ||
+        icon == Icons.navigation_rounded ||
+        icon == Icons.auto_awesome_rounded) {
+      return const DarkVibeXIconAccent(violet, lavender);
+    }
+    if (icon == Icons.mail_rounded ||
+        icon == Icons.chat_rounded ||
+        icon == Icons.chat_bubble_rounded ||
+        icon == Icons.forum_rounded ||
+        icon == Icons.send_rounded ||
+        icon == Icons.sms_rounded) {
+      return const DarkVibeXIconAccent(electricBlue, cyan);
+    }
+    if (icon == Icons.call_rounded ||
+        icon == Icons.call_end_rounded ||
+        icon == Icons.call_made_rounded ||
+        icon == Icons.call_received_rounded) {
+      return const DarkVibeXIconAccent(mint, cyan);
+    }
+    if (icon == Icons.person_rounded ||
+        icon == Icons.face_rounded ||
+        icon == Icons.account_circle_rounded ||
+        icon == Icons.badge_rounded) {
+      return const DarkVibeXIconAccent(pink, violet);
+    }
+    if (icon == Icons.favorite_rounded ||
+        icon == Icons.card_giftcard_rounded ||
+        icon == Icons.redeem_rounded ||
+        icon == Icons.favorite_border_rounded) {
+      return const DarkVibeXIconAccent(pink, coral);
+    }
+    if (icon == Icons.diamond_rounded ||
+        icon == Icons.workspace_premium_rounded ||
+        icon == Icons.military_tech_rounded ||
+        icon == Icons.emoji_events_rounded ||
+        icon == Icons.rocket_launch_rounded ||
+        icon == Icons.stars_rounded) {
+      return const DarkVibeXIconAccent(violet, cyan);
+    }
+    if (icon == Icons.account_balance_wallet_rounded ||
+        icon == Icons.currency_exchange_rounded ||
+        icon == Icons.monetization_on_rounded ||
+        icon == Icons.payments_rounded) {
+      return const DarkVibeXIconAccent(cyan, electricBlue);
+    }
+    if (icon == Icons.notifications_rounded ||
+        icon == Icons.notifications_active_rounded ||
+        icon == Icons.notifications_none_rounded) {
+      return const DarkVibeXIconAccent(lavender, electricBlue);
+    }
+    if (icon == Icons.settings_rounded ||
+        icon == Icons.tune_rounded ||
+        icon == Icons.build_rounded) {
+      return const DarkVibeXIconAccent(electricBlue, violet);
+    }
+    return const DarkVibeXIconAccent(violet, cyan);
+  }
+}
+
+class DarkVibeXIconAccent {
+  const DarkVibeXIconAccent(this.primary, this.secondary);
+
+  final Color primary;
+  final Color secondary;
+}
+
 ThemeData buildTinniStyleTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: TinniPalette.gold,
@@ -101,36 +188,51 @@ class TinniGlowIcon extends StatelessWidget {
     required this.icon,
     this.size = 20,
     this.boxSize = 36,
+    this.accentColor,
+    this.secondaryColor,
   });
 
   final IconData icon;
   final double size;
   final double boxSize;
+  final Color? accentColor;
+  final Color? secondaryColor;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: boxSize,
-        height: boxSize,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: TinniPalette.gold.withValues(alpha: .55)),
-          boxShadow: [
-            BoxShadow(
-              color: TinniPalette.gold.withValues(alpha: .16),
-              blurRadius: 12,
-            ),
-          ],
-          gradient: RadialGradient(
-            colors: [
-              TinniPalette.gold.withValues(alpha: .18),
-              TinniPalette.brightGold.withValues(alpha: .08),
-              Colors.transparent,
-            ],
+  Widget build(BuildContext context) {
+    final semantic = DarkVibeXIconPalette.forIcon(icon);
+    final primary = accentColor ?? semantic.primary;
+    final secondary = secondaryColor ?? semantic.secondary;
+
+    return Container(
+      width: boxSize,
+      height: boxSize,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: primary.withValues(alpha: .68)),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withValues(alpha: .22),
+            blurRadius: 12,
           ),
+          BoxShadow(
+            color: secondary.withValues(alpha: .10),
+            blurRadius: 16,
+          ),
+        ],
+        gradient: RadialGradient(
+          colors: [
+            primary.withValues(alpha: .24),
+            secondary.withValues(alpha: .15),
+            Colors.transparent,
+          ],
+          stops: const [0, .58, 1],
         ),
-        child: Icon(icon, color: TinniPalette.gold, size: size),
-      );
+      ),
+      child: Icon(icon, color: primary, size: size),
+    );
+  }
 }
 
 class TinniPanel extends StatelessWidget {
