@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../ui/tinni_style.dart';
 
 Future<void> showFruitParty(BuildContext context, AppState state) async {
   await showModalBottomSheet<void>(
@@ -399,7 +400,9 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                       panel == 'game'
                           ? Icons.history_rounded
                           : Icons.arrow_back_rounded,
-                      color: Color(0xFF9A8CFF),
+                      color: panel == 'game'
+                          ? DarkVibeXIconPalette.violet
+                          : DarkVibeXIconPalette.cyan,
                       size: 20,
                     ),
                   ),
@@ -424,7 +427,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                     icon: const Icon(
                       Icons.help_outline,
                       size: 20,
-                      color: Color(0xFF9A8CFF),
+                      color: DarkVibeXIconPalette.cyan,
                     ),
                   ),
                   IconButton(
@@ -433,7 +436,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                     icon: const Icon(
                       Icons.close,
                       size: 20,
-                      color: Color(0xFF9A8CFF),
+                      color: DarkVibeXIconPalette.pink,
                     ),
                   ),
                 ],
