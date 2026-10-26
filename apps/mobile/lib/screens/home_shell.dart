@@ -1570,20 +1570,18 @@ class _PartyGlowIcon extends StatelessWidget {
     this.size = 20,
     this.boxSize = 36,
     this.color,
-    this.secondaryColor,
   });
 
   final IconData icon;
   final double size;
   final double boxSize;
   final Color? color;
-  final Color? secondaryColor;
 
   @override
   Widget build(BuildContext context) {
     final semantic = DarkVibeXIconPalette.forIcon(icon);
     final primary = color ?? semantic.primary;
-    final secondary = secondaryColor ?? semantic.secondary;
+    final secondary = semantic.secondary;
 
     return Container(
       width: boxSize,
