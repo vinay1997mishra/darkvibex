@@ -22,6 +22,9 @@ void main() {
     expect(source, contains('_paintNatureGlow'));
     expect(source, contains('The DP stays full-size'));
     expect(source, contains('image: artwork'));
+    expect(source, contains('class _TransparentFrameArtworkClipper'));
+    expect(source, contains('PathFillType.evenOdd'));
+    expect(source, contains('ClipPath('));
     expect(source, isNot(contains('ColorFiltered(')));
     expect(source, isNot(contains('colorFilter: const ColorFilter.matrix')));
     expect(source, isNot(contains('canvas.drawLine(')));
