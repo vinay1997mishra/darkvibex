@@ -49,7 +49,7 @@ type Props = {
   design: {
     title: string; concept: string; icon: string; primaryColor: string;
     secondaryColor: string; motion: string; particles: string; durationSeconds: number;
-    loop: boolean; rarity: string; previewText: string; background: string;
+    loop: boolean; rarity: string; previewText: string; background?: string;
   };
   parts?: ScenePart[];
   timelineTime?: number;
