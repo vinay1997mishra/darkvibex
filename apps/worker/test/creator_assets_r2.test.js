@@ -16,9 +16,9 @@ const giftPreview = await readFile(new URL("../../mobile/lib/widgets/gift_media_
 const giftScreen = await readFile(new URL("../../mobile/lib/screens/gifts_screen.dart", import.meta.url), "utf8");
 
 test("Creator Studio HTML and nested bundles use the static-assets binding", () => {
-  assert.match(worker, /url\\.pathname === "\\/creator-studio" \\|\\| url\\.pathname\\.startsWith\\("\\/creator-studio\\/"\\)/);
-  assert.match(worker, /"https:\\/\\/assets\\.local"/);
-  assert.match(worker, /return env\\.ASSETS\\.fetch\\(studioAssetUrl\\)/);
+  assert.ok(worker.includes('url.pathname === "/creator-studio" || url.pathname.startsWith("/creator-studio/")'));
+  assert.ok(worker.includes('"https://assets.local"'));
+  assert.ok(worker.includes("return env.ASSETS.fetch(studioAssetUrl)"));
 });
 test("creator uploads are permission-gated, capped and file-signature validated", () => {
   assert.match(ownerApi, /handleCreatorMediaUpload/);
