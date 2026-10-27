@@ -168,8 +168,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final customAssetUrl = widget.assetUrl?.trim() ?? '';
 
     if (widget.enabled && customAssetUrl.isNotEmpty) {
-      // Uploaded transparent frame art overlays the original avatar. Animated
-      // WebP remains animated natively; no replacement or crop of the DP.
+      // Uploaded transparent artwork sits above the DP at the same scale as
+      // built-in frames. Keep a true circular cut-out for older assets, and
+      // animate light/sparkle ornaments independently from the photo.
+      const customFrameScale = 1.86;
       return SizedBox.square(
         dimension: widget.size,
         child: Stack(
@@ -179,12 +181,12 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
             SizedBox.square(dimension: widget.size, child: widget.child),
             IgnorePointer(
               child: Transform.scale(
-                scale: 1.45,
+                scale: customFrameScale,
                 child: SizedBox.square(
                   dimension: widget.size,
                   child: ClipPath(
                     clipper: const _TransparentFrameArtworkClipper(
-                      frameScale: 1.45,
+                      frameScale: customFrameScale,
                     ),
                     child: Image.network(
                       customAssetUrl,
@@ -193,6 +195,23 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                       filterQuality: FilterQuality.high,
                       gaplessPlayback: true,
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: customFrameScale,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => CustomPaint(
+                      painter: _FrameElementPainter(
+                        styleId: visualStyleId,
+                        phase: _controller.value,
+                      ),
                     ),
                   ),
                 ),
