@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'frame_artwork_data.dart';
+import 'transparent_artwork_image.dart';
 
 const Map<String, String> _rocketFrameStyleAliases = <String, String>{
   'rocket_frame_aurora': 'frame_blue_magic_butterfly',
@@ -188,13 +189,21 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     clipper: const _TransparentFrameArtworkClipper(
                       frameScale: customFrameScale,
                     ),
-                    child: Image.network(
-                      customAssetUrl,
+                    child: TransparentArtworkImage(
+                      url: customAssetUrl,
                       headers: widget.assetHeaders,
                       fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      requireTransparentCenter: true,
+                      fallback: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, child) => CustomPaint(
+                          painter: _VipRingPainter(
+                            _controller.value,
+                            widget.level,
+                            visualStyleId,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
