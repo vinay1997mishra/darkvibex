@@ -104,18 +104,18 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     try {
       const sampleSize = 32;
       final recorder = ui.PictureRecorder();
-      picture = recorder;
       final canvas = ui.Canvas(
         recorder,
-        const ui.Rect.fromLTWH(0, 0, sampleSize.toDouble(), sampleSize.toDouble()),
+        ui.Rect.fromLTWH(0, 0, sampleSize.toDouble(), sampleSize.toDouble()),
       );
       canvas.drawImageRect(
         source,
         ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
-        const ui.Rect.fromLTWH(0, 0, sampleSize.toDouble(), sampleSize.toDouble()),
+        ui.Rect.fromLTWH(0, 0, sampleSize.toDouble(), sampleSize.toDouble()),
         ui.Paint()..filterQuality = FilterQuality.none,
       );
-      final rendered = await recorder.endRecording().toImage(sampleSize, sampleSize);
+      picture = recorder.endRecording();
+      final rendered = await picture.toImage(sampleSize, sampleSize);
       sampleImage = rendered;
       final byteData = await rendered.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (byteData != null) {
