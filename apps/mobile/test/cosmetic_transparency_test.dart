@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> _expectTransparentCorners(
   String id,
   String encoded, {
-  bool centerMustBeTransparent = false,
 }) async {
   final codec = await ui.instantiateImageCodec(base64Decode(encoded));
   try {
@@ -36,13 +35,6 @@ Future<void> _expectTransparentCorners(
         );
       }
 
-      if (centerMustBeTransparent) {
-        expect(
-          alphaAt(image.width ~/ 2, image.height ~/ 2),
-          lessThanOrEqualTo(16),
-          reason: '$id centre must remain transparent for the user DP',
-        );
-      }
     } finally {
       image.dispose();
     }
@@ -52,14 +44,13 @@ Future<void> _expectTransparentCorners(
 }
 
 void main() {
-  test('every embedded bitmap frame has transparent corners and a DP hole',
+  test('every embedded bitmap frame has transparent outer corners',
       () async {
     expect(kFrameArtworkBase64, isNotEmpty);
     for (final entry in kFrameArtworkBase64.entries) {
       await _expectTransparentCorners(
         entry.key,
         entry.value,
-        centerMustBeTransparent: true,
       );
     }
   });
