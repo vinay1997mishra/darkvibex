@@ -4,6 +4,9 @@ import { readFile } from "node:fs/promises";
 
 const ownerApi = await readFile(new URL("../src/owner_api.js", import.meta.url), "utf8");
 const worker = await readFile(new URL("../src/index.js", import.meta.url), "utf8");
+const threeStage = await readFile(new URL("../../creator-studio/src/ThreeStage.tsx", import.meta.url), "utf8");
+const creatorApp = await readFile(new URL("../../creator-studio/src/App.tsx", import.meta.url), "utf8");
+const transparentArtwork = await readFile(new URL("../../mobile/lib/widgets/transparent_artwork_image.dart", import.meta.url), "utf8");
 const panelHtml = await readFile(new URL("../../owner_panel/index.html", import.meta.url), "utf8");
 const panelApp = await readFile(new URL("../../owner_panel/app.js", import.meta.url), "utf8");
 const shop = await readFile(new URL("../../mobile/lib/screens/cosmetics_shop_screen.dart", import.meta.url), "utf8");
@@ -54,11 +57,31 @@ test("custom media metadata reaches room entry playback and R2 assets are public
   assert.match(room, /CreatorAssetEffectPlayback/);
   assert.match(room, /assetUrl: activeFrameAssetKey/);
   assert.match(room, /assetImageUrl: bubbleAssetKey/);
-  assert.match(frameWidget, /Image\.network\(\s*customAssetUrl/);
+  assert.match(frameWidget, /TransparentArtworkImage\(/);
+  assert.match(frameWidget, /requireTransparentCenter: true/);
+  assert.match(frameWidget, /_TransparentFrameFallbackPainter/);
   assert.match(bubbleWidget, /assetImageUrl/);
+  assert.match(bubbleWidget, /TransparentArtworkImage\(/);
+  assert.match(bubbleWidget, /_AnimatedBubbleEdgeEffect/);
+  assert.match(transparentArtwork, /outsideClear/);
+  assert.match(transparentArtwork, /alphaAt\(16, 16\)/);
   assert.match(room, /active_entry_video_key/);
   assert.match(effectPlayback, /VideoPlayerController\.networkUrl/);
   assert.match(effectPlayback, /ModelViewer\(/);
+});
+
+test("frame and bubble publishing requires real alpha and frame-hole transparency", () => {
+  assert.match(ownerApi, /imageFileDeclaresTransparency/);
+  assert.match(ownerApi, /creator_asset_transparency_required/);
+  assert.match(panelApp, /transparent PNG or WebP/i);
+  assert.match(creatorApp, /imageHasTransparentArtwork/);
+  assert.match(creatorApp, /transparent DP cut-out/);
+  assert.match(threeStage, /Transparent frame \/ bubble alpha/);
+  assert.match(threeStage, /frameCentreClear/);
+  assert.doesNotMatch(threeStage, /new THREE\.CircleGeometry\(0\.82, 96\)/);
+  assert.match(transparentArtwork, /alphaValid = outsideClear && centreClear/);
+  assert.match(frameWidget, /_TransparentFrameFallbackPainter/);
+  assert.match(bubbleWidget, /_AnimatedBubbleEdgeEffect/);
 });
 
 test("Store previews uploaded MP4/WebM and GLB assets with a procedural fallback", () => {
