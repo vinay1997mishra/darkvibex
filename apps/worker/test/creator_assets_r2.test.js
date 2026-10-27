@@ -73,7 +73,7 @@ test("custom media metadata reaches room entry playback and R2 assets are public
 test("frame and bubble publishing requires real alpha and frame-hole transparency", () => {
   assert.match(ownerApi, /imageFileDeclaresTransparency/);
   assert.match(ownerApi, /creator_asset_transparency_required/);
-  assert.match(panelApp, /transparent PNG\\/WebP|transparent PNG ya WebP/i);
+  assert.match(panelApp, /transparent PNG\/WebP|transparent PNG ya WebP/i);
   assert.match(creatorApp, /imageHasTransparentArtwork/);
   assert.match(creatorApp, /transparent DP cut-out/);
   assert.match(threeStage, /Transparent frame \/ bubble alpha/);
