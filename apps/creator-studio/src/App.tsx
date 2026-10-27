@@ -61,6 +61,31 @@ const readVideoDuration = (file: File) => new Promise<number>((resolve, reject) 
   };
   video.src = objectUrl;
 });
+async function imageHasTransparentArtwork(file: File, kind: Kind): Promise<boolean> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const probe = document.createElement('canvas');
+    probe.width = 96;
+    probe.height = 96;
+    const context = probe.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Transparency check is unavailable in this browser.');
+    context.clearRect(0, 0, probe.width, probe.height);
+    context.drawImage(bitmap, 0, 0, probe.width, probe.height);
+    const alphaAt = (x: number, y: number) => context.getImageData(x, y, 1, 1).data[3];
+    const outerCorners = [
+      alphaAt(1, 1),
+      alphaAt(94, 1),
+      alphaAt(1, 94),
+      alphaAt(94, 94)
+    ];
+    const backgroundIsTransparent = outerCorners.every(alpha => alpha < 16);
+    const frameCutoutIsTransparent = kind !== 'frame' || alphaAt(48, 48) < 16;
+    return backgroundIsTransparent && frameCutoutIsTransparent;
+  } finally {
+    bitmap.close();
+  }
+}
+
 function App() {
   const [kind, setKind] = useState<Kind>('gift');
   const [designs, setDesigns] = useState<Record<Kind, Design>>(initial);
@@ -189,6 +214,24 @@ function App() {
     const ext = (uploadFile.name.split('.').pop() || '').toLowerCase();
     const extensionTypes: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', webm: 'video/webm', glb: 'model/gltf-binary' };
     const type = extensionTypes[ext] || uploadFile.type;
+    if ((kind === 'frame' || kind === 'bubble') && !['image/png', 'image/webp'].includes(type)) {
+      setNotice('Frame aur chat bubble ke liye transparent PNG/WebP zaroori hai. JPG, MP4, WebM aur GLB in dono asset types ke liye publish nahi honge.');
+      return;
+    }
+    if (kind === 'frame' || kind === 'bubble') {
+      try {
+        const transparent = await imageHasTransparentArtwork(uploadFile, kind);
+        if (!transparent) {
+          setNotice(kind === 'frame'
+            ? 'Frame PNG mein outer background aur beech ka DP cut-out dono transparent hone chahiye. Creator Studio se Export transparent PNG karo.'
+            : 'Chat bubble PNG/WebP ke chaaron corners transparent hone chahiye. Solid/square background wali image publish nahi hogi.');
+          return;
+        }
+      } catch {
+        setNotice('Image transparency verify nahi ho paayi. Transparent PNG/WebP export karke dobara select karo.');
+        return;
+      }
+    }
     const limits: Record<string, number> = { 'image/jpeg': 5 * 1024 * 1024, 'image/png': 5 * 1024 * 1024, 'image/webp': 5 * 1024 * 1024, 'video/mp4': 11 * 1024 * 1024, 'video/webm': 11 * 1024 * 1024, 'model/gltf-binary': 25 * 1024 * 1024 };
     if (!limits[type]) { setNotice('Allowed formats: JPG, PNG, WebP (5 MB), MP4/WebM (11 MB), GLB (25 MB).'); return; }
     if (uploadFile.size <= 0 || uploadFile.size > limits[type]) { setNotice(`File limit exceeded. ${Math.round(limits[type] / 1024 / 1024)} MB max for ${type}.`); return; }
@@ -227,7 +270,7 @@ function App() {
       });
       const uploaded = await uploadResponse.json().catch(() => ({ ok: false, error: 'invalid_response' }));
       if (!uploadResponse.ok || !uploaded.ok || !uploaded.key) {
-        const errorText = uploaded.error === 'unauthorized' ? 'Owner session expired.' : uploaded.error === 'creator_asset_too_large' ? 'Selected file is larger than DarkVibeX server limit.' : uploaded.error === 'creator_asset_kind_invalid' ? 'This asset category is not supported by the current DarkVibeX Worker.' : uploaded.error || `Upload failed (${uploadResponse.status}).`;
+        const errorText = uploaded.error === 'unauthorized' ? 'Owner session expired.' : uploaded.error === 'creator_asset_too_large' ? 'Selected file is larger than DarkVibeX server limit.' : uploaded.error === 'creator_asset_kind_invalid' ? 'This asset category is not supported by the current DarkVibeX Worker.' : uploaded.error === 'creator_asset_transparency_required' ? 'Frame/bubble needs PNG or WebP with real transparency and a clear DP centre (frame only).' : uploaded.error || `Upload failed (${uploadResponse.status}).`;
         throw new Error(errorText);
       }
       const key = String(uploaded.key);

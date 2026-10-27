@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'frame_artwork_data.dart';
+import 'transparent_artwork_image.dart';
 
 const Map<String, String> _rocketFrameStyleAliases = <String, String>{
   'rocket_frame_aurora': 'frame_blue_magic_butterfly',
@@ -168,8 +169,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final customAssetUrl = widget.assetUrl?.trim() ?? '';
 
     if (widget.enabled && customAssetUrl.isNotEmpty) {
-      // Uploaded transparent frame art overlays the original avatar. Animated
-      // WebP remains animated natively; no replacement or crop of the DP.
+      // Uploaded transparent artwork sits above the DP at the same scale as
+      // built-in frames. Keep a true circular cut-out for older assets, and
+      // animate light/sparkle ornaments independently from the photo.
+      const customFrameScale = 1.86;
       return SizedBox.square(
         dimension: widget.size,
         child: Stack(
@@ -179,20 +182,61 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
             SizedBox.square(dimension: widget.size, child: widget.child),
             IgnorePointer(
               child: Transform.scale(
-                scale: 1.45,
+                scale: customFrameScale,
                 child: SizedBox.square(
                   dimension: widget.size,
                   child: ClipPath(
                     clipper: const _TransparentFrameArtworkClipper(
-                      frameScale: 1.45,
+                      frameScale: customFrameScale,
                     ),
-                    child: Image.network(
-                      customAssetUrl,
+                    child: TransparentArtworkImage(
+                      url: customAssetUrl,
                       headers: widget.assetHeaders,
                       fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      requireTransparentCenter: true,
+                      fallback: artwork == null
+                          ? AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, child) => CustomPaint(
+                              painter: _TransparentFrameFallbackPainter(
+                                phase: _controller.value,
+                                level: widget.level,
+                                styleId: visualStyleId,
+                              ),
+                            ),
+                          )
+                          : TransparentArtworkImage(
+                              imageProvider: artwork,
+                              fit: BoxFit.contain,
+                              requireTransparentCenter: true,
+                              fallback: AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, child) => CustomPaint(
+                              painter: _TransparentFrameFallbackPainter(
+                                phase: _controller.value,
+                                level: widget.level,
+                                styleId: visualStyleId,
+                              ),
+                            ),
+                          ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            IgnorePointer(
+              child: Transform.scale(
+                scale: customFrameScale,
+                child: SizedBox.square(
+                  dimension: widget.size,
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) => CustomPaint(
+                      painter: _FrameElementPainter(
+                        styleId: visualStyleId,
+                        phase: _controller.value,
+                      ),
                     ),
                   ),
                 ),
@@ -310,11 +354,20 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     clipper: const _TransparentFrameArtworkClipper(
                       frameScale: frameScale,
                     ),
-                    child: Image(
-                      image: artwork,
+                    child: TransparentArtworkImage(
+                      imageProvider: artwork,
                       fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      gaplessPlayback: true,
+                      requireTransparentCenter: true,
+                      fallback: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, child) => CustomPaint(
+                          painter: _TransparentFrameFallbackPainter(
+                            phase: _controller.value,
+                            level: widget.level,
+                            styleId: visualStyleId,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -377,6 +430,69 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   }
 }
 
+
+class _TransparentFrameFallbackPainter extends CustomPainter {
+  const _TransparentFrameFallbackPainter({
+    required this.phase,
+    required this.level,
+    required this.styleId,
+  });
+
+  final double phase;
+  final int level;
+  final String? styleId;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    // This painter is inside a 1.86x frame layer and its DP cut-out clip.
+    // Keep the source ring just outside that clip so the fallback never covers
+    // the user's photo while still remaining visible beyond the avatar edge.
+    final radius = size.shortestSide * .30;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final colors = _themeFor(styleId, level).colors;
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.shortestSide * .055
+      ..color = colors[1].withValues(alpha: .26)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(center, radius, glow);
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.shortestSide * .026
+      ..shader = SweepGradient(
+        transform: GradientRotation(phase * math.pi * 2),
+        colors: <Color>[colors.first, colors[1], colors.last, colors.first],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, ring);
+
+    for (var index = 0; index < 5; index++) {
+      final angle = phase * math.pi * 2 + index * math.pi * 2 / 5;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) *
+              (radius + size.shortestSide * .035);
+      final sparkleRadius = size.shortestSide * .025;
+      canvas.drawCircle(
+        point,
+        sparkleRadius * 2,
+        Paint()
+          ..color = colors[1].withValues(alpha: .30)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+      );
+      canvas.drawCircle(
+        point,
+        sparkleRadius,
+        Paint()..color = Colors.white.withValues(alpha: .82),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TransparentFrameFallbackPainter oldDelegate) =>
+      oldDelegate.phase != phase ||
+      oldDelegate.level != level ||
+      oldDelegate.styleId != styleId;
+}
 
 class _PremiumVectorPalette {
   const _PremiumVectorPalette({

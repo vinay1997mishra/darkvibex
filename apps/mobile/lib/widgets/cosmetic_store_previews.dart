@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'bubble_artwork_data.dart';
+import 'transparent_artwork_image.dart';
 
 class JewelryRingPreview extends StatelessWidget {
   const JewelryRingPreview({
@@ -382,11 +383,10 @@ class BubbleCosmeticPreview extends StatelessWidget {
     if (artwork != null) {
       return SizedBox(
         height: height,
-        child: Image(
-          image: artwork,
+        child: TransparentArtworkImage(
+          imageProvider: artwork,
           fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          gaplessPlayback: true,
+          fallback: CustomPaint(painter: _BubblePainter(_bubbleTheme(styleId))),
         ),
       );
     }
@@ -432,8 +432,8 @@ class StretchableCosmeticBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final customUrl = assetImageUrl?.trim() ?? '';
     if (customUrl.isNotEmpty) {
-      final fallbackArtwork = _bubbleChatArtwork(styleId);
       final theme = _bubbleTheme(styleId);
+      final fallbackArtwork = _bubbleChatArtwork(styleId);
       return RepaintBoundary(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -444,25 +444,22 @@ class StretchableCosmeticBubble extends StatelessWidget {
           child: Stack(
             children: <Widget>[
               Positioned.fill(
-                child: fallbackArtwork != null
-                    ? DecoratedBox(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: fallbackArtwork,
-                            fit: BoxFit.fill,
-                            centerSlice: _bubbleCenterSlice(styleId),
-                          ),
-                        ),
-                      )
-                    : CustomPaint(painter: _BubblePainter(theme)),
-              ),
-              Positioned.fill(
-                child: Image.network(
-                  customUrl,
+                child: TransparentArtworkImage(
+                  url: customUrl,
                   headers: assetImageHeaders,
                   fit: BoxFit.fill,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  fallback: fallbackArtwork == null
+                      ? CustomPaint(painter: _BubblePainter(theme))
+                      : TransparentArtworkImage(
+                          imageProvider: fallbackArtwork,
+                          fit: BoxFit.fill,
+                          centerSlice: _bubbleCenterSlice(styleId),
+                          fallback: CustomPaint(painter: _BubblePainter(theme)),
+                        ),
                 ),
+              ),
+              Positioned.fill(
+                child: _AnimatedBubbleEdgeEffect(styleId: styleId),
               ),
               Padding(padding: contentPadding, child: child),
             ],
@@ -470,6 +467,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
         ),
       );
     }
+    final theme = _bubbleTheme(styleId);
     final artwork = _bubbleChatArtwork(styleId);
     if (artwork != null) {
       return RepaintBoundary(
@@ -480,25 +478,30 @@ class StretchableCosmeticBubble extends StatelessWidget {
               maxWidth: maxWidth,
               minHeight: minHeight,
             ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: artwork,
-                  fit: BoxFit.fill,
-                  centerSlice: _bubbleCenterSlice(styleId),
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  child: TransparentArtworkImage(
+                    imageProvider: artwork,
+                    fit: BoxFit.fill,
+                    centerSlice: _bubbleCenterSlice(styleId),
+                    fallback: CustomPaint(painter: _BubblePainter(theme)),
+                  ),
                 ),
-              ),
-              child: Padding(
-                padding: contentPadding,
-                child: child,
-              ),
+                Positioned.fill(
+                  child: _AnimatedBubbleEdgeEffect(styleId: styleId),
+                ),
+                Padding(
+                  padding: contentPadding,
+                  child: child,
+                ),
+              ],
             ),
           ),
         ),
       );
     }
 
-    final theme = _bubbleTheme(styleId);
     return ConstrainedBox(
       constraints: BoxConstraints(
         minWidth: minWidth,
@@ -507,13 +510,130 @@ class StretchableCosmeticBubble extends StatelessWidget {
       ),
       child: CustomPaint(
         painter: _BubblePainter(theme),
-        child: Padding(
-          padding: contentPadding,
-          child: child,
+        child: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: _AnimatedBubbleEdgeEffect(styleId: styleId),
+            ),
+            Padding(
+              padding: contentPadding,
+              child: child,
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _AnimatedBubbleEdgeEffect extends StatefulWidget {
+  const _AnimatedBubbleEdgeEffect({required this.styleId});
+
+  final String styleId;
+
+  @override
+  State<_AnimatedBubbleEdgeEffect> createState() => _AnimatedBubbleEdgeEffectState();
+}
+
+class _AnimatedBubbleEdgeEffectState extends State<_AnimatedBubbleEdgeEffect>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat();
+
+  @override
+  void didUpdateWidget(covariant _AnimatedBubbleEdgeEffect oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.styleId != widget.styleId) _controller
+      ..reset()
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) => CustomPaint(
+              painter: _BubbleEdgeEffectPainter(
+                styleId: widget.styleId,
+                phase: _controller.value,
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _BubbleEdgeEffectPainter extends CustomPainter {
+  const _BubbleEdgeEffectPainter({
+    required this.styleId,
+    required this.phase,
+  });
+
+  final String styleId;
+  final double phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width < 16 || size.height < 12) return;
+    final theme = _bubbleTheme(styleId);
+    final rect = Rect.fromLTWH(
+      3,
+      3,
+      size.width - 6,
+      size.height - 6,
+    );
+    final radius = math.min(14.0, size.height * .24);
+    final rounded = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    final gradient = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..shader = SweepGradient(
+        transform: GradientRotation(phase * math.pi * 2),
+        colors: <Color>[
+          theme.colors.first.withValues(alpha: .12),
+          theme.colors[1].withValues(alpha: .46),
+          theme.colors.last.withValues(alpha: .20),
+          theme.colors.first.withValues(alpha: .12),
+        ],
+      ).createShader(rect);
+    canvas.drawRRect(rounded, gradient);
+
+    final path = Path()..addRRect(rounded);
+    final metrics = path.computeMetrics().toList(growable: false);
+    if (metrics.isEmpty) return;
+    final metric = metrics.first;
+    for (var index = 0; index < 5; index++) {
+      final progress = (phase + index / 5) % 1.0;
+      final point = metric.getTangentForOffset(metric.length * progress)?.position;
+      if (point == null) continue;
+      final pulse = .6 + .4 * math.sin((phase + index / 5) * math.pi * 2).abs();
+      canvas.drawCircle(
+        point,
+        3.2 * pulse,
+        Paint()
+          ..color = theme.colors[1].withValues(alpha: .22)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      );
+      canvas.drawCircle(
+        point,
+        1.25 * pulse,
+        Paint()..color = Colors.white.withValues(alpha: .72),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleEdgeEffectPainter oldDelegate) =>
+      oldDelegate.styleId != styleId || oldDelegate.phase != phase;
 }
 
 class _BubbleTheme {

@@ -1322,6 +1322,42 @@ async function handleGiftMediaUpload(request, env, db, actor) {
 }
 
 
+function imageFileDeclaresTransparency(type, bytes) {
+  const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end));
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (type === "image/png") {
+    if (bytes.length < 33 || ascii(0, 8) !== "\x89PNG\r\n\x1a\n") return false;
+    const colorType = bytes[25];
+    if (colorType === 4 || colorType === 6) return true;
+    let offset = 8;
+    while (offset + 12 <= bytes.length) {
+      const length = view.getUint32(offset, false);
+      if (length > bytes.length - offset - 12) return false;
+      const chunkType = ascii(offset + 4, offset + 8);
+      if (chunkType === "tRNS") return true;
+      if (chunkType === "IEND") return false;
+      offset += 12 + length;
+    }
+    return false;
+  }
+  if (type === "image/webp") {
+    if (bytes.length < 20 || ascii(0, 4) !== "RIFF" || ascii(8, 12) !== "WEBP") return false;
+    const riffEnd = Math.min(bytes.length, view.getUint32(4, true) + 8);
+    let offset = 12;
+    while (offset + 8 <= riffEnd) {
+      const length = view.getUint32(offset + 4, true);
+      const dataOffset = offset + 8;
+      if (length > riffEnd - dataOffset) return false;
+      const chunkType = ascii(offset, offset + 4);
+      if (chunkType === "ALPH") return true;
+      if (chunkType === "VP8X" && length >= 1 && (bytes[dataOffset] & 0x10) !== 0) return true;
+      if (chunkType === "VP8L" && length >= 5 && (bytes[dataOffset + 4] & 0x10) !== 0) return true;
+      offset = dataOffset + length + (length & 1);
+    }
+  }
+  return false;
+}
+
 async function handleCreatorMediaUpload(request, env, db, actor) {
   if (request.method !== "PUT") return null;
   if (!env.FILES) return json({ ok: false, error: "file_storage_not_bound" }, { status: 503 });
@@ -1361,6 +1397,13 @@ async function handleCreatorMediaUpload(request, env, db, actor) {
   else if (type === "image/jpeg") valid = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   else if (type === "image/webp") valid = bytes.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
   if (!valid) return json({ ok: false, error: "creator_asset_signature_invalid" }, { status: 400 });
+
+  // Frames and chat bubbles are transparent overlays, never full-screen cards.
+  // Reject JPEG/opaque artwork at the API boundary as well as in both upload UIs.
+  if ((kind === "frame" || kind === "bubble") &&
+      (!(type === "image/png" || type === "image/webp") || !imageFileDeclaresTransparency(type, bytes))) {
+    return json({ ok: false, error: "creator_asset_transparency_required" }, { status: 400 });
+  }
 
   const key = "creator-assets/" + kind + "/" + assetId + "/asset-" + now() + "-" + randomHex(6) + "." + spec.ext;
   await env.FILES.put(key, bytes, {

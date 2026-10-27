@@ -112,6 +112,46 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
         const png = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas PNG capture returned an empty result')), 'image/png');
         });
+        const bitmap = await createImageBitmap(png);
+        let alphaIsValid = false;
+        let alphaDetail = 'Could not inspect rendered PNG alpha channel.';
+        try {
+          const probe = document.createElement('canvas');
+          probe.width = 128;
+          probe.height = 128;
+          const probeContext = probe.getContext('2d', { willReadFrequently: true });
+          if (!probeContext) throw new Error('PNG alpha inspection canvas is unavailable.');
+          probeContext.clearRect(0, 0, probe.width, probe.height);
+          probeContext.drawImage(bitmap, 0, 0, probe.width, probe.height);
+          const alphaAt = (x: number, y: number) =>
+            probeContext.getImageData(x, y, 1, 1).data[3];
+          const corners = [
+            alphaAt(2, 2),
+            alphaAt(125, 2),
+            alphaAt(2, 125),
+            alphaAt(125, 125)
+          ];
+          const clearOutside = corners.every(alpha => alpha < 16);
+          const centreAlpha = alphaAt(64, 64);
+          const frameCentreClear = latest.current.kind !== 'frame' || centreAlpha < 16;
+          alphaIsValid = clearOutside && frameCentreClear;
+          alphaDetail = alphaIsValid
+            ? (latest.current.kind === 'frame'
+                ? 'Transparent outer corners and a transparent DP cut-out verified.'
+                : 'Transparent outer corners verified; artwork alpha is preserved.')
+            : (clearOutside
+                ? 'The frame centre is opaque. Remove the centre backing so the user DP can show through.'
+                : 'The artwork has an opaque outer background. Export a PNG with real transparency before publishing.');
+        } finally {
+          bitmap.close();
+        }
+        results.push({
+          label: 'Transparent frame / bubble alpha',
+          status: (latest.current.kind !== 'frame' && latest.current.kind !== 'bubble') || alphaIsValid ? 'pass' : 'fail',
+          detail: (latest.current.kind !== 'frame' && latest.current.kind !== 'bubble')
+            ? 'Alpha-channel validation is only required for frames and chat bubbles.'
+            : alphaDetail
+        });
         results.push({
           label: 'PNG render pipeline',
           status: png.type === 'image/png' && png.size > 300 ? 'pass' : 'fail',
@@ -370,8 +410,9 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
         const innerHalo = addMesh(new THREE.TorusGeometry(0.87, 0.018, 8, 120), a);
         innerHalo.rotation.set(-0.12, 0.15, -0.28);
         innerHalo.userData.spinSpeed = -0.32;
-        const center = addMesh(new THREE.CircleGeometry(0.82, 96), dark);
-        center.position.z = -0.06;
+        // Do not fill the avatar cut-out. PNG exports must keep the centre
+        // genuinely transparent so the user's DP remains visible beneath
+        // the frame when this artwork is used on a room seat or profile.
         for (let i = 0; i < 12; i++) {
           const angle = i * Math.PI / 6;
           const radius = i % 3 === 0 ? 1.15 : 1.08;
