@@ -226,7 +226,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
         recorder.onstop = () => resolve();
       });
       recorder.start(250);
-      await new Promise(resolve => window.setTimeout(resolve, Math.max(3, Math.min(12, latest.current.design.durationSeconds)) * 1000));
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(3, Math.min(15, latest.current.design.durationSeconds)) * 1000));
       recorder.stop();
       await done;
       stream.getTracks().forEach(track => track.stop());
@@ -246,7 +246,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
       recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
       const finished = new Promise<void>((resolve, reject) => { recorder.onerror = () => reject(new Error('Canvas recording failed')); recorder.onstop = resolve; });
       recorder.start(250);
-      await new Promise(resolve => window.setTimeout(resolve, Math.max(3, Math.min(12, latest.current.design.durationSeconds)) * 1000));
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(3, Math.min(15, latest.current.design.durationSeconds)) * 1000));
       recorder.stop();
       await finished;
       stream.getTracks().forEach(track => track.stop());
