@@ -383,11 +383,10 @@ class BubbleCosmeticPreview extends StatelessWidget {
     if (artwork != null) {
       return SizedBox(
         height: height,
-        child: Image(
-          image: artwork,
+        child: TransparentArtworkImage(
+          imageProvider: artwork,
           fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          gaplessPlayback: true,
+          fallback: CustomPaint(painter: _BubblePainter(_bubbleTheme(styleId))),
         ),
       );
     }
@@ -460,6 +459,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
         ),
       );
     }
+    final theme = _bubbleTheme(styleId);
     final artwork = _bubbleChatArtwork(styleId);
     if (artwork != null) {
       return RepaintBoundary(
@@ -470,32 +470,30 @@ class StretchableCosmeticBubble extends StatelessWidget {
               maxWidth: maxWidth,
               minHeight: minHeight,
             ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: artwork,
-                  fit: BoxFit.fill,
-                  centerSlice: _bubbleCenterSlice(styleId),
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  child: TransparentArtworkImage(
+                    imageProvider: artwork,
+                    fit: BoxFit.fill,
+                    centerSlice: _bubbleCenterSlice(styleId),
+                    fallback: CustomPaint(painter: _BubblePainter(theme)),
+                  ),
                 ),
-              ),
-              child: Stack(
-                children: <Widget>[
-                  Positioned.fill(
-                    child: _AnimatedBubbleEdgeEffect(styleId: styleId),
-                  ),
-                  Padding(
-                    padding: contentPadding,
-                    child: child,
-                  ),
-                ],
-              ),
+                Positioned.fill(
+                  child: _AnimatedBubbleEdgeEffect(styleId: styleId),
+                ),
+                Padding(
+                  padding: contentPadding,
+                  child: child,
+                ),
+              ],
             ),
           ),
         ),
       );
     }
 
-    final theme = _bubbleTheme(styleId);
     return ConstrainedBox(
       constraints: BoxConstraints(
         minWidth: minWidth,
