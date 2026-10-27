@@ -270,7 +270,7 @@ function App() {
       });
       const uploaded = await uploadResponse.json().catch(() => ({ ok: false, error: 'invalid_response' }));
       if (!uploadResponse.ok || !uploaded.ok || !uploaded.key) {
-        const errorText = uploaded.error === 'unauthorized' ? 'Owner session expired.' : uploaded.error === 'creator_asset_too_large' ? 'Selected file is larger than DarkVibeX server limit.' : uploaded.error === 'creator_asset_kind_invalid' ? 'This asset category is not supported by the current DarkVibeX Worker.' : uploaded.error || `Upload failed (${uploadResponse.status}).`;
+        const errorText = uploaded.error === 'unauthorized' ? 'Owner session expired.' : uploaded.error === 'creator_asset_too_large' ? 'Selected file is larger than DarkVibeX server limit.' : uploaded.error === 'creator_asset_kind_invalid' ? 'This asset category is not supported by the current DarkVibeX Worker.' : uploaded.error === 'creator_asset_transparency_required' ? 'Frame/bubble needs PNG or WebP with real transparency and a clear DP centre (frame only).' : uploaded.error || `Upload failed (${uploadResponse.status}).`;
         throw new Error(errorText);
       }
       const key = String(uploaded.key);
