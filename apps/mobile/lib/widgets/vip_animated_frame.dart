@@ -67,6 +67,33 @@ const Set<String> _premiumButterflyFrameIds = <String>{
   'frame_neon_butterfly',
 };
 
+/// Clips the centre of bitmap frame art out so the user's avatar remains
+/// fully visible even when legacy artwork contains a semi-transparent matte.
+/// Because the image layer is scaled by [frameScale] after clipping, this
+/// radius maps to one half of the avatar diameter in the final composition.
+class _TransparentFrameArtworkClipper extends CustomClipper<Path> {
+  const _TransparentFrameArtworkClipper({required this.frameScale});
+
+  final double frameScale;
+
+  @override
+  Path getClip(Size size) {
+    final path = Path()..fillType = PathFillType.evenOdd;
+    path.addRect(Offset.zero & size);
+    path.addOval(
+      Rect.fromCircle(
+        center: size.center(Offset.zero),
+        radius: size.shortestSide / (2 * frameScale),
+      ),
+    );
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _TransparentFrameArtworkClipper oldClipper) =>
+      oldClipper.frameScale != frameScale;
+}
+
 /// Ornate, animated frame used on room seats and profile avatars.
 class VipAnimatedFrame extends StatefulWidget {
   const VipAnimatedFrame({
@@ -155,13 +182,18 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 scale: 1.45,
                 child: SizedBox.square(
                   dimension: widget.size,
-                  child: Image.network(
-                    customAssetUrl,
-                    headers: widget.assetHeaders,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  child: ClipPath(
+                    clipper: const _TransparentFrameArtworkClipper(
+                      frameScale: 1.45,
+                    ),
+                    child: Image.network(
+                      customAssetUrl,
+                      headers: widget.assetHeaders,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
                   ),
                 ),
               ),
@@ -274,11 +306,16 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                   // Preserve the artwork's native alpha channel. Recomputing
                   // alpha from RGB can turn transparent edge pixels opaque and
                   // create square/matte artefacts around the circular frame.
-                  child: Image(
-                    image: artwork,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
+                  child: ClipPath(
+                    clipper: const _TransparentFrameArtworkClipper(
+                      frameScale: frameScale,
+                    ),
+                    child: Image(
+                      image: artwork,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      gaplessPlayback: true,
+                    ),
                   ),
                 ),
               ),
