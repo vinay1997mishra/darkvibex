@@ -194,16 +194,32 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                       headers: widget.assetHeaders,
                       fit: BoxFit.contain,
                       requireTransparentCenter: true,
-                      fallback: AnimatedBuilder(
-                        animation: _controller,
-                        builder: (context, child) => CustomPaint(
-                          painter: _TransparentFrameFallbackPainter(
-                            phase: _controller.value,
-                            level: widget.level,
-                            styleId: visualStyleId,
+                      fallback: artwork == null
+                          ? AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, child) => CustomPaint(
+                              painter: _TransparentFrameFallbackPainter(
+                                phase: _controller.value,
+                                level: widget.level,
+                                styleId: visualStyleId,
+                              ),
+                            ),
+                          )
+                          : TransparentArtworkImage(
+                              imageProvider: artwork,
+                              fit: BoxFit.contain,
+                              requireTransparentCenter: true,
+                              fallback: AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, child) => CustomPaint(
+                              painter: _TransparentFrameFallbackPainter(
+                                phase: _controller.value,
+                                level: widget.level,
+                                styleId: visualStyleId,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                            ),
                     ),
                   ),
                 ),
