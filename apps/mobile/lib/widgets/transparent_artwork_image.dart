@@ -40,8 +40,10 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   ImageProvider<Object>? _resolvedSourceProvider;
   String _resolvedUrl = '';
   Map<String, String>? _resolvedHeaders;
+  bool? _resolvedRequireTransparentCenter;
   bool? _alphaValid;
   bool _checking = false;
+  int _generation = 0;
 
   @override
   void didChangeDependencies() {
@@ -64,14 +66,18 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     final url = widget.url?.trim() ?? '';
     if (url == _resolvedUrl &&
         identical(widget.imageProvider, _resolvedSourceProvider) &&
-        mapEquals(_resolvedHeaders, widget.headers)) {
+        mapEquals(_resolvedHeaders, widget.headers) &&
+        _resolvedRequireTransparentCenter == widget.requireTransparentCenter) {
       return;
     }
     if (_stream != null && _listener != null) {
       _stream!.removeListener(_listener!);
     }
+    _generation++;
+    final generation = _generation;
     _resolvedUrl = url;
     _resolvedSourceProvider = widget.imageProvider;
+    _resolvedRequireTransparentCenter = widget.requireTransparentCenter;
     _resolvedHeaders = widget.headers == null
         ? null
         : Map<String, String>.from(widget.headers!);
@@ -94,10 +100,10 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
       (ImageInfo info, bool synchronousCall) {
         if (_alphaValid != null || _checking) return;
         _checking = true;
-        unawaited(_inspectAlpha(info.image, url));
+        unawaited(_inspectAlpha(info.image, url, generation));
       },
       onError: (Object error, StackTrace? stackTrace) {
-        if (!mounted || _resolvedUrl != url) return;
+        if (!mounted || _resolvedUrl != url || _generation != generation) return;
         setState(() {
           _checking = false;
           _alphaValid = false;
@@ -107,7 +113,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     stream.addListener(_listener!);
   }
 
-  Future<void> _inspectAlpha(ui.Image source, String url) async {
+  Future<void> _inspectAlpha(ui.Image source, String url, int generation) async {
     var alphaValid = false;
     ui.Image? sampleImage;
     ui.Picture? picture;
@@ -151,7 +157,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
       sampleImage?.dispose();
       picture?.dispose();
     }
-    if (!mounted || _resolvedUrl != url) return;
+    if (!mounted || _resolvedUrl != url || _generation != generation) return;
     setState(() {
       _checking = false;
       _alphaValid = alphaValid;
