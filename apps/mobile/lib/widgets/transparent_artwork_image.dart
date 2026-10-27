@@ -10,17 +10,21 @@ import 'package:flutter/material.dart';
 class TransparentArtworkImage extends StatefulWidget {
   const TransparentArtworkImage({
     super.key,
-    required this.url,
+    this.url,
+    this.imageProvider,
     required this.fallback,
     this.headers,
     this.fit = BoxFit.contain,
+    this.centerSlice,
     this.requireTransparentCenter = false,
     this.filterQuality = FilterQuality.high,
-  });
+  }) : assert(url != null || imageProvider != null);
 
-  final String url;
+  final String? url;
+  final ImageProvider<Object>? imageProvider;
   final Map<String, String>? headers;
   final BoxFit fit;
+  final Rect? centerSlice;
   final bool requireTransparentCenter;
   final FilterQuality filterQuality;
   final Widget fallback;
@@ -33,6 +37,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   ImageStream? _stream;
   ImageStreamListener? _listener;
   ImageProvider<Object>? _provider;
+  ImageProvider<Object>? _resolvedSourceProvider;
   String _resolvedUrl = '';
   Map<String, String>? _resolvedHeaders;
   bool? _alphaValid;
@@ -48,6 +53,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   void didUpdateWidget(covariant TransparentArtworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url ||
+        !identical(oldWidget.imageProvider, widget.imageProvider) ||
         !mapEquals(oldWidget.headers, widget.headers) ||
         oldWidget.requireTransparentCenter != widget.requireTransparentCenter) {
       _resolveArtwork();
@@ -55,14 +61,17 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   }
 
   void _resolveArtwork() {
-    final url = widget.url.trim();
-    if (url == _resolvedUrl && mapEquals(_resolvedHeaders, widget.headers)) {
+    final url = widget.url?.trim() ?? '';
+    if (url == _resolvedUrl &&
+        identical(widget.imageProvider, _resolvedSourceProvider) &&
+        mapEquals(_resolvedHeaders, widget.headers)) {
       return;
     }
     if (_stream != null && _listener != null) {
       _stream!.removeListener(_listener!);
     }
     _resolvedUrl = url;
+    _resolvedSourceProvider = widget.imageProvider;
     _resolvedHeaders = widget.headers == null
         ? null
         : Map<String, String>.from(widget.headers!);
@@ -71,12 +80,13 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     _provider = null;
     _stream = null;
     _listener = null;
-    if (url.isEmpty) {
+    final provider = widget.imageProvider ??
+        (url.isEmpty ? null : NetworkImage(url, headers: widget.headers));
+    if (provider == null) {
       _alphaValid = false;
       return;
     }
 
-    final provider = NetworkImage(url, headers: widget.headers);
     _provider = provider;
     final stream = provider.resolve(createLocalImageConfiguration(context));
     _stream = stream;
@@ -162,6 +172,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     return Image(
       image: _provider!,
       fit: widget.fit,
+      centerSlice: widget.centerSlice,
       filterQuality: widget.filterQuality,
       gaplessPlayback: true,
       errorBuilder: (_, __, ___) => widget.fallback,
