@@ -197,10 +197,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                       fallback: AnimatedBuilder(
                         animation: _controller,
                         builder: (context, child) => CustomPaint(
-                          painter: _VipRingPainter(
-                            _controller.value,
-                            widget.level,
-                            visualStyleId,
+                          painter: _TransparentFrameFallbackPainter(
+                            phase: _controller.value,
+                            level: widget.level,
+                            styleId: visualStyleId,
                           ),
                         ),
                       ),
@@ -405,6 +405,69 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   }
 }
 
+
+class _TransparentFrameFallbackPainter extends CustomPainter {
+  const _TransparentFrameFallbackPainter({
+    required this.phase,
+    required this.level,
+    required this.styleId,
+  });
+
+  final double phase;
+  final int level;
+  final String? styleId;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    // This painter is inside a 1.86x frame layer and its DP cut-out clip.
+    // Keep the source ring just outside that clip so the fallback never covers
+    // the user's photo while still remaining visible beyond the avatar edge.
+    final radius = size.shortestSide * .30;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final colors = _themeFor(styleId, level).colors;
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.shortestSide * .055
+      ..color = colors[1].withValues(alpha: .26)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(center, radius, glow);
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.shortestSide * .026
+      ..shader = SweepGradient(
+        transform: GradientRotation(phase * math.pi * 2),
+        colors: <Color>[colors.first, colors[1], colors.last, colors.first],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, ring);
+
+    for (var index = 0; index < 5; index++) {
+      final angle = phase * math.pi * 2 + index * math.pi * 2 / 5;
+      final point = center +
+          Offset(math.cos(angle), math.sin(angle)) *
+              (radius + size.shortestSide * .035);
+      final sparkleRadius = size.shortestSide * .025;
+      canvas.drawCircle(
+        point,
+        sparkleRadius * 2,
+        Paint()
+          ..color = colors[1].withValues(alpha: .30)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+      );
+      canvas.drawCircle(
+        point,
+        sparkleRadius,
+        Paint()..color = Colors.white.withValues(alpha: .82),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TransparentFrameFallbackPainter oldDelegate) =>
+      oldDelegate.phase != phase ||
+      oldDelegate.level != level ||
+      oldDelegate.styleId != styleId;
+}
 
 class _PremiumVectorPalette {
   const _PremiumVectorPalette({
