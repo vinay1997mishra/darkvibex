@@ -40,6 +40,7 @@ export type StageHandle = {
   recordWebm: () => Promise<void>;
   recordMp4: () => Promise<void>;
   exportPng: () => Promise<void>;
+  recordTransparentWebm: () => Promise<void>;
   qualityCheck: () => Promise<QualityCheckResult[]>;
 };
 
@@ -66,7 +67,7 @@ const download = (blob: Blob, name: string) => {
 
 export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ kind, design, modelUrl, parts = [], timelineTime }, ref) {
   const host = useRef<HTMLDivElement>(null);
-  const runtime = useRef<{ renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; group: THREE.Group; particles: THREE.Points; raf: number } | null>(null);
+  const runtime = useRef<{ renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; group: THREE.Group; particles: THREE.Points; environment: THREE.Group; raf: number } | null>(null);
   const partsKey = JSON.stringify(parts);
   const latest = useRef({ kind, design, modelUrl, parts, timelineTime });
   latest.current = { kind, design, modelUrl, parts, timelineTime };
@@ -103,11 +104,14 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
 
       const previousFog = state.scene.fog;
       const previousBackground = state.scene.background;
-      const previousParticlesVisible = state.particles.visible;
+      const previousEnvironmentVisible = state.environment.visible;
+      const previousClearColor = state.renderer.getClearColor(new THREE.Color()).clone();
+      const previousClearAlpha = state.renderer.getClearAlpha();
       try {
         state.scene.fog = null;
         state.scene.background = null;
-        state.particles.visible = false;
+        state.environment.visible = false;
+        state.renderer.setClearColor(0x000000, 0);
         state.renderer.render(state.scene, state.camera);
         const png = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas PNG capture returned an empty result')), 'image/png');
@@ -117,12 +121,32 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
           status: png.type === 'image/png' && png.size > 300 ? 'pass' : 'fail',
           detail: `Transparent-canvas capture: ${Math.round(png.size / 1024)} KB; ${canvas.width}×${canvas.height}.`
         });
+        const bitmap = await createImageBitmap(png);
+        const probe = document.createElement('canvas');
+        probe.width = bitmap.width; probe.height = bitmap.height;
+        const probeContext = probe.getContext('2d', { willReadFrequently: true });
+        if (!probeContext) throw new Error('Alpha-channel verification canvas is unavailable.');
+        probeContext.clearRect(0, 0, probe.width, probe.height);
+        probeContext.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        const points: [number, number][] = [[0, 0], [probe.width - 1, 0], [0, probe.height - 1], [probe.width - 1, probe.height - 1]];
+        if (latest.current.kind === 'frame') points.push([Math.floor(probe.width / 2), Math.floor(probe.height / 2)]);
+        const alphaSamples = points.map(([x, y]) => probeContext.getImageData(x, y, 1, 1).data[3]);
+        const fullyTransparent = alphaSamples.every(alpha => alpha === 0);
+        results.push({
+          label: '100% transparent background',
+          status: fullyTransparent ? 'pass' : 'fail',
+          detail: fullyTransparent
+            ? (latest.current.kind === 'frame' ? 'All four corners and the profile-photo centre have alpha 0.' : 'All four PNG corners have alpha 0; no opaque scene backdrop was captured.')
+            : `Alpha check failed: sampled pixel alpha values were ${alphaSamples.join(', ')}.`
+        });
       } catch (error) {
-        results.push({ label: 'PNG render pipeline', status: 'fail', detail: error instanceof Error ? error.message : 'PNG capture failed.' });
+        results.push({ label: 'PNG / alpha transparency', status: 'fail', detail: error instanceof Error ? error.message : 'Transparent PNG capture failed.' });
       } finally {
         state.scene.fog = previousFog;
         state.scene.background = previousBackground;
-        state.particles.visible = previousParticlesVisible;
+        state.environment.visible = previousEnvironmentVisible;
+        state.renderer.setClearColor(previousClearColor, previousClearAlpha);
         state.renderer.render(state.scene, state.camera);
       }
 
@@ -181,34 +205,125 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
       const state = runtime.current;
       if (!state) throw new Error('3D scene is not ready');
       const exporter = new GLTFExporter();
-      const output = await new Promise<ArrayBuffer>((resolve, reject) => {
-        exporter.parse(state.scene, result => {
-          if (result instanceof ArrayBuffer) resolve(result);
-          else reject(new Error('GLB exporter did not return binary data'));
-        }, error => reject(error), { binary: true, onlyVisible: true });
-      });
-      download(new Blob([output], { type: 'model/gltf-binary' }), 'darkvibex-' + latest.current.kind + '.glb');
+      const previousEnvironmentVisible = state.environment.visible;
+      state.environment.visible = false;
+      try {
+        const output = await new Promise<ArrayBuffer>((resolve, reject) => {
+          exporter.parse(state.scene, result => {
+            if (result instanceof ArrayBuffer) resolve(result);
+            else reject(new Error('GLB exporter did not return binary data'));
+          }, error => reject(error), { binary: true, onlyVisible: true });
+        });
+        download(new Blob([output], { type: 'model/gltf-binary' }), 'darkvibex-' + latest.current.kind + '-transparent.glb');
+      } finally {
+        state.environment.visible = previousEnvironmentVisible;
+      }
     },
     exportPng: async () => {
       const state = runtime.current;
       if (!state) throw new Error('3D scene is not ready');
       const previousFog = state.scene.fog;
       const previousBackground = state.scene.background;
-      const previousParticlesVisible = state.particles.visible;
+      const previousEnvironmentVisible = state.environment.visible;
+      const previousClearColor = state.renderer.getClearColor(new THREE.Color()).clone();
+      const previousClearAlpha = state.renderer.getClearAlpha();
       state.scene.fog = null;
       state.scene.background = null;
-      state.particles.visible = false;
+      state.environment.visible = false;
+      state.renderer.setClearColor(0x000000, 0);
       state.renderer.render(state.scene, state.camera);
       try {
         const blob = await new Promise<Blob>((resolve, reject) => {
           state.renderer.domElement.toBlob(value => value ? resolve(value) : reject(new Error('Transparent PNG export failed in this browser')), 'image/png');
         });
+        const bitmap = await createImageBitmap(blob);
+        const probe = document.createElement('canvas');
+        probe.width = bitmap.width; probe.height = bitmap.height;
+        const probeContext = probe.getContext('2d', { willReadFrequently: true });
+        if (!probeContext) throw new Error('Alpha-channel verification canvas is unavailable.');
+        probeContext.drawImage(bitmap, 0, 0); bitmap.close();
+        const points: [number, number][] = [[0, 0], [probe.width - 1, 0], [0, probe.height - 1], [probe.width - 1, probe.height - 1]];
+        if (latest.current.kind === 'frame') points.push([Math.floor(probe.width / 2), Math.floor(probe.height / 2)]);
+        const alphaSamples = points.map(([x, y]) => probeContext.getImageData(x, y, 1, 1).data[3]);
+        if (!alphaSamples.every(alpha => alpha === 0)) throw new Error('Transparency check failed: PNG corners/profile centre are not all alpha 0.');
         download(blob, 'darkvibex-' + latest.current.kind + '-transparent.png');
       } finally {
         state.scene.fog = previousFog;
         state.scene.background = previousBackground;
-        state.particles.visible = previousParticlesVisible;
+        state.environment.visible = previousEnvironmentVisible;
+        state.renderer.setClearColor(previousClearColor, previousClearAlpha);
         state.renderer.render(state.scene, state.camera);
+      }
+    },
+    recordTransparentWebm: async () => {
+      const state = runtime.current;
+      if (!state) throw new Error('3D scene is not ready');
+      const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+      const { toBlobURL } = await import('@ffmpeg/util');
+      const ffmpeg = new FFmpeg();
+      const sourceCanvas = state.renderer.domElement;
+      const maxWidth = Math.min(640, sourceCanvas.width);
+      const captureScale = maxWidth / Math.max(1, sourceCanvas.width);
+      const captureCanvas = document.createElement('canvas');
+      captureCanvas.width = Math.max(2, Math.floor(maxWidth / 2) * 2);
+      captureCanvas.height = Math.max(2, Math.floor((sourceCanvas.height * captureScale) / 2) * 2);
+      const context = captureCanvas.getContext('2d', { alpha: true, willReadFrequently: false });
+      if (!context) throw new Error('Transparent video capture canvas is unavailable.');
+      const previousFog = state.scene.fog;
+      const previousBackground = state.scene.background;
+      const previousEnvironmentVisible = state.environment.visible;
+      const previousClearColor = state.renderer.getClearColor(new THREE.Color()).clone();
+      const previousClearAlpha = state.renderer.getClearAlpha();
+      const duration = Math.max(2, Math.min(15, Number(latest.current.design.durationSeconds) || 4));
+      const fps = 20;
+      const frameCount = Math.max(fps * 2, Math.round(duration * fps));
+      const frameNames: string[] = [];
+      try {
+        const coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+        await ffmpeg.load({
+          coreURL: await toBlobURL(coreBase + '/ffmpeg-core.js', 'text/javascript'),
+          wasmURL: await toBlobURL(coreBase + '/ffmpeg-core.wasm', 'application/wasm')
+        });
+        state.scene.background = null;
+        state.scene.fog = null;
+        state.environment.visible = false;
+        state.renderer.setClearColor(0x000000, 0);
+        for (let index = 0; index < frameCount; index++) {
+          if (index > 0) await new Promise(resolve => window.setTimeout(resolve, 1000 / fps));
+          state.renderer.render(state.scene, state.camera);
+          context.clearRect(0, 0, captureCanvas.width, captureCanvas.height);
+          context.drawImage(sourceCanvas, 0, 0, captureCanvas.width, captureCanvas.height);
+          const frameBlob = await new Promise<Blob>((resolve, reject) => {
+            captureCanvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Transparent frame capture failed.')), 'image/png');
+          });
+          const fileName = 'alpha-' + String(index).padStart(4, '0') + '.png';
+          await ffmpeg.writeFile(fileName, new Uint8Array(await frameBlob.arrayBuffer()));
+          frameNames.push(fileName);
+        }
+        await ffmpeg.exec([
+          '-framerate', String(fps), '-i', 'alpha-%04d.png',
+          '-an', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p',
+          '-b:v', '0', '-crf', '30', '-auto-alt-ref', '0',
+          '-metadata:s:v:0', 'alpha_mode=1', 'output-transparent.webm'
+        ]);
+        const output = await ffmpeg.readFile('output-transparent.webm');
+        if (typeof output === 'string' || output.length < 100) {
+          throw new Error('Transparent WebM encoder returned an empty file. The browser FFmpeg build may not include libvpx-vp9.');
+        }
+        const outputBuffer = output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength) as ArrayBuffer;
+        download(new Blob([outputBuffer], { type: 'video/webm' }), 'darkvibex-' + latest.current.kind + '-transparent-animation.webm');
+      } catch (error) {
+        throw new Error(error instanceof Error
+          ? 'Transparent WebM could not be rendered: ' + error.message
+          : 'Transparent WebM could not be rendered in this browser. Use transparent PNG or GLB for alpha output.');
+      } finally {
+        state.scene.fog = previousFog;
+        state.scene.background = previousBackground;
+        state.environment.visible = previousEnvironmentVisible;
+        state.renderer.setClearColor(previousClearColor, previousClearAlpha);
+        state.renderer.render(state.scene, state.camera);
+        try { await ffmpeg.terminate(); } catch { /* already terminated by the browser */ }
+        void frameNames;
       }
     },
     recordWebm: async () => {
@@ -283,12 +398,13 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
     if (!host.current) return;
     const element = host.current;
     const scene = new THREE.Scene();
-    const scenePreset = design.background || 'studio';
+    const requiresTransparentCanvas = kind === 'entry' || kind === 'frame' || kind === 'bubble';
+    const scenePreset = requiresTransparentCanvas ? 'studio' : design.background || 'studio';
     const cinematicPresets = ['road', 'sky-flight', 'clouds', 'mountain-fire', 'storm-mountains', 'city-night'];
     const isCinematic = cinematicPresets.includes(scenePreset);
     const skyColor = scenePreset === 'road' ? '#879db7' : scenePreset === 'sky-flight' ? '#65a5df' : scenePreset === 'clouds' ? '#719fc7' : scenePreset === 'mountain-fire' ? '#21162a' : scenePreset === 'storm-mountains' ? '#202b45' : scenePreset === 'city-night' ? '#071021' : '#090b18';
     scene.background = isCinematic ? new THREE.Color(skyColor) : null;
-    scene.fog = new THREE.Fog(skyColor, isCinematic ? 18 : 6, isCinematic ? 42 : 15);
+    scene.fog = isCinematic ? new THREE.Fog(skyColor, 18, 42) : null;
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
     camera.position.set(0, isCinematic ? 1.15 : 0.15, isCinematic ? 8.0 : 6.7);
     camera.lookAt(0, isCinematic ? -0.18 : 0, 0);
@@ -447,8 +563,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
         const innerHalo = addMesh(new THREE.TorusGeometry(0.87, 0.018, 8, 120), a);
         innerHalo.rotation.set(-0.12, 0.15, -0.28);
         innerHalo.userData.spinSpeed = -0.32;
-        const center = addMesh(new THREE.CircleGeometry(0.82, 96), dark);
-        center.position.z = -0.06;
+        // Do not fill the avatar centre: the profile photograph must remain visible through a true alpha hole.
         for (let i = 0; i < 12; i++) {
           const angle = i * Math.PI / 6;
           const radius = i % 3 === 0 ? 1.15 : 1.08;
@@ -766,7 +881,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
       renderer.render(scene, camera);
       runtime.current!.raf = requestAnimationFrame(animate);
     };
-    runtime.current = { renderer, scene, camera, group, particles, raf: requestAnimationFrame(animate) };
+    runtime.current = { renderer, scene, camera, group, particles, environment, raf: requestAnimationFrame(animate) };
     const handleContext = () => { /* browser may restore the WebGL context automatically */ };
     renderer.domElement.addEventListener('webglcontextrestored', handleContext);
     return () => {
