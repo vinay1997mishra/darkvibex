@@ -582,8 +582,8 @@ class _BubbleEdgeEffectPainter extends CustomPainter {
     final rect = Rect.fromLTWH(
       3,
       3,
-      math.max(0, size.width - 6),
-      math.max(0, size.height - 6),
+      size.width - 6,
+      size.height - 6,
     );
     final radius = math.min(14.0, size.height * .24);
     final rounded = RRect.fromRectAndRadius(rect, Radius.circular(radius));
