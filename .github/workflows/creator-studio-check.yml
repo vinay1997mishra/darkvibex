@@ -1,0 +1,47 @@
+name: Creator Studio Build Check
+
+on:
+  pull_request:
+    paths:
+      - "apps/creator-studio/**"
+      - "apps/owner_panel/index.html"
+      - ".github/workflows/creator-studio-check.yml"
+      - ".github/workflows/darkvibex-worker-deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/creator-studio/**"
+      - "apps/owner_panel/index.html"
+      - ".github/workflows/creator-studio-check.yml"
+      - ".github/workflows/darkvibex-worker-deploy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Creator Studio dependencies
+        working-directory: apps/creator-studio
+        run: npm install --no-audit --no-fund
+      - name: Build for the DarkVibeX Worker asset directory
+        working-directory: apps/creator-studio
+        run: |
+          npm run build
+          test -s ../owner_panel/creator-studio/index.html
+          grep -q 'DarkVibeX Creator Studio' ../owner_panel/creator-studio/index.html
+          grep -Eq 'src="[^"]+\.js"' ../owner_panel/creator-studio/index.html
+      - name: Ensure no AppDeploy runtime dependency remains
+        working-directory: apps/creator-studio
+        run: |
+          if grep -R -n '@appdeploy/client\|@appdeploy/sdk' package.json src; then
+            echo "AppDeploy runtime dependency found."
+            exit 1
+          fi
