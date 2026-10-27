@@ -1130,7 +1130,7 @@ async function uploadCreatorAsset(){
   const data=await response.json().catch(()=>({ok:false,error:"invalid_response"}));
   if(!response.ok||!data.ok){
     $("#creatorAssetStatus").textContent="";
-    const messages={creator_asset_type_invalid:"That media type is not supported.",creator_asset_too_large:"The selected file is larger than the limit.",creator_asset_signature_invalid:"The file header is invalid or the file is damaged.",file_storage_not_bound:"R2 storage is not configured.",unauthorized:"Sign in again to the Owner Panel."};
+    const messages={creator_asset_type_invalid:"That media type is not supported.",creator_asset_too_large:"The selected file is larger than the limit.",creator_asset_signature_invalid:"The file header is invalid or the file is damaged.",creator_asset_transparency_required:"Frames and chat bubbles must be transparent PNG/WebP artwork, not a square card.",file_storage_not_bound:"R2 storage is not configured.",unauthorized:"Sign in again to the Owner Panel."};
     throw new Error(messages[data.error]||data.error||("Upload failed (HTTP "+response.status+")"));
   }
   const key=String(data.key||"");
