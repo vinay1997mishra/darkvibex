@@ -8648,10 +8648,15 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, url);
       }
-      if (env.ASSETS && (url.pathname === "/creator-studio" || url.pathname === "/creator-studio/")) {
-        const studioIndexUrl = new URL(request.url);
-        studioIndexUrl.pathname = "/creator-studio/index.html";
-        return env.ASSETS.fetch(new Request(studioIndexUrl, request));
+      if (env.ASSETS && (url.pathname === "/creator-studio" || url.pathname.startsWith("/creator-studio/"))) {
+        // Use the static-assets binding hostname and preserve the full subpath,
+        // so both the HTML entry point and every hashed JS/CSS chunk resolve.
+        const studioAssetUrl = new URL(
+          url.pathname === "/creator-studio" ? "/creator-studio/" : url.pathname,
+          "https://assets.local",
+        );
+        studioAssetUrl.search = url.search;
+        return env.ASSETS.fetch(studioAssetUrl);
       }
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return json({ ok: false, error: "not_found" }, { status: 404 });
