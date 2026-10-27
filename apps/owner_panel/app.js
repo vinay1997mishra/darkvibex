@@ -1906,7 +1906,7 @@ $("#logout").onclick=()=>{
   setLoginMode(state.loginMode,true);
   $("#loginPassword").value="";
 };
-$$('.nav-btn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+$('.nav-btn').forEach(b=>b.onclick=()=>{if(b.id==='creatorStudioLink')return;setView(b.dataset.view);});
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
 $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
