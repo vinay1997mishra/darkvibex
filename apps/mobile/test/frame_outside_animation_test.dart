@@ -21,7 +21,7 @@ void main() {
     expect(source, contains('_paintFlowerOrbit'));
     expect(source, contains('_paintNatureGlow'));
     expect(source, contains('The DP stays full-size'));
-    expect(source, contains('image: artwork'));
+    expect(source, contains('imageProvider: artwork'));
     expect(source, contains('class _TransparentFrameArtworkClipper'));
     expect(source, contains('PathFillType.evenOdd'));
     expect(source, contains('ClipPath('));
