@@ -25,6 +25,16 @@ void main() {
     expect(source, contains('class _TransparentFrameArtworkClipper'));
     expect(source, contains('PathFillType.evenOdd'));
     expect(source, contains('ClipPath('));
+    expect(source, contains('customFrameScale = 1.86'));
+    expect(source, contains('TransparentArtworkImage('));
+    expect(source, contains('requireTransparentCenter: true'));
+    expect(source, contains('_TransparentFrameFallbackPainter'));
+
+    final alphaSource = File('lib/widgets/transparent_artwork_image.dart')
+        .readAsStringSync();
+    expect(alphaSource, contains('outsideClear'));
+    expect(alphaSource, contains('alphaAt(16, 16)'));
+    expect(alphaSource, contains('widget.fallback'));
     expect(source, isNot(contains('ColorFiltered(')));
     expect(source, isNot(contains('colorFilter: const ColorFilter.matrix')));
     expect(source, isNot(contains('canvas.drawLine(')));
