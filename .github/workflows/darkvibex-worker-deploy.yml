@@ -82,7 +82,7 @@ jobs:
           base="https://darkvibex-api.mishrajii7991.workers.dev"
           curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/health"
           echo
-          studio_html="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/creator-studio/")"
+          studio_html="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/creator-studio/index.html")"
           printf '%s' "$studio_html" | grep -q 'DarkVibeX Creator Studio'
           studio_bundle="$(printf '%s' "$studio_html" | grep -oE 'src="[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
           if [ -z "$studio_bundle" ]; then
