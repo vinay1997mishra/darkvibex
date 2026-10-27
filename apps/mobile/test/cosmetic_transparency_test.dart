@@ -7,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _expectTransparentCorners(
   String id,
-  String encoded, {
-}) async {
+  String encoded,
+) async {
   final codec = await ui.instantiateImageCodec(base64Decode(encoded));
   try {
     final decoded = await codec.getNextFrame();
@@ -34,7 +34,6 @@ Future<void> _expectTransparentCorners(
           reason: '$id must have transparent pixels at all four outside corners',
         );
       }
-
     } finally {
       image.dispose();
     }
