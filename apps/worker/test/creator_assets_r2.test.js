@@ -75,7 +75,7 @@ test("frame and bubble publishing requires real alpha and frame-hole transparenc
   assert.match(ownerApi, /creator_asset_transparency_required/);
   assert.match(panelApp, /transparent PNG\/WebP|transparent PNG ya WebP/i);
   assert.match(creatorApp, /imageHasTransparentArtwork/);
-  assert.match(creatorApp, /transparent DP cut-out/);
+  assert.match(creatorApp, /DP cut-out dono transparent/);
   assert.match(threeStage, /Transparent frame \/ bubble alpha/);
   assert.match(threeStage, /frameCentreClear/);
   assert.doesNotMatch(threeStage, /new THREE\.CircleGeometry\(0\.82, 96\)/);
