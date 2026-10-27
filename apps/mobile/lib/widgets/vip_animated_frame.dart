@@ -338,11 +338,20 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     clipper: const _TransparentFrameArtworkClipper(
                       frameScale: frameScale,
                     ),
-                    child: Image(
-                      image: artwork,
+                    child: TransparentArtworkImage(
+                      imageProvider: artwork,
                       fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      gaplessPlayback: true,
+                      requireTransparentCenter: true,
+                      fallback: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, child) => CustomPaint(
+                          painter: _TransparentFrameFallbackPainter(
+                            phase: _controller.value,
+                            level: widget.level,
+                            styleId: visualStyleId,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
