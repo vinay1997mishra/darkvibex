@@ -9,6 +9,7 @@ on:
     paths:
       - "apps/worker/**"
       - "apps/owner_panel/**"
+      - "apps/creator-studio/**"
       - ".github/workflows/darkvibex-worker-deploy.yml"
 
 permissions:
@@ -54,6 +55,12 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Build Creator Studio into Worker static assets
+        working-directory: apps/creator-studio
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
       - name: Install Worker dependencies
         working-directory: apps/worker
         run: npm install --no-audit --no-fund
@@ -75,6 +82,15 @@ jobs:
           base="https://darkvibex-api.mishrajii7991.workers.dev"
           curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/health"
           echo
+          studio_html="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/creator-studio/")"
+          printf '%s' "$studio_html" | grep -q 'DarkVibeX Creator Studio'
+          studio_bundle="$(printf '%s' "$studio_html" | grep -oE 'src="[^"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
+          if [ -z "$studio_bundle" ]; then
+            echo "Creator Studio bundle reference is missing."
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/creator-studio/${studio_bundle#./}" >/dev/null
+          echo "Creator Studio static app and JavaScript bundle are live."
           curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/api/auth/config" |
             node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s);if(!c.ok||!c.google_web_client_id){console.error("Google auth config is missing.");process.exit(1)}console.log("Google auth config is present.")})'
           app_config="$(curl --fail-with-body --silent --show-error --retry 3 --retry-delay 2 "$base/api/config")"
