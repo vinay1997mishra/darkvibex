@@ -760,7 +760,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
         if (data.flamePulse) { child.scale.y = (data.baseScaleY || 1) * (0.78 + Math.abs(Math.sin(animationTime * 8 + (data.seed || 0))) * 0.48); child.rotation.z = Math.sin(animationTime * 2.7 + (data.seed || 0)) * 0.055; }
       });
       if (lightning) lightning.intensity = Math.max(0, Math.sin(animationTime * 5.3) - 0.93) * 95;
-      if (k === 'vehicle' && (d.background === 'sky-flight' || d.background === 'clouds')) { group.position.y = 0.2 + Math.sin(animationTime * 1.45) * 0.17; group.position.x += Math.sin(animationTime * 0.55) * 0.02; }
+      if (k === 'vehicle' && (d.background === 'sky-flight' || d.background === 'clouds')) { group.position.y = 0.2 + Math.sin(animationTime * 1.45) * 0.17; group.position.x = Math.sin(animationTime * 0.55) * 0.22 + (1 - easedEntrance) * -2.2; }
       if (modelRoot) { modelRoot.rotation.y = animationTime * 0.22; modelRoot.position.y = Math.sin(animationTime * 1.3) * ((d.background === 'sky-flight' || d.background === 'clouds') ? 0.17 : 0.04); }
       mixer?.update(1 / 60);
       renderer.render(scene, camera);
