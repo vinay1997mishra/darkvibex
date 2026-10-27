@@ -433,6 +433,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
     final customUrl = assetImageUrl?.trim() ?? '';
     if (customUrl.isNotEmpty) {
       final theme = _bubbleTheme(styleId);
+      final fallbackArtwork = _bubbleChatArtwork(styleId);
       return RepaintBoundary(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -447,7 +448,14 @@ class StretchableCosmeticBubble extends StatelessWidget {
                   url: customUrl,
                   headers: assetImageHeaders,
                   fit: BoxFit.fill,
-                  fallback: CustomPaint(painter: _BubblePainter(theme)),
+                  fallback: fallbackArtwork == null
+                      ? CustomPaint(painter: _BubblePainter(theme))
+                      : TransparentArtworkImage(
+                          imageProvider: fallbackArtwork,
+                          fit: BoxFit.fill,
+                          centerSlice: _bubbleCenterSlice(styleId),
+                          fallback: CustomPaint(painter: _BubblePainter(theme)),
+                        ),
                 ),
               ),
               Positioned.fill(
