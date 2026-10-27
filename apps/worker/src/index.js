@@ -8648,6 +8648,11 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, url);
       }
+      if (env.ASSETS && (url.pathname === "/creator-studio" || url.pathname === "/creator-studio/")) {
+        const studioIndexUrl = new URL(request.url);
+        studioIndexUrl.pathname = "/creator-studio/index.html";
+        return env.ASSETS.fetch(new Request(studioIndexUrl, request));
+      }
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return json({ ok: false, error: "not_found" }, { status: 404 });
     } catch (error) {
