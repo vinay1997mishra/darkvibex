@@ -15,11 +15,11 @@ const bubbleWidget = await readFile(new URL("../../mobile/lib/widgets/cosmetic_s
 const giftPreview = await readFile(new URL("../../mobile/lib/widgets/gift_media_preview.dart", import.meta.url), "utf8");
 const giftScreen = await readFile(new URL("../../mobile/lib/screens/gifts_screen.dart", import.meta.url), "utf8");
 
-test("Creator Studio directory routes directly to its built static index", () => {
-  assert.match(worker, /url\.pathname === "\/creator-studio" \|\| url\.pathname === "\/creator-studio\/"/);
-  assert.match(worker, /studioIndexUrl\.pathname = "\/creator-studio\/index\.html"/);
+test("Creator Studio HTML and nested bundles use the static-assets binding", () => {
+  assert.ok(worker.includes('url.pathname === "/creator-studio" || url.pathname.startsWith("/creator-studio/")'));
+  assert.ok(worker.includes('"https://assets.local"'));
+  assert.ok(worker.includes("return env.ASSETS.fetch(studioAssetUrl)"));
 });
-
 test("creator uploads are permission-gated, capped and file-signature validated", () => {
   assert.match(ownerApi, /handleCreatorMediaUpload/);
   assert.match(ownerApi, /requirePermission\(actor, kind === "gift" \? "gifts\.save" : "assets\.save"\)/);
