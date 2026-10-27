@@ -271,22 +271,14 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 alignment: Alignment.center,
                 child: SizedBox.square(
                   dimension: widget.size,
-                  child: ColorFiltered(
-                    // Key the opaque near-black matte out of older frame art.
-                    // Transparent pixels remain transparent; dark backing pixels
-                    // fade away so the galaxy background shows through around DP.
-                    colorFilter: const ColorFilter.matrix(<double>[
-                      1, 0, 0, 0, 0,
-                      0, 1, 0, 0, 0,
-                      0, 0, 1, 0, 0,
-                      1, 1, 1, 1, -255,
-                    ]),
-                    child: Image(
-                      image: artwork,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      gaplessPlayback: true,
-                    ),
+                  // Preserve the artwork's native alpha channel. Recomputing
+                  // alpha from RGB can turn transparent edge pixels opaque and
+                  // create square/matte artefacts around the circular frame.
+                  child: Image(
+                    image: artwork,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
                   ),
                 ),
               ),
