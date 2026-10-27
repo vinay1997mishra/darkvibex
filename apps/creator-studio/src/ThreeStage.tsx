@@ -49,7 +49,7 @@ type Props = {
   design: {
     title: string; concept: string; icon: string; primaryColor: string;
     secondaryColor: string; motion: string; particles: string; durationSeconds: number;
-    loop: boolean; rarity: string; previewText: string;
+    loop: boolean; rarity: string; previewText: string; background: string;
   };
   parts?: ScenePart[];
   timelineTime?: number;
@@ -283,10 +283,15 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
     if (!host.current) return;
     const element = host.current;
     const scene = new THREE.Scene();
-    scene.background = null;
-    scene.fog = new THREE.Fog('#090b18', 6, 15);
+    const scenePreset = design.background || 'studio';
+    const cinematicPresets = ['road', 'sky-flight', 'clouds', 'mountain-fire', 'storm-mountains', 'city-night'];
+    const isCinematic = cinematicPresets.includes(scenePreset);
+    const skyColor = scenePreset === 'road' ? '#879db7' : scenePreset === 'sky-flight' ? '#65a5df' : scenePreset === 'clouds' ? '#719fc7' : scenePreset === 'mountain-fire' ? '#21162a' : scenePreset === 'storm-mountains' ? '#202b45' : scenePreset === 'city-night' ? '#071021' : '#090b18';
+    scene.background = isCinematic ? new THREE.Color(skyColor) : null;
+    scene.fog = new THREE.Fog(skyColor, isCinematic ? 18 : 6, isCinematic ? 42 : 15);
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-    camera.position.set(0, 0.15, 6.7);
+    camera.position.set(0, isCinematic ? 1.15 : 0.15, isCinematic ? 8.0 : 6.7);
+    camera.lookAt(0, isCinematic ? -0.18 : 0, 0);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -296,10 +301,82 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
     renderer.domElement.style.height = '100%';
     renderer.domElement.style.display = 'block';
     element.appendChild(renderer.domElement);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-    const key = new THREE.PointLight(0xffffff, 38); key.position.set(3, 4, 5); scene.add(key);
+    scene.add(new THREE.AmbientLight(0xffffff, isCinematic ? 1.05 : 1.5));
+    const key = new THREE.PointLight(0xffffff, isCinematic ? 24 : 38); key.position.set(3, 4, 5); scene.add(key);
     const rim = new THREE.PointLight(0x8066ff, 25); rim.position.set(-3, 1, -2); scene.add(rim);
     const group = new THREE.Group(); scene.add(group);
+    const environment = new THREE.Group(); environment.name = 'Cinematic Environment'; scene.add(environment);
+    const envMaterial = (color: string, roughness = 0.82, metalness = 0.02) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
+    const envMesh = (geometry: THREE.BufferGeometry, material: THREE.Material, position: [number, number, number], rotation: [number, number, number] = [0, 0, 0]) => {
+      const mesh = new THREE.Mesh(geometry, material); mesh.position.set(...position); mesh.rotation.set(...rotation); mesh.receiveShadow = true; environment.add(mesh); return mesh;
+    };
+    const addCloud = (x: number, y: number, z: number, scale: number, color: string, seed: number) => {
+      const cloud = new THREE.Group(); cloud.position.set(x, y, z); cloud.scale.setScalar(scale);
+      cloud.userData.driftCloud = true; cloud.userData.baseX = x; cloud.userData.seed = seed; environment.add(cloud);
+      const cloudMat = envMaterial(color, 1, 0);
+      [[0,0,0,0.7],[0.48,0.1,0.02,0.52],[-0.45,0.06,0.03,0.46],[0.16,0.23,-0.04,0.48]].forEach(([cx,cy,cz,r]) => {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), cloudMat.clone());
+        puff.position.set(cx, cy, cz); cloud.add(puff);
+      });
+      return cloud;
+    };
+    const addMountain = (x: number, z: number, height: number, width: number, color: string, seed: number) => {
+      const mountain = envMesh(new THREE.ConeGeometry(width, height, 6, 1), envMaterial(color, 1, 0), [x, -1 + height / 2, z]);
+      mountain.rotation.y = seed * 0.9; mountain.userData.mountain = true; return mountain;
+    };
+    const addCinematicGround = (color: string) => envMesh(new THREE.PlaneGeometry(90, 70), envMaterial(color, 0.98, 0), [0, -1, -12], [-Math.PI / 2, 0, 0]);
+    let lightning: THREE.PointLight | null = null;
+    if (scenePreset === 'road') {
+      addCinematicGround('#394653');
+      envMesh(new THREE.PlaneGeometry(7.2, 38), envMaterial('#202630', 0.94, 0.02), [0, -0.79, -8], [-Math.PI / 2, 0, 0]);
+      for (const edgeX of [-3.42, 3.42]) envMesh(new THREE.BoxGeometry(0.08, 0.018, 38), envMaterial('#e0d9b8', 0.8, 0), [edgeX, -0.755, -8]);
+      for (let i = 0; i < 10; i++) {
+        const dash = envMesh(new THREE.BoxGeometry(0.075, 0.018, 1.28), envMaterial('#f1e7bd', 0.75, 0), [0, -0.748, -1 - i * 3.4]);
+        dash.userData.roadMarker = true; dash.userData.baseZ = dash.position.z; dash.userData.speed = 5.2;
+      }
+      addMountain(-5.4, -15, 5.8, 3.4, '#4a5969', 1); addMountain(-2.7, -18, 4.0, 2.8, '#657282', 2);
+      addMountain(4.6, -16, 6.4, 3.8, '#465567', 3); addMountain(1.9, -20, 4.8, 3.0, '#59687a', 4);
+      addCloud(-3.0, 2.7, -12, 1.25, '#e4e8ee', 1); addCloud(3.2, 2.25, -15, 1.0, '#d8e0eb', 2);
+    } else if (scenePreset === 'sky-flight' || scenePreset === 'clouds') {
+      const isCloudRide = scenePreset === 'clouds';
+      const sun = envMesh(new THREE.SphereGeometry(0.58, 28, 20), new THREE.MeshBasicMaterial({ color: isCloudRide ? '#fff2cc' : '#fff8dc' }), [2.8, 2.6, -9]);
+      sun.scale.setScalar(isCloudRide ? 0.82 : 1);
+      addCloud(-2.9, 1.25, -3.8, 1.45, '#f4f8ff', 1); addCloud(2.8, 1.9, -5.8, 1.25, '#f1f7ff', 2);
+      addCloud(-0.5, -0.05, -8.5, 1.9, '#e8f1fd', 3); addCloud(3.4, -0.5, -10.5, 1.6, '#dce9f7', 4);
+      addMountain(-5.0, -16, 4.2, 3.1, '#7893b1', 1); addMountain(5.1, -18, 5.2, 3.5, '#718eae', 2);
+      if (isCloudRide) { addCloud(-3.3, -1.05, -2.3, 1.9, '#dbe8f6', 5); addCloud(3.5, -1.2, -3.5, 2.0, '#d4e3f3', 6); }
+    } else if (scenePreset === 'mountain-fire') {
+      addCinematicGround('#171a22');
+      addMountain(-5.1, -10, 5.8, 4.0, '#352b3a', 1); addMountain(-2.6, -13, 4.6, 3.5, '#4a3034', 2);
+      addMountain(4.9, -11, 6.3, 4.2, '#382632', 3); addMountain(2.4, -15, 4.8, 3.4, '#4b2b2f', 4);
+      addCloud(-2.4, 1.8, -7, 1.2, '#4d3b46', 1); addCloud(2.8, 1.5, -8, 1.3, '#433642', 2);
+      for (let i = 0; i < 7; i++) {
+        const x = (i - 3) * 0.83; const z = -2.5 - (i % 3) * 1.7;
+        const flame = envMesh(new THREE.ConeGeometry(0.18 + (i % 2) * 0.07, 0.8 + (i % 3) * 0.2, 7, 1), new THREE.MeshBasicMaterial({ color: i % 2 ? '#ff6a22' : '#ffbd54', transparent: true, opacity: 0.88 }), [x, -0.57, z]);
+        flame.userData.flamePulse = true; flame.userData.seed = i * 0.83; flame.userData.baseScaleY = 1;
+        const inner = envMesh(new THREE.ConeGeometry(0.085, 0.48, 6, 1), new THREE.MeshBasicMaterial({ color: '#fff3a3', transparent: true, opacity: 0.84 }), [x, -0.64, z + 0.04]);
+        inner.userData.flamePulse = true; inner.userData.seed = i * 0.47; inner.userData.baseScaleY = 1;
+      }
+      const fireGlow = new THREE.PointLight('#ff6a22', 28, 12); fireGlow.position.set(0, 0, -1); scene.add(fireGlow); (fireGlow as THREE.PointLight & { userData: { fireGlow?: boolean } }).userData.fireGlow = true;
+    } else if (scenePreset === 'storm-mountains') {
+      addCinematicGround('#171e2b');
+      addMountain(-5.0, -10, 6.1, 4.4, '#29364c', 1); addMountain(-2.0, -13, 4.8, 3.3, '#354358', 2);
+      addMountain(4.7, -11, 6.7, 4.6, '#26354b', 3); addMountain(2.1, -15, 4.8, 3.2, '#344256', 4);
+      addCloud(-2.7, 2.5, -7, 1.6, '#404b60', 1); addCloud(2.6, 2.1, -8, 1.7, '#39475c', 2); addCloud(0, 2.8, -11, 1.8, '#303d52', 3);
+      lightning = new THREE.PointLight('#b6d7ff', 0, 28); lightning.position.set(0, 2.7, -3); scene.add(lightning);
+    } else if (scenePreset === 'city-night') {
+      scene.background = new THREE.Color('#071021'); scene.fog = new THREE.Fog('#071021', 15, 40);
+      addCinematicGround('#0d1420');
+      for (let i = 0; i < 12; i++) {
+        const x = (i - 5.5) * 1.22; const h = 1.2 + ((i * 7) % 5) * 0.43;
+        const building = envMesh(new THREE.BoxGeometry(0.86, h, 0.7), envMaterial(i % 2 ? '#17253a' : '#202a43', 0.9, 0.15), [x, -1 + h / 2, -10 - (i % 3) * 2]);
+        building.userData.building = true;
+        for (let win = 0; win < 3; win++) {
+          const windowMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.095, 0.13), new THREE.MeshBasicMaterial({ color: win % 2 ? '#ffcf81' : '#77dfff' }));
+          windowMesh.position.set(((win - 1) * 0.22), -0.15 + win * 0.18, 0.356); building.add(windowMesh);
+        }
+      }
+    }
     const particleGeometry = new THREE.BufferGeometry();
     const particleCount = 160;
     const positions = new Float32Array(particleCount * 3);
@@ -676,7 +753,15 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
       });
       particles.rotation.y = animationTime * 0.025;
       particles.rotation.x = Math.sin(animationTime * 0.12) * 0.08;
-      if (modelRoot) { modelRoot.rotation.y = animationTime * 0.22; modelRoot.position.y = Math.sin(animationTime * 1.3) * 0.04; }
+      environment.children.forEach(child => {
+        const data = child.userData as { driftCloud?: boolean; baseX?: number; seed?: number; roadMarker?: boolean; baseZ?: number; speed?: number; flamePulse?: boolean; baseScaleY?: number; fireGlow?: boolean };
+        if (data.driftCloud) child.position.x = (data.baseX || 0) + Math.sin(animationTime * 0.2 + (data.seed || 0)) * 0.22;
+        if (data.roadMarker && typeof data.baseZ === 'number') child.position.z = -((Math.abs(data.baseZ) - (animationTime * (data.speed || 5)) % 18 + 18) % 18);
+        if (data.flamePulse) { child.scale.y = (data.baseScaleY || 1) * (0.78 + Math.abs(Math.sin(animationTime * 8 + (data.seed || 0))) * 0.48); child.rotation.z = Math.sin(animationTime * 2.7 + (data.seed || 0)) * 0.055; }
+      });
+      if (lightning) lightning.intensity = Math.max(0, Math.sin(animationTime * 5.3) - 0.93) * 95;
+      if (k === 'vehicle' && (d.background === 'sky-flight' || d.background === 'clouds')) { group.position.y = 0.2 + Math.sin(animationTime * 1.45) * 0.17; group.position.x += Math.sin(animationTime * 0.55) * 0.02; }
+      if (modelRoot) { modelRoot.rotation.y = animationTime * 0.22; modelRoot.position.y = Math.sin(animationTime * 1.3) * ((d.background === 'sky-flight' || d.background === 'clouds') ? 0.17 : 0.04); }
       mixer?.update(1 / 60);
       renderer.render(scene, camera);
       runtime.current!.raf = requestAnimationFrame(animate);
@@ -700,7 +785,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
       if (element.contains(renderer.domElement)) element.removeChild(renderer.domElement);
       runtime.current = null;
     };
-  }, [kind, design.title, design.primaryColor, design.secondaryColor, design.particles, modelUrl, partsKey]);
+  }, [kind, design.title, design.primaryColor, design.secondaryColor, design.particles, design.background, modelUrl, partsKey]);
 
   return <div ref={host} aria-label={'Interactive 3D preview of ' + design.title} style={{ width: '100%', height: '100%', minHeight: 320, cursor: 'grab' }} />;
 });
