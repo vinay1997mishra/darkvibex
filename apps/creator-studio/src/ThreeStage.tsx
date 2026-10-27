@@ -409,6 +409,7 @@ export const ThreeStage = forwardRef<StageHandle, Props>(function ThreeStage({ k
     camera.position.set(0, isCinematic ? 1.15 : 0.15, isCinematic ? 8.0 : 6.7);
     camera.lookAt(0, isCinematic ? -0.18 : 0, 0);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
