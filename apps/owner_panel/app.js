@@ -1107,7 +1107,25 @@ async function uploadCreatorAsset(){
   const max=ext==="glb"?25*1024*1024:["mp4","webm"].includes(ext)?11*1024*1024:5*1024*1024;
   if(!type)return toast("Use MP4, WebM, GLB, JPG, PNG or WebP",false);
   if(!file.size||file.size>max)return toast("File too large. Maximum for this type is "+Math.round(max/1024/1024)+" MB.",false);
-  $("#creatorAssetStatus").textContent="Validating and uploading to R2…";
+  if(kind==="frame"||kind==="bubble"){
+    if(!["image/png","image/webp"].includes(type))return toast("Frame/chat bubble ke liye real transparent PNG ya WebP use karo. JPG/video nahi chalega.",false);
+    let bitmap=null;
+    try{
+      bitmap=await createImageBitmap(file);
+      const probe=document.createElement("canvas");probe.width=96;probe.height=96;
+      const ctx=probe.getContext("2d",{willReadFrequently:true});
+      if(!ctx)throw new Error("alpha context unavailable");
+      ctx.clearRect(0,0,96,96);ctx.drawImage(bitmap,0,0,96,96);
+      const alphaAt=(x,y)=>ctx.getImageData(x,y,1,1).data[3];
+      const corners=[alphaAt(1,1),alphaAt(94,1),alphaAt(1,94),alphaAt(94,94)];
+      const outsideClear=corners.every(alpha=>alpha<16);
+      const centreClear=kind!=="frame"||alphaAt(48,48)<16;
+      if(!outsideClear||!centreClear)return toast(kind==="frame"?"Frame ka outer background aur beech ka DP cut-out transparent hona chahiye. Creator Studio se transparent PNG export karo.":"Chat bubble ke chaaron corners transparent hone chahiye; square/solid background upload nahi hoga.",false);
+    }catch(error){
+      return toast("Image transparency check nahi ho paayi. Transparent PNG/WebP export karke dobara try karo.",false);
+    }finally{bitmap?.close?.();}
+  }
+  $("#creatorAssetStatus").textContent="Validating transparent artwork and uploading to R2…";
   const response=await fetch("/api/owner/creator-media",{method:"PUT",headers:{"authorization":"Bearer "+state.token,"content-type":type,"x-asset-id":assetId,"x-asset-kind":kind},body:file});
   const data=await response.json().catch(()=>({ok:false,error:"invalid_response"}));
   if(!response.ok||!data.ok){
