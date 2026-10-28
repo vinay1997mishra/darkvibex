@@ -307,8 +307,7 @@ class _EntryVehiclePainter extends CustomPainter {
     final isRoyal = id.contains('royal') ||
         id.contains('king') ||
         id.contains('chariot') ||
-        id.contains('castle') ||
-        id.contains('golden');
+        id.contains('castle');
     final isPhoenix = id.contains('phoenix') ||
         id.contains('dragon') ||
         id.contains('fire') ||
