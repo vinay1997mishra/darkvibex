@@ -140,7 +140,7 @@ class _VehicleEntryEffectState extends State<VehicleEntryEffect>
 
   @override
   Widget build(BuildContext context) {
-    final styleId = widget.vehicleId ?? widget.vehicleLabel;
+    final styleId = widget.vehicleId ?? widget.vehicleLabel ?? 'vehicle_spark';
     final colors = _vehicleColorsFor(widget.level, styleId);
     return AnimatedBuilder(
       animation: _controller,
