@@ -87,7 +87,18 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
   for (const frame of permanentFreeFrames) {
     assert.equal(frame.min_vip_level, 0);
   }
-  assert.equal(COSMETIC_CATALOG.filter((item) => item.kind === "vehicle").length, 4);
+  const vehicles = COSMETIC_CATALOG.filter((item) => item.kind === "vehicle");
+  assert.equal(vehicles.length, 7);
+  for (const id of [
+    "vehicle_neon_comet",
+    "vehicle_dragon_royal",
+    "vehicle_celestial_phoenix",
+  ]) {
+    const vehicle = vehicles.find((item) => item.id === id);
+    assert.ok(vehicle, `missing vehicle store item: ${id}`);
+    assert.equal(vehicle.animation_ms, 4800);
+    assert.equal(vehicle.duration_days, 30);
+  }
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_card"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "ring"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_background"));

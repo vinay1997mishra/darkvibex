@@ -36,6 +36,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     _StoreCategory('Unique ID', 'unique_id', Icons.numbers_rounded),
     _StoreCategory('Ring', 'ring', Icons.diamond_rounded),
     _StoreCategory('Entrance', 'entry', Icons.auto_awesome_rounded),
+    _StoreCategory('Vehicles', 'vehicle', Icons.directions_car_filled_rounded),
     _StoreCategory('Bubble', 'bubble', Icons.chat_bubble_rounded),
     _StoreCategory('Frame', 'frame', Icons.account_box_rounded),
   ];
@@ -509,7 +510,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         ),
       );
     }
-    if ((kind == 'frame' || kind == 'bubble') && assetImageKey.isNotEmpty) {
+    if ((kind == 'frame' || kind == 'bubble' || kind == 'vehicle') && assetImageKey.isNotEmpty) {
       return SizedBox(
         height: 150,
         width: double.infinity,
@@ -602,7 +603,10 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     if (kind == 'vehicle') {
       return Padding(
         padding: const EdgeInsets.all(10),
-        child: VehicleShowcase(level: tier.clamp(1, 18)),
+        child: VehicleShowcase(
+           level: tier.clamp(1, 18),
+           styleId: id,
+         ),
       );
     }
     return Center(

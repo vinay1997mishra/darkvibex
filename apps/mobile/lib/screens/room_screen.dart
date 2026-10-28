@@ -299,7 +299,14 @@ class _RoomScreenState extends State<RoomScreen> {
       final invisible = member['invisible_entry'] == true || member['invisible_entry']?.toString() == '1';
       final entryId = member['active_entry_id']?.toString() ?? '';
       final hasVipNameplate = entryId.startsWith('entrance-vip-');
-      if (invisible || (!hasVipNameplate && level < 4)) continue;
+      final hasEquippedVehicle =
+          member['active_vehicle_id']?.toString().trim().isNotEmpty == true;
+      final hasBuiltInEntry =
+          entryId.isNotEmpty && !hasVipNameplate;
+      if (invisible ||
+          (!hasVipNameplate && !hasEquippedVehicle && !hasBuiltInEntry && level < 4)) {
+        continue;
+      }
       _showArrivalEffect(member);
     }
   }
@@ -312,12 +319,16 @@ class _RoomScreenState extends State<RoomScreen> {
       member['active_entry_video_key'], member['active_entry_glb_key'],
       member['active_vehicle_video_key'], member['active_vehicle_glb_key'],
     ].any((value) => value?.toString().trim().isNotEmpty == true);
+    final activeEntryId = member['active_entry_id']?.toString() ?? '';
+    final hasBuiltInVehicle =
+        member['active_vehicle_id']?.toString().trim().isNotEmpty == true ||
+        (activeEntryId.isNotEmpty && !activeEntryId.startsWith('entrance-vip-'));
     final requestedMs = int.tryParse(
       (member['active_entry_animation_ms'] ?? member['active_vehicle_animation_ms'] ?? '').toString(),
     ) ?? 0;
     final durationMs = requestedMs > 0
         ? requestedMs.clamp(2000, 10000).toInt()
-        : (hasCustomMedia ? 6000 : 2000);
+        : (hasCustomMedia ? 6000 : (hasBuiltInVehicle ? 4800 : 2000));
     arrivalEffectTimer = Timer(Duration(milliseconds: durationMs), () {
       if (mounted) setState(() => arrivalEffectMember = null);
     });
@@ -8031,6 +8042,9 @@ class _RoomScreenState extends State<RoomScreen> {
                         customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
                             arrivalEffectMember?['active_entry_id'] != null ||
                             (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
+                        vehicleId: (arrivalEffectMember?['active_vehicle_id']?.toString().trim().isNotEmpty == true)
+                            ? arrivalEffectMember!['active_vehicle_id'].toString()
+                            : arrivalEffectMember?['active_entry_id']?.toString(),
                         vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
                             ? arrivalEffectMember!['active_entry_id']
                                 .toString()
@@ -8041,6 +8055,9 @@ class _RoomScreenState extends State<RoomScreen> {
                                 'vehicle_king' => 'KING OF VIP',
                                 'vehicle_phoenix' => 'PHOENIX GT',
                                 'vehicle_royal' => 'ROYAL CHARIOT',
+                                'vehicle_neon_comet' => 'NEON COMET GT',
+                                'vehicle_dragon_royal' => 'DRAGON ROYAL CHARIOT',
+                                'vehicle_celestial_phoenix' => 'CELESTIAL PHOENIX',
                                 'vehicle_spark' => 'STARLIGHT COUPE',
                                 _ => null,
                               },
