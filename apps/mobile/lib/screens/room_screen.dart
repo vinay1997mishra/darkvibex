@@ -299,7 +299,14 @@ class _RoomScreenState extends State<RoomScreen> {
       final invisible = member['invisible_entry'] == true || member['invisible_entry']?.toString() == '1';
       final entryId = member['active_entry_id']?.toString() ?? '';
       final hasVipNameplate = entryId.startsWith('entrance-vip-');
-      if (invisible || (!hasVipNameplate && level < 4)) continue;
+      final hasEquippedVehicle =
+          member['active_vehicle_id']?.toString().trim().isNotEmpty == true;
+      final hasBuiltInEntry =
+          entryId.isNotEmpty && !hasVipNameplate;
+      if (invisible ||
+          (!hasVipNameplate && !hasEquippedVehicle && !hasBuiltInEntry && level < 4)) {
+        continue;
+      }
       _showArrivalEffect(member);
     }
   }
