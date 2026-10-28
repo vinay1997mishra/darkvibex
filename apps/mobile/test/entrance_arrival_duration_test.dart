@@ -8,6 +8,10 @@ void main() {
     expect(source, contains('final durationMs = requestedMs > 0'));
     expect(source, contains('requestedMs.clamp(2000, 10000).toInt()'));
     expect(source, contains('Timer(Duration(milliseconds: durationMs)'));
-    expect(source, contains('(hasCustomMedia ? 6000 : 2000)'));
+    expect(source, contains('final hasBuiltInVehicle ='));
+    expect(
+      source,
+      contains('(hasCustomMedia ? 6000 : (hasBuiltInVehicle ? 4800 : 2000))'),
+    );
   });
 }
