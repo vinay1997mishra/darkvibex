@@ -24,7 +24,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 180));
 
     expect(find.byType(VehicleShowcase), findsOneWidget);
-    expect(find.byType(CustomPaint), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(VehicleShowcase),
+        matching: find.byType(CustomPaint),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('room entrance displays the selected vehicle name and level', (tester) async {
