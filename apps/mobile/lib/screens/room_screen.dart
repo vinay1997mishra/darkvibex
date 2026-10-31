@@ -7508,9 +7508,9 @@ class _RoomScreenState extends State<RoomScreen> {
                                             ? widget.state.backend.fileUrl(activeFrameAssetKey)
                                             : null,
                                         assetHeaders: widget.state.backend.fileHeaders,
-                                        animationType: member?['active_frame_animation_type']?.toString(),
+                                        animationType: member['active_frame_animation_type']?.toString(),
                                         animationDurationMs: int.tryParse(
-                                          member?['active_frame_animation_ms']?.toString() ?? '',
+                                          member['active_frame_animation_ms']?.toString() ?? '',
                                         ),
                                         child: CircleAvatar(
                                           radius: (diameter / 2) - 1,
