@@ -37,7 +37,7 @@ void main() {
     final appState = File('lib/app/app_state.dart').readAsStringSync();
     expect(appState, contains('activeFrameAnimationType'));
     expect(appState, contains('activeFrameAnimationMs'));
-    expect(appState, contains("catalogById['frame:$itemId']"));
+    expect(appState, contains(r"catalogById['frame:$itemId']"));
 
     final alphaSource = File('lib/widgets/transparent_artwork_image.dart')
         .readAsStringSync();
