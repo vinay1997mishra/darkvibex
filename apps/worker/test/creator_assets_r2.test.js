@@ -11,6 +11,8 @@ const panelHtml = await readFile(new URL("../../owner_panel/index.html", import.
 const panelApp = await readFile(new URL("../../owner_panel/app.js", import.meta.url), "utf8");
 const shop = await readFile(new URL("../../mobile/lib/screens/cosmetics_shop_screen.dart", import.meta.url), "utf8");
 const room = await readFile(new URL("../../mobile/lib/screens/room_screen.dart", import.meta.url), "utf8");
+const appState = await readFile(new URL("../../mobile/lib/app/app_state.dart", import.meta.url), "utf8");
+const profile = await readFile(new URL("../../mobile/lib/screens/profile_screen.dart", import.meta.url), "utf8");
 const mediaPreview = await readFile(new URL("../../mobile/lib/widgets/creator_asset_media_preview.dart", import.meta.url), "utf8");
 const effectPlayback = await readFile(new URL("../../mobile/lib/widgets/creator_asset_effect_playback.dart", import.meta.url), "utf8");
 const frameWidget = await readFile(new URL("../../mobile/lib/widgets/vip_animated_frame.dart", import.meta.url), "utf8");
@@ -68,6 +70,23 @@ test("custom media metadata reaches room entry playback and R2 assets are public
   assert.match(room, /active_entry_video_key/);
   assert.match(effectPlayback, /VideoPlayerController\.networkUrl/);
   assert.match(effectPlayback, /ModelViewer\(/);
+});
+
+test("frame animation metadata reaches room seats, own profile and remote store previews", () => {
+  assert.match(worker, /active_frame_animation_type/);
+  assert.match(worker, /active_frame_animation_ms/);
+  assert.match(worker, /BASE_FRAME_ANIMATION_METADATA/);
+  assert.match(appState, /activeFrameAnimationType/);
+  assert.match(appState, /activeFrameAnimationMs/);
+  assert.match(appState, /catalogById\['frame:\$itemId'\]/);
+  assert.match(room, /animationType: member\?\['active_frame_animation_type'\]/);
+  assert.match(profile, /animationType: state\.activeFrameAnimationType/);
+  assert.match(shop, /animationType: item\['animation_type'\]/);
+  assert.match(shop, /assetUrl: widget\.state\.backend\.fileUrl\(assetImageKey\)/);
+  assert.match(frameWidget, /final String\? animationType/);
+  assert.match(frameWidget, /final int\? animationDurationMs/);
+  assert.match(frameWidget, /_paintMetadataAnimation/);
+  assert.match(frameWidget, /case 'dragon_wings'/);
 });
 
 test("frame and bubble publishing requires real alpha and frame-hole transparency", () => {
