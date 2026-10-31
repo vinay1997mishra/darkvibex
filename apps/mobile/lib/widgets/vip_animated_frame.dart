@@ -106,6 +106,8 @@ class VipAnimatedFrame extends StatefulWidget {
     this.styleId,
     this.assetUrl,
     this.assetHeaders,
+    this.animationType,
+    this.animationDurationMs,
   });
 
   final double size;
@@ -115,6 +117,8 @@ class VipAnimatedFrame extends StatefulWidget {
   final String? styleId;
   final String? assetUrl;
   final Map<String, String>? assetHeaders;
+  final String? animationType;
+  final int? animationDurationMs;
 
   @override
   State<VipAnimatedFrame> createState() => _VipAnimatedFrameState();
@@ -124,19 +128,25 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
-  Duration _durationFor(String? styleId) => Duration(
-        milliseconds: (_freeAnimatedFrameIds.contains(styleId) ||
-                _rocketFrameStyleAliases.containsKey(styleId))
-            ? 2000
-            : 3200,
-      );
+  Duration _durationFor(String? styleId, int? animationDurationMs) {
+    final configured = animationDurationMs;
+    if (configured != null && configured >= 600 && configured <= 30000) {
+      return Duration(milliseconds: configured);
+    }
+    return Duration(
+      milliseconds: (_freeAnimatedFrameIds.contains(styleId) ||
+              _rocketFrameStyleAliases.containsKey(styleId))
+          ? 2000
+          : 3200,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: _durationFor(widget.styleId),
+      duration: _durationFor(widget.styleId, widget.animationDurationMs),
     );
     if (widget.enabled) _controller.repeat();
   }
@@ -144,8 +154,9 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   @override
   void didUpdateWidget(covariant VipAnimatedFrame oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.styleId != widget.styleId) {
-      _controller.duration = _durationFor(widget.styleId);
+    if (oldWidget.styleId != widget.styleId ||
+        oldWidget.animationDurationMs != widget.animationDurationMs) {
+      _controller.duration = _durationFor(widget.styleId, widget.animationDurationMs);
       if (widget.enabled) {
         _controller
           ..reset()
@@ -235,6 +246,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
                         styleId: visualStyleId,
+                        animationType: widget.animationType,
                         phase: _controller.value,
                       ),
                     ),
@@ -384,6 +396,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
                         styleId: visualStyleId,
+                        animationType: widget.animationType,
                         phase: _controller.value,
                       ),
                     ),
@@ -1101,10 +1114,12 @@ class _PremiumVectorFramePainter extends CustomPainter {
 class _FrameElementPainter extends CustomPainter {
   const _FrameElementPainter({
     required this.styleId,
+    required this.animationType,
     required this.phase,
   });
 
   final String? styleId;
+  final String? animationType;
   final double phase;
 
   bool get _butterfly =>
@@ -1144,8 +1159,53 @@ class _FrameElementPainter extends CustomPainter {
       };
 
   @override
+  bool _paintMetadataAnimation(Canvas canvas, Size size) {
+    switch (animationType) {
+      case 'butterfly_wings':
+      case 'butterfly_wings_flight':
+        _paintButterfly(canvas, size);
+        _paintSparkles(canvas, size, count: 5);
+        return true;
+      case 'crown_shine':
+      case 'crown_radiance':
+        _paintCrownShine(canvas, size);
+        _paintSparkles(canvas, size, count: 4);
+        return true;
+      case 'heart_pulse':
+        _paintHeartPulse(canvas, size);
+        _paintSparkles(canvas, size, count: 4);
+        return true;
+      case 'wing_shimmer':
+      case 'dragon_wings':
+        _paintWingShimmer(canvas, size);
+        _paintSparkles(canvas, size, count: 6);
+        return true;
+      case 'petal_sparkle':
+        _paintFlowerOrbit(canvas, size);
+        _paintSparkles(canvas, size, count: 5);
+        return true;
+      case 'rose_orbit':
+        _paintRoseBloom(canvas, size);
+        _paintSparkles(canvas, size, count: 4);
+        return true;
+      case 'crystal_twinkle':
+      case 'aurora_orbit':
+      case 'comet_trail':
+        _paintStarPulse(canvas, size);
+        _paintSparkles(canvas, size, count: 6);
+        return true;
+      case 'ember_sparkle':
+        _paintNatureGlow(canvas, size);
+        _paintSparkles(canvas, size, count: 5);
+        return true;
+      default:
+        return false;
+    }
+  }
+
   void paint(Canvas canvas, Size size) {
     if (styleId == null || styleId!.isEmpty) return;
+    if (_paintMetadataAnimation(canvas, size)) return;
     if (_butterfly) {
       _paintButterfly(canvas, size);
       _paintSparkles(canvas, size, count: 5);
@@ -1445,7 +1505,9 @@ class _FrameElementPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _FrameElementPainter oldDelegate) =>
-      oldDelegate.styleId != styleId || oldDelegate.phase != phase;
+      oldDelegate.styleId != styleId ||
+      oldDelegate.animationType != animationType ||
+      oldDelegate.phase != phase;
 }
 
 class _ButterflyPalette {
