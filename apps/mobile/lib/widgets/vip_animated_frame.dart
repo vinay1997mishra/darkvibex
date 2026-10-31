@@ -1158,7 +1158,6 @@ class _FrameElementPainter extends CustomPainter {
         _ => const Color(0xFFFFD86B),
       };
 
-  @override
   bool _paintMetadataAnimation(Canvas canvas, Size size) {
     switch (animationType) {
       case 'butterfly_wings':
@@ -1203,6 +1202,7 @@ class _FrameElementPainter extends CustomPainter {
     }
   }
 
+  @override
   void paint(Canvas canvas, Size size) {
     if (styleId == null || styleId!.isEmpty) return;
     if (_paintMetadataAnimation(canvas, size)) return;
