@@ -117,6 +117,8 @@ class AppState extends ChangeNotifier {
   int idLevelExpToNext = 10000;
   String? activeFrameId;
   String? activeFrameAssetKey;
+  String? activeFrameAnimationType;
+  int? activeFrameAnimationMs;
   String? activeVehicleId;
   final Map<String, String> activeCosmetics = <String, String>{};
 
@@ -801,6 +803,8 @@ class AppState extends ChangeNotifier {
     vipTotalReceivedCoins = 0;
     activeFrameId = null;
     activeFrameAssetKey = null;
+    activeFrameAnimationType = null;
+    activeFrameAnimationMs = null;
     activeVehicleId = null;
     activeCosmetics.clear();
     vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
@@ -921,12 +925,15 @@ class AppState extends ChangeNotifier {
       for (final item in catalogRows.whereType<Map>()) {
         final map = Map<String, dynamic>.from(item);
         final id = map['id']?.toString() ?? '';
-        if (id.isNotEmpty) catalogById[id] = map;
+        final kind = map['kind']?.toString() ?? '';
+        if (id.isNotEmpty && kind.isNotEmpty) catalogById['$kind:$id'] = map;
       }
     }
     if (rows is List) {
       activeFrameId = null;
       activeFrameAssetKey = null;
+      activeFrameAnimationType = null;
+      activeFrameAnimationMs = null;
       activeVehicleId = null;
       activeCosmetics.clear();
       for (final row in rows.whereType<Map>()) {
@@ -938,9 +945,11 @@ class AppState extends ChangeNotifier {
         if (kind.isEmpty || itemId.isEmpty) continue;
         activeCosmetics[kind] = itemId;
         if (kind == 'frame') {
+          final frame = catalogById['frame:$itemId'];
           activeFrameId = itemId;
-          activeFrameAssetKey =
-              catalogById[itemId]?['asset_key']?.toString().trim();
+          activeFrameAssetKey = frame?['asset_key']?.toString().trim();
+          activeFrameAnimationType = frame?['animation_type']?.toString().trim();
+          activeFrameAnimationMs = int.tryParse(frame?['animation_ms']?.toString() ?? '');
         }
         if (kind == 'vehicle') activeVehicleId = itemId;
       }

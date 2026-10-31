@@ -510,7 +510,31 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         ),
       );
     }
-    if ((kind == 'frame' || kind == 'bubble' || kind == 'vehicle') && assetImageKey.isNotEmpty) {
+    if (kind == 'frame' && assetImageKey.isNotEmpty) {
+      return Center(
+        child: VipAnimatedFrame(
+          size: 132,
+          enabled: true,
+          level: tier,
+          styleId: id,
+          assetUrl: widget.state.backend.fileUrl(assetImageKey),
+          assetHeaders: widget.state.backend.fileHeaders,
+          animationType: item['animation_type']?.toString(),
+          animationDurationMs: int.tryParse(item['animation_ms']?.toString() ?? ''),
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF0F0B16),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: .10),
+                width: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if ((kind == 'bubble' || kind == 'vehicle') && assetImageKey.isNotEmpty) {
       return SizedBox(
         height: 150,
         width: double.infinity,

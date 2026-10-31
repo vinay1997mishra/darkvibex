@@ -288,6 +288,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ? state.backend.fileUrl(state.activeFrameAssetKey!)
                         : null,
                     assetHeaders: state.backend.fileHeaders,
+                    animationType: state.activeFrameAnimationType,
+                    animationDurationMs: state.activeFrameAnimationMs,
                     child: Container(
                       padding: EdgeInsets.all(ringId == null ? 0 : 1.5),
                       decoration: BoxDecoration(
