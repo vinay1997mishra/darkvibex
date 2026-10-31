@@ -1,6 +1,10 @@
 import { normalizeRole } from "./role_policy.js";
 import { awardIdLevelDaily, awardIdLevelGift, claimIdLevelReward, getIdLevelStatus } from "./id_level.js";
 import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, ownedCosmetics } from "./cosmetics.js";
+
+const BASE_FRAME_ANIMATION_METADATA = new Map(
+  COSMETIC_CATALOG.filter((item) => item.kind === "frame").map((item) => [item.id, item]),
+);
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
@@ -6210,6 +6214,14 @@ async function handleApi(request, env, url) {
                   WHERE oc.kind='frame' AND oc.id=(SELECT c.item_id FROM user_cosmetics c
                     WHERE c.user_id=m.user_id AND c.kind='frame' AND c.active=1 AND c.expires_at>? LIMIT 1)
                   LIMIT 1) AS active_frame_asset_key,
+                (SELECT json_extract(oc.json_data,'$.animation_type') FROM owner_catalog oc
+                  WHERE oc.kind='frame' AND oc.id=(SELECT c.item_id FROM user_cosmetics c
+                    WHERE c.user_id=m.user_id AND c.kind='frame' AND c.active=1 AND c.expires_at>? LIMIT 1)
+                  LIMIT 1) AS active_frame_animation_type,
+                (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc
+                  WHERE oc.kind='frame' AND oc.id=(SELECT c.item_id FROM user_cosmetics c
+                    WHERE c.user_id=m.user_id AND c.kind='frame' AND c.active=1 AND c.expires_at>? LIMIT 1)
+                  LIMIT 1) AS active_frame_animation_ms,
                 (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
                 (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'bubble' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_bubble_id,
@@ -6237,8 +6249,16 @@ async function handleApi(request, env, url) {
                    active_vip_level DESC,
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
-      return json({ ok: true, members: rows.results ?? [] });
+      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
+      const members = (rows.results ?? []).map((member) => {
+        const baseFrame = BASE_FRAME_ANIMATION_METADATA.get(String(member.active_frame_id ?? ""));
+        return {
+          ...member,
+          active_frame_animation_type: member.active_frame_animation_type ?? baseFrame?.animation_type ?? null,
+          active_frame_animation_ms: member.active_frame_animation_ms ?? baseFrame?.animation_ms ?? null,
+        };
+      });
+      return json({ ok: true, members });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
