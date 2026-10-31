@@ -79,7 +79,7 @@ test("frame animation metadata reaches room seats, own profile and remote store 
   assert.match(appState, /activeFrameAnimationType/);
   assert.match(appState, /activeFrameAnimationMs/);
   assert.match(appState, /catalogById\['frame:\$itemId'\]/);
-  assert.match(room, /animationType: member\?\['active_frame_animation_type'\]/);
+  assert.match(room, /animationType: member\['active_frame_animation_type'\]/);
   assert.match(profile, /animationType: state\.activeFrameAnimationType/);
   assert.match(shop, /animationType: item\['animation_type'\]/);
   assert.match(shop, /assetUrl: widget\.state\.backend\.fileUrl\(assetImageKey\)/);
