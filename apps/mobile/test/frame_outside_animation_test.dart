@@ -26,9 +26,18 @@ void main() {
     expect(source, contains('PathFillType.evenOdd'));
     expect(source, contains('ClipPath('));
     expect(source, contains('customFrameScale = 1.86'));
+    expect(source, contains('animationType: widget.animationType'));
+    expect(source, contains('animationDurationMs'));
+    expect(source, contains('_paintMetadataAnimation'));
+    expect(source, contains('case \'butterfly_wings_flight\''));
     expect(source, contains('TransparentArtworkImage('));
     expect(source, contains('requireTransparentCenter: true'));
     expect(source, contains('_TransparentFrameFallbackPainter'));
+
+    final appState = File('lib/app/app_state.dart').readAsStringSync();
+    expect(appState, contains('activeFrameAnimationType'));
+    expect(appState, contains('activeFrameAnimationMs'));
+    expect(appState, contains("catalogById['frame:$itemId']"));
 
     final alphaSource = File('lib/widgets/transparent_artwork_image.dart')
         .readAsStringSync();
