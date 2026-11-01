@@ -6212,14 +6212,16 @@ async function handleApi(request, env, url) {
           WHERE m.id = ?
           LIMIT 1`
       ).bind(createdAt, createdAt, createdAt, messageId).first();
-      const outgoingMessage = createdMessage ?? {
-        id: messageId,
-        user_id: userId,
-        text: textValue,
-        created_at: createdAt,
-        image_key: imageKey || null,
+      const outgoingEnvelope = {
+        message: createdMessage ?? {
+          id: messageId,
+          user_id: userId,
+          text: textValue,
+          created_at: createdAt,
+          image_key: imageKey || null,
+        },
       };
-      const decoratedMessage = (await decorateMessagesWithVipChatBox(db, [outgoingMessage]))[0];
+      const decoratedMessage = (await decorateMessagesWithVipChatBox(db, [outgoingEnvelope.message]))[0];
       return json({
         ok: true,
         message_id: messageId,
