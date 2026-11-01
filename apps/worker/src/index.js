@@ -717,7 +717,7 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
     const key = String(id ?? "").trim();
     if (!key) return null;
     const item = catalog.find((entry) => String(entry.id) === key && String(entry.kind) === kind);
-    if (!item) return { id: key, kind, name: key, asset_key: "", video_key: "", glb_key: "" };
+    if (!item) return null;
     return {
       id: String(item.id), kind: String(item.kind), name: String(item.name ?? item.id),
       asset_key: String(item.asset_key ?? ""), video_key: String(item.video_key ?? ""),
