@@ -2539,7 +2539,7 @@ async function effectiveOwnerStore(db, kind) {
 
 function storePermissionForKind(kind, action) {
   const normalized=String(kind ?? "").trim();
-  if(normalized==="gift") return "gifts."+action;
+  if(normalized==="gift"||normalized==="gift_category") return "gifts."+action;
   if(normalized==="theme") return "themes.global."+action;
   if(["frame","vehicle","entry","ring","bubble","profile_card","profile_background","banner"].includes(normalized)) {
     return "assets."+action;
