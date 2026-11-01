@@ -971,25 +971,62 @@ async function resetVipRule(){
 
 function clearGiftForm(){
   $("#giftId").value="";$("#giftName").value="";$("#giftPrice").value=0;$("#giftVip").value=0;
-  $("#giftEmoji").value="";$("#giftCategory").value="normal";$("#giftAsset").value="";$("#giftVideoKey").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
+  $("#giftEmoji").value="";$("#giftCategory").value="normal";$("#giftAsset").value="";$("#giftVideoKey").value="";$("#giftVideoType").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
 }
 
+const GIFT_VIDEO_FORMATS = {
+  mp4:{mime:"video/mp4",label:"MP4"},
+  m4v:{mime:"video/mp4",label:"M4V"},
+  "3gp":{mime:"video/3gpp",label:"3GP"},
+  webm:{mime:"video/webm",label:"WebM"},
+  mkv:{mime:"video/x-matroska",label:"MKV"},
+  ts:{mime:"video/mp2t",label:"MPEG-TS"},
+  m2ts:{mime:"video/mp2t",label:"MPEG-TS"},
+  mts:{mime:"video/mp2t",label:"MPEG-TS"},
+  mpg:{mime:"video/mpeg",label:"MPEG-PS"},
+  mpeg:{mime:"video/mpeg",label:"MPEG-PS"},
+  mpe:{mime:"video/mpeg",label:"MPEG-PS"}
+};
+function giftVideoFormatForFile(file){
+  const ext=String(file?.name||"").toLowerCase().split(".").pop();
+  return GIFT_VIDEO_FORMATS[ext]||null;
+}
+function giftVideoFormatForKey(key,fallback=""){
+  if(fallback){
+    const found=Object.values(GIFT_VIDEO_FORMATS).find(x=>x.mime===fallback);
+    if(found)return found;
+  }
+  const ext=String(key||"").toLowerCase().split("?")[0].split(".").pop();
+  return GIFT_VIDEO_FORMATS[ext]||null;
+}
+function selectGiftVideoFile(){
+  const file=$("#giftVideoFile").files?.[0];
+  if(!file){$("#giftVideoType").value="";return;}
+  const format=giftVideoFormatForFile(file);
+  $("#giftVideoType").value=format?format.mime:"";
+  $("#giftVideoStatus").textContent=format
+    ? "Selected "+format.label+" video · "+(file.size/1024/1024).toFixed(2)+" MB. Upload it to R2, then save the gift."
+    : "Unsupported format. Use MP4, WebM, MKV, M4V, 3GP, TS/M2TS/MTS or MPG/MPEG.";
+}
 async function uploadGiftVideo(){
   if(!can("gifts.save"))return toast("Gift save permission required",false);
   const giftId=$("#giftId").value.trim();
   const file=$("#giftVideoFile").files?.[0];
   if(!giftId)return toast("Enter Gift ID before uploading video",false);
-  if(!file)return toast("Choose an MP4 gift video first",false);
-  if(file.type!=="video/mp4"&&!/\.mp4$/i.test(file.name))return toast("Only MP4 gift video is supported",false);
-  if(file.size<=0||file.size>11*1024*1024)return toast("Gift video can be maximum 11 MB. Choose a smaller MP4 file.",false);
-  $("#giftVideoStatus").textContent="Uploading to R2…";
+  if(!file)return toast("Choose a gift video first",false);
+  const format=giftVideoFormatForFile(file);
+  if(!format)return toast("Supported formats: MP4, WebM, MKV, M4V, 3GP, TS/M2TS/MTS and MPG/MPEG.",false);
+  if(file.size<=0||file.size>11*1024*1024)return toast("Gift video can be maximum 11 MB. Choose a smaller video file.",false);
+  const extension=String(file.name).toLowerCase().split(".").pop();
+  $("#giftVideoStatus").textContent="Uploading "+format.label+" to R2…";
   const res=await fetch("/api/owner/gift-media",{
     method:"PUT",
     headers:{
       authorization:"Bearer "+state.token,
-      "content-type":"video/mp4",
-      "x-gift-id":giftId
+      "content-type":format.mime,
+      "x-gift-id":giftId,
+      "x-video-extension":extension
     },
     body:file
   });
@@ -997,16 +1034,17 @@ async function uploadGiftVideo(){
   if(!res.ok||!data.ok){
     $("#giftVideoStatus").textContent="";
     const message=data.error==="gift_video_max_11mb"
-      ?"Gift video can be maximum 11 MB. Choose a smaller MP4 file."
-      :data.error==="gift_video_mp4_required"
-        ?"Only MP4 gift video is supported."
+      ?"Gift video can be maximum 11 MB. Choose a smaller video file."
+      :data.error==="gift_video_format_unsupported"
+        ?"This video format is not supported. Use MP4, WebM, MKV, M4V, 3GP, TS or MPG."
         :data.error==="gift_video_invalid"
-          ?"This MP4 file is invalid. Choose another video."
+          ?"This video file is invalid or its extension does not match the file contents."
           :data.error;
     throw new Error(message||("HTTP "+res.status));
   }
   $("#giftVideoKey").value=String(data.key||"");
-  $("#giftVideoStatus").textContent="Video saved in R2";
+  $("#giftVideoType").value=String(data.media_type||format.mime);
+  $("#giftVideoStatus").textContent=format.label+" uploaded to R2. Press Add / Save Gift to publish it.";
   toast("Gift video uploaded to R2");
 }
 async function loadGifts(){
@@ -1025,7 +1063,7 @@ function editGift(id){
   const item=state.giftItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
   $("#giftId").value=item.id||"";$("#giftName").value=item.name||"";$("#giftPrice").value=Number(item.price_coins||0);
   $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=d.category||"normal";
-  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftVideoKey").value=d.video_key||"";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent=d.video_key?"R2 video attached":"";$("#giftOrder").value=Number(item.sort_order||0);
+  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftVideoKey").value=d.video_key||"";$("#giftVideoType").value=d.media_type||giftVideoFormatForKey(d.video_key)?.mime||"";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent=d.video_key?"R2 video attached · "+($("#giftVideoType").value||"format not recorded"):"";$("#giftOrder").value=Number(item.sort_order||0);
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
 async function saveGift(){
@@ -1036,7 +1074,7 @@ async function saveGift(){
   if(starts&&ends&&ends<=starts)return toast("Gift end time must be after start time",false);
   await api("/api/owner/store",{method:"POST",body:JSON.stringify({
     kind:"gift",id,name,price_coins:Number($("#giftPrice").value||0),sort_order:Number($("#giftOrder").value||0),enabled:$("#giftEnabled").checked,
-    data:{min_vip_level:Number($("#giftVip").value||0),vip_level:Number($("#giftVip").value||0),emoji:$("#giftEmoji").value.trim(),category:$("#giftCategory").value.trim(),asset_key:$("#giftAsset").value.trim(),asset:$("#giftAsset").value.trim(),video_key:$("#giftVideoKey").value.trim(),description:$("#giftDescription").value.trim(),starts_at:starts,ends_at:ends}
+    data:{min_vip_level:Number($("#giftVip").value||0),vip_level:Number($("#giftVip").value||0),emoji:$("#giftEmoji").value.trim(),category:$("#giftCategory").value.trim(),asset_key:$("#giftAsset").value.trim(),asset:$("#giftAsset").value.trim(),video_key:$("#giftVideoKey").value.trim(),media_type:$("#giftVideoType").value.trim(),description:$("#giftDescription").value.trim(),starts_at:starts,ends_at:ends}
   })});
   toast("Gift saved to live catalog");clearGiftForm();await loadGifts();
 }
@@ -1956,7 +1994,8 @@ $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.messa
 $("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value));if(rule)fillVipRuleForm(rule);};$("#reloadVipRules").onclick=()=>loadVipRules().catch(e=>toast(e.message,false));$("#saveVipRule").onclick=()=>saveVipRule().catch(e=>toast(e.message,false));$("#resetVipRule").onclick=()=>resetVipRule().catch(e=>toast(e.message,false));
 $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));
 $("#uploadGiftVideo").onclick=()=>uploadGiftVideo().catch(e=>{ $("#giftVideoStatus").textContent=""; toast(e.message,false); });
-$("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
+$("#giftVideoFile").onchange=selectGiftVideoFile;
+$("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoType").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
 $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;$("#uploadCreatorAsset").onclick=()=>uploadCreatorAsset().catch(e=>toast(e.message,false));
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
