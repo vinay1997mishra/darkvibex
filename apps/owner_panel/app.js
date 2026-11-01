@@ -24,6 +24,8 @@ const state = {
   themeCropObjectUrl: null,
   vipRules: [],
   giftItems: [],
+  giftCategories: [],
+  giftCategoryFilter: "all",
   assetItems: [],
   pricingOverrides: [],
   auditRows: [],
@@ -250,7 +252,7 @@ const selectorPermissionRules = [
   ["#vipRuleChatBoxId",["vip.save"],"label"],["#vipRuleEntryEffectId",["vip.save"],"label"],["#vipRuleBannerId",["vip.save"],"label"],["#vipRuleVehicleEntryId",["vip.save"],"label"],["#vipRuleMiniProfileId",["vip.save"],"label"],
   ["#vipRuleEnabled",["vip.save"],"label"],["#saveVipRule",["vip.save"],"self"],["#resetVipRule",["vip.reset"],"self"],
 
-  ["#reloadGifts",["gifts.view"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
+  ["#reloadGifts",["gifts.view"],"self"],["#newGiftCategoryName",["gifts.save"],"label"],["#createGiftCategory",["gifts.save"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
   ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftVideoFile",["gifts.save"],"label"],["#giftVideoKey",["gifts.save"],"label"],["#uploadGiftVideo",["gifts.save"],"self"],["#removeGiftVideo",["gifts.save"],"self"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
   ["#giftEnd",["gifts.save"],"label"],["#giftEnabled",["gifts.save"],"label"],["#giftDescription",["gifts.save"],"label"],["#saveGift",["gifts.save"],"self"],["#clearGift",["gifts.save"],"self"],
 
@@ -295,6 +297,7 @@ const dynamicPermissionRules = [
   ["[data-economy-user]",["users.detail"]],
   ["[data-vip-rule-edit]",["vip.save"]],["[data-vip-rule-reset]",["vip.reset"]],
   ["[data-gift-edit]",["gifts.save"]],["[data-gift-remove]",["gifts.remove"]],
+  ["[data-gift-category-edit]",["gifts.save"]],["[data-gift-category-remove]",["gifts.remove"]],
   ["[data-asset-edit]",["assets.save"]],["[data-asset-remove]",["assets.remove"]],
   ["[data-store-edit]",["store.save"]],["[data-store-remove]",["store.remove"]],
   ["[data-catalog-edit]",["catalog.save"]],["[data-catalog-delete]",["catalog.remove"]],
@@ -982,9 +985,98 @@ async function resetVipRule(){
   await loadVipRules();
 }
 
+const DEFAULT_GIFT_CATEGORIES = [
+  {id:"normal",name:"Normal",builtIn:true},
+  {id:"cp",name:"CP",builtIn:true},
+  {id:"vs",name:"VS",builtIn:true},
+  {id:"luxury",name:"Luxury",builtIn:true},
+  {id:"backpack",name:"Backpack",builtIn:true},
+  {id:"exclusive",name:"Exclusive",builtIn:true},
+  {id:"custom",name:"Custom",builtIn:true}
+];
+
+async function loadGiftCategories(){
+  const d=await api("/api/owner/store?kind=gift_category");
+  const custom=(d.items||[]).filter(x=>Number(x.enabled)!==0).map(x=>({id:String(x.id),name:String(x.name||x.id),builtIn:false}));
+  const known=new Set(DEFAULT_GIFT_CATEGORIES.map(x=>x.id));
+  const legacy=(state.giftItems||[]).map(x=>String(x.data?.category||"")).filter(x=>x&&!known.has(x)&&!custom.some(c=>c.id===x));
+  state.giftCategories=[...DEFAULT_GIFT_CATEGORIES,...custom,...[...new Set(legacy)].map(id=>({id,name:id==="gift_box"?"Gift Box (Legacy)":id,builtIn:false,legacy:true}))];
+  const select=$("#giftCategory");
+  const previous=select.value;
+  select.innerHTML=state.giftCategories.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+  select.value=state.giftCategories.some(c=>c.id===previous)?previous:"normal";
+  renderGiftCategoryTabs();
+}
+
+function renderGiftCategoryTabs(){
+  const tabs=$("#giftCategoryTabs");
+  if(!tabs)return;
+  const current=state.giftCategoryFilter||"all";
+  const all=[{id:"all",name:"All Gifts",builtIn:true},...state.giftCategories];
+  tabs.innerHTML=all.map(c=>`<button type="button" class="${current===c.id?"primary":"secondary"} mini" data-gift-filter="${esc(c.id)}">${esc(c.name)} <span class="pill">${c.id==="all"?state.giftItems.length:state.giftItems.filter(g=>String(g.data?.category||"normal")===c.id).length}</span></button>${!c.builtIn&&c.id!=="all"&&!c.legacy?`<button type="button" class="secondary mini" data-gift-category-edit="${esc(c.id)}" title="Rename section">✎</button><button type="button" class="danger mini" data-gift-category-remove="${esc(c.id)}" title="Delete empty section">×</button>`:""}`).join("");
+  $$("[data-gift-filter]").forEach(b=>b.onclick=()=>{
+    state.giftCategoryFilter=b.dataset.giftFilter;
+    $("#giftCategory").value=state.giftCategoryFilter==="all"?"normal":state.giftCategoryFilter;
+    $("#giftCategoryStatus").textContent=state.giftCategoryFilter==="all"?"Showing gifts from every section.":`Selected section: ${state.giftCategories.find(c=>c.id===state.giftCategoryFilter)?.name||state.giftCategoryFilter}. New gifts will be added here.`;
+    renderGiftCategoryTabs();renderGiftList();
+  });
+  $$("[data-gift-category-edit]").forEach(b=>b.onclick=()=>renameGiftCategory(b.dataset.giftCategoryEdit).catch(e=>toast(e.message,false)));
+  $$("[data-gift-category-remove]").forEach(b=>b.onclick=()=>removeGiftCategory(b.dataset.giftCategoryRemove).catch(e=>toast(e.message,false)));
+}
+
+function renderGiftList(){
+  const filtered=state.giftCategoryFilter==="all"?state.giftItems:state.giftItems.filter(item=>String(item.data?.category||"normal")===state.giftCategoryFilter);
+  $("#giftList").innerHTML=filtered.length?filtered.map(item=>{
+    const data=item.data||{},enabled=Number(item.enabled)!==0;
+    const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
+    const category=state.giftCategories.find(c=>c.id===String(data.category||"normal"))?.name||String(data.category||"normal");
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · Section: ${esc(category)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+  }).join(""):empty("No gifts in this section yet. Add a gift using the form above.");
+  $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
+  $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
+}
+
+async function createGiftCategory(){
+  if(!can("gifts.save"))return toast("Gift save permission required",false);
+  const name=$("#newGiftCategoryName").value.trim();
+  if(!name)return toast("Enter a section name first",false);
+  if(name.length>40)return toast("Section name must be 40 characters or fewer",false);
+  const slug=name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,32)||"section";
+  let id="section-"+slug, suffix=2;
+  while(state.giftCategories.some(c=>c.id===id))id="section-"+slug+"-"+suffix++;
+  await api("/api/owner/store",{method:"POST",body:JSON.stringify({kind:"gift_category",id,name,price_coins:0,sort_order:state.giftCategories.length,enabled:true,data:{custom_section:true}})});
+  $("#newGiftCategoryName").value="";
+  await loadGifts();
+  state.giftCategoryFilter=id;$("#giftCategory").value=id;renderGiftCategoryTabs();renderGiftList();
+  $("#giftCategoryStatus").textContent=`New section "${name}" created. Gifts saved now will go into this section.`;
+  toast("Gift section created");
+}
+
+async function renameGiftCategory(id){
+  const category=state.giftCategories.find(c=>c.id===id&&!c.builtIn);
+  if(!category)return;
+  const name=prompt("New section name:",category.name);
+  if(name===null)return;
+  const clean=name.trim();
+  if(!clean||clean.length>40)return toast("Enter a section name up to 40 characters",false);
+  await api("/api/owner/store",{method:"POST",body:JSON.stringify({kind:"gift_category",id,name:clean,price_coins:0,sort_order:0,enabled:true,data:{custom_section:true}})});
+  await loadGifts();toast("Gift section renamed");
+}
+
+async function removeGiftCategory(id){
+  const category=state.giftCategories.find(c=>c.id===id&&!c.builtIn);
+  if(!category)return;
+  const used=state.giftItems.some(g=>String(g.data?.category||"normal")===id);
+  if(used)return toast("Move or remove all gifts from this section before deleting it",false);
+  if(!confirm(`Delete the empty "${category.name}" section?`))return;
+  await api("/api/owner/store/gift_category/"+encodeURIComponent(id),{method:"DELETE"});
+  if(state.giftCategoryFilter===id)state.giftCategoryFilter="all";
+  await loadGifts();toast("Gift section deleted");
+}
+
 function clearGiftForm(){
   $("#giftId").value="";$("#giftName").value="";$("#giftPrice").value=0;$("#giftVip").value=0;
-  $("#giftEmoji").value="";$("#giftCategory").value="normal";$("#giftAsset").value="";$("#giftVideoKey").value="";$("#giftVideoType").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
+  $("#giftEmoji").value="";$("#giftCategory").value=state.giftCategoryFilter!=="all"?state.giftCategoryFilter:"normal";$("#giftAsset").value="";$("#giftVideoKey").value="";$("#giftVideoType").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
 }
 
@@ -1064,18 +1156,13 @@ async function loadGifts(){
   if(!can("gifts.view"))return;
   const d=await api("/api/owner/store?kind=gift");
   state.giftItems=d.items||[];
-  $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
-    const data=item.data||{},enabled=Number(item.enabled)!==0;
-    const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
-    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(data.category||"normal")} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
-  }).join(""):empty("No gifts");
-  $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
-  $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
+  await loadGiftCategories();
+  renderGiftList();
 }
 function editGift(id){
   const item=state.giftItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
   $("#giftId").value=item.id||"";$("#giftName").value=item.name||"";$("#giftPrice").value=Number(item.price_coins||0);
-  $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=d.category||"normal";
+  $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=state.giftCategories.some(c=>c.id===String(d.category||"normal"))?String(d.category||"normal"):"normal";
   $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftVideoKey").value=d.video_key||"";$("#giftVideoType").value=d.media_type||giftVideoFormatForKey(d.video_key)?.mime||"";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent=d.video_key?"R2 video attached · "+($("#giftVideoType").value||"format not recorded"):"";$("#giftOrder").value=Number(item.sort_order||0);
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
@@ -2006,6 +2093,7 @@ $("#reloadPolicies").onclick=()=>loadPolicies().catch(e=>toast(e.message,false))
 $("#searchEconomyUsers").onclick=()=>searchEconomyUsers().catch(e=>toast(e.message,false));$("#economyUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchEconomyUsers().catch(x=>toast(x.message,false));});$("#saveEconomyPublicId").onclick=()=>saveEconomyPublicId().catch(e=>toast(e.message,false));$("#saveCoinRate").onclick=()=>saveCoinRate().catch(e=>toast(e.message,false));
 $("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value));if(rule)fillVipRuleForm(rule);};$("#reloadVipRules").onclick=()=>loadVipRules().catch(e=>toast(e.message,false));$("#saveVipRule").onclick=()=>saveVipRule().catch(e=>toast(e.message,false));$("#resetVipRule").onclick=()=>resetVipRule().catch(e=>toast(e.message,false));
 $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));
+$("#createGiftCategory").onclick=()=>createGiftCategory().catch(e=>toast(e.message,false));
 $("#uploadGiftVideo").onclick=()=>uploadGiftVideo().catch(e=>{ $("#giftVideoStatus").textContent=""; toast(e.message,false); });
 $("#giftVideoFile").onchange=selectGiftVideoFile;
 $("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoType").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;

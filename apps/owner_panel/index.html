@@ -412,7 +412,14 @@
 
         <section class="view" data-view-panel="gifts">
           <article class="panel">
-            <div class="panel-head"><div><h2>Gift Box / All Gifts</h2><p>All built-in and custom gifts from every category appear here. Add a gift, edit its name/coin price/media/category, or remove it from the live app catalog.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
+            <div class="panel-head"><div><h2>Gift Box / Gift Sections</h2><p>Choose a section to view and add gifts. Create your own sections whenever needed. Existing gift, video upload, edit and remove controls are preserved.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
+            <div class="form-grid">
+              <label class="span-2">Create new gift section
+                <div class="action-row"><input id="newGiftCategoryName" placeholder="Section name, e.g. Festival Specials" /><button id="createGiftCategory" class="secondary" type="button">+ Create Section</button></div>
+              </label>
+            </div>
+            <div id="giftCategoryTabs" class="action-row" aria-label="Gift sections"></div>
+            <div class="muted" id="giftCategoryStatus" role="status">Select a section to filter gifts and set the section for new gifts.</div>
             <div class="form-grid">
               <label>Gift ID<input id="giftId" placeholder="Unique gift ID" /></label>
               <label>Name<input id="giftName" /></label>
