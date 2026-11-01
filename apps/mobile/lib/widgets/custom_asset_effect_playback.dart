@@ -8,8 +8,8 @@ import '../infra/backend_api.dart';
 
 /// One-shot custom entry/vehicle effect. Video is preferred; GLB is used only
 /// when no video render was uploaded. Built-in Flutter effect stays as fallback.
-class CreatorAssetEffectPlayback extends StatefulWidget {
-  const CreatorAssetEffectPlayback({
+class CustomAssetEffectPlayback extends StatefulWidget {
+  const CustomAssetEffectPlayback({
     super.key,
     required this.backend,
     required this.videoKey,
@@ -23,10 +23,10 @@ class CreatorAssetEffectPlayback extends StatefulWidget {
   final Widget fallback;
 
   @override
-  State<CreatorAssetEffectPlayback> createState() => _CreatorAssetEffectPlaybackState();
+  State<CustomAssetEffectPlayback> createState() => _CustomAssetEffectPlaybackState();
 }
 
-class _CreatorAssetEffectPlaybackState extends State<CreatorAssetEffectPlayback> {
+class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
   VideoPlayerController? _controller;
   bool _ready = false;
   bool _failed = false;
@@ -38,7 +38,7 @@ class _CreatorAssetEffectPlaybackState extends State<CreatorAssetEffectPlayback>
   }
 
   @override
-  void didUpdateWidget(covariant CreatorAssetEffectPlayback oldWidget) {
+  void didUpdateWidget(covariant CustomAssetEffectPlayback oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videoKey != widget.videoKey) unawaited(_load());
   }

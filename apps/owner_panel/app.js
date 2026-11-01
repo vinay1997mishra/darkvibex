@@ -256,7 +256,7 @@ const selectorPermissionRules = [
 
   ["#reloadAssets",["assets.view"],"self"],["#assetKind",["assets.view","assets.save","assets.remove"],"label"],["#assetId",["assets.save"],"label"],["#assetName",["assets.save"],"label"],
   ["#assetPrice",["assets.save"],"label"],["#assetVip",["assets.save"],"label"],["#assetDuration",["assets.save"],"label"],["#assetTier",["assets.save"],"label"],["#assetOrder",["assets.save"],"label"],
-  ["#assetFileKey",["assets.save"],"label"],["#assetVideoKey",["assets.save"],"label"],["#assetGlbKey",["assets.save"],"label"],["#assetAnimationType",["assets.save"],"label"],["#assetAnimationMs",["assets.save"],"label"],["#creatorAssetFile",["assets.save"],"label"],["#uploadCreatorAsset",["assets.save"],"self"],["#assetStart",["assets.save"],"label"],["#assetEnd",["assets.save"],"label"],["#assetEnabled",["assets.save"],"label"],["#assetDescription",["assets.save"],"label"],
+  ["#assetFileKey",["assets.save"],"label"],["#assetVideoKey",["assets.save"],"label"],["#assetGlbKey",["assets.save"],"label"],["#assetAnimationType",["assets.save"],"label"],["#assetAnimationMs",["assets.save"],"label"],["#assetMediaFile",["assets.save"],"label"],["#uploadAssetMedia",["assets.save"],"self"],["#assetStart",["assets.save"],"label"],["#assetEnd",["assets.save"],"label"],["#assetEnabled",["assets.save"],"label"],["#assetDescription",["assets.save"],"label"],
   ["#saveAsset",["assets.save"],"self"],["#clearAsset",["assets.save"],"self"],
 
   ["#reloadStore",["store.view"],"self"],["#storeKind",["store.view","store.save","store.remove"],"label"],["#storeId",["store.save"],"label"],["#storeName",["store.save"],"label"],
@@ -1100,7 +1100,7 @@ async function removeGift(id){
 function clearAssetForm(){
   $("#assetId").value="";$("#assetName").value="";$("#assetPrice").value=0;$("#assetVip").value=0;$("#assetDuration").value=30;
   $("#assetTier").value=0;$("#assetOrder").value=0;$("#assetFileKey").value="";$("#assetVideoKey").value="";$("#assetGlbKey").value="";
-  $("#assetAnimationType").value="";$("#assetAnimationMs").value=5000;$("#creatorAssetFile").value="";$("#creatorAssetStatus").textContent="";
+  $("#assetAnimationType").value="";$("#assetAnimationMs").value=5000;$("#assetMediaFile").value="";$("#assetMediaStatus").textContent="";
   $("#assetStart").value="";$("#assetEnd").value="";
   $("#assetEnabled").checked=true;$("#assetDescription").value="";
 }
@@ -1126,8 +1126,8 @@ function editAsset(id){
   $("#assetId").value=item.id||"";$("#assetName").value=item.name||"";$("#assetPrice").value=Number(item.price_coins||0);
   $("#assetVip").value=Number(d.min_vip_level??d.vip_level??0);$("#assetDuration").value=Number(d.duration_days??30);$("#assetTier").value=Number(d.tier??0);
   $("#assetOrder").value=Number(item.sort_order||0);$("#assetFileKey").value=d.asset_key||d.asset||"";$("#assetVideoKey").value=d.video_key||"";$("#assetGlbKey").value=d.glb_key||"";
-  $("#assetAnimationType").value=d.animation_type||"";$("#assetAnimationMs").value=Number(d.animation_ms||5000);$("#creatorAssetFile").value="";
-  $("#creatorAssetStatus").textContent=[d.video_key&&"Video attached",d.glb_key&&"GLB attached",d.asset_key&&"Image attached"].filter(Boolean).join(" · ")||"No uploaded media";
+  $("#assetAnimationType").value=d.animation_type||"";$("#assetAnimationMs").value=Number(d.animation_ms||5000);$("#assetMediaFile").value="";
+  $("#assetMediaStatus").textContent=[d.video_key&&"Video attached",d.glb_key&&"GLB attached",d.asset_key&&"Image attached"].filter(Boolean).join(" · ")||"No uploaded media";
   $("#assetStart").value=d.starts_at||"";$("#assetEnd").value=d.ends_at||"";
   $("#assetEnabled").checked=Number(item.enabled)!==0;$("#assetDescription").value=d.description||"";
 }
@@ -1145,13 +1145,13 @@ async function saveAsset(){
   toast("Asset saved to live store");clearAssetForm();await loadAssets();
 }
 
-async function uploadCreatorAsset(){
+async function uploadAssetMedia(){
   const kind=$("#assetKind").value;
   if(!can(kind==="gift"?"gifts.save":"assets.save"))return toast("Asset upload permission required",false);
   const assetId=$("#assetId").value.trim();
-  const file=$("#creatorAssetFile").files?.[0];
+  const file=$("#assetMediaFile").files?.[0];
   if(!assetId)return toast("Enter the asset ID before uploading",false);
-  if(!file)return toast("Choose a creator asset file first",false);
+  if(!file)return toast("Choose a custom asset file first",false);
   const ext=(file.name.split(".").pop()||"").toLowerCase();
   const types={mp4:"video/mp4",webm:"video/webm",glb:"model/gltf-binary",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp"};
   const type=types[ext];
@@ -1171,25 +1171,25 @@ async function uploadCreatorAsset(){
       const corners=[alphaAt(1,1),alphaAt(94,1),alphaAt(1,94),alphaAt(94,94)];
       const outsideClear=corners.every(alpha=>alpha<16);
       const centreClear=kind!=="frame"||alphaAt(48,48)<16;
-      if(!outsideClear||!centreClear)return toast(kind==="frame"?"Frame ka outer background aur beech ka DP cut-out transparent hona chahiye. Creator Studio se transparent PNG export karo.":"Chat bubble ke chaaron corners transparent hone chahiye; square/solid background upload nahi hoga.",false);
+      if(!outsideClear||!centreClear)return toast(kind==="frame"?"Frame ka outer background aur beech ka DP cut-out transparent hona chahiye. transparent PNG export karke upload karo.":"Chat bubble ke chaaron corners transparent hone chahiye; square/solid background upload nahi hoga.",false);
     }catch(error){
       return toast("Image transparency check nahi ho paayi. Transparent PNG/WebP export karke dobara try karo.",false);
     }finally{bitmap?.close?.();}
   }
-  $("#creatorAssetStatus").textContent="Validating transparent artwork and uploading to R2…";
-  const response=await fetch("/api/owner/creator-media",{method:"PUT",headers:{"authorization":"Bearer "+state.token,"content-type":type,"x-asset-id":assetId,"x-asset-kind":kind},body:file});
+  $("#assetMediaStatus").textContent="Validating transparent artwork and uploading to R2…";
+  const response=await fetch("/api/owner/asset-media",{method:"PUT",headers:{"authorization":"Bearer "+state.token,"content-type":type,"x-asset-id":assetId,"x-asset-kind":kind},body:file});
   const data=await response.json().catch(()=>({ok:false,error:"invalid_response"}));
   if(!response.ok||!data.ok){
-    $("#creatorAssetStatus").textContent="";
-    const messages={creator_asset_type_invalid:"That media type is not supported.",creator_asset_too_large:"The selected file is larger than the limit.",creator_asset_signature_invalid:"The file header is invalid or the file is damaged.",creator_asset_transparency_required:"Frames and chat bubbles must be transparent PNG/WebP artwork, not a square card.",file_storage_not_bound:"R2 storage is not configured.",unauthorized:"Sign in again to the Owner Panel."};
+    $("#assetMediaStatus").textContent="";
+    const messages={asset_media_type_invalid:"That media type is not supported.",asset_media_too_large:"The selected file is larger than the limit.",asset_media_signature_invalid:"The file header is invalid or the file is damaged.",asset_media_transparency_required:"Frames and chat bubbles must be transparent PNG/WebP artwork, not a square card.",file_storage_not_bound:"R2 storage is not configured.",unauthorized:"Sign in again to the Owner Panel."};
     throw new Error(messages[data.error]||data.error||("Upload failed (HTTP "+response.status+")"));
   }
   const key=String(data.key||"");
   if(ext==="glb")$("#assetGlbKey").value=key;
   else if(ext==="mp4"||ext==="webm")$("#assetVideoKey").value=key;
   else $("#assetFileKey").value=key;
-  $("#creatorAssetStatus").textContent="Uploaded to R2. Press Add / Save Asset to publish the key into the live catalog.";
-  toast("Creator media uploaded to R2");
+  $("#assetMediaStatus").textContent="Uploaded to R2. Press Add / Save Asset to publish the key into the live catalog.";
+  toast("Custom asset uploaded to R2");
 }
 
 async function removeAsset(id){
@@ -1975,7 +1975,7 @@ $("#logout").onclick=()=>{
   setLoginMode(state.loginMode,true);
   $("#loginPassword").value="";
 };
-$$('.nav-btn').forEach(b=>b.onclick=()=>{if(b.id==='creatorStudioLink')return;setView(b.dataset.view);});
+$$('.nav-btn').forEach(b=>b.onclick=()=>{setView(b.dataset.view);});
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
 $("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
@@ -2009,7 +2009,7 @@ $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));
 $("#uploadGiftVideo").onclick=()=>uploadGiftVideo().catch(e=>{ $("#giftVideoStatus").textContent=""; toast(e.message,false); });
 $("#giftVideoFile").onchange=selectGiftVideoFile;
 $("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoType").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
-$("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;$("#uploadCreatorAsset").onclick=()=>uploadCreatorAsset().catch(e=>toast(e.message,false));
+$("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;$("#uploadAssetMedia").onclick=()=>uploadAssetMedia().catch(e=>toast(e.message,false));
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
 $("#catalogKind").onchange=()=>{clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));};$("#reloadTreasury").onclick=()=>loadWallets().catch(e=>toast(e.message,false));$("#treasuryAdd").onclick=()=>treasuryAction("add").catch(e=>toast(e.message,false));$("#treasuryDeduct").onclick=()=>treasuryAction("deduct").catch(e=>toast(e.message,false));$("#treasurySend").onclick=()=>treasuryAction("send").catch(e=>toast(e.message,false));$("#saveCatalog").onclick=()=>saveCatalog().catch(e=>toast(e.message,false));$("#clearCatalog").onclick=clearCatalogForm;$("#reloadCatalog").onclick=()=>loadCatalog().catch(e=>toast(e.message,false));
 $("#saveMaintenance").onclick=()=>saveMaintenance().catch(e=>toast(e.message,false));$("#saveAnnouncement").onclick=()=>saveAnnouncement().catch(e=>toast(e.message,false));$("#clearAnnouncement").onclick=clearAnnouncementForm;$("#createStaff").onclick=()=>createStaff().catch(e=>toast(e.message,false));$("#reloadAudit").onclick=()=>loadAudit().catch(e=>toast(e.message,false));$("#exportAudit").onclick=exportAuditCsv;$("#clearAudit").onclick=()=>clearAudit().catch(e=>toast(e.message,false));
