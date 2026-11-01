@@ -297,6 +297,7 @@ const dynamicPermissionRules = [
   ["[data-economy-user]",["users.detail"]],
   ["[data-vip-rule-edit]",["vip.save"]],["[data-vip-rule-reset]",["vip.reset"]],
   ["[data-gift-edit]",["gifts.save"]],["[data-gift-remove]",["gifts.remove"]],
+  ["[data-gift-category-edit]",["gifts.save"]],["[data-gift-category-remove]",["gifts.remove"]],
   ["[data-asset-edit]",["assets.save"]],["[data-asset-remove]",["assets.remove"]],
   ["[data-store-edit]",["store.save"]],["[data-store-remove]",["store.remove"]],
   ["[data-catalog-edit]",["catalog.save"]],["[data-catalog-delete]",["catalog.remove"]],
