@@ -735,6 +735,31 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
   };
 }
 
+async function decorateMessagesWithVipChatBox(db, messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  if (!rows.length) return rows;
+  const catalog = await effectiveCosmeticCatalog(db);
+  const statusCache = new Map();
+  const visualCache = new Map();
+  for (const message of rows) {
+    const senderId = String(message.user_id ?? message.sender_user_id ?? "").trim();
+    if (!senderId || message.active_bubble_id) continue;
+    if (!statusCache.has(senderId)) statusCache.set(senderId, await getVipStatus(db, senderId));
+    const vip = statusCache.get(senderId);
+    if (!vip?.active || Number(vip.level ?? 0) < 1) continue;
+    const level = Number(vip.level);
+    if (!visualCache.has(level)) {
+      visualCache.set(level, await vipVisualsForLevel(db, level, catalog));
+    }
+    const bubble = visualCache.get(level)?.chat_box;
+    if (!bubble?.id) continue;
+    message.active_bubble_id = bubble.id;
+    message.active_bubble_asset_key = bubble.asset_key ?? "";
+    message.active_bubble_video_key = bubble.video_key ?? "";
+  }
+  return rows;
+}
+
 const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
   "English",
   "Hindi",
@@ -6118,7 +6143,8 @@ async function handleApi(request, env, url) {
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
       ).bind(now(), now(), now(), roomId).all();
-      return json({ ok: true, messages: (rows.results ?? []).reverse() });
+      const messages = await decorateMessagesWithVipChatBox(db, (rows.results ?? []).reverse());
+      return json({ ok: true, messages });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
@@ -6854,7 +6880,7 @@ async function handleApi(request, env, url) {
         ORDER BY m.created_at DESC
         LIMIT ?`
     ).bind(now(), now(), userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
-    rows.results = (rows.results ?? []).reverse();
+    rows.results = await decorateMessagesWithVipChatBox(db, (rows.results ?? []).reverse());
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
     ).bind(now(), userId, otherId).run();
