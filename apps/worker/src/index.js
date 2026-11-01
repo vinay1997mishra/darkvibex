@@ -8709,7 +8709,7 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
         if (!env.FILES) return json({ ok: false, error: "files_not_bound" }, { status: 503 });
         const key = String(url.searchParams.get("key") ?? "").trim();
         if (!key || key.includes("..") || key.startsWith("/") ||
-            !/^(users|rooms|messages|custom-gifts|room-themes|banners|creator-assets)\/[a-zA-Z0-9._/-]+$/.test(key)) {
+            !/^(users|rooms|messages|custom-gifts|room-themes|banners|custom-assets|creator-assets)\/[a-zA-Z0-9._/-]+$/.test(key)) {
           return json({ ok: false, error: "invalid_file_key" }, { status: 400 });
         }
         if (key.startsWith("messages/")) {
@@ -8759,15 +8759,11 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, url);
       }
-      if (env.ASSETS && (url.pathname === "/creator-studio" || url.pathname.startsWith("/creator-studio/"))) {
-        // Use the static-assets binding hostname and preserve the full subpath,
-        // so both the HTML entry point and every hashed JS/CSS chunk resolve.
-        const studioAssetUrl = new URL(
-          url.pathname === "/creator-studio" ? "/creator-studio/" : url.pathname,
-          "https://assets.local",
-        );
-        studioAssetUrl.search = url.search;
-        return env.ASSETS.fetch(studioAssetUrl);
+      if (url.pathname === "/creator-studio" || url.pathname.startsWith("/creator-studio/")) {
+        return new Response("Not Found", {
+          status: 404,
+          headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
+        });
       }
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return json({ ok: false, error: "not_found" }, { status: 404 });
