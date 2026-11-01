@@ -1016,7 +1016,7 @@ function renderGiftCategoryTabs(){
   tabs.innerHTML=all.map(c=>`<button type="button" class="${current===c.id?"primary":"secondary"} mini" data-gift-filter="${esc(c.id)}">${esc(c.name)} <span class="pill">${c.id==="all"?state.giftItems.length:state.giftItems.filter(g=>String(g.data?.category||"normal")===c.id).length}</span></button>${!c.builtIn&&c.id!=="all"&&!c.legacy?`<button type="button" class="secondary mini" data-gift-category-edit="${esc(c.id)}" title="Rename section">✎</button><button type="button" class="danger mini" data-gift-category-remove="${esc(c.id)}" title="Delete empty section">×</button>`:""}`).join("");
   $("[data-gift-filter]").forEach(b=>b.onclick=()=>{
     state.giftCategoryFilter=b.dataset.giftFilter;
-    if(state.giftCategoryFilter!=="all")$("#giftCategory").value=state.giftCategoryFilter;
+    $("#giftCategory").value=state.giftCategoryFilter==="all"?"normal":state.giftCategoryFilter;
     $("#giftCategoryStatus").textContent=state.giftCategoryFilter==="all"?"Showing gifts from every section.":`Selected section: ${state.giftCategories.find(c=>c.id===state.giftCategoryFilter)?.name||state.giftCategoryFilter}. New gifts will be added here.`;
     renderGiftCategoryTabs();renderGiftList();
   });
