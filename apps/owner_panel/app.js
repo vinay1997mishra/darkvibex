@@ -1014,14 +1014,14 @@ function renderGiftCategoryTabs(){
   const current=state.giftCategoryFilter||"all";
   const all=[{id:"all",name:"All Gifts",builtIn:true},...state.giftCategories];
   tabs.innerHTML=all.map(c=>`<button type="button" class="${current===c.id?"primary":"secondary"} mini" data-gift-filter="${esc(c.id)}">${esc(c.name)} <span class="pill">${c.id==="all"?state.giftItems.length:state.giftItems.filter(g=>String(g.data?.category||"normal")===c.id).length}</span></button>${!c.builtIn&&c.id!=="all"&&!c.legacy?`<button type="button" class="secondary mini" data-gift-category-edit="${esc(c.id)}" title="Rename section">✎</button><button type="button" class="danger mini" data-gift-category-remove="${esc(c.id)}" title="Delete empty section">×</button>`:""}`).join("");
-  $("[data-gift-filter]").forEach(b=>b.onclick=()=>{
+  $$("[data-gift-filter]").forEach(b=>b.onclick=()=>{
     state.giftCategoryFilter=b.dataset.giftFilter;
     $("#giftCategory").value=state.giftCategoryFilter==="all"?"normal":state.giftCategoryFilter;
     $("#giftCategoryStatus").textContent=state.giftCategoryFilter==="all"?"Showing gifts from every section.":`Selected section: ${state.giftCategories.find(c=>c.id===state.giftCategoryFilter)?.name||state.giftCategoryFilter}. New gifts will be added here.`;
     renderGiftCategoryTabs();renderGiftList();
   });
-  $("[data-gift-category-edit]").forEach(b=>b.onclick=()=>renameGiftCategory(b.dataset.giftCategoryEdit).catch(e=>toast(e.message,false)));
-  $("[data-gift-category-remove]").forEach(b=>b.onclick=()=>removeGiftCategory(b.dataset.giftCategoryRemove).catch(e=>toast(e.message,false)));
+  $$("[data-gift-category-edit]").forEach(b=>b.onclick=()=>renameGiftCategory(b.dataset.giftCategoryEdit).catch(e=>toast(e.message,false)));
+  $$("[data-gift-category-remove]").forEach(b=>b.onclick=()=>removeGiftCategory(b.dataset.giftCategoryRemove).catch(e=>toast(e.message,false)));
 }
 
 function renderGiftList(){
@@ -1032,8 +1032,8 @@ function renderGiftList(){
     const category=state.giftCategories.find(c=>c.id===String(data.category||"normal"))?.name||String(data.category||"normal");
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · Section: ${esc(category)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No gifts in this section yet. Add a gift using the form above.");
-  $("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
-  $("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
+  $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
+  $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
 }
 
 async function createGiftCategory(){
