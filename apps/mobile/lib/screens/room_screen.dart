@@ -2824,6 +2824,11 @@ class _RoomScreenState extends State<RoomScreen> {
     final vipFrame = vipVisuals['frame'] is Map
         ? Map<String, dynamic>.from(vipVisuals['frame'] as Map)
         : <String, dynamic>{};
+    final vipMiniProfile = vipVisuals['mini_profile_panel'] is Map
+        ? Map<String, dynamic>.from(vipVisuals['mini_profile_panel'] as Map)
+        : <String, dynamic>{};
+    final vipMiniProfileAssetKey =
+        vipMiniProfile['asset_key']?.toString().trim() ?? '';
     const vipVisualLabels = <String, String>{
       'frame': 'Profile frame',
       'chat_box': 'VIP chat box',
@@ -3021,9 +3026,19 @@ class _RoomScreenState extends State<RoomScreen> {
                       maxHeight:
                           MediaQuery.sizeOf(sheetContext).height * .62,
                     ),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
+                      image: vipMiniProfileAssetKey.isEmpty
+                          ? null
+                          : DecorationImage(
+                              image: NetworkImage(
+                                widget.state.backend.fileUrl(vipMiniProfileAssetKey),
+                                headers: widget.state.backend.fileHeaders,
+                              ),
+                              fit: BoxFit.cover,
+                              opacity: const AlwaysStoppedAnimation<double>(0.16),
+                            ),
+                      borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(24),
                       ),
                     ),
