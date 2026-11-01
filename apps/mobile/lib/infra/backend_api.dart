@@ -1126,15 +1126,19 @@ class BackendApi {
     final featured = _featuredRoomGifts
         .map((gift) => Map<String, dynamic>.from(gift))
         .toList(growable: false);
-    final featuredIds =
-        featured.map((gift) => gift['id']?.toString() ?? '').toSet();
-
-    return <Map<String, dynamic>>[
-      ...featured,
-      ...serverGifts.where(
-        (gift) => !featuredIds.contains(gift['id']?.toString() ?? ''),
-      ),
-    ];
+    // The local featured list is only an offline fallback. Server catalog
+    // records must win for matching IDs so Owner name, price, category and
+    // animation edits are reflected immediately without an APK update.
+    final merged = <String, Map<String, dynamic>>{
+      for (final gift in featured)
+        if ((gift['id']?.toString() ?? '').isNotEmpty)
+          gift['id'].toString(): gift,
+    };
+    for (final gift in serverGifts) {
+      final id = gift['id']?.toString() ?? '';
+      if (id.isNotEmpty) merged[id] = gift;
+    }
+    return merged.values.toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> customGifts({
