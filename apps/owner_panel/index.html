@@ -426,12 +426,16 @@
                 </select>
               </label>
               <label>Image / DP key<input id="giftAsset" placeholder="Optional R2 image key" /></label>
-              <label>Gift video (MP4, max 11 MB)
-                <input id="giftVideoFile" type="file" accept="video/mp4" />
+              <label>Gift video (MP4, WebM, MKV, M4V, 3GP, TS, MPG · max 11 MB)
+                <input id="giftVideoFile" type="file" accept="video/*,.mp4,.webm,.mkv,.m4v,.3gp,.ts,.m2ts,.mts,.mpg,.mpeg,.mpe" />
+              </label>
+              <label>Detected video format
+                <input id="giftVideoType" readonly placeholder="Choose a supported video" />
               </label>
               <label class="span-2">Gift video R2 key
-                <input id="giftVideoKey" readonly placeholder="Upload an MP4 to use the video itself as the gift DP" />
+                <input id="giftVideoKey" readonly placeholder="Upload the gift animation video to R2" />
               </label>
+              <p class="muted span-2">Supported containers: MP4, WebM, Matroska (MKV), M4V, 3GP, MPEG-TS and MPEG-PS. For widest Android compatibility, use MP4 with H.264 video and AAC audio. Maximum upload size: 11 MB.</p>
               <div class="action-row span-2">
                 <button id="uploadGiftVideo" class="secondary" type="button">Upload Video to R2</button>
                 <button id="removeGiftVideo" class="secondary" type="button">Remove Video</button>
