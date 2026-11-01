@@ -700,7 +700,7 @@ async function effectiveGiftCatalog(db) {
 // Resolve the visual bundle configured for each VIP level. Asset references
 // point at the same live catalog used by Store purchases, so Owner edits flow to
 // the app without shipping another APK.
-async function vipVisualsForLevel(db, level) {
+async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
   const vipLevel = Math.max(0, Math.min(18, Number(level) || 0));
   if (vipLevel < 1) return {};
   let row = null;
@@ -712,7 +712,7 @@ async function vipVisualsForLevel(db, level) {
   }
   let config = {};
   try { config = JSON.parse(String(row?.json_data ?? "{}")) || {}; } catch (_) {}
-  const catalog = await effectiveCosmeticCatalog(db);
+  const catalog = Array.isArray(catalogSnapshot) ? catalogSnapshot : await effectiveCosmeticCatalog(db);
   const find = (id, kind) => {
     const key = String(id ?? "").trim();
     if (!key) return null;
@@ -6277,7 +6277,48 @@ async function handleApi(request, env, url) {
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
       ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
-      return json({ ok: true, members: rows.results ?? [] });
+      const members = rows.results ?? [];
+      const activeVipMembers = members.filter((member) => Number(member.active_vip_level ?? 0) > 0);
+      if (activeVipMembers.length) {
+        const vipCatalog = await effectiveCosmeticCatalog(db);
+        const visualCache = new Map();
+        for (const member of activeVipMembers) {
+          const level = Number(member.active_vip_level ?? 0);
+          if (!visualCache.has(level)) {
+            visualCache.set(level, await vipVisualsForLevel(db, level, vipCatalog));
+          }
+          const visuals = visualCache.get(level) ?? {};
+          member.vip_visuals = visuals;
+          const frame = visuals.frame;
+          if (!member.active_frame_id && frame?.id) {
+            member.active_frame_id = frame.id;
+            member.active_frame_asset_key = frame.asset_key ?? "";
+          }
+          const chatBox = visuals.chat_box;
+          if (!member.active_bubble_id && chatBox?.id) member.active_bubble_id = chatBox.id;
+          const entry = visuals.entry_effect;
+          if (!member.active_entry_id && entry?.id) {
+            member.active_entry_id = entry.id;
+            member.active_entry_video_key = entry.video_key ?? "";
+            member.active_entry_glb_key = entry.glb_key ?? "";
+            member.active_entry_animation_ms = entry.animation_ms ?? 0;
+          }
+          const vehicle = visuals.vehicle_entry;
+          if (!member.active_vehicle_id && vehicle?.id) {
+            member.active_vehicle_id = vehicle.id;
+            member.active_vehicle_video_key = vehicle.video_key ?? "";
+            member.active_vehicle_glb_key = vehicle.glb_key ?? "";
+            member.active_vehicle_animation_ms = vehicle.animation_ms ?? 0;
+          }
+          const banner = visuals.vip_banner;
+          if (banner?.id) member.active_vip_banner_id = banner.id;
+          const miniProfile = visuals.mini_profile_panel;
+          if (!member.active_profile_card_id && miniProfile?.id) {
+            member.active_profile_card_id = miniProfile.id;
+          }
+        }
+      }
+      return json({ ok: true, members });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
