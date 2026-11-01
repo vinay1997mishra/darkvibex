@@ -3036,7 +3036,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 headers: widget.state.backend.fileHeaders,
                               ),
                               fit: BoxFit.cover,
-                              opacity: const AlwaysStoppedAnimation<double>(0.16),
+                              opacity: 0.16,
                             ),
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(24),
