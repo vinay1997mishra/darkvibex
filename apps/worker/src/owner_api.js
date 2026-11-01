@@ -1403,7 +1403,7 @@ async function handleCreatorMediaUpload(request, env, db, actor) {
   const kind = String(request.headers.get("x-asset-kind") ?? "").trim().toLowerCase();
   const assetId = String(request.headers.get("x-asset-id") ?? "")
     .trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
-  const supportedKinds = new Set(["gift", "frame", "entry", "vehicle", "bubble", "ring", "profile_card", "profile_background"]);
+  const supportedKinds = new Set(["gift", "frame", "entry", "vehicle", "bubble", "ring", "profile_card", "profile_background", "banner"]);
   if (!supportedKinds.has(kind)) return json({ ok: false, error: "creator_asset_kind_invalid" }, { status: 400 });
   requirePermission(actor, kind === "gift" ? "gifts.save" : "assets.save");
   if (!assetId) return json({ ok: false, error: "creator_asset_id_required" }, { status: 400 });
@@ -2280,7 +2280,7 @@ async function handleGamesOwner(request, db, actor, url) {
 
 const OWNER_PRICE_KINDS=new Set([
   "gift","frame","vehicle","entry","ring","bubble","profile_card","profile_background",
-  "theme","unique_id","room_theme"
+  "theme","banner","unique_id","room_theme"
 ]);
 
 async function handlePricingOverrides(request, db, actor, url, parts) {
@@ -2407,6 +2407,11 @@ async function handleVipRules(request, db, actor, parts) {
         validity_days:Number(data.validity_days ?? base.days),
         entry_id:String(data.entry_id ?? ""),
         frame_id:String(data.frame_id ?? ""),
+        chat_box_id:String(data.chat_box_id ?? ""),
+        entry_effect_id:String(data.entry_effect_id ?? ""),
+        vip_banner_id:String(data.vip_banner_id ?? ""),
+        vehicle_entry_id:String(data.vehicle_entry_id ?? ""),
+        mini_profile_panel_id:String(data.mini_profile_panel_id ?? ""),
         updated_at:Number(row?.updated_at ?? 0),
         source:row ? "owner" : "base",
       };
@@ -2432,6 +2437,11 @@ async function handleVipRules(request, db, actor, parts) {
       validity_days:days,
       entry_id:String(body.entry_id ?? "").trim().slice(0,120),
       frame_id:String(body.frame_id ?? "").trim().slice(0,120),
+      chat_box_id:String(body.chat_box_id ?? "").trim().slice(0,120),
+      entry_effect_id:String(body.entry_effect_id ?? "").trim().slice(0,120),
+      vip_banner_id:String(body.vip_banner_id ?? "").trim().slice(0,120),
+      vehicle_entry_id:String(body.vehicle_entry_id ?? "").trim().slice(0,120),
+      mini_profile_panel_id:String(body.mini_profile_panel_id ?? "").trim().slice(0,120),
       base_total:Number(base?.total ?? 0),
     };
     await db.prepare(
@@ -2531,7 +2541,7 @@ function storePermissionForKind(kind, action) {
   const normalized=String(kind ?? "").trim();
   if(normalized==="gift") return "gifts."+action;
   if(normalized==="theme") return "themes.global."+action;
-  if(["frame","vehicle","entry","ring","bubble","profile_card","profile_background"].includes(normalized)) {
+  if(["frame","vehicle","entry","ring","bubble","profile_card","profile_background","banner"].includes(normalized)) {
     return "assets."+action;
   }
   return "store."+action;
