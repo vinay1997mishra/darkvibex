@@ -23,6 +23,7 @@ class _GiftsScreenState extends State<GiftsScreen> {
   static const categories = <String>[
     'Popular',
     'Normal',
+    'Gift Box',
     'Lucky',
     'CP',
     'VS',
@@ -79,7 +80,8 @@ class _GiftsScreenState extends State<GiftsScreen> {
   }
 
   List<Map<String, dynamic>> get visibleGifts {
-    final selected = categories[categoryIndex].toLowerCase();
+    final selectedLabel = categories[categoryIndex].toLowerCase();
+    final selected = selectedLabel == 'gift box' ? 'gift_box' : selectedLabel;
     if (selected == 'popular') return gifts;
     if (selected == 'luxury') {
       return gifts.where((gift) {
