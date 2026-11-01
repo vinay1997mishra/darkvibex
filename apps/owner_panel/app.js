@@ -946,8 +946,8 @@ async function loadVipRules(){
     const linked=[["Frame",rule.frame_id],["Chat box",rule.chat_box_id],["Entry ribbon",rule.entry_effect_id],["VIP banner",rule.vip_banner_id],["Vehicle",rule.vehicle_entry_id],["Mini profile",rule.mini_profile_panel_id]].filter(x=>x[1]).map(x=>x[0]+": "+x[1]).join(" · ");
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">VIP ${num(rule.level)} · ${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}<br>${esc(linked||"No visual assets linked")}</div></div><div class="item-actions"><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button><button class="danger mini" data-vip-rule-reset="${rule.level}">Delete override</button></div></div></div>`;
   }).join(""):empty("No VIP rules");
-  $("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
-  $("[data-vip-rule-reset]").forEach(b=>b.onclick=()=>{const level=Number(b.dataset.vipRuleReset);$("#vipRuleLevel").value=level;resetVipRule().catch(e=>toast(e.message,false));});
+  document.querySelectorAll("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
+  document.querySelectorAll("[data-vip-rule-reset]").forEach(b=>b.onclick=()=>{const level=Number(b.dataset.vipRuleReset);$("#vipRuleLevel").value=level;resetVipRule().catch(e=>toast(e.message,false));});
   const selected=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value||1))||state.vipRules[0];
   if(selected)fillVipRuleForm(selected);
 }
