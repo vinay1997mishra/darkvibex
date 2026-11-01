@@ -24,7 +24,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
-import '../widgets/creator_asset_effect_playback.dart';
+import '../widgets/custom_asset_effect_playback.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
@@ -8149,7 +8149,7 @@ class _RoomScreenState extends State<RoomScreen> {
                         ),
                       ),
                     )
-                  : CreatorAssetEffectPlayback(
+                  : CustomAssetEffectPlayback(
                       backend: widget.state.backend,
                       videoKey: ((arrivalEffectMember?['active_entry_video_key'] ?? '').toString().trim().isNotEmpty)
                           ? arrivalEffectMember!['active_entry_video_key'].toString()
