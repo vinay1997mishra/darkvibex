@@ -1396,7 +1396,7 @@ function imageFileDeclaresTransparency(type, bytes) {
   return false;
 }
 
-async function handleCreatorMediaUpload(request, env, db, actor) {
+async function handleAssetMediaUpload(request, env, db, actor) {
   if (request.method !== "PUT") return null;
   if (!env.FILES) return json({ ok: false, error: "file_storage_not_bound" }, { status: 503 });
 
@@ -1404,9 +1404,9 @@ async function handleCreatorMediaUpload(request, env, db, actor) {
   const assetId = String(request.headers.get("x-asset-id") ?? "")
     .trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
   const supportedKinds = new Set(["gift", "frame", "entry", "vehicle", "bubble", "ring", "profile_card", "profile_background", "banner"]);
-  if (!supportedKinds.has(kind)) return json({ ok: false, error: "creator_asset_kind_invalid" }, { status: 400 });
+  if (!supportedKinds.has(kind)) return json({ ok: false, error: "asset_media_kind_invalid" }, { status: 400 });
   requirePermission(actor, kind === "gift" ? "gifts.save" : "assets.save");
-  if (!assetId) return json({ ok: false, error: "creator_asset_id_required" }, { status: 400 });
+  if (!assetId) return json({ ok: false, error: "asset_media_id_required" }, { status: 400 });
 
   const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   const types = {
@@ -1418,12 +1418,12 @@ async function handleCreatorMediaUpload(request, env, db, actor) {
     "model/gltf-binary": { ext: "glb", max: 25 * 1024 * 1024 },
   };
   const spec = types[type];
-  if (!spec) return json({ ok: false, error: "creator_asset_type_invalid" }, { status: 400 });
+  if (!spec) return json({ ok: false, error: "asset_media_type_invalid" }, { status: 400 });
   const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > spec.max) return json({ ok: false, error: "creator_asset_too_large", max_bytes: spec.max }, { status: 413 });
+  if (declared > spec.max) return json({ ok: false, error: "asset_media_too_large", max_bytes: spec.max }, { status: 413 });
 
   const bytes = new Uint8Array(await request.arrayBuffer());
-  if (!bytes.length || bytes.length > spec.max) return json({ ok: false, error: "creator_asset_too_large", max_bytes: spec.max }, { status: 413 });
+  if (!bytes.length || bytes.length > spec.max) return json({ ok: false, error: "asset_media_too_large", max_bytes: spec.max }, { status: 413 });
   const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end));
   let valid = false;
   if (type === "video/mp4") valid = bytes.length >= 12 && ascii(4, 8) === "ftyp";
@@ -1434,21 +1434,21 @@ async function handleCreatorMediaUpload(request, env, db, actor) {
   } else if (type === "image/png") valid = bytes.length >= 8 && bytes[0] === 137 && ascii(1, 4) === "PNG";
   else if (type === "image/jpeg") valid = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   else if (type === "image/webp") valid = bytes.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
-  if (!valid) return json({ ok: false, error: "creator_asset_signature_invalid" }, { status: 400 });
+  if (!valid) return json({ ok: false, error: "asset_media_signature_invalid" }, { status: 400 });
 
   // Frames and chat bubbles are transparent overlays, never full-screen cards.
   // Reject JPEG/opaque artwork at the API boundary as well as in both upload UIs.
   if ((kind === "frame" || kind === "bubble") &&
       (!(type === "image/png" || type === "image/webp") || !imageFileDeclaresTransparency(type, bytes))) {
-    return json({ ok: false, error: "creator_asset_transparency_required" }, { status: 400 });
+    return json({ ok: false, error: "asset_media_transparency_required" }, { status: 400 });
   }
 
-  const key = "creator-assets/" + kind + "/" + assetId + "/asset-" + now() + "-" + randomHex(6) + "." + spec.ext;
+  const key = "custom-assets/" + kind + "/" + assetId + "/asset-" + now() + "-" + randomHex(6) + "." + spec.ext;
   await env.FILES.put(key, bytes, {
     httpMetadata: { contentType: type, cacheControl: "public, max-age=3600" },
     customMetadata: { kind, assetId, uploadedBy: String(actor.id ?? actor.name ?? "staff").slice(0, 100) },
   });
-  await audit(db, actor, "creator_asset_upload", kind, assetId, key);
+  await audit(db, actor, "asset_media_upload", kind, assetId, key);
   return json({ ok: true, key, kind, id: assetId, media_type: type, extension: spec.ext, max_bytes: spec.max }, { status: 201 });
 }
 
@@ -2999,7 +2999,7 @@ export async function handleOwnerApi(request, env, url) {
     let response = null;
     if (parts[2] === "theme-media") response = await handleThemeMediaUpload(request, env, db, actor);
     else if (parts[2] === "gift-media") response = await handleGiftMediaUpload(request, env, db, actor);
-    else if (parts[2] === "creator-media") response = await handleCreatorMediaUpload(request, env, db, actor);
+    else if (parts[2] === "asset-media") response = await handleAssetMediaUpload(request, env, db, actor);
     else if (parts[2] === "banner-media") response = await handleBannerMediaUpload(request, env, db, actor);
     else if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
     else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
