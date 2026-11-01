@@ -5,8 +5,8 @@ import 'package:video_player/video_player.dart';
 
 import '../infra/backend_api.dart';
 
-class CreatorAssetMediaPreview extends StatefulWidget {
-  const CreatorAssetMediaPreview({
+class CustomAssetMediaPreview extends StatefulWidget {
+  const CustomAssetMediaPreview({
     super.key,
     required this.backend,
     required this.mediaKey,
@@ -22,10 +22,10 @@ class CreatorAssetMediaPreview extends StatefulWidget {
   final BoxFit fit;
 
   @override
-  State<CreatorAssetMediaPreview> createState() => _CreatorAssetMediaPreviewState();
+  State<CustomAssetMediaPreview> createState() => _CustomAssetMediaPreviewState();
 }
 
-class _CreatorAssetMediaPreviewState extends State<CreatorAssetMediaPreview> {
+class _CustomAssetMediaPreviewState extends State<CustomAssetMediaPreview> {
   VideoPlayerController? _controller;
   bool _ready = false;
 
@@ -36,7 +36,7 @@ class _CreatorAssetMediaPreviewState extends State<CreatorAssetMediaPreview> {
   }
 
   @override
-  void didUpdateWidget(covariant CreatorAssetMediaPreview oldWidget) {
+  void didUpdateWidget(covariant CustomAssetMediaPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.mediaKey != widget.mediaKey) unawaited(_load());
   }
