@@ -37,8 +37,11 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     _StoreCategory('Ring', 'ring', Icons.diamond_rounded),
     _StoreCategory('Entrance', 'entry', Icons.auto_awesome_rounded),
     _StoreCategory('Vehicles', 'vehicle', Icons.directions_car_filled_rounded),
-    _StoreCategory('Bubble', 'bubble', Icons.chat_bubble_rounded),
+    _StoreCategory('VIP Banner', 'banner', Icons.flag_rounded),
+    _StoreCategory('Chat Box', 'bubble', Icons.chat_bubble_rounded),
+    _StoreCategory('Profile Background', 'profile_background', Icons.wallpaper_rounded),
     _StoreCategory('Frame', 'frame', Icons.account_box_rounded),
+    _StoreCategory('Room Theme', 'theme', Icons.palette_rounded),
   ];
 
   static const _zeroCoinBuyFrameIds = <String>{
@@ -475,6 +478,8 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
         'entry' => Icons.auto_awesome_rounded,
         'bubble' => Icons.chat_bubble_rounded,
         'vehicle' => Icons.directions_car_filled_rounded,
+        'banner' => Icons.flag_rounded,
+        'theme' => Icons.palette_rounded,
         _ => Icons.account_box_rounded,
       };
 

@@ -2816,6 +2816,30 @@ class _RoomScreenState extends State<RoomScreen> {
     final gender = profile['gender']?.toString().trim().toLowerCase() ?? '';
     final bio = profile['bio']?.toString().trim() ?? '';
     final level = int.tryParse(idLevel['level']?.toString() ?? '') ?? 0;
+    final activeVipLevel = int.tryParse(profile['active_vip_level']?.toString() ?? '') ?? 0;
+    final rawVipVisuals = profile['vip_visuals'];
+    final vipVisuals = rawVipVisuals is Map
+        ? Map<String, dynamic>.from(rawVipVisuals)
+        : <String, dynamic>{};
+    final vipFrame = vipVisuals['frame'] is Map
+        ? Map<String, dynamic>.from(vipVisuals['frame'] as Map)
+        : <String, dynamic>{};
+    final vipMiniProfile = vipVisuals['mini_profile_panel'] is Map
+        ? Map<String, dynamic>.from(vipVisuals['mini_profile_panel'] as Map)
+        : <String, dynamic>{};
+    final vipMiniProfileAssetKey =
+        vipMiniProfile['asset_key']?.toString().trim() ?? '';
+    const vipVisualLabels = <String, String>{
+      'frame': 'Profile frame',
+      'chat_box': 'VIP chat box',
+      'entry_effect': 'Entry ribbon',
+      'vip_banner': 'VIP banner',
+      'vehicle_entry': 'Vehicle entry',
+      'mini_profile_panel': 'Mini profile',
+    };
+    final visibleVipVisuals = vipVisualLabels.entries
+        .where((entry) => vipVisuals[entry.key] is Map)
+        .toList(growable: false);
 
     String cpPartnerId = '';
     String cpPartnerAvatar = '';
@@ -3002,9 +3026,19 @@ class _RoomScreenState extends State<RoomScreen> {
                       maxHeight:
                           MediaQuery.sizeOf(sheetContext).height * .62,
                     ),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
+                      image: vipMiniProfileAssetKey.isEmpty
+                          ? null
+                          : DecorationImage(
+                              image: NetworkImage(
+                                widget.state.backend.fileUrl(vipMiniProfileAssetKey),
+                                headers: widget.state.backend.fileHeaders,
+                              ),
+                              fit: BoxFit.cover,
+                              opacity: 0.16,
+                            ),
+                      borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(24),
                       ),
                     ),
@@ -3098,6 +3132,88 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ),
                               ),
                             ),
+                            if (activeVipLevel > 0 && visibleVipVisuals.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFFEAF5FF), Color(0xFFF1E9FF)],
+                                  ),
+                                  border: Border.all(color: const Color(0xFF9BA8F4)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'VIP $activeVipLevel COLLECTION',
+                                      style: const TextStyle(
+                                        color: Color(0xFF4D56A5),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        for (final visualEntry in visibleVipVisuals)
+                                          Builder(builder: (_) {
+                                            final visual = Map<String, dynamic>.from(
+                                              vipVisuals[visualEntry.key] as Map,
+                                            );
+                                            return SizedBox(
+                                              width: 88,
+                                              child: Column(
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius: BorderRadius.circular(9),
+                                                    child: SizedBox(
+                                                      width: 46,
+                                                      height: 42,
+                                                      child: GiftMediaPreview(
+                                                        backend: widget.state.backend,
+                                                        videoKey: visual['video_key']?.toString() ?? '',
+                                                        assetKey: visual['asset_key']?.toString() ?? '',
+                                                        glbKey: visual['glb_key']?.toString() ?? '',
+                                                        emoji: '✨',
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 3),
+                                                  Text(
+                                                    visualEntry.value,
+                                                    maxLines: 2,
+                                                    textAlign: TextAlign.center,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF3D427A),
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.w800,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    visual['name']?.toString() ?? '',
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF646A91),
+                                                      fontSize: 8,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                             if (medals.isNotEmpty) ...[
                               const SizedBox(height: 14),
                               SizedBox(
@@ -3342,36 +3458,46 @@ class _RoomScreenState extends State<RoomScreen> {
                                   () => openFullProfile(userId),
                                 );
                               },
-                              child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: const Color(0xFFD6A846),
-                                    width: 2.5,
+                              child: VipAnimatedFrame(
+                                size: 88,
+                                enabled: activeVipLevel > 0 && vipFrame.isNotEmpty,
+                                level: activeVipLevel > 0 ? activeVipLevel : level,
+                                styleId: vipFrame['id']?.toString(),
+                                assetUrl: (vipFrame['asset_key']?.toString().trim().isNotEmpty == true)
+                                    ? widget.state.backend.fileUrl(vipFrame['asset_key'].toString())
+                                    : null,
+                                assetHeaders: widget.state.backend.fileHeaders,
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: const Color(0xFF6D78E8),
+                                      width: 2.5,
+                                    ),
+                                    color: Colors.white,
                                   ),
-                                  color: Colors.white,
-                                ),
-                                child: CircleAvatar(
-                                  radius: 42,
-                                  backgroundColor:
-                                      const Color(0xFFE8E8E8),
-                                  backgroundImage:
-                                      avatarProvider(avatar),
-                                  child: avatar.isEmpty
-                                      ? Text(
-                                          name.isEmpty
-                                              ? '?'
-                                              : name
-                                                  .substring(0, 1)
-                                                  .toUpperCase(),
-                                          style: const TextStyle(
-                                            color: Color(0xFF6B3E8D),
-                                            fontSize: 27,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        )
-                                      : null,
+                                  child: CircleAvatar(
+                                    radius: 42,
+                                    backgroundColor:
+                                        const Color(0xFFE8E8E8),
+                                    backgroundImage:
+                                        avatarProvider(avatar),
+                                    child: avatar.isEmpty
+                                        ? Text(
+                                            name.isEmpty
+                                                ? '?'
+                                                : name
+                                                    .substring(0, 1)
+                                                    .toUpperCase(),
+                                            style: const TextStyle(
+                                              color: Color(0xFF6B3E8D),
+                                              fontSize: 27,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
                                 ),
                               ),
                             ),

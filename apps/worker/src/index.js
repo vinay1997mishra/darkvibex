@@ -545,7 +545,7 @@ async function publicCatalog(db, kind) {
 }
 
 const STORE_COSMETIC_KINDS = new Set([
-  "frame","vehicle","entry","ring","bubble","profile_card","profile_background","theme"
+  "frame","vehicle","entry","ring","bubble","profile_card","profile_background","theme","banner"
 ]);
 
 async function ownerStoreOverrides(db) {
@@ -695,6 +695,69 @@ async function effectiveGiftCatalog(db) {
     Number(a.sort_order ?? 0)-Number(b.sort_order ?? 0) ||
     Number(a.coin_cost ?? 0)-Number(b.coin_cost ?? 0)
   );
+}
+
+// Resolve the visual bundle configured for each VIP level. Asset references
+// point at the same live catalog used by Store purchases, so Owner edits flow to
+// the app without shipping another APK.
+async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
+  const vipLevel = Math.max(0, Math.min(18, Number(level) || 0));
+  if (vipLevel < 1) return {};
+  let row = null;
+  try {
+    row = await db.prepare("SELECT json_data FROM owner_catalog WHERE kind='vip_rule' AND id=? LIMIT 1")
+      .bind(String(vipLevel)).first();
+  } catch (error) {
+    if (!String(error?.message ?? error).includes("no such table")) throw error;
+  }
+  let config = {};
+  try { config = JSON.parse(String(row?.json_data ?? "{}")) || {}; } catch (_) {}
+  const catalog = Array.isArray(catalogSnapshot) ? catalogSnapshot : await effectiveCosmeticCatalog(db);
+  const find = (id, kind) => {
+    const key = String(id ?? "").trim();
+    if (!key) return null;
+    const item = catalog.find((entry) => String(entry.id) === key && String(entry.kind) === kind);
+    if (!item) return null;
+    return {
+      id: String(item.id), kind: String(item.kind), name: String(item.name ?? item.id),
+      asset_key: String(item.asset_key ?? ""), video_key: String(item.video_key ?? ""),
+      glb_key: String(item.glb_key ?? ""), media_type: String(item.media_type ?? ""),
+      animation_type: String(item.animation_type ?? ""), animation_ms: Number(item.animation_ms ?? 0),
+    };
+  };
+  return {
+    frame: find(config.frame_id, "frame"),
+    chat_box: find(config.chat_box_id, "bubble"),
+    entry_effect: find(config.entry_effect_id || config.entry_id, "entry"),
+    vip_banner: find(config.vip_banner_id, "banner"),
+    vehicle_entry: find(config.vehicle_entry_id, "vehicle"),
+    mini_profile_panel: find(config.mini_profile_panel_id, "profile_card"),
+  };
+}
+
+async function decorateMessagesWithVipChatBox(db, messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  if (!rows.length) return rows;
+  const catalog = await effectiveCosmeticCatalog(db);
+  const statusCache = new Map();
+  const visualCache = new Map();
+  for (const message of rows) {
+    const senderId = String(message.user_id ?? message.sender_user_id ?? "").trim();
+    if (!senderId || message.active_bubble_id) continue;
+    if (!statusCache.has(senderId)) statusCache.set(senderId, await getVipStatus(db, senderId));
+    const vip = statusCache.get(senderId);
+    if (!vip?.active || Number(vip.level ?? 0) < 1) continue;
+    const level = Number(vip.level);
+    if (!visualCache.has(level)) {
+      visualCache.set(level, await vipVisualsForLevel(db, level, catalog));
+    }
+    const bubble = visualCache.get(level)?.chat_box;
+    if (!bubble?.id) continue;
+    message.active_bubble_id = bubble.id;
+    message.active_bubble_asset_key = bubble.asset_key ?? "";
+    message.active_bubble_video_key = bubble.video_key ?? "";
+  }
+  return rows;
 }
 
 const DARKVIBEX_SUPPORTED_LANGUAGES = new Set([
@@ -4827,6 +4890,7 @@ async function handleApi(request, env, url) {
     if (user) {
       const targetVip = await getVipStatus(db, viewedUserId);
       user.active_vip_level = targetVip.active ? targetVip.level : 0;
+      user.vip_visuals = targetVip.active ? await vipVisualsForLevel(db, targetVip.level) : {};
       user.public_id = await ensureUserPublicId(db, viewedUserId);
       user.vip_custom_id = targetVip.custom_id || null;
       user.public_id_expires_at = null;
@@ -6079,7 +6143,8 @@ async function handleApi(request, env, url) {
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
       ).bind(now(), now(), now(), roomId).all();
-      return json({ ok: true, messages: (rows.results ?? []).reverse() });
+      const messages = await decorateMessagesWithVipChatBox(db, (rows.results ?? []).reverse());
+      return json({ ok: true, messages });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
@@ -6147,11 +6212,7 @@ async function handleApi(request, env, url) {
           WHERE m.id = ?
           LIMIT 1`
       ).bind(createdAt, createdAt, createdAt, messageId).first();
-      return json({
-        ok: true,
-        message_id: messageId,
-        created_at: createdAt,
-        image_key: imageKey || null,
+      const outgoingEnvelope = {
         message: createdMessage ?? {
           id: messageId,
           user_id: userId,
@@ -6159,6 +6220,14 @@ async function handleApi(request, env, url) {
           created_at: createdAt,
           image_key: imageKey || null,
         },
+      };
+      const decoratedMessage = (await decorateMessagesWithVipChatBox(db, [outgoingEnvelope.message]))[0];
+      return json({
+        ok: true,
+        message_id: messageId,
+        created_at: createdAt,
+        image_key: imageKey || null,
+        message: decoratedMessage,
       }, { status: 201 });
     }
   }
@@ -6238,7 +6307,48 @@ async function handleApi(request, env, url) {
                    CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
           LIMIT 200`
       ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
-      return json({ ok: true, members: rows.results ?? [] });
+      const members = rows.results ?? [];
+      const activeVipMembers = members.filter((member) => Number(member.active_vip_level ?? 0) > 0);
+      if (activeVipMembers.length) {
+        const vipCatalog = await effectiveCosmeticCatalog(db);
+        const visualCache = new Map();
+        for (const member of activeVipMembers) {
+          const level = Number(member.active_vip_level ?? 0);
+          if (!visualCache.has(level)) {
+            visualCache.set(level, await vipVisualsForLevel(db, level, vipCatalog));
+          }
+          const visuals = visualCache.get(level) ?? {};
+          member.vip_visuals = visuals;
+          const frame = visuals.frame;
+          if (!member.active_frame_id && frame?.id) {
+            member.active_frame_id = frame.id;
+            member.active_frame_asset_key = frame.asset_key ?? "";
+          }
+          const chatBox = visuals.chat_box;
+          if (!member.active_bubble_id && chatBox?.id) member.active_bubble_id = chatBox.id;
+          const entry = visuals.entry_effect;
+          if (!member.active_entry_id && entry?.id) {
+            member.active_entry_id = entry.id;
+            member.active_entry_video_key = entry.video_key ?? "";
+            member.active_entry_glb_key = entry.glb_key ?? "";
+            member.active_entry_animation_ms = entry.animation_ms ?? 0;
+          }
+          const vehicle = visuals.vehicle_entry;
+          if (!member.active_vehicle_id && vehicle?.id) {
+            member.active_vehicle_id = vehicle.id;
+            member.active_vehicle_video_key = vehicle.video_key ?? "";
+            member.active_vehicle_glb_key = vehicle.glb_key ?? "";
+            member.active_vehicle_animation_ms = vehicle.animation_ms ?? 0;
+          }
+          const banner = visuals.vip_banner;
+          if (banner?.id) member.active_vip_banner_id = banner.id;
+          const miniProfile = visuals.mini_profile_panel;
+          if (!member.active_profile_card_id && miniProfile?.id) {
+            member.active_profile_card_id = miniProfile.id;
+          }
+        }
+      }
+      return json({ ok: true, members });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
@@ -6774,7 +6884,7 @@ async function handleApi(request, env, url) {
         ORDER BY m.created_at DESC
         LIMIT ?`
     ).bind(now(), now(), userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
-    rows.results = (rows.results ?? []).reverse();
+    rows.results = await decorateMessagesWithVipChatBox(db, (rows.results ?? []).reverse());
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
     ).bind(now(), userId, otherId).run();
@@ -6843,7 +6953,8 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
-    return json({ ok: true, vip: await getVipStatus(db, userId) });
+    const vip = await getVipStatus(db, userId);
+    return json({ ok: true, vip: { ...vip, visuals: vip.active ? await vipVisualsForLevel(db, vip.level) : {} } });
   }
 
   if (parts[0] === "api" && parts[1] === "vip" && parts.length >= 4 && parts[3] === "support-tickets") {

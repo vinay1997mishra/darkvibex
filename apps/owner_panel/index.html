@@ -24,7 +24,7 @@
         <button class="nav-btn" data-view="wallets">Wallets / Treasury</button>
         <button class="nav-btn" data-view="economy">Unique ID / Coin Rate</button>
         <button class="nav-btn" data-view="vip">VIP Manager</button>
-        <button class="nav-btn" data-view="gifts">Gifts</button>
+        <button class="nav-btn" data-view="gifts">Gift Box / Gifts</button>
         <button class="nav-btn" data-view="assets">Entries / Frames</button>
         <a class="nav-btn" id="creatorStudioLink" href="/creator-studio/index.html" style="display:block;text-decoration:none;">Creator Studio ↗</a>
         <button class="nav-btn" data-view="store">App Store</button>
@@ -389,7 +389,7 @@
 
         <section class="view" data-view-panel="vip">
           <article class="panel">
-            <div class="panel-head"><div><h2>VIP1–VIP18 Manager</h2><p>Edit the actual level-up rule consumed by DarkVibeX: required EXP, maintenance EXP, validity, entry and frame. Levels remain fixed to VIP1–VIP18.</p></div><button id="reloadVipRules" class="secondary">Reload</button></div>
+            <div class="panel-head"><div><h2>VIP1–VIP18 Manager</h2><p>Every tier stays visible separately. Configure EXP, frames, VIP chat box, entry ribbon/banner, VIP banner, vehicle entry and the room profile mini-panel for each level. Asset IDs are selected from the Shop / Assets catalog.</p></div><button id="reloadVipRules" class="secondary">Reload</button></div>
             <div class="form-grid">
               <label>VIP level<input id="vipRuleLevel" type="number" min="1" max="18" value="1" /></label>
               <label>Display name<input id="vipRuleName" value="VIP 1" /></label>
@@ -397,17 +397,23 @@
               <label>Maintenance EXP<input id="vipRuleMaintainExp" type="number" min="0" step="1" /></label>
               <label>Validity days<input id="vipRuleValidityDays" type="number" min="1" max="3650" value="30" /></label>
               <label>Entry / vehicle ID<input id="vipRuleEntryId" placeholder="Optional store item ID" /></label>
-              <label>Frame ID<input id="vipRuleFrameId" placeholder="Optional frame item ID" /></label>
+              <label>Profile frame ID<input id="vipRuleFrameId" placeholder="Shop frame item ID" /></label>
+              <label>VIP chat box ID<input id="vipRuleChatBoxId" placeholder="Shop bubble item ID" /></label>
+              <label>Entry effect / ribbon banner ID<input id="vipRuleEntryEffectId" placeholder="Shop entry effect item ID" /></label>
+              <label>VIP banner ID<input id="vipRuleBannerId" placeholder="Shop banner item ID" /></label>
+              <label>VIP vehicle entry ID<input id="vipRuleVehicleEntryId" placeholder="Shop vehicle item ID" /></label>
+              <label>Room profile mini-panel ID<input id="vipRuleMiniProfileId" placeholder="Shop profile card item ID" /></label>
               <label class="check"><input id="vipRuleEnabled" type="checkbox" checked /> Level enabled</label>
             </div>
-            <div class="action-row"><button id="saveVipRule" class="primary">Save VIP Rule</button><button id="resetVipRule" class="secondary">Reset Selected Level to Base</button></div>
+            <div class="action-row"><button id="saveVipRule" class="primary">Add / Save VIP Level</button><button id="resetVipRule" class="secondary">Delete VIP Override / Restore Base</button></div>
+            <p class="muted">VIP1–VIP18 themselves cannot be removed from the system. Delete restores the selected level to its built-in rule; disable it to prevent users from unlocking it.</p>
           </article>
           <article class="panel"><div class="panel-head"><div><h2>VIP Rules</h2><p>Changing these values changes backend VIP leveling/renewal logic.</p></div></div><div id="vipRuleList" class="stack"></div></article>
         </section>
 
         <section class="view" data-view-panel="gifts">
           <article class="panel">
-            <div class="panel-head"><div><h2>Gift Catalog</h2><p>Add/edit/remove, enable/disable and schedule DarkVibeX gifts.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
+            <div class="panel-head"><div><h2>Gift Box / All Gifts</h2><p>All built-in and custom gifts from every category appear here. Add a gift, edit its name/coin price/media/category, or remove it from the live app catalog.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
             <div class="form-grid">
               <label>Gift ID<input id="giftId" placeholder="Unique gift ID" /></label>
               <label>Name<input id="giftName" /></label>
@@ -416,6 +422,7 @@
               <label>Emoji<input id="giftEmoji" placeholder="Optional fallback" /></label>
               <label>Section
                 <select id="giftCategory">
+                  <option value="gift_box">Gift Box</option>
                   <option value="normal">Normal</option>
                   <option value="cp">CP</option>
                   <option value="vs">VS</option>
@@ -456,7 +463,7 @@
           <article class="panel">
             <div class="panel-head"><div><h2>Entries / Frames / Assets</h2><p>Upload MP4/WebM playback clips, validated GLB 3D models and poster images to R2; then publish their keys to the live mobile store. Video clips run as gift/entry effects where supported.</p></div><button id="reloadAssets" class="secondary">Reload</button></div>
             <div class="form-grid">
-              <label>Asset type<select id="assetKind"><option value="gift">Gift effect</option><option value="frame">Profile frame</option><option value="entry">Entry effect</option><option value="vehicle">Vehicle entry</option><option value="profile_card">Profile card</option><option value="profile_background">Profile background</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option></select></label>
+              <label>Asset type<select id="assetKind"><option value="gift">Gift effect</option><option value="frame">Profile frame</option><option value="entry">Entry effect</option><option value="vehicle">Vehicle entry</option><option value="profile_card">Profile card</option><option value="profile_background">Profile background</option><option value="ring">Ring</option><option value="bubble">Chat bubble</option><option value="banner">VIP banner</option></select></label>
               <label>Item ID<input id="assetId" placeholder="Unique item ID" /></label>
               <label>Name<input id="assetName" /></label>
               <label>Price in coins<input id="assetPrice" type="number" min="0" value="0" /></label>
@@ -485,8 +492,8 @@
           <article class="panel">
             <div class="panel-head">
               <div>
-                <h2>App Store — Full Owner Control</h2>
-                <p>Add, edit, enable/disable or remove store items. Changes feed the live store catalog used by purchases, gifts and cosmetics.</p>
+                <h2>Shop — Full Owner Control</h2>
+                <p>Browse each Shop category, add/edit items, set coin prices, and remove items from the live app catalog.</p>
               </div>
               <button id="reloadStore" class="secondary">Reload</button>
             </div>
@@ -497,10 +504,13 @@
                   <option value="gift"></option>
                   <option value="frame"></option>
                   <option value="entry"></option>
+                  <option value="vehicle"></option>
                   <option value="ring"></option>
                   <option value="bubble"></option>
                   <option value="profile_card"></option>
+                  <option value="profile_background"></option>
                   <option value="theme"></option>
+                  <option value="banner"></option>
                   <option value="unique_id"></option>
                   <option value="custom"></option>
                 </datalist>

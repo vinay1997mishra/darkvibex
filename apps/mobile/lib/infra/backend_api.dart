@@ -1126,15 +1126,11 @@ class BackendApi {
     final featured = _featuredRoomGifts
         .map((gift) => Map<String, dynamic>.from(gift))
         .toList(growable: false);
-    final featuredIds =
-        featured.map((gift) => gift['id']?.toString() ?? '').toSet();
-
-    return <Map<String, dynamic>>[
-      ...featured,
-      ...serverGifts.where(
-        (gift) => !featuredIds.contains(gift['id']?.toString() ?? ''),
-      ),
-    ];
+    // The local featured list is only an offline fallback. When the Worker
+    // returns a catalog (even an empty one), it is authoritative: this makes
+    // Owner edits and deletes take effect rather than resurrecting local gifts.
+    if (rows is List) return serverGifts;
+    return featured;
   }
 
   Future<List<Map<String, dynamic>>> customGifts({

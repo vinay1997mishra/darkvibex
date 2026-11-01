@@ -31,7 +31,7 @@ const state = {
   ownerMessageThreadOtherId: null,
   staffEditingId: null,
 };
-const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
+const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gift Box / Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 const staffPermissionOptions = [
   ["dashboard.view","Dashboard · view"],
@@ -247,6 +247,7 @@ const selectorPermissionRules = [
 
   ["#reloadVipRules",["vip.view"],"self"],["#vipRuleLevel",["vip.save"],"label"],["#vipRuleName",["vip.save"],"label"],["#vipRuleUpgradeExp",["vip.save"],"label"],
   ["#vipRuleMaintainExp",["vip.save"],"label"],["#vipRuleValidityDays",["vip.save"],"label"],["#vipRuleEntryId",["vip.save"],"label"],["#vipRuleFrameId",["vip.save"],"label"],
+  ["#vipRuleChatBoxId",["vip.save"],"label"],["#vipRuleEntryEffectId",["vip.save"],"label"],["#vipRuleBannerId",["vip.save"],"label"],["#vipRuleVehicleEntryId",["vip.save"],"label"],["#vipRuleMiniProfileId",["vip.save"],"label"],
   ["#vipRuleEnabled",["vip.save"],"label"],["#saveVipRule",["vip.save"],"self"],["#resetVipRule",["vip.reset"],"self"],
 
   ["#reloadGifts",["gifts.view"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
@@ -292,7 +293,7 @@ const dynamicPermissionRules = [
   ["[data-policy-edit]",["policies.save"]],["[data-policy-delete]",["policies.delete"]],
   ["[data-pricing-edit-user]",["pricing.save"]],["[data-pricing-delete-user]",["pricing.delete"]],
   ["[data-economy-user]",["users.detail"]],
-  ["[data-vip-rule-edit]",["vip.save"]],
+  ["[data-vip-rule-edit]",["vip.save"]],["[data-vip-rule-reset]",["vip.reset"]],
   ["[data-gift-edit]",["gifts.save"]],["[data-gift-remove]",["gifts.remove"]],
   ["[data-asset-edit]",["assets.save"]],["[data-asset-remove]",["assets.remove"]],
   ["[data-store-edit]",["store.save"]],["[data-store-remove]",["store.remove"]],
@@ -930,14 +931,23 @@ function fillVipRuleForm(rule){
   $("#vipRuleValidityDays").value=Number(rule.validity_days||30);
   $("#vipRuleEntryId").value=rule.entry_id||"";
   $("#vipRuleFrameId").value=rule.frame_id||"";
+  $("#vipRuleChatBoxId").value=rule.chat_box_id||"";
+  $("#vipRuleEntryEffectId").value=rule.entry_effect_id||"";
+  $("#vipRuleBannerId").value=rule.vip_banner_id||"";
+  $("#vipRuleVehicleEntryId").value=rule.vehicle_entry_id||"";
+  $("#vipRuleMiniProfileId").value=rule.mini_profile_panel_id||"";
   $("#vipRuleEnabled").checked=Number(rule.enabled)!==0;
 }
 async function loadVipRules(){
   if(!can("vip.view"))return;
   const d=await api("/api/owner/vip-rules");
   state.vipRules=d.levels||[];
-  $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Level ${num(rule.level)} · upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}${rule.entry_id?" · entry "+esc(rule.entry_id):""}${rule.frame_id?" · frame "+esc(rule.frame_id):""}</div></div><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button></div></div>`).join(""):empty("No VIP rules");
-  $$("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
+  $("#vipRuleList").innerHTML=state.vipRules.length?state.vipRules.map(rule=>{
+    const linked=[["Frame",rule.frame_id],["Chat box",rule.chat_box_id],["Entry ribbon",rule.entry_effect_id],["VIP banner",rule.vip_banner_id],["Vehicle",rule.vehicle_entry_id],["Mini profile",rule.mini_profile_panel_id]].filter(x=>x[1]).map(x=>x[0]+": "+x[1]).join(" · ");
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">VIP ${num(rule.level)} · ${esc(rule.name||("VIP "+rule.level))} <span class="pill ${Number(rule.enabled)?"active":"banned"}">${Number(rule.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">Upgrade ${num(rule.upgrade_exp)} EXP · maintain ${num(rule.maintain_exp)} EXP · ${num(rule.validity_days)} days · ${esc(rule.source||"base")}<br>${esc(linked||"No visual assets linked")}</div></div><div class="item-actions"><button class="secondary mini" data-vip-rule-edit="${rule.level}">Edit</button><button class="danger mini" data-vip-rule-reset="${rule.level}">Delete override</button></div></div></div>`;
+  }).join(""):empty("No VIP rules");
+  document.querySelectorAll("[data-vip-rule-edit]").forEach(b=>b.onclick=()=>{const rule=state.vipRules.find(x=>Number(x.level)===Number(b.dataset.vipRuleEdit));fillVipRuleForm(rule);$("#vipRuleLevel").scrollIntoView({behavior:"smooth",block:"center"});});
+  document.querySelectorAll("[data-vip-rule-reset]").forEach(b=>b.onclick=()=>{const level=Number(b.dataset.vipRuleReset);$("#vipRuleLevel").value=level;resetVipRule().catch(e=>toast(e.message,false));});
   const selected=state.vipRules.find(x=>Number(x.level)===Number($("#vipRuleLevel").value||1))||state.vipRules[0];
   if(selected)fillVipRuleForm(selected);
 }
@@ -954,6 +964,9 @@ async function saveVipRule(){
   await api("/api/owner/vip-rules",{method:"POST",body:JSON.stringify({
     level,name:$("#vipRuleName").value.trim()||("VIP "+level),upgrade_exp:upgrade,maintain_exp:maintain,
     validity_days:days,entry_id:$("#vipRuleEntryId").value.trim(),frame_id:$("#vipRuleFrameId").value.trim(),
+    chat_box_id:$("#vipRuleChatBoxId").value.trim(),entry_effect_id:$("#vipRuleEntryEffectId").value.trim(),
+    vip_banner_id:$("#vipRuleBannerId").value.trim(),vehicle_entry_id:$("#vipRuleVehicleEntryId").value.trim(),
+    mini_profile_panel_id:$("#vipRuleMiniProfileId").value.trim(),
     enabled:$("#vipRuleEnabled").checked
   })});
   toast("VIP rule saved and active in leveling logic");
@@ -963,9 +976,9 @@ async function resetVipRule(){
   if(!can("vip.reset"))return toast("VIP reset permission required",false);
   const level=Number($("#vipRuleLevel").value);
   if(!Number.isSafeInteger(level)||level<1||level>18)return toast("Select VIP1–VIP18",false);
-  if(!confirm("Reset VIP "+level+" to the DarkVibeX base rule?"))return;
+  if(!confirm("Delete the Owner override for VIP "+level+"? The built-in VIP level will remain available."))return;
   await api("/api/owner/vip-rules/"+level,{method:"DELETE"});
-  toast("VIP rule reset to base");
+  toast("VIP override deleted; built-in level restored");
   await loadVipRules();
 }
 
@@ -1054,7 +1067,7 @@ async function loadGifts(){
   $("#giftList").innerHTML=state.giftItems.length?state.giftItems.map(item=>{
     const data=item.data||{},enabled=Number(item.enabled)!==0;
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
-    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
+    return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · ${esc(data.category||"normal")} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions"><button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button></div></div></div>`;
   }).join(""):empty("No gifts");
   $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
   $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
