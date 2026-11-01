@@ -4,7 +4,7 @@ import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../app/app_state.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/cosmetic_store_previews.dart';
-import '../widgets/creator_asset_media_preview.dart';
+import '../widgets/custom_asset_media_preview.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/vip_animated_frame.dart';
 import 'unique_id_store_screen.dart';
@@ -485,7 +485,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
     final glbKey = item['glb_key']?.toString().trim() ?? '';
     final assetImageKey = item['asset_key']?.toString().trim() ?? '';
     if (videoKey.isNotEmpty) {
-      return CreatorAssetMediaPreview(
+      return CustomAssetMediaPreview(
         backend: widget.state.backend,
         mediaKey: videoKey,
         fit: BoxFit.contain,
