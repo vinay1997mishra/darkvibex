@@ -12,8 +12,8 @@ const shop = await read("../../mobile/lib/screens/cosmetics_shop_screen.dart");
 const transparentArtwork = await read("../../mobile/lib/widgets/transparent_artwork_image.dart");
 const frameWidget = await read("../../mobile/lib/widgets/vip_animated_frame.dart");
 const bubbleWidget = await read("../../mobile/lib/widgets/cosmetic_store_previews.dart");
-const mediaPreview = await read("../../mobile/lib/widgets/creator_asset_media_preview.dart");
-const effectPlayback = await read("../../mobile/lib/widgets/creator_asset_effect_playback.dart");
+const mediaPreview = await read("../../mobile/lib/widgets/custom_asset_media_preview.dart");
+const effectPlayback = await read("../../mobile/lib/widgets/custom_asset_effect_playback.dart");
 
 test("removed editor route is hard-blocked with HTTP 404", () => {
   assert.match(worker, /url\.pathname === "\/creator-studio" \|\| url\.pathname\.startsWith\("\/creator-studio\/"\)/);
@@ -47,10 +47,10 @@ test("Owner Panel custom asset controls upload media and publish catalog keys", 
 });
 
 test("custom media metadata remains playable in room effects and Store previews", () => {
-  assert.match(room, /CreatorAssetEffectPlayback/);
+  assert.match(room, /CustomAssetEffectPlayback/);
   assert.match(room, /active_entry_video_key/);
   assert.match(room, /active_vehicle_video_key/);
-  assert.match(shop, /CreatorAssetMediaPreview/);
+  assert.match(shop, /CustomAssetMediaPreview/);
   assert.match(mediaPreview, /VideoPlayerController\.networkUrl/);
   assert.match(mediaPreview, /setLooping\(false\)/);
   assert.match(effectPlayback, /VideoPlayerController\.networkUrl/);
