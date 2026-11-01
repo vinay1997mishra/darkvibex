@@ -1126,19 +1126,11 @@ class BackendApi {
     final featured = _featuredRoomGifts
         .map((gift) => Map<String, dynamic>.from(gift))
         .toList(growable: false);
-    // The local featured list is only an offline fallback. Server catalog
-    // records must win for matching IDs so Owner name, price, category and
-    // animation edits are reflected immediately without an APK update.
-    final merged = <String, Map<String, dynamic>>{
-      for (final gift in featured)
-        if ((gift['id']?.toString() ?? '').isNotEmpty)
-          gift['id'].toString(): gift,
-    };
-    for (final gift in serverGifts) {
-      final id = gift['id']?.toString() ?? '';
-      if (id.isNotEmpty) merged[id] = gift;
-    }
-    return merged.values.toList(growable: false);
+    // The local featured list is only an offline fallback. When the Worker
+    // returns a catalog (even an empty one), it is authoritative: this makes
+    // Owner edits and deletes take effect rather than resurrecting local gifts.
+    if (rows is List) return serverGifts;
+    return featured;
   }
 
   Future<List<Map<String, dynamic>>> customGifts({
