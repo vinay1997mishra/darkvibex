@@ -1278,12 +1278,34 @@ async function handleGiftMediaUpload(request, env, db, actor) {
     return json({ ok: false, error: "gift_id_required" }, { status: 400 });
   }
 
+  const extension = String(request.headers.get("x-video-extension") ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+/, "");
+  const formats = {
+    mp4: { type: "video/mp4", family: "iso-bmff" },
+    m4v: { type: "video/mp4", family: "iso-bmff" },
+    "3gp": { type: "video/3gpp", family: "iso-bmff" },
+    webm: { type: "video/webm", family: "ebml" },
+    mkv: { type: "video/x-matroska", family: "ebml" },
+    ts: { type: "video/mp2t", family: "transport-stream" },
+    m2ts: { type: "video/mp2t", family: "transport-stream" },
+    mts: { type: "video/mp2t", family: "transport-stream" },
+    mpg: { type: "video/mpeg", family: "mpeg-ps" },
+    mpeg: { type: "video/mpeg", family: "mpeg-ps" },
+    mpe: { type: "video/mpeg", family: "mpeg-ps" },
+  };
+  const format = formats[extension];
   const type = String(request.headers.get("content-type") ?? "")
     .split(";")[0]
     .trim()
     .toLowerCase();
-  if (type !== "video/mp4") {
-    return json({ ok: false, error: "gift_video_mp4_required" }, { status: 400 });
+  if (!format || type !== format.type) {
+    return json({
+      ok: false,
+      error: "gift_video_format_unsupported",
+      supported_formats: ["mp4", "webm", "mkv", "m4v", "3gp", "ts", "m2ts", "mts", "mpg", "mpeg", "mpe"],
+    }, { status: 400 });
   }
 
   const maxBytes = 11 * 1024 * 1024;
@@ -1296,10 +1318,26 @@ async function handleGiftMediaUpload(request, env, db, actor) {
   if (!body.length || body.length > maxBytes) {
     return json({ ok: false, error: "gift_video_max_11mb" }, { status: 413 });
   }
-  const isMp4 =
-    body.length >= 12 &&
-    String.fromCharCode(...body.slice(4, 8)) === "ftyp";
-  if (!isMp4) {
+  const ascii = (start, end) => String.fromCharCode(...body.slice(start, end));
+  let valid = false;
+  if (format.family === "iso-bmff") {
+    valid = body.length >= 12 && ascii(4, 8) === "ftyp";
+  } else if (format.family === "ebml") {
+    valid = body.length >= 4 &&
+      body[0] === 0x1a && body[1] === 0x45 && body[2] === 0xdf && body[3] === 0xa3;
+  } else if (format.family === "transport-stream") {
+    const packetStarts = [[0, 188], [4, 192]];
+    valid = body.length >= 188 && packetStarts.some(([offset, stride]) =>
+      body[offset] === 0x47 &&
+      (offset + stride >= body.length || body[offset + stride] === 0x47) &&
+      (offset + stride * 2 >= body.length || body[offset + stride * 2] === 0x47)
+    );
+  } else if (format.family === "mpeg-ps") {
+    valid = body.length >= 4 &&
+      body[0] === 0x00 && body[1] === 0x00 && body[2] === 0x01 &&
+      [0xba, 0xb3, 0xb8, 0x00].includes(body[3]);
+  }
+  if (!valid) {
     return json({ ok: false, error: "gift_video_invalid" }, { status: 400 });
   }
 
@@ -1310,17 +1348,17 @@ async function handleGiftMediaUpload(request, env, db, actor) {
     now() +
     "-" +
     randomHex(6) +
-    ".mp4";
+    "." +
+    extension;
   await env.FILES.put(key, body, {
     httpMetadata: {
-      contentType: "video/mp4",
+      contentType: type,
       cacheControl: "public, max-age=3600",
     },
   });
   await audit(db, actor, "gift_video_upload", "gift", giftId, key);
-  return json({ ok: true, key }, { status: 201 });
+  return json({ ok: true, key, media_type: type, extension, max_bytes: maxBytes }, { status: 201 });
 }
-
 
 function imageFileDeclaresTransparency(type, bytes) {
   const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end));
