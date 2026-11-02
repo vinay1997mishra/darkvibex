@@ -92,8 +92,7 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
     final controller = _controller;
     if (_ready && !_failed && controller != null && controller.value.isInitialized) {
       final size = controller.value.size;
-      return ColoredBox(
-        color: const Color(0xF5080611),
+      return IgnorePointer(
         child: Center(
           child: FittedBox(
             fit: BoxFit.contain,
@@ -106,6 +105,13 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
           ),
         ),
       );
+    }
+    // A configured video is the primary asset. Keep the overlay transparent
+    // while it initializes so neither GLB nor the illustrated fallback flashes
+    // before the uploaded animation starts. If video initialization fails, use
+    // the GLB (when supplied) and then the standard fallback.
+    if (widget.videoKey.trim().isNotEmpty && !_failed) {
+      return const SizedBox.shrink();
     }
     final glb = widget.glbKey.trim();
     if (glb.isNotEmpty) {

@@ -8063,7 +8063,11 @@ async function handleApi(request, env, url) {
     const pricing=await ownerUserPricing(
       db,sender,"gift",giftId,Number(gift.coin_cost ?? 0),null,
     );
-    const cost = Number(pricing.price_coins ?? gift.coin_cost ?? 0);
+    // Match the catalog endpoint: a gift is shown with a minimum price of one
+    // coin, so the send endpoint must debit that same authoritative amount.
+    // Without this normalization, Owner-added gifts saved at the default zero
+    // price appeared in the app as 1 coin but were rejected as invalid_gift_cost.
+    const cost = Math.max(1, Number(pricing.price_coins ?? gift.coin_cost ?? 0));
     if (!Number.isSafeInteger(cost) || cost <= 0) {
       return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
     }

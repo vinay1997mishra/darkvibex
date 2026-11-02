@@ -1146,6 +1146,8 @@ class BackendApi {
       _json(
         'POST',
         '/api/gifts/send',
+        // Return server rejection codes so the room can show the actual reason.
+        returnErrorBody: true,
         body: <String, dynamic>{
           'room_id': roomId,
           'sender_user_id': senderUserId,
