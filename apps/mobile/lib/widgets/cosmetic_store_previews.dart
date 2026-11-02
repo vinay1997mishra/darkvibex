@@ -495,9 +495,9 @@ class StretchableCosmeticBubble extends StatelessWidget {
                         ),
                 ),
               ),
-              Positioned.fill(
-                child: _AnimatedBubbleEdgeEffect(styleId: styleId),
-              ),
+              // Uploaded bubble art supplies its own outline and ornaments.
+              // Do not paint the built-in rectangular/gold edge effect over it:
+              // unknown Owner Panel IDs otherwise inherit the default gold theme.
               Padding(padding: contentPadding, child: child),
             ],
           ),
