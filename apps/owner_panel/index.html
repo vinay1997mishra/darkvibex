@@ -412,7 +412,7 @@
 
         <section class="view" data-view-panel="gifts">
           <article class="panel">
-            <div class="panel-head"><div><h2>Gift Box / Gift Sections</h2><p>Choose a section to view and add gifts. Create your own sections whenever needed. Existing gift, video upload, edit and remove controls are preserved.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
+            <div class="panel-head"><div><h2>Gift Box / Gift Sections</h2><p>Choose a section to view and add gifts. Create your own sections whenever needed. Add a gift DP image and an optional animation video; existing edit and remove controls are preserved.</p></div><button id="reloadGifts" class="secondary">Reload</button></div>
             <div class="form-grid">
               <label class="span-2">Create new gift section
                 <div class="action-row"><input id="newGiftCategoryName" placeholder="Section name, e.g. Festival Specials" /><button id="createGiftCategory" class="secondary" type="button">+ Create Section</button></div>
@@ -438,7 +438,19 @@
                   <option value="custom">Custom</option>
                 </select>
               </label>
-              <label>Image / DP key<input id="giftAsset" placeholder="Optional R2 image key" /></label>
+              <label>Gift Image / DP key<input id="giftAsset" placeholder="Upload an image or paste an R2 key" /></label>
+              <label>Gift DP image (JPG, PNG, WebP · max 5 MB)
+                <input id="giftImageFile" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
+              </label>
+              <div class="action-row span-2">
+                <button id="uploadGiftImage" class="secondary" type="button">Upload Image to R2</button>
+                <button id="removeGiftImage" class="secondary" type="button">Remove Image</button>
+                <span id="giftImageStatus" class="muted"></span>
+              </div>
+              <div id="giftImagePreviewWrap" class="span-2" hidden>
+                <div class="muted">Gift DP preview</div>
+                <img id="giftImagePreview" alt="Gift image preview" style="display:block;width:88px;height:88px;object-fit:contain;border-radius:12px;background:#21183f;padding:4px;" />
+              </div>
               <label>Gift video (MP4, WebM, MKV, M4V, 3GP, TS, MPG · max 11 MB)
                 <input id="giftVideoFile" type="file" accept="video/*,.mp4,.webm,.mkv,.m4v,.3gp,.ts,.m2ts,.mts,.mpg,.mpeg,.mpe" />
               </label>

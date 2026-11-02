@@ -41,7 +41,8 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
   @override
   void didUpdateWidget(covariant GiftMediaPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoKey != widget.videoKey) {
+    if (oldWidget.videoKey != widget.videoKey ||
+        oldWidget.assetKey != widget.assetKey) {
       unawaited(_configureVideo());
     }
   }
@@ -55,7 +56,9 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
       await old.dispose();
     }
 
-    final key = widget.videoKey.trim();
+    // A dedicated gift DP is the static tile art in the gift picker. Do not
+    // download or play the animation clip behind that image.
+    final key = widget.assetKey.trim().isNotEmpty ? '' : widget.videoKey.trim();
     if (key.isEmpty) return;
 
     final controller = VideoPlayerController.networkUrl(
@@ -91,6 +94,16 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
 
   @override
   Widget build(BuildContext context) {
+    final assetKey = widget.assetKey.trim();
+    if (assetKey.isNotEmpty) {
+      return Image.network(
+        widget.backend.fileUrl(assetKey),
+        headers: widget.backend.fileHeaders,
+        fit: widget.fit,
+        errorBuilder: (_, __, ___) => _emojiFallback(),
+      );
+    }
+
     final controller = _controller;
     if (_videoReady && controller != null && controller.value.isInitialized) {
       final size = controller.value.size;
@@ -124,15 +137,6 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
       );
     }
 
-    final assetKey = widget.assetKey.trim();
-    if (assetKey.isNotEmpty) {
-      return Image.network(
-        widget.backend.fileUrl(assetKey),
-        headers: widget.backend.fileHeaders,
-        fit: widget.fit,
-        errorBuilder: (_, __, ___) => _emojiFallback(),
-      );
-    }
     return _emojiFallback();
   }
 

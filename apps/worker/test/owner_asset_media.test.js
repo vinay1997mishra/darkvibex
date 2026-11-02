@@ -8,6 +8,8 @@ const ownerApi = await read("../src/owner_api.js");
 const panelHtml = await read("../../owner_panel/index.html");
 const panelApp = await read("../../owner_panel/app.js");
 const room = await read("../../mobile/lib/screens/room_screen.dart");
+const giftScreen = await read("../../mobile/lib/screens/gifts_screen.dart");
+const giftPreview = await read("../../mobile/lib/widgets/gift_media_preview.dart");
 const shop = await read("../../mobile/lib/screens/cosmetics_shop_screen.dart");
 const transparentArtwork = await read("../../mobile/lib/widgets/transparent_artwork_image.dart");
 const frameWidget = await read("../../mobile/lib/widgets/vip_animated_frame.dart");
@@ -66,4 +68,18 @@ test("frame and chat-bubble artwork still requires genuine transparency", () => 
   assert.match(transparentArtwork, /alphaValid = outsideClear && centreClear/);
   assert.match(frameWidget, /requireTransparentCenter: true/);
   assert.match(bubbleWidget, /_AnimatedBubbleEdgeEffect/);
+});
+
+test("Owner Panel lets staff with gift-save permission upload and preview a gift DP", () => {
+  assert.match(panelHtml, /id="giftImageFile"/);
+  assert.match(panelHtml, /id="uploadGiftImage"/);
+  assert.match(panelHtml, /id="giftImagePreview"/);
+  assert.match(panelApp, /async function uploadGiftImage\(\)/);
+  assert.match(panelApp, /"x-asset-kind":"gift"/);
+  assert.match(panelApp, /\/api\/owner\/asset-media/);
+  assert.match(panelApp, /setGiftImagePreview\(d\.asset_key\|\|d\.asset\|\|""\)/);
+  assert.match(panelApp, /asset_key:\$\("#giftAsset"\)\.value\.trim\(\)/);
+  assert.match(giftScreen, /gift\['asset_key'\]/);
+  assert.match(giftPreview, /Image\.network\(/);
+  assert.match(giftPreview, /backend\.fileUrl\(assetKey\)/);
 });
