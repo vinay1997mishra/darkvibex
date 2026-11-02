@@ -106,6 +106,13 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
         ),
       );
     }
+    // A configured video is the primary asset. Keep the overlay transparent
+    // while it initializes so neither GLB nor the illustrated fallback flashes
+    // before the uploaded animation starts. If video initialization fails, use
+    // the GLB (when supplied) and then the standard fallback.
+    if (widget.videoKey.trim().isNotEmpty && !_failed) {
+      return const SizedBox.shrink();
+    }
     final glb = widget.glbKey.trim();
     if (glb.isNotEmpty) {
       return Center(
@@ -126,8 +133,6 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
         ),
       );
     }
-    // Do not flash the illustrated fallback while the uploaded video loads.
-    if (widget.videoKey.trim().isNotEmpty) return const SizedBox.shrink();
     return widget.fallback;
   }
 }
