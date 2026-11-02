@@ -124,6 +124,42 @@ test("banned users are denied by the shared session guard on protected routes", 
   assert.equal(result.body.error, "user_banned");
 });
 
+
+test("user-scoped room, relationship and ID-level routes cannot be used for another account", async () => {
+  const { sqlite, request, secret } = await fixture();
+  const ts = Date.now();
+  const insertUser = sqlite.prepare(
+    "INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)",
+  );
+  insertUser.run("actor-user", "Actor", ts, ts);
+  insertUser.run("target-user", "Target", ts, ts);
+  const token = await sessionToken("actor-user", secret);
+
+  const getPaths = [
+    "/api/vs?user_id=target-user",
+    "/api/cp?user_id=target-user",
+    "/api/id-level?user_id=target-user",
+    "/api/rooms/test-room/follow?user_id=target-user",
+    "/api/rooms/test-room/lamp?user_id=target-user",
+    "/api/rooms/following?user_id=target-user",
+  ];
+  for (const path of getPaths) {
+    const result = await request(path, { token });
+    assert.equal(result.status, 403, `unexpected access to ${path}`);
+  }
+
+  const postRequests = [
+    ["/api/rooms/test-room/follow", { user_id: "target-user", follow: true }],
+    ["/api/rooms/test-room/lamp/claim", { user_id: "target-user", task_id: "task-1" }],
+    ["/api/rooms/test-room/lamp/share", { user_id: "target-user", platform: "test" }],
+    ["/api/rooms/test-room/lamp/invite", { host_user_id: "target-user", invitee_user_id: "actor-user" }],
+  ];
+  for (const [path, body] of postRequests) {
+    const result = await request(path, { method: "POST", body, token });
+    assert.equal(result.status, 403, `unexpected write access to ${path}`);
+  }
+});
+
 test("explicit test-only guest fixture flag preserves isolated integration test setup", async () => {
   const { request, sqlite } = await fixture({ allowGuests: true });
   const result = await request("/api/session/guest", {
