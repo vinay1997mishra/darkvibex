@@ -1012,19 +1012,30 @@ async function ensureUserPublicId(db, userId) {
   throw new Error("public_id_unavailable");
 }
 
-async function ensureUser(db, userId, displayName = "DarkVibeX User") {
+async function ensureUser(
+  db,
+  userId,
+  displayName = "DarkVibeX User",
+  profileSetupRequired = false,
+) {
   await ensureUsersSchema(db);
   const ts = now();
   await db.prepare(
-    `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, created_at, updated_at)
-     VALUES (?, ?, 'user', 500000, 120, 0, ?, ?)
+    `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, profile_setup_required, created_at, updated_at)
+     VALUES (?, ?, 'user', 500000, 120, 0, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        display_name = CASE
          WHEN users.display_name = '' AND excluded.display_name <> '' THEN excluded.display_name
          ELSE users.display_name
        END,
        updated_at = excluded.updated_at`
-  ).bind(userId, displayName, ts, ts).run();
+  ).bind(
+    userId,
+    displayName,
+    profileSetupRequired ? 1 : 0,
+    ts,
+    ts,
+  ).run();
   await ensureUserPublicId(db, userId);
   return db.prepare(
     "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
@@ -4596,15 +4607,12 @@ async function handleApi(request, env, url) {
     try {
       // When attaching Google to an existing email ID, preserve its current
       // DarkVibeX name/profile instead of replacing it with Google's display name.
-      user = await ensureUser(db, userId, matchedExistingEmailAccount ? "" : displayName);
-      if (isNewGoogleAccount) {
-        await db.prepare(
-          "UPDATE users SET profile_setup_required=1,updated_at=? WHERE id=?"
-        ).bind(now(), userId).run();
-        user = await db.prepare(
-          "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,profile_setup_required,bio,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
-        ).bind(userId).first();
-      }
+      user = await ensureUser(
+        db,
+        userId,
+        matchedExistingEmailAccount ? "" : displayName,
+        isNewGoogleAccount,
+      );
       await db.prepare(
         `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
          VALUES('google',?,?,?,?,?)
