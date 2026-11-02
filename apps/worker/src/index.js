@@ -176,7 +176,7 @@ async function verifyRefreshableSessionToken(token, secret) {
 }
 
 
-async function createSessionToken(env, userId, displayName) {
+async function createSessionToken(env, userId, displayName, provider = "legacy") {
   if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
   const seconds = Math.floor(Date.now() / 1000);
   return signJwt(
@@ -185,6 +185,7 @@ async function createSessionToken(env, userId, displayName) {
     {
       sub: String(userId),
       name: String(displayName ?? userId),
+      provider: String(provider ?? "legacy"),
       iat: seconds,
       exp: seconds + 60 * 60 * 24 * 7,
     },
@@ -223,6 +224,35 @@ function bearerToken(request) {
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
 }
 
+function guestSessionsAllowed(env) {
+  const value = env?.ALLOW_GUEST_SESSIONS;
+  return value === true || String(value ?? "").trim().toLowerCase() === "true";
+}
+
+async function resolveSessionProvider(db, userId, session, env) {
+  if (guestSessionsAllowed(env)) {
+    return String(session?.provider ?? "test");
+  }
+  const claimed = String(session?.provider ?? "").trim().toLowerCase();
+  if (claimed === "google" || claimed === "email") return claimed;
+  if (claimed === "guest") return "";
+
+  // Backward compatibility for existing Google/Email tokens minted before
+  // provider claims were added. Legacy guest sessions have no linked identity
+  // and are rejected rather than being allowed to refresh forever.
+  await ensureAuthIdentityTable(db);
+  const google = await db.prepare(
+    "SELECT 1 AS linked FROM user_auth_identities WHERE provider='google' AND user_id=? LIMIT 1"
+  ).bind(userId).first();
+  if (google) return "google";
+
+  await ensureEmailAuthSchema(db);
+  const email = await db.prepare(
+    "SELECT 1 AS linked FROM email_credentials WHERE user_id=? LIMIT 1"
+  ).bind(userId).first();
+  return email ? "email" : "";
+}
+
 async function requireSession(request, env, expectedUserId) {
   let session;
   try {
@@ -234,6 +264,19 @@ async function requireSession(request, env, expectedUserId) {
   const actor = String(session?.sub ?? "").trim();
   if (!actor || (expectedUserId != null && actor !== String(expectedUserId))) {
     return json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  try {
+    const db = requireDb(env);
+    const provider = await resolveSessionProvider(db, actor, session, env);
+    if (!provider) return json({ ok: false, error: "guest_login_disabled" }, { status: 401 });
+    await ensureUserAllowed(db, actor);
+  } catch (error) {
+    const code = String(error?.message ?? error);
+    if (code === "user_banned" || code === "user_suspended") {
+      return json({ ok: false, error: code }, { status: 403 });
+    }
+    console.error("DarkVibeX session policy check failed", code);
+    return json({ ok: false, error: "session_policy_check_failed" }, { status: 503 });
   }
   const deviceKey=String(request.headers.get("x-device-id") ?? "").trim().slice(0,500);
   if(deviceKey){
@@ -4405,7 +4448,7 @@ async function handleApi(request, env, url) {
       const latest=await db.prepare(
         "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=?"
       ).bind(userId).first();
-      const token=await createSessionToken(env,userId,latest?.display_name ?? userId);
+      const token=await createSessionToken(env,userId,latest?.display_name ?? userId,"email");
       return json({ok:true,token,user:latest,provider:"email"});
     } catch(error) {
       const code=String(error?.message ?? error);
@@ -4429,8 +4472,12 @@ async function handleApi(request, env, url) {
       ).bind(userId).first();
       if (!user) return json({ ok: false, error: "user_not_found" }, { status: 401 });
       await ensureUserAllowed(db, userId);
-      const token = await createSessionToken(env, userId, user.display_name);
-      return json({ ok: true, token, user, provider: "refresh" });
+      const sessionProvider = await resolveSessionProvider(db, userId, previous, env);
+      if (!sessionProvider) {
+        return json({ ok: false, error: "guest_login_disabled" }, { status: 401 });
+      }
+      const token = await createSessionToken(env, userId, user.display_name, sessionProvider);
+      return json({ ok: true, token, user, provider: sessionProvider });
     } catch (error) {
       const code = String(error?.message ?? error);
       const status = code === "user_banned" || code === "user_suspended" ? 403 : 401;
@@ -4449,7 +4496,7 @@ async function handleApi(request, env, url) {
         "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       if(!user) throw new Error("user_not_found");
-      const token=await createSessionToken(env,userId,user.display_name);
+      const token=await createSessionToken(env,userId,user.display_name,"email");
       return json({ok:true,token,user,provider:"email"});
     } catch(error) {
       const code=String(error?.message ?? error);
@@ -4556,7 +4603,7 @@ async function handleApi(request, env, url) {
 
     let token;
     try {
-      token = await createSessionToken(env, userId, user.display_name);
+      token = await createSessionToken(env, userId, user.display_name, "google");
     } catch (error) {
       console.error("Google session token creation failed", error);
       return json({ ok: false, error: "google_session_token_failed" }, { status: 503 });
@@ -4629,13 +4676,16 @@ async function handleApi(request, env, url) {
     if (!env.SESSION_SECRET) {
       return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
     }
+    if (!guestSessionsAllowed(env)) {
+      return json({ ok: false, error: "guest_login_disabled" }, { status: 403 });
+    }
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim() ||
       String(Math.floor(10000000 + Math.random() * 90000000));
     const displayName = String(body.display_name ?? "DarkVibeX User").trim().slice(0, 60);
     const user = await ensureUser(db, userId, displayName);
     await ensureUserAllowed(db, userId);
-    const token = await createSessionToken(env, userId, user.display_name);
+    const token = await createSessionToken(env, userId, user.display_name, "guest");
     return json({ ok: true, token, user, provider: "guest" });
   }
 
@@ -4643,6 +4693,8 @@ async function handleApi(request, env, url) {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
     const user = await ensureUser(db, userId, String(body.display_name ?? "").trim());
     await ensureUserAllowed(db, userId);
     return json({ ok: true, user });
@@ -8556,6 +8608,8 @@ async function handleLiveKitToken(request, env) {
     return json({ ok: false, error: "voice_not_configured" }, { status: 503 });
   }
 
+  const authError = await requireSession(request, env);
+  if (authError) return authError;
   const session = await verifySessionToken(
     bearerToken(request),
     String(env.SESSION_SECRET),
