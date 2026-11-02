@@ -782,11 +782,35 @@ async function decorateMessagesWithVipChatBox(db, messages) {
   const rows = Array.isArray(messages) ? messages : [];
   if (!rows.length) return rows;
   const catalog = await effectiveCosmeticCatalog(db);
+  const bubbleById = new Map(
+    catalog
+      .filter((item) => String(item.kind ?? "") === "bubble")
+      .map((item) => [String(item.id ?? ""), item]),
+  );
   const statusCache = new Map();
   const visualCache = new Map();
   for (const message of rows) {
     const senderId = String(message.user_id ?? message.sender_user_id ?? "").trim();
-    if (!senderId || message.active_bubble_id) continue;
+    if (!senderId) continue;
+
+    // The SQL fast path reads $.asset_key directly. Older Owner Panel records
+    // may contain only $.asset, and custom active bubble IDs used to bypass VIP
+    // decoration before their media key could be recovered. Resolve every
+    // already-equipped bubble from the same effective catalog used by Store.
+    const activeBubbleId = String(message.active_bubble_id ?? "").trim();
+    if (activeBubbleId) {
+      const activeBubble = bubbleById.get(activeBubbleId);
+      if (activeBubble) {
+        if (!String(message.active_bubble_asset_key ?? "").trim()) {
+          message.active_bubble_asset_key = String(activeBubble.asset_key ?? "");
+        }
+        if (!String(message.active_bubble_video_key ?? "").trim()) {
+          message.active_bubble_video_key = String(activeBubble.video_key ?? "");
+        }
+      }
+      continue;
+    }
+
     if (!statusCache.has(senderId)) statusCache.set(senderId, await getVipStatus(db, senderId));
     const vip = statusCache.get(senderId);
     if (!vip?.active || Number(vip.level ?? 0) < 1) continue;
