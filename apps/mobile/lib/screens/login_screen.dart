@@ -689,31 +689,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              key: const Key('create-id-language'),
-                              initialValue: _selectedLanguage,
-                              decoration: const InputDecoration(
-                                labelText: 'Language',
-                                prefixIcon: Icon(Icons.language_rounded),
-                              ),
-                              items: darkVibeXSupportedLanguages
-                                  .map(
-                                    (language) => DropdownMenuItem<String>(
-                                      value: language,
-                                      child: Text(language),
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: busy
-                                  ? null
-                                  : (value) {
-                                      if (value == null) return;
-                                      setState(
-                                        () => _selectedLanguage = value,
-                                      );
-                                    },
-                            ),
                           ],
                         ),
                       ),
@@ -759,6 +734,32 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                       if (!_showProfileForm) ...[
+                      const SizedBox(height: 18),
+                      TinniPanel(
+                        child: DropdownButtonFormField<String>(
+                          key: const Key('login-language-selector'),
+                          initialValue: _selectedLanguage,
+                          decoration: const InputDecoration(
+                            labelText: 'Language',
+                            prefixIcon: Icon(Icons.language_rounded),
+                          ),
+                          items: darkVibeXSupportedLanguages
+                              .map(
+                                (language) => DropdownMenuItem<String>(
+                                  value: language,
+                                  child: Text(language),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: busy
+                              ? null
+                              : (value) async {
+                                  if (value == null) return;
+                                  setState(() => _selectedLanguage = value);
+                                  await state.saveLoginLanguagePreference(value);
+                                },
+                        ),
+                      ),
                       const SizedBox(height: 18),
                       SizedBox(
                         width: double.infinity,

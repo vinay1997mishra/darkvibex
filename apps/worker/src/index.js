@@ -850,6 +850,7 @@ async function initializeUsersSchema(db) {
       country_name TEXT,
       flag_emoji TEXT,
       gender TEXT,
+      profile_setup_required INTEGER NOT NULL DEFAULT 0,
       bio TEXT NOT NULL DEFAULT '',
       age_change_count INTEGER NOT NULL DEFAULT 0,
       country_change_count INTEGER NOT NULL DEFAULT 0,
@@ -877,6 +878,7 @@ async function initializeUsersSchema(db) {
     ["country_name", "TEXT"],
     ["flag_emoji", "TEXT"],
     ["gender", "TEXT"],
+    ["profile_setup_required", "INTEGER NOT NULL DEFAULT 0"],
     ["bio", "TEXT NOT NULL DEFAULT ''"],
     ["age_change_count", "INTEGER NOT NULL DEFAULT 0"],
     ["country_change_count", "INTEGER NOT NULL DEFAULT 0"],
@@ -1010,22 +1012,33 @@ async function ensureUserPublicId(db, userId) {
   throw new Error("public_id_unavailable");
 }
 
-async function ensureUser(db, userId, displayName = "DarkVibeX User") {
+async function ensureUser(
+  db,
+  userId,
+  displayName = "DarkVibeX User",
+  profileSetupRequired = false,
+) {
   await ensureUsersSchema(db);
   const ts = now();
   await db.prepare(
-    `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, created_at, updated_at)
-     VALUES (?, ?, 'user', 500000, 120, 0, ?, ?)
+    `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, profile_setup_required, created_at, updated_at)
+     VALUES (?, ?, 'user', 500000, 120, 0, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        display_name = CASE
          WHEN users.display_name = '' AND excluded.display_name <> '' THEN excluded.display_name
          ELSE users.display_name
        END,
        updated_at = excluded.updated_at`
-  ).bind(userId, displayName, ts, ts).run();
+  ).bind(
+    userId,
+    displayName,
+    profileSetupRequired ? 1 : 0,
+    ts,
+    ts,
+  ).run();
   await ensureUserPublicId(db, userId);
   return db.prepare(
-    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -4468,7 +4481,7 @@ async function handleApi(request, env, url) {
       const userId = String(previous.sub);
       await ensureUsersSchema(db);
       const user = await db.prepare(
-        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
+        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,profile_setup_required,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       if (!user) return json({ ok: false, error: "user_not_found" }, { status: 401 });
       await ensureUserAllowed(db, userId);
@@ -4493,7 +4506,7 @@ async function handleApi(request, env, url) {
       await ensureUsersSchema(db);
       await ensureUserPublicId(db,userId);
       const user=await db.prepare(
-        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
+        "SELECT id,public_id,display_name,role,coins,diamonds,vip_level,avatar_key,date_of_birth,country_code,country_name,flag_emoji,gender,profile_setup_required,age_change_count,country_change_count,gender_change_count,language FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       if(!user) throw new Error("user_not_found");
       const token=await createSessionToken(env,userId,user.display_name,"email");
@@ -4522,19 +4535,39 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: code }, { status });
     }
 
+    await ensureUsersSchema(db);
     await ensureAuthIdentityTable(db);
     const subject = String(claims.sub);
     const linkedIdentity = await db.prepare(
       "SELECT user_id FROM user_auth_identities WHERE provider='google' AND subject=? LIMIT 1"
     ).bind(subject).first();
 
+    // A legacy Google user row may predate the identity-link table entry.
+    // Treat that row as an existing account rather than asking for onboarding.
+    let legacyGoogleUser = null;
+    let userId = String(linkedIdentity?.user_id ?? "");
+    if (!userId) {
+      legacyGoogleUser = await db.prepare(
+        "SELECT id FROM users WHERE id=? LIMIT 1"
+      ).bind("g_" + subject).first();
+      if (legacyGoogleUser?.id) userId = String(legacyGoogleUser.id);
+    }
+
     // If this Google account was not linked before, reuse an existing verified
     // email/password account with the same verified email instead of silently
     // creating a second DarkVibeX ID. Google email verification is enforced by
     // verifyGoogleIdToken() above.
-    let userId = String(linkedIdentity?.user_id ?? "");
     let matchedExistingEmailAccount = false;
     const verifiedEmail = normalizeEmail(claims.email ?? "");
+    if (!userId && verifiedEmail) {
+      const existingEmailIdentity = await db.prepare(
+        "SELECT user_id FROM user_auth_identities WHERE provider='email' AND (email=? OR subject=?) LIMIT 1"
+      ).bind(verifiedEmail, verifiedEmail).first();
+      if (existingEmailIdentity?.user_id) {
+        userId = String(existingEmailIdentity.user_id);
+        matchedExistingEmailAccount = true;
+      }
+    }
     if (!userId && verifiedEmail) {
       try {
         await ensureEmailAuthSchema(db);
@@ -4562,6 +4595,8 @@ async function handleApi(request, env, url) {
         );
       }
     }
+    const isNewGoogleAccount =
+      !linkedIdentity && !legacyGoogleUser && !matchedExistingEmailAccount;
     if (!userId) userId = "g_" + subject;
 
     const displayName = String(
@@ -4572,7 +4607,12 @@ async function handleApi(request, env, url) {
     try {
       // When attaching Google to an existing email ID, preserve its current
       // DarkVibeX name/profile instead of replacing it with Google's display name.
-      user = await ensureUser(db, userId, matchedExistingEmailAccount ? "" : displayName);
+      user = await ensureUser(
+        db,
+        userId,
+        matchedExistingEmailAccount ? "" : displayName,
+        isNewGoogleAccount,
+      );
       await db.prepare(
         `INSERT INTO user_auth_identities(provider,subject,user_id,email,created_at,updated_at)
          VALUES('google',?,?,?,?,?)
@@ -4608,7 +4648,14 @@ async function handleApi(request, env, url) {
       console.error("Google session token creation failed", error);
       return json({ ok: false, error: "google_session_token_failed" }, { status: 503 });
     }
-    return json({ ok: true, token, user, provider: "google" });
+    return json({
+      ok: true,
+      token,
+      user,
+      provider: "google",
+      is_new_user: isNewGoogleAccount,
+      needs_profile_setup: Number(user.profile_setup_required ?? 0) === 1,
+    });
   }
 
   if (url.pathname === "/api/account/bind-google" && request.method === "POST") {
@@ -4785,6 +4832,7 @@ async function handleApi(request, env, url) {
               gender=?,
               bio=?,
               language=?,
+              profile_setup_required=0,
               age_change_count=?,
               country_change_count=?,
               gender_change_count=?,
@@ -4842,7 +4890,7 @@ async function handleApi(request, env, url) {
     }
 
     const user = await db.prepare(
-      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(userId).first();
     return json({
       ok:true,
@@ -4914,7 +4962,7 @@ async function handleApi(request, env, url) {
     await ensureUsersSchema(db);
     let viewedUserId = requestedUserId;
     let user = await db.prepare(
-      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+      "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
     ).bind(viewedUserId).first();
     if (!user && requestedUserId) {
       const byStablePublicId = await db.prepare(
@@ -4960,6 +5008,9 @@ async function handleApi(request, env, url) {
       if(ownerIdentity.invisible_id && viewerId !== viewedUserId){
         user.public_id=null;
         user.vip_custom_id=null;
+      }
+      if (viewerId !== viewedUserId) {
+        delete user.profile_setup_required;
       }
     }
     const visitorsFeature=await ownerSetting(db,"feature.visitors",{enabled:true});
