@@ -39,6 +39,12 @@ void main() {
     expect(room, contains("item['video_key']"));
     expect(room, contains('GiftMediaPreview('));
     expect(preview, contains('VideoPlayerController.networkUrl'));
+    expect(preview, contains('widget.assetKey.trim().isNotEmpty ?'));
+    expect(
+      preview.indexOf('final assetKey = widget.assetKey.trim();'),
+      lessThan(preview.indexOf('if (_videoReady')),
+    );
+    expect(preview, contains('Image.network('));
     expect(preview, contains('setLooping(false)'));
     expect(preview, contains('setVolume(0)'));
     expect(preview, contains('controller.play()'));
