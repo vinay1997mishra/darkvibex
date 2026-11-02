@@ -44,7 +44,7 @@ test("Unique ID is locked until active VIP15", async () => {
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
   const secret = "vip-unique-id-test-secret";
-  const env = { DB, SESSION_SECRET: secret };
+  const env = { DB, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
