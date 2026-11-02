@@ -478,7 +478,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                   minHeight: 44,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 44,
-                                      vertical: 10,
+                                    vertical: 10,
                                   ),
                                   child: messageContent,
                                 )
