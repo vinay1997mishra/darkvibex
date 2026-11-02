@@ -1136,24 +1136,6 @@ class BackendApi {
         .toList(growable: false);
   }
 
-  Future<Map<String, dynamic>?> createCustomGift({
-    required String userId,
-    required String name,
-    required String assetKey,
-    int coinCost = 5000,
-  }) =>
-      _json(
-        'POST',
-        '/api/custom-gifts',
-        body: <String, dynamic>{
-          'user_id': userId,
-          'name': name,
-          'asset_key': assetKey,
-          'coin_cost': coinCost,
-        },
-        returnErrorBody: true,
-      );
-
   Future<Map<String, dynamic>?> sendGift({
     required String roomId,
     required String senderUserId,
