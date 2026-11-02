@@ -98,6 +98,7 @@ class AppState extends ChangeNotifier {
   bool signingIn = false;
   bool googleSignInReady = false;
   bool _googleInitialized = false;
+  bool _loginLanguageSelected = false;
   String? authError;
   String? _googleWebClientId;
 
@@ -183,6 +184,11 @@ class AppState extends ChangeNotifier {
 
     try {
       await _ensureDeviceKey();
+      final localPrefs = await SharedPreferences.getInstance();
+      final savedLoginLanguage = localPrefs.getString('dvx.language')?.trim() ?? '';
+      if (darkVibeXIsSupportedLanguage(savedLoginLanguage)) {
+        setLanguagePreference(savedLoginLanguage);
+      }
       if (!backend.configured) {
         authError = 'Server is not configured.';
         return;
@@ -198,16 +204,6 @@ class AppState extends ChangeNotifier {
         debugPrint('DarkVibeX persisted session could not be checked: $error');
       }
 
-      if (await _ensureGoogleSignInInitialized()) {
-        final lightweight =
-            GoogleSignIn.instance.attemptLightweightAuthentication();
-        if (lightweight != null) {
-          final account = await lightweight;
-          if (account != null) {
-            await _completeGoogleSignIn(account, notify: false);
-          }
-        }
-      }
     } on GoogleSignInException catch (error) {
       authError = _googleSignInErrorMessage(error);
       debugPrint(
@@ -619,21 +615,46 @@ class AppState extends ChangeNotifier {
         int.tryParse(user['country_change_count']?.toString() ?? '') ?? 0;
     genderChangeCount =
         int.tryParse(user['gender_change_count']?.toString() ?? '') ?? 0;
-    var restoredLanguage = user['language']?.toString().trim() ?? '';
+    final preLoginLanguage =
+        _loginLanguageSelected ? languagePreference.value.trim() : '';
+    var restoredLanguage = preLoginLanguage.isNotEmpty
+        ? preLoginLanguage
+        : (user['language']?.toString().trim() ?? '');
     if (!darkVibeXIsSupportedLanguage(restoredLanguage)) {
       restoredLanguage =
           (await SharedPreferences.getInstance()).getString('dvx.language') ??
               'English';
     }
     setLanguagePreference(restoredLanguage);
+    if (preLoginLanguage.isNotEmpty) {
+      try {
+        await backend.setUserLanguage(
+          userId: userId,
+          language: restoredLanguage,
+        );
+        await (await SharedPreferences.getInstance())
+            .setString('dvx.language', restoredLanguage);
+      } catch (error) {
+        debugPrint('DarkVibeX login language could not be synced: $error');
+      }
+      _loginLanguageSelected = false;
+    }
     if (dateOfBirth == null || dateOfBirth!.trim().isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       dateOfBirth = prefs.getString(_sessionDateOfBirthKey);
     }
-    needsProfileSetup =
-        (dateOfBirth?.trim().isNotEmpty != true) ||
-        countryCode.trim().isEmpty ||
-        !const <String>{'male', 'female'}.contains(gender.trim().toLowerCase());
+    final profileSetupFlag = user['profile_setup_required'];
+    final googleProfileSetupRequired = provider == 'google' &&
+        (session?['needs_profile_setup'] == true ||
+            profileSetupFlag == true ||
+            profileSetupFlag == 1 ||
+            profileSetupFlag?.toString() == '1');
+    needsProfileSetup = provider == 'google'
+        ? googleProfileSetupRequired
+        : (dateOfBirth?.trim().isNotEmpty != true) ||
+            countryCode.trim().isEmpty ||
+            !const <String>{'male', 'female'}
+                .contains(gender.trim().toLowerCase());
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
@@ -1157,6 +1178,16 @@ class AppState extends ChangeNotifier {
     final normalized = value.trim();
     languagePreference.value =
         darkVibeXIsSupportedLanguage(normalized) ? normalized : 'English';
+  }
+
+  Future<void> saveLoginLanguagePreference(String value) async {
+    final normalized = value.trim();
+    if (!darkVibeXIsSupportedLanguage(normalized)) return;
+    _loginLanguageSelected = true;
+    setLanguagePreference(normalized);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('dvx.language', normalized);
+    notifyListeners();
   }
 
   Future<bool> saveLanguagePreference(String value) async {
