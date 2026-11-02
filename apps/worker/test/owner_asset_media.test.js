@@ -83,3 +83,13 @@ test("Owner Panel lets staff with gift-save permission upload and preview a gift
   assert.match(giftPreview, /Image\.network\(/);
   assert.match(giftPreview, /backend\.fileUrl\(assetKey\)/);
 });
+test("uploaded chat bubbles resolve the owner catalog media key and preserve artwork scale", () => {
+  assert.match(worker, /const bubbleById = new Map/);
+  assert.match(worker, /const activeBubbleId = String\(message\.active_bubble_id/);
+  assert.match(worker, /activeBubble\.asset_key/);
+  assert.match(worker, /activeBubble\.video_key/);
+  assert.match(transparentArtwork, /adaptiveArtworkNineSliceScale/);
+  assert.match(transparentArtwork, /RawImage\(/);
+  assert.match(bubbleWidget, /autoScaleNineSlice: true/);
+  assert.match(room, /active_bubble_asset_key/);
+});
