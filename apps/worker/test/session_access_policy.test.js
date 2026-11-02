@@ -59,16 +59,6 @@ async function sessionToken(userId, secret, provider = "google") {
 async function fixture({ allowGuests = false } = {}) {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
-  sqlite.exec(`
-    CREATE TABLE owner_user_controls (
-      user_id TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'active',
-      muted_until INTEGER,
-      banned_until INTEGER,
-      note TEXT NOT NULL DEFAULT '',
-      updated_at INTEGER NOT NULL
-    )
-  `);
   const DB = new D1Mock(sqlite);
   const secret = "session-access-policy-test-secret";
   const env = {
