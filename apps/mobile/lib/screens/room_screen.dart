@@ -7770,16 +7770,13 @@ class _RoomScreenState extends State<RoomScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (text.isNotEmpty)
-                              Text(
-                                '${name == null || name.isEmpty ? 'User' : name}: $text',
-                                style: TextStyle(
-                                  color: hasBubble
-                                      ? const Color(0xFF241626)
-                                      : null,
-                                  fontWeight:
-                                      hasBubble ? FontWeight.w700 : null,
-                                ),
-                              ),
+                              hasBubble
+                                  ? BubbleChatText(
+                                      text: '${name == null || name.isEmpty ? 'User' : name}: $text',
+                                    )
+                                  : Text(
+                                      '${name == null || name.isEmpty ? 'User' : name}: $text',
+                                    ),
                             if (imageKey != null && imageKey.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
