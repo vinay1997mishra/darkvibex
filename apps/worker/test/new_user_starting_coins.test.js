@@ -7,7 +7,7 @@ const worker = await readFile(new URL("../src/index.js", import.meta.url), "utf8
 test("new DarkVibeX IDs receive 500000 coins only on first creation", () => {
   assert.match(
     worker,
-    /VALUES \(\?, \?, 'user', 500000, 120, 0, \?, \?\)/
+    /VALUES \(\?, \?, 'user', 500000, 120, 0, \?, \?, \?\)/
   );
   assert.match(worker, /ON CONFLICT\(id\) DO UPDATE SET/);
   assert.doesNotMatch(
