@@ -92,8 +92,7 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
     final controller = _controller;
     if (_ready && !_failed && controller != null && controller.value.isInitialized) {
       final size = controller.value.size;
-      return ColoredBox(
-        color: const Color(0xF5080611),
+      return IgnorePointer(
         child: Center(
           child: FittedBox(
             fit: BoxFit.contain,
@@ -127,6 +126,8 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
         ),
       );
     }
+    // Do not flash the illustrated fallback while the uploaded video loads.
+    if (widget.videoKey.trim().isNotEmpty) return const SizedBox.shrink();
     return widget.fallback;
   }
 }
