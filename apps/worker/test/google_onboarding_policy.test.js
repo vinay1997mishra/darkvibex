@@ -11,6 +11,8 @@ test("Google onboarding state is durable and defaults existing accounts to direc
   assert.match(worker, /profile_setup_required INTEGER NOT NULL DEFAULT 0/);
   assert.match(worker, /\["profile_setup_required", "INTEGER NOT NULL DEFAULT 0"\]/);
   assert.match(worker, /const isNewGoogleAccount =\s*!linkedIdentity && !legacyGoogleUser && !matchedExistingEmailAccount/);
+  assert.match(worker, /profileSetupRequired = false/);
+  assert.match(worker, /matchedExistingEmailAccount \? "" : displayName,[\s\S]*?isNewGoogleAccount/);
   assert.match(worker, /provider='email' AND \(email=\? OR subject=\?\)/);
   assert.match(worker, /needs_profile_setup: Number\(user\.profile_setup_required \?\? 0\) === 1/);
   assert.match(worker, /profile_setup_required=0/);
