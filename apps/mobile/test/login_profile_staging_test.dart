@@ -35,6 +35,8 @@ void main() {
     expect(find.byKey(const Key('create-id-country')), findsOneWidget);
     expect(find.byKey(const Key('login-language-selector')), findsNothing);
     expect(find.text('Tap to add DP'), findsOneWidget);
+    expect(find.byKey(const Key('create-id-gender-male')), findsOneWidget);
+    expect(find.byKey(const Key('create-id-gender-female')), findsOneWidget);
     expect(find.byKey(const Key('complete-profile-button')), findsOneWidget);
     expect(find.text('Save Profile & Enter DarkVibeX'), findsOneWidget);
     expect(find.text('Continue with Google'), findsNothing);
