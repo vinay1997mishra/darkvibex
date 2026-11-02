@@ -308,6 +308,42 @@ class _JewelryRingPainter extends CustomPainter {
       oldDelegate.styleId != styleId;
 }
 
+/// Shared foreground style for room chat and direct messages. White text with
+/// a dark shadow remains readable over uploaded transparent bubble artwork.
+class BubbleChatText extends StatelessWidget {
+  const BubbleChatText({
+    super.key,
+    required this.text,
+    this.fontSize = 14,
+  });
+
+  final String text;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: fontSize,
+          height: 1.25,
+          fontWeight: FontWeight.w800,
+          shadows: const <Shadow>[
+            Shadow(
+              color: Color(0xEE000000),
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
+            Shadow(
+              color: Color(0x99000000),
+              blurRadius: 1,
+              offset: Offset.zero,
+            ),
+          ],
+        ),
+      );
+}
+
 final Map<String, MemoryImage> _bubbleArtworkCache =
     <String, MemoryImage>{};
 final Map<String, MemoryImage> _bubbleChatArtworkCache =
@@ -448,6 +484,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
                   url: customUrl,
                   headers: assetImageHeaders,
                   fit: BoxFit.fill,
+                  autoCenterSlice: true,
                   fallback: fallbackArtwork == null
                       ? CustomPaint(painter: _BubblePainter(theme))
                       : TransparentArtworkImage(
@@ -458,9 +495,9 @@ class StretchableCosmeticBubble extends StatelessWidget {
                         ),
                 ),
               ),
-              Positioned.fill(
-                child: _AnimatedBubbleEdgeEffect(styleId: styleId),
-              ),
+              // Uploaded bubble art supplies its own outline and ornaments.
+              // Do not paint the built-in rectangular/gold edge effect over it:
+              // unknown Owner Panel IDs otherwise inherit the default gold theme.
               Padding(padding: contentPadding, child: child),
             ],
           ),

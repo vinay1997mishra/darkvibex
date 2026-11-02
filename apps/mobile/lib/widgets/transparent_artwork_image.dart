@@ -4,6 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+/// Returns a conservative nine-slice region for uploaded transparent artwork.
+/// The centre is allowed to stretch while the outer decorative edges stay fixed.
+Rect? adaptiveArtworkCenterSlice(int width, int height) {
+  if (width < 12 || height < 12) return null;
+  return Rect.fromLTRB(width * .34, height * .28, width * .66, height * .72);
+}
+
 /// Displays uploaded frame/bubble artwork only when its alpha channel is useful.
 /// Broken legacy uploads fall back to vector art instead of painting a square
 /// bitmap over the room background or the user's profile photo.
@@ -16,6 +23,7 @@ class TransparentArtworkImage extends StatefulWidget {
     this.headers,
     this.fit = BoxFit.contain,
     this.centerSlice,
+    this.autoCenterSlice = false,
     this.requireTransparentCenter = false,
     this.filterQuality = FilterQuality.high,
   }) : assert(url != null || imageProvider != null);
@@ -25,6 +33,9 @@ class TransparentArtworkImage extends StatefulWidget {
   final Map<String, String>? headers;
   final BoxFit fit;
   final Rect? centerSlice;
+  /// Derive a generic nine-slice from the image's central safe area.
+  /// Used by Owner Panel bubble uploads whose exact pixel size is unknown.
+  final bool autoCenterSlice;
   final bool requireTransparentCenter;
   final FilterQuality filterQuality;
   final Widget fallback;
@@ -41,7 +52,9 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   String _resolvedUrl = '';
   Map<String, String>? _resolvedHeaders;
   bool? _resolvedRequireTransparentCenter;
+  bool? _resolvedAutoCenterSlice;
   bool? _alphaValid;
+  Rect? _autoCenterSlice;
   bool _checking = false;
   int _generation = 0;
 
@@ -57,7 +70,8 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     if (oldWidget.url != widget.url ||
         !identical(oldWidget.imageProvider, widget.imageProvider) ||
         !mapEquals(oldWidget.headers, widget.headers) ||
-        oldWidget.requireTransparentCenter != widget.requireTransparentCenter) {
+        oldWidget.requireTransparentCenter != widget.requireTransparentCenter ||
+        oldWidget.autoCenterSlice != widget.autoCenterSlice) {
       _resolveArtwork();
     }
   }
@@ -67,7 +81,8 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     if (url == _resolvedUrl &&
         identical(widget.imageProvider, _resolvedSourceProvider) &&
         mapEquals(_resolvedHeaders, widget.headers) &&
-        _resolvedRequireTransparentCenter == widget.requireTransparentCenter) {
+        _resolvedRequireTransparentCenter == widget.requireTransparentCenter &&
+        _resolvedAutoCenterSlice == widget.autoCenterSlice) {
       return;
     }
     if (_stream != null && _listener != null) {
@@ -78,10 +93,12 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     _resolvedUrl = url;
     _resolvedSourceProvider = widget.imageProvider;
     _resolvedRequireTransparentCenter = widget.requireTransparentCenter;
+    _resolvedAutoCenterSlice = widget.autoCenterSlice;
     _resolvedHeaders = widget.headers == null
         ? null
         : Map<String, String>.from(widget.headers!);
     _alphaValid = null;
+    _autoCenterSlice = null;
     _checking = false;
     _provider = null;
     _stream = null;
@@ -157,10 +174,22 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
       sampleImage?.dispose();
       picture?.dispose();
     }
+    Rect? autoCenterSlice;
+    if (alphaValid && source.width >= 12 && source.height >= 12) {
+      // Keep the outer artwork fixed while allowing only the middle panel to
+      // grow with chat text. Proportions work for future Owner Panel uploads.
+      autoCenterSlice = Rect.fromLTRB(
+        source.width * .34,
+        source.height * .28,
+        source.width * .66,
+        source.height * .72,
+      );
+    }
     if (!mounted || _resolvedUrl != url || _generation != generation) return;
     setState(() {
       _checking = false;
       _alphaValid = alphaValid;
+      _autoCenterSlice = autoCenterSlice;
     });
   }
 
@@ -178,7 +207,8 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     return Image(
       image: _provider!,
       fit: widget.fit,
-      centerSlice: widget.centerSlice,
+      centerSlice: widget.centerSlice ??
+          (widget.autoCenterSlice ? _autoCenterSlice : null),
       filterQuality: widget.filterQuality,
       gaplessPlayback: true,
       errorBuilder: (_, __, ___) => widget.fallback,
