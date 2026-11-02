@@ -12,7 +12,7 @@ test('Owner Panel gift overrides are present in the catalog used by gift sending
 
   assert.match(catalog, /ownerStoreOverrides\(db\)/);
   assert.match(catalog, /String\(row\.kind\) !== "gift"/);
-  assert.match(catalog, /price_coins: Number\(row\.price_coins \?\? previous\.coin_cost \?\? 0\)/);
+  assert.match(catalog, /coin_cost: Number\(row\.price_coins \?\? previous\.coin_cost \?\? 0\)/);
 
   const sendStart = source.indexOf('if (url.pathname === "/api/gifts/send"');
   const sendEnd = source.indexOf(
