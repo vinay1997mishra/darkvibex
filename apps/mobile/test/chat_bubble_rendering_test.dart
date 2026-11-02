@@ -7,10 +7,10 @@ void main() {
   test('custom transparent bubble artwork gets an adaptive nine-slice', () {
     final slice = adaptiveArtworkCenterSlice(160, 80);
     expect(slice, isNotNull);
-    expect(slice!.left, 54.4);
-    expect(slice.top, 22.4);
-    expect(slice.right, 105.6);
-    expect(slice.bottom, 57.6);
+    expect(slice!.left, closeTo(54.4, 0.000001));
+    expect(slice.top, closeTo(22.4, 0.000001));
+    expect(slice.right, closeTo(105.6, 0.000001));
+    expect(slice.bottom, closeTo(57.6, 0.000001));
     expect(adaptiveArtworkCenterSlice(8, 80), isNull);
   });
 
