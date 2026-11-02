@@ -448,8 +448,8 @@ class StretchableCosmeticBubble extends StatelessWidget {
     this.minWidth = 112,
     this.minHeight = 44,
     this.contentPadding = const EdgeInsets.symmetric(
-      horizontal: 34,
-      vertical: 8,
+      horizontal: 44,
+      vertical: 10,
     ),
     this.assetImageUrl,
     this.assetImageHeaders,
@@ -485,6 +485,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
                   headers: assetImageHeaders,
                   fit: BoxFit.fill,
                   autoCenterSlice: true,
+                  autoScaleNineSlice: true,
                   fallback: fallbackArtwork == null
                       ? CustomPaint(painter: _BubblePainter(theme))
                       : TransparentArtworkImage(

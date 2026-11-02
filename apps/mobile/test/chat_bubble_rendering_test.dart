@@ -14,6 +14,32 @@ void main() {
     expect(adaptiveArtworkCenterSlice(8, 80), isNull);
   });
 
+  test('uploaded bubble nine-slice keeps decorative caps at chat size', () {
+    final standardScale = adaptiveArtworkNineSliceScale(748);
+    final largeScale = adaptiveArtworkNineSliceScale(1496);
+    expect(standardScale, closeTo(5.5, 0.000001));
+    expect(largeScale, closeTo(11.0, 0.000001));
+
+    final standardSlice = adaptiveArtworkCenterSlice(
+      748,
+      280,
+      imageScale: standardScale,
+    );
+    final largeSlice = adaptiveArtworkCenterSlice(
+      1496,
+      560,
+      imageScale: largeScale,
+    );
+    expect(standardSlice, isNotNull);
+    expect(largeSlice, isNotNull);
+    // Keep the decorative left/right caps a stable logical size at either
+    // export resolution instead of letting them consume the entire chat row.
+    expect(standardSlice!.left, closeTo(46.24, 0.01));
+    expect(largeSlice!.left, closeTo(46.24, 0.01));
+    expect(standardSlice.right, closeTo(89.76, 0.01));
+    expect(largeSlice.right, closeTo(89.76, 0.01));
+  });
+
   testWidgets('bubble text remains readable and long messages do not overflow',
       (tester) async {
     const message =

@@ -7819,8 +7819,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                     minHeight: 44,
                                     contentPadding:
                                         const EdgeInsets.symmetric(
-                                      horizontal: 34,
-                                      vertical: 8,
+                                      horizontal: 44,
+                                      vertical: 10,
                                     ),
                                     child: messageContent,
                                   )

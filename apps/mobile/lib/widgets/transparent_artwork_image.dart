@@ -4,11 +4,32 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Returns a conservative nine-slice region for uploaded transparent artwork.
-/// The centre is allowed to stretch while the outer decorative edges stay fixed.
-Rect? adaptiveArtworkCenterSlice(int width, int height) {
+/// Returns a chat-density scale for uploaded bubble artwork.
+///
+/// Owner Panel images are commonly exported at 740-1500+ pixels wide. Without
+/// a density scale, their fixed decorative side caps are interpreted as
+/// hundreds of logical pixels and Flutter crushes the centre/text area.
+/// This keeps each outside cap close to 46 logical pixels at any export size.
+double adaptiveArtworkNineSliceScale(int width) {
+  if (width < 12) return 1.0;
+  return (width / 748 * 5.5).clamp(1.0, 12.0).toDouble();
+}
+
+/// Returns the stretchable centre region in the image's logical coordinates.
+/// Only the centre stretches; left/right/top/bottom artwork remains intact.
+Rect? adaptiveArtworkCenterSlice(
+  int width,
+  int height, {
+  double imageScale = 1.0,
+}) {
   if (width < 12 || height < 12) return null;
-  return Rect.fromLTRB(width * .34, height * .28, width * .66, height * .72);
+  final safeScale = imageScale.isFinite && imageScale > 0 ? imageScale : 1.0;
+  return Rect.fromLTRB(
+    width * .34 / safeScale,
+    height * .28 / safeScale,
+    width * .66 / safeScale,
+    height * .72 / safeScale,
+  );
 }
 
 /// Displays uploaded frame/bubble artwork only when its alpha channel is useful.
@@ -24,6 +45,7 @@ class TransparentArtworkImage extends StatefulWidget {
     this.fit = BoxFit.contain,
     this.centerSlice,
     this.autoCenterSlice = false,
+    this.autoScaleNineSlice = false,
     this.requireTransparentCenter = false,
     this.filterQuality = FilterQuality.high,
   }) : assert(url != null || imageProvider != null);
@@ -36,6 +58,9 @@ class TransparentArtworkImage extends StatefulWidget {
   /// Derive a generic nine-slice from the image's central safe area.
   /// Used by Owner Panel bubble uploads whose exact pixel size is unknown.
   final bool autoCenterSlice;
+  /// Decode and paint uploaded chat art at a density-aware scale. This keeps
+  /// decorative side caps stable while the transparent centre expands.
+  final bool autoScaleNineSlice;
   final bool requireTransparentCenter;
   final FilterQuality filterQuality;
   final Widget fallback;
@@ -53,8 +78,11 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   Map<String, String>? _resolvedHeaders;
   bool? _resolvedRequireTransparentCenter;
   bool? _resolvedAutoCenterSlice;
+  bool? _resolvedAutoScaleNineSlice;
   bool? _alphaValid;
   Rect? _autoCenterSlice;
+  ui.Image? _decodedImage;
+  double _renderScale = 1.0;
   bool _checking = false;
   int _generation = 0;
 
@@ -71,7 +99,8 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
         !identical(oldWidget.imageProvider, widget.imageProvider) ||
         !mapEquals(oldWidget.headers, widget.headers) ||
         oldWidget.requireTransparentCenter != widget.requireTransparentCenter ||
-        oldWidget.autoCenterSlice != widget.autoCenterSlice) {
+        oldWidget.autoCenterSlice != widget.autoCenterSlice ||
+        oldWidget.autoScaleNineSlice != widget.autoScaleNineSlice) {
       _resolveArtwork();
     }
   }
@@ -82,7 +111,8 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
         identical(widget.imageProvider, _resolvedSourceProvider) &&
         mapEquals(_resolvedHeaders, widget.headers) &&
         _resolvedRequireTransparentCenter == widget.requireTransparentCenter &&
-        _resolvedAutoCenterSlice == widget.autoCenterSlice) {
+        _resolvedAutoCenterSlice == widget.autoCenterSlice &&
+        _resolvedAutoScaleNineSlice == widget.autoScaleNineSlice) {
       return;
     }
     if (_stream != null && _listener != null) {
@@ -90,10 +120,14 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     }
     _generation++;
     final generation = _generation;
+    _decodedImage?.dispose();
+    _decodedImage = null;
+    _renderScale = 1.0;
     _resolvedUrl = url;
     _resolvedSourceProvider = widget.imageProvider;
     _resolvedRequireTransparentCenter = widget.requireTransparentCenter;
     _resolvedAutoCenterSlice = widget.autoCenterSlice;
+    _resolvedAutoScaleNineSlice = widget.autoScaleNineSlice;
     _resolvedHeaders = widget.headers == null
         ? null
         : Map<String, String>.from(widget.headers!);
@@ -115,22 +149,29 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     _stream = stream;
     _listener = ImageStreamListener(
       (ImageInfo info, bool synchronousCall) {
-        if (_alphaValid != null || _checking) return;
+        if (_alphaValid != null || _checking) {
+          info.dispose();
+          return;
+        }
         _checking = true;
-        unawaited(_inspectAlpha(info.image, url, generation));
+        unawaited(_inspectAlpha(info, url, generation));
       },
       onError: (Object error, StackTrace? stackTrace) {
         if (!mounted || _resolvedUrl != url || _generation != generation) return;
         setState(() {
           _checking = false;
           _alphaValid = false;
+          _decodedImage?.dispose();
+          _decodedImage = null;
+          _renderScale = 1.0;
         });
       },
     );
     stream.addListener(_listener!);
   }
 
-  Future<void> _inspectAlpha(ui.Image source, String url, int generation) async {
+  Future<void> _inspectAlpha(ImageInfo info, String url, int generation) async {
+    final source = info.image;
     var alphaValid = false;
     ui.Image? sampleImage;
     ui.Picture? picture;
@@ -174,22 +215,35 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
       sampleImage?.dispose();
       picture?.dispose();
     }
-    Rect? autoCenterSlice;
-    if (alphaValid && source.width >= 12 && source.height >= 12) {
-      // Keep the outer artwork fixed while allowing only the middle panel to
-      // grow with chat text. Proportions work for future Owner Panel uploads.
-      autoCenterSlice = Rect.fromLTRB(
-        source.width * .34,
-        source.height * .28,
-        source.width * .66,
-        source.height * .72,
-      );
+    final renderScale = widget.autoScaleNineSlice
+        ? adaptiveArtworkNineSliceScale(source.width)
+        : 1.0;
+    final autoCenterSlice = alphaValid && widget.autoCenterSlice
+        ? adaptiveArtworkCenterSlice(
+            source.width,
+            source.height,
+            imageScale: renderScale,
+          )
+        : null;
+    if (!mounted || _resolvedUrl != url || _generation != generation) {
+      source.dispose();
+      return;
     }
-    if (!mounted || _resolvedUrl != url || _generation != generation) return;
     setState(() {
       _checking = false;
       _alphaValid = alphaValid;
       _autoCenterSlice = autoCenterSlice;
+      if (alphaValid && widget.autoScaleNineSlice) {
+        // ImageStreamListener supplies this widget its own ImageInfo clone.
+        // Keep that decoded frame for RawImage so the artwork is not fetched
+        // or decoded a second time just to apply the density scale.
+        _decodedImage = source;
+        _renderScale = renderScale;
+      } else {
+        source.dispose();
+        _decodedImage = null;
+        _renderScale = 1.0;
+      }
     });
   }
 
@@ -198,17 +252,32 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     if (_stream != null && _listener != null) {
       _stream!.removeListener(_listener!);
     }
+    _decodedImage?.dispose();
+    _decodedImage = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_alphaValid != true || _provider == null) return widget.fallback;
+    final centerSlice = widget.centerSlice ??
+        (widget.autoCenterSlice ? _autoCenterSlice : null);
+    if (widget.autoScaleNineSlice) {
+      final image = _decodedImage;
+      if (image == null) return widget.fallback;
+      return RawImage(
+        image: image,
+        scale: _renderScale,
+        fit: widget.fit,
+        centerSlice: centerSlice,
+        filterQuality: widget.filterQuality,
+        isAntiAlias: true,
+      );
+    }
     return Image(
       image: _provider!,
       fit: widget.fit,
-      centerSlice: widget.centerSlice ??
-          (widget.autoCenterSlice ? _autoCenterSlice : null),
+      centerSlice: centerSlice,
       filterQuality: widget.filterQuality,
       gaplessPlayback: true,
       errorBuilder: (_, __, ___) => widget.fallback,
