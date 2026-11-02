@@ -1027,7 +1027,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId, displayName, ts, ts).run();
   await ensureUserPublicId(db, userId);
   return db.prepare(
-    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
@@ -4549,6 +4549,15 @@ async function handleApi(request, env, url) {
     let matchedExistingEmailAccount = false;
     const verifiedEmail = normalizeEmail(claims.email ?? "");
     if (!userId && verifiedEmail) {
+      const existingEmailIdentity = await db.prepare(
+        "SELECT user_id FROM user_auth_identities WHERE provider='email' AND (email=? OR subject=?) LIMIT 1"
+      ).bind(verifiedEmail, verifiedEmail).first();
+      if (existingEmailIdentity?.user_id) {
+        userId = String(existingEmailIdentity.user_id);
+        matchedExistingEmailAccount = true;
+      }
+    }
+    if (!userId && verifiedEmail) {
       try {
         await ensureEmailAuthSchema(db);
         const emailAccount = await db.prepare(
@@ -4991,6 +5000,9 @@ async function handleApi(request, env, url) {
       if(ownerIdentity.invisible_id && viewerId !== viewedUserId){
         user.public_id=null;
         user.vip_custom_id=null;
+      }
+      if (viewerId !== viewedUserId) {
+        delete user.profile_setup_required;
       }
     }
     const visitorsFeature=await ownerSetting(db,"feature.visitors",{enabled:true});
