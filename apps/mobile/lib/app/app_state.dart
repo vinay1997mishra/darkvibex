@@ -241,9 +241,6 @@ class AppState extends ChangeNotifier {
     final token = prefs.getString(_sessionTokenKey)?.trim() ?? '';
     final provider = prefs.getString(_sessionProviderKey)?.trim() ?? '';
     final savedUserId = prefs.getString(_sessionUserIdKey)?.trim() ?? '';
-    final savedDisplayName =
-        prefs.getString(_sessionDisplayNameKey)?.trim() ?? 'DarkVibeX User';
-
     if (savedUserId.isEmpty || provider.isEmpty) return false;
 
     if (token.isNotEmpty) {
@@ -530,26 +527,6 @@ class AppState extends ChangeNotifier {
     };
   }
 
-  Future<bool> continueAsGuest() async {
-    if (signingIn) return false;
-    signingIn = true;
-    authError = null;
-    notifyListeners();
-
-    try {
-      final session = await backend.startGuestSession(
-        userId: userId,
-        displayName: displayName,
-      );
-      return await _applySession(session, provider: 'guest');
-    } catch (_) {
-      authError = 'Could not connect to DarkVibeX.';
-      return false;
-    } finally {
-      signingIn = false;
-      notifyListeners();
-    }
-  }
 
   Future<bool> _completeGoogleSignIn(
     GoogleSignInAccount account, {
