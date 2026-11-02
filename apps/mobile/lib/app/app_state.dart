@@ -241,9 +241,6 @@ class AppState extends ChangeNotifier {
     final token = prefs.getString(_sessionTokenKey)?.trim() ?? '';
     final provider = prefs.getString(_sessionProviderKey)?.trim() ?? '';
     final savedUserId = prefs.getString(_sessionUserIdKey)?.trim() ?? '';
-    final savedDisplayName =
-        prefs.getString(_sessionDisplayNameKey)?.trim() ?? 'DarkVibeX User';
-
     if (savedUserId.isEmpty || provider.isEmpty) return false;
 
     if (token.isNotEmpty) {
@@ -252,6 +249,8 @@ class AppState extends ChangeNotifier {
       // Refresh first so closing/reopening the app never turns a normal
       // 7-day access-token expiry into a logout or a new user ID.
       final refreshed = await backend.refreshSession(token: token);
+      final refreshedProvider =
+          refreshed?['provider']?.toString().trim() ?? '';
       if (refreshed?['ok'] == true &&
           refreshed?['token'] is String &&
           refreshed?['user'] is Map) {
@@ -260,7 +259,7 @@ class AppState extends ChangeNotifier {
             'token': refreshed!['token'],
             'user': Map<String, dynamic>.from(refreshed['user'] as Map),
           },
-          provider: provider,
+          provider: refreshedProvider.isNotEmpty ? refreshedProvider : provider,
           notify: false,
         );
       }
@@ -290,6 +289,7 @@ class AppState extends ChangeNotifier {
         'forbidden',
         'user_banned',
         'user_suspended',
+        'guest_login_disabled',
       };
       final refreshIsTerminal = terminalErrors.contains(refreshError);
       final profileIsTerminal = terminalErrors.contains(profileError);
@@ -300,22 +300,6 @@ class AppState extends ChangeNotifier {
       }
       // Only a confirmed invalid/revoked account or token is cleared.
       BackendApi.sessionToken = null;
-    }
-
-    // Guest users should keep the same account across normal app restarts.
-    // If the saved JWT expired, silently mint a new one for the same guest ID.
-    if (provider == 'guest') {
-      final refreshed = await backend.startGuestSession(
-        userId: savedUserId,
-        displayName: savedDisplayName,
-      );
-      if (refreshed?['token'] != null && refreshed?['user'] is Map) {
-        return _applySession(
-          refreshed,
-          provider: 'guest',
-          notify: false,
-        );
-      }
     }
 
     await _clearPersistedSession();
@@ -543,26 +527,6 @@ class AppState extends ChangeNotifier {
     };
   }
 
-  Future<bool> continueAsGuest() async {
-    if (signingIn) return false;
-    signingIn = true;
-    authError = null;
-    notifyListeners();
-
-    try {
-      final session = await backend.startGuestSession(
-        userId: userId,
-        displayName: displayName,
-      );
-      return await _applySession(session, provider: 'guest');
-    } catch (_) {
-      authError = 'Could not connect to DarkVibeX.';
-      return false;
-    } finally {
-      signingIn = false;
-      notifyListeners();
-    }
-  }
 
   Future<bool> _completeGoogleSignIn(
     GoogleSignInAccount account, {

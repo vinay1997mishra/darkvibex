@@ -257,7 +257,7 @@ jobs:
       - name: Build debug APK
         if: env.ANDROID_KEYSTORE_PATH == ''
         working-directory: apps/mobile
-        run: flutter build apk --debug --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
+        run: flutter build apk --debug --build-number "$GITHUB_RUN_NUMBER" --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
 
       - name: Build signed release APK
         if: env.ANDROID_KEYSTORE_PATH != ''
@@ -265,7 +265,7 @@ jobs:
         run: |
           flutter clean
           flutter pub get
-          flutter build apk --release --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
+          flutter build apk --release --build-number "$GITHUB_RUN_NUMBER" --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
 
       - name: Print APK signing certificate fingerprint
         shell: bash

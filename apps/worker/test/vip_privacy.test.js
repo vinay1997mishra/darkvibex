@@ -54,7 +54,7 @@ async function fixture() {
       };
     },
   };
-  const env = { DB, FILES, SESSION_SECRET: secret };
+  const env = { DB, FILES, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");

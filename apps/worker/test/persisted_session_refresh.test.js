@@ -19,7 +19,11 @@ const apiSource = readFileSync(
 test("expired persisted access tokens can refresh without changing account ID", () => {
   assert.ok(workerSource.includes('url.pathname === "/api/session/refresh"'));
   assert.ok(workerSource.includes("verifyRefreshableSessionToken"));
-  assert.ok(workerSource.includes("createSessionToken(env, userId, user.display_name)"));
+  assert.ok(workerSource.includes("createSessionToken(env, userId, user.display_name, sessionProvider)"));
+  assert.ok(workerSource.includes('error: "guest_login_disabled"'));
+  assert.ok(stateSource.includes("'guest_login_disabled'"));
+  assert.ok(!stateSource.includes("continueAsGuest"));
+  assert.ok(!apiSource.includes("startGuestSession"));
   assert.ok(apiSource.includes("'/api/session/refresh'"));
   assert.ok(stateSource.includes("backend.refreshSession(token: token)"));
   assert.ok(stateSource.includes("provider: provider"));

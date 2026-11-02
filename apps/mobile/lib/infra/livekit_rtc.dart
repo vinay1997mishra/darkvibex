@@ -60,15 +60,22 @@ class LiveKitRtcAdapter implements RtcAdapter {
     String? authToken,
   }) async {
     if (authToken == null || authToken.trim().isEmpty) {
+      _state = RtcConnectionState.failed;
       throw StateError('DarkVibeX session is required for voice');
     }
     await leave();
     _state = RtcConnectionState.joining;
 
-    final credentials = await _fetchCredentials(
-      roomId: roomId,
-      authToken: authToken,
-    );
+    late final Map<String, dynamic> credentials;
+    try {
+      credentials = await _fetchCredentials(
+        roomId: roomId,
+        authToken: authToken,
+      );
+    } catch (_) {
+      _state = RtcConnectionState.failed;
+      rethrow;
+    }
     final serverUrl = credentials['server_url']?.toString() ?? '';
     final token = credentials['token']?.toString() ?? '';
     if (serverUrl.isEmpty || token.isEmpty) {
@@ -114,10 +121,13 @@ class LiveKitRtcAdapter implements RtcAdapter {
     if (old != null) {
       try {
         await old.disconnect();
-      } finally {
-        try {
-          await old.dispose();
-        } catch (_) {}
+      } catch (error) {
+        debugPrint('DarkVibeX LiveKit disconnect cleanup failed: $error');
+      }
+      try {
+        await old.dispose();
+      } catch (error) {
+        debugPrint('DarkVibeX LiveKit dispose cleanup failed: $error');
       }
     }
     _state = RtcConnectionState.idle;
