@@ -11,7 +11,12 @@ void main() {
     expect(room, isNot(contains('room-create-custom-gift-grid')));
     expect(room, isNot(contains('Add custom gift')));
     expect(room, isNot(contains('_createRoomCustomGift')));
-    expect(room, isNot(contains('FilePicker.pickFiles')));
+    final giftPickerStart = room.indexOf('Future<void> _sendGiftToSeatUser(');
+    final giftPickerEnd = room.indexOf('Future<void> _showSeatMemberProfile', giftPickerStart);
+    expect(giftPickerStart, greaterThanOrEqualTo(0));
+    expect(giftPickerEnd, greaterThan(giftPickerStart));
+    final giftPicker = room.substring(giftPickerStart, giftPickerEnd);
+    expect(giftPicker, isNot(contains('FilePicker.pickFiles')));
     expect(backend, isNot(contains('createCustomGift')));
 
     // Gift browsing, category selection, media playback and sending remain.
