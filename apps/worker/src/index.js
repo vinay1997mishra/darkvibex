@@ -3908,7 +3908,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/vs" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env);
+    const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     return json({ ok: true, vs: await vsState(db, userId) });
   }
@@ -3998,7 +3998,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/cp" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env);
+    const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     return json({ ok: true, cp: await cpStateWithRing(db, userId) });
   }
@@ -6580,12 +6580,16 @@ async function handleApi(request, env, url) {
     if (request.method === "GET") {
       const userId = String(url.searchParams.get("user_id") ?? "").trim();
       if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       return json({ ok: true, following: await roomFollowState(db, roomId, userId) });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
       if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       await ensureUser(db, userId);
       await ensureUserAllowed(db, userId);
       const following = await recordLampRoomFollow(db, roomId, userId, body.follow !== false, now());
@@ -6601,6 +6605,8 @@ async function handleApi(request, env, url) {
     if (parts.length === 4 && request.method === "GET") {
       const userId = String(url.searchParams.get("user_id") ?? "").trim();
       if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       const status = await getLampStatus(db, roomId, userId, now());
       return json({ ok: true, ...status });
     }
@@ -6610,6 +6616,8 @@ async function handleApi(request, env, url) {
       const userId = String(body.user_id ?? "").trim();
       const taskId = String(body.task_id ?? "").trim();
       if (!userId || !taskId) return json({ ok: false, error: "user_and_task_required" }, { status: 400 });
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       await ensureUserAllowed(db, userId);
       const reward = await claimLampTask(db, roomId, userId, taskId, now());
       return json({ ok: true, ...reward });
@@ -6619,6 +6627,9 @@ async function handleApi(request, env, url) {
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
       const platform = String(body.platform ?? "").trim().toLowerCase();
+      if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+      const authError = await requireSession(request, env, userId);
+      if (authError) return authError;
       await recordLampRoomShare(db, roomId, userId, platform, now());
       return json({ ok: true });
     }
@@ -6627,6 +6638,9 @@ async function handleApi(request, env, url) {
       const body = await bodyJson(request);
       const hostId = String(body.host_user_id ?? "").trim();
       const inviteeId = String(body.invitee_user_id ?? "").trim();
+      if (!hostId || !inviteeId) return json({ ok:false,error:"host_and_invitee_required" }, { status:400 });
+      const authError = await requireSession(request, env, hostId);
+      if (authError) return authError;
       await createLampMicInvite(db, roomId, hostId, inviteeId, now());
       return json({ ok: true });
     }
@@ -7763,7 +7777,7 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/id-level" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env);
+    const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureUser(db, userId);
     return json({ ok: true, level: await getIdLevelStatus(db, userId) });
