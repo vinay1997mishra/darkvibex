@@ -8053,7 +8053,8 @@ class _RoomScreenState extends State<RoomScreen> {
                         vehicleLabel: arrivalEffectMember?['active_vehicle_id']?.toString() ?? 'VEHICLE ENTRY',
                       ),
                     ),
-            ),        ],
+            ),
+        ],
       ),
       bottomNavigationBar: AnimatedPadding(
         duration: const Duration(milliseconds: 180),
