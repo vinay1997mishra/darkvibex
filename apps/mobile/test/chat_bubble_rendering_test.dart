@@ -59,8 +59,8 @@ void main() {
       (tester) async {
     const message =
         'DarkVibeX User: this is a longer owner-added bubble message with multiple words and emoji ✨💗';
-    await tester.view.setPhysicalSize(const Size(360, 800));
-    await tester.view.setDevicePixelRatio(1);
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
