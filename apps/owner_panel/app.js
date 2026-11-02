@@ -253,8 +253,8 @@ const selectorPermissionRules = [
   ["#vipRuleEnabled",["vip.save"],"label"],["#saveVipRule",["vip.save"],"self"],["#resetVipRule",["vip.reset"],"self"],
 
   ["#reloadGifts",["gifts.view"],"self"],["#newGiftCategoryName",["gifts.save"],"label"],["#createGiftCategory",["gifts.save"],"self"],["#giftId",["gifts.save"],"label"],["#giftName",["gifts.save"],"label"],["#giftPrice",["gifts.save"],"label"],["#giftVip",["gifts.save"],"label"],
-  ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftVideoFile",["gifts.save"],"label"],["#giftVideoKey",["gifts.save"],"label"],["#uploadGiftVideo",["gifts.save"],"self"],["#removeGiftVideo",["gifts.save"],"self"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
-  ["#giftEnd",["gifts.save"],"label"],["#giftEnabled",["gifts.save"],"label"],["#giftDescription",["gifts.save"],"label"],["#saveGift",["gifts.save"],"self"],["#clearGift",["gifts.save"],"self"],
+  ["#giftEmoji",["gifts.save"],"label"],["#giftCategory",["gifts.save"],"label"],["#giftAsset",["gifts.save"],"label"],["#giftImageFile",["gifts.save"],"label"],["#giftVideoFile",["gifts.save"],"label"],["#giftVideoKey",["gifts.save"],"label"],["#uploadGiftVideo",["gifts.save"],"self"],["#removeGiftVideo",["gifts.save"],"self"],["#giftOrder",["gifts.save"],"label"],["#giftStart",["gifts.save"],"label"],
+  ["#giftEnd",["gifts.save"],"label"],["#giftEnabled",["gifts.save"],"label"],["#giftDescription",["gifts.save"],"label"],["#uploadGiftImage",["gifts.save"],"self"],["#removeGiftImage",["gifts.save"],"self"],["#saveGift",["gifts.save"],"self"],["#clearGift",["gifts.save"],"self"],
 
   ["#reloadAssets",["assets.view"],"self"],["#assetKind",["assets.view","assets.save","assets.remove"],"label"],["#assetId",["assets.save"],"label"],["#assetName",["assets.save"],"label"],
   ["#assetPrice",["assets.save"],"label"],["#assetVip",["assets.save"],"label"],["#assetDuration",["assets.save"],"label"],["#assetTier",["assets.save"],"label"],["#assetOrder",["assets.save"],"label"],
@@ -1074,10 +1074,71 @@ async function removeGiftCategory(id){
   await loadGifts();toast("Gift section deleted");
 }
 
+let giftImagePreviewObjectUrl="";
+function setGiftImagePreview(key="",file=null){
+  if(giftImagePreviewObjectUrl){URL.revokeObjectURL(giftImagePreviewObjectUrl);giftImagePreviewObjectUrl="";}
+  const wrap=$("#giftImagePreviewWrap"),image=$("#giftImagePreview");
+  if(!wrap||!image)return;
+  const cleanKey=String(key||"").trim();
+  const src=file?(giftImagePreviewObjectUrl=URL.createObjectURL(file)):cleanKey?"/api/files?key="+encodeURIComponent(cleanKey):"";
+  if(!src){image.removeAttribute("src");wrap.hidden=true;return;}
+  wrap.hidden=false;
+  image.onerror=()=>{wrap.hidden=true;};
+  image.onload=()=>{wrap.hidden=false;};
+  image.src=src;
+}
 function clearGiftForm(){
   $("#giftId").value="";$("#giftName").value="";$("#giftPrice").value=0;$("#giftVip").value=0;
-  $("#giftEmoji").value="";$("#giftCategory").value=state.giftCategoryFilter!=="all"?state.giftCategoryFilter:"normal";$("#giftAsset").value="";$("#giftVideoKey").value="";$("#giftVideoType").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
+  $("#giftEmoji").value="";$("#giftCategory").value=state.giftCategoryFilter!=="all"?state.giftCategoryFilter:"normal";$("#giftAsset").value="";$("#giftImageFile").value="";$("#giftImageStatus").textContent="";setGiftImagePreview("");$("#giftVideoKey").value="";$("#giftVideoType").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
+}
+const GIFT_IMAGE_TYPES={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp"};
+function giftImageTypeForFile(file){
+  const ext=String(file?.name||"").toLowerCase().split(".").pop();
+  return GIFT_IMAGE_TYPES[ext]||"";
+}
+function selectGiftImageFile(){
+  const file=$("#giftImageFile").files?.[0];
+  if(!file){$("#giftImageStatus").textContent="";return;}
+  const type=giftImageTypeForFile(file);
+  if(!type){$("#giftImageStatus").textContent="Unsupported image. Use JPG, PNG or WebP.";return;}
+  if(!file.size||file.size>5*1024*1024){$("#giftImageStatus").textContent="Image can be maximum 5 MB.";return;}
+  setGiftImagePreview("",file);
+  $("#giftImageStatus").textContent="Selected "+type.split("/")[1].toUpperCase()+" image · "+(file.size/1024/1024).toFixed(2)+" MB. Upload it to R2, then save the gift.";
+}
+async function uploadGiftImage(){
+  if(!can("gifts.save"))return toast("Gift save permission required",false);
+  const giftId=$("#giftId").value.trim();
+  const file=$("#giftImageFile").files?.[0];
+  if(!giftId)return toast("Enter Gift ID before uploading image",false);
+  if(!file)return toast("Choose a gift image first",false);
+  const type=giftImageTypeForFile(file);
+  if(!type)return toast("Use a JPG, PNG or WebP gift image.",false);
+  if(!file.size||file.size>5*1024*1024)return toast("Gift image can be maximum 5 MB.",false);
+  $("#giftImageStatus").textContent="Uploading gift image to R2…";
+  const response=await fetch("/api/owner/asset-media",{
+    method:"PUT",
+    headers:{authorization:"Bearer "+state.token,"content-type":type,"x-asset-id":giftId,"x-asset-kind":"gift"},
+    body:file
+  });
+  const data=await response.json().catch(()=>({ok:false,error:"invalid_response"}));
+  if(!response.ok||!data.ok){
+    $("#giftImageStatus").textContent="";
+    const messages={asset_media_type_invalid:"Use a JPG, PNG or WebP image.",asset_media_too_large:"Gift image can be maximum 5 MB.",asset_media_signature_invalid:"The image file is invalid or damaged.",file_storage_not_bound:"R2 storage is not configured.",unauthorized:"Sign in again to the Owner Panel."};
+    throw new Error(messages[data.error]||data.error||("Upload failed (HTTP "+response.status+")"));
+  }
+  const key=String(data.key||"").trim();
+  if(!key)throw new Error("R2 did not return the uploaded image key.");
+  $("#giftAsset").value=key;
+  $("#giftImageStatus").textContent="Gift image uploaded to R2. Press Add / Save Gift to show it in the app.";
+  setGiftImagePreview(key);
+  toast("Gift image uploaded to R2");
+}
+function removeGiftImage(){
+  $("#giftAsset").value="";
+  $("#giftImageFile").value="";
+  $("#giftImageStatus").textContent="Gift image will be detached after you save this gift.";
+  setGiftImagePreview("");
 }
 
 const GIFT_VIDEO_FORMATS = {
@@ -1163,7 +1224,7 @@ function editGift(id){
   const item=state.giftItems.find(x=>x.id===id);if(!item)return;const d=item.data||{};
   $("#giftId").value=item.id||"";$("#giftName").value=item.name||"";$("#giftPrice").value=Number(item.price_coins||0);
   $("#giftVip").value=Number(d.min_vip_level??d.vip_level??0);$("#giftEmoji").value=d.emoji||"";$("#giftCategory").value=state.giftCategories.some(c=>c.id===String(d.category||"normal"))?String(d.category||"normal"):"normal";
-  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftVideoKey").value=d.video_key||"";$("#giftVideoType").value=d.media_type||giftVideoFormatForKey(d.video_key)?.mime||"";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent=d.video_key?"R2 video attached · "+($("#giftVideoType").value||"format not recorded"):"";$("#giftOrder").value=Number(item.sort_order||0);
+  $("#giftAsset").value=d.asset_key||d.asset||"";$("#giftImageFile").value="";$("#giftImageStatus").textContent=d.asset_key||d.asset?"Saved gift image attached":"";setGiftImagePreview(d.asset_key||d.asset||"");$("#giftVideoKey").value=d.video_key||"";$("#giftVideoType").value=d.media_type||giftVideoFormatForKey(d.video_key)?.mime||"";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent=d.video_key?"R2 video attached · "+($("#giftVideoType").value||"format not recorded"):"";$("#giftOrder").value=Number(item.sort_order||0);
   $("#giftStart").value=d.starts_at||"";$("#giftEnd").value=d.ends_at||"";$("#giftEnabled").checked=Number(item.enabled)!==0;$("#giftDescription").value=d.description||"";
 }
 async function saveGift(){
@@ -2095,7 +2156,7 @@ $("#vipRuleLevel").onchange=()=>{const rule=state.vipRules.find(x=>Number(x.leve
 $("#reloadGifts").onclick=()=>loadGifts().catch(e=>toast(e.message,false));
 $("#createGiftCategory").onclick=()=>createGiftCategory().catch(e=>toast(e.message,false));
 $("#uploadGiftVideo").onclick=()=>uploadGiftVideo().catch(e=>{ $("#giftVideoStatus").textContent=""; toast(e.message,false); });
-$("#giftVideoFile").onchange=selectGiftVideoFile;
+$("#giftVideoFile").onchange=selectGiftVideoFile;$("#giftImageFile").onchange=selectGiftImageFile;$("#uploadGiftImage").onclick=()=>uploadGiftImage().catch(e=>{ $("#giftImageStatus").textContent=""; toast(e.message,false); });$("#removeGiftImage").onclick=removeGiftImage;
 $("#removeGiftVideo").onclick=()=>{ $("#giftVideoKey").value=""; $("#giftVideoType").value=""; $("#giftVideoFile").value=""; $("#giftVideoStatus").textContent="Video removed from this gift after Save"; };$("#saveGift").onclick=()=>saveGift().catch(e=>toast(e.message,false));$("#clearGift").onclick=clearGiftForm;
 $("#assetKind").onchange=()=>{clearAssetForm();loadAssets().catch(e=>toast(e.message,false));};$("#reloadAssets").onclick=()=>loadAssets().catch(e=>toast(e.message,false));$("#saveAsset").onclick=()=>saveAsset().catch(e=>toast(e.message,false));$("#clearAsset").onclick=clearAssetForm;$("#uploadAssetMedia").onclick=()=>uploadAssetMedia().catch(e=>toast(e.message,false));
 $("#storeKind").onchange=()=>{clearStoreForm();loadStore().catch(e=>toast(e.message,false));};$("#reloadStore").onclick=()=>loadStore().catch(e=>toast(e.message,false));$("#saveStoreItem").onclick=()=>saveStoreItem().catch(e=>toast(e.message,false));$("#clearStoreItem").onclick=clearStoreForm;
