@@ -60,7 +60,7 @@ async function fixture(userCount = 51) {
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
   const secret = "rocket-reward-test-secret";
-  const env = { DB, SESSION_SECRET: secret };
+  const env = { DB, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
   const roomId = "rocket-test-room";
   const timestamp = Date.now();
   const insertUser = sqlite.prepare(
