@@ -302,19 +302,6 @@ class BackendApi {
         returnErrorBody: true,
       );
 
-  Future<Map<String, dynamic>?> startGuestSession({
-    required String userId,
-    required String displayName,
-  }) =>
-      _json(
-        'POST',
-        '/api/session/guest',
-        body: <String, dynamic>{
-          'user_id': userId,
-          'display_name': displayName,
-        },
-      );
-
   Future<Map<String, dynamic>?> roomLuckyPouch({required String roomId}) =>
       _json('GET', '/api/rooms/${Uri.encodeComponent(roomId)}/lucky-pouch');
 
