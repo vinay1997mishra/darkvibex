@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Displays uploaded frame/bubble artwork only when its alpha channel is useful.
+/// Returns a conservative nine-slice region for uploaded transparent artwork.\n/// The centre is allowed to stretch while the outer decorative edges stay fixed.\nRect? adaptiveArtworkCenterSlice(int width, int height) {\n  if (width < 12 || height < 12) return null;\n  return Rect.fromLTRB(width * .34, height * .28, width * .66, height * .72);\n}\n\n/// Displays uploaded frame/bubble artwork only when its alpha channel is useful.
 /// Broken legacy uploads fall back to vector art instead of painting a square
 /// bitmap over the room background or the user's profile photo.
 class TransparentArtworkImage extends StatefulWidget {
