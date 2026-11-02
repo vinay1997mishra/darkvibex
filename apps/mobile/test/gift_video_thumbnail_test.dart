@@ -12,6 +12,9 @@ void main() {
 
     expect(pubspec, contains('video_player:'));
     expect(festival, contains("gift['video_key']"));
+    expect(festival, contains("gift['asset_key']"));
+    expect(preview, contains('Image.network('));
+    expect(preview, contains('backend.fileUrl(assetKey)'));
     expect(festival, contains('GiftMediaPreview('));
     for (final category in [
       'Normal',
