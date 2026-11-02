@@ -455,15 +455,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                   ),
                                 ),
                               if (item['text']?.toString().isNotEmpty == true)
-                                Text(
-                                  item['text'].toString(),
-                                  style: TextStyle(
-                                    color: hasStoreBubble
-                                        ? const Color(0xFF241626)
-                                        : Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
+                                hasStoreBubble
+                                    ? BubbleChatText(text: item['text'].toString())
+                                    : Text(
+                                        item['text'].toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                             ],
                           );
                           final messageBubble = hasStoreBubble
