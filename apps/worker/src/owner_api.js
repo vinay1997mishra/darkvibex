@@ -1667,13 +1667,26 @@ async function handleUsers(request, db, actor, url, parts) {
 
   if (parts[4] === "wallet" && request.method === "POST") {
     const body = await bodyJson(request);
-    const requestedCoinDelta=Number(body.coin_delta ?? 0);
-    const requestedDiamondDelta=Number(body.diamond_delta ?? 0);
-    const requestedRoleDelta=Number(body.role_coin_delta ?? 0);
-    const hasRoleType=String(body.role_wallet_type ?? "").trim()!=="";
-    const changesNormal=requestedCoinDelta!==0 || requestedDiamondDelta!==0;
-    const changesRole=hasRoleType && requestedRoleDelta!==0;
+    const walletType=String(body.role_wallet_type ?? "").trim();
+    const hasRoleType=walletType!=="";
+    const rawCoinDelta=Number(body.coin_delta ?? 0);
+    const rawDiamondDelta=Number(body.diamond_delta ?? 0);
+    const rawRoleDelta=Number(body.role_coin_delta ?? 0);
+    if(!Number.isSafeInteger(rawCoinDelta)||!Number.isSafeInteger(rawDiamondDelta)||
+       !Number.isSafeInteger(rawRoleDelta)){
+      return json({ok:false,error:"wallet_change_must_be_a_safe_integer"},{status:400});
+    }
+    const changesNormal=rawCoinDelta!==0 || rawDiamondDelta!==0;
+    const changesRole=hasRoleType && rawRoleDelta!==0;
     const changesRoleStatus=hasRoleType && Object.prototype.hasOwnProperty.call(body,"role_wallet_banned");
+    if(hasRoleType && walletType!=="coin_seller" && walletType!=="merchant"){
+      return json({ok:false,error:"invalid_role_wallet"},{status:400});
+    }
+    // Each request must target exactly one wallet system. This prevents a
+    // role-wallet failure from partially applying a normal-wallet adjustment.
+    if(hasRoleType && changesNormal){
+      return json({ok:false,error:"adjust_one_wallet_type_per_request"},{status:400});
+    }
     if(changesNormal) requirePermission(actor,"users.wallet.adjust");
     if(changesRole) requirePermission(actor,"users.role_wallet.adjust");
     if(changesRoleStatus) requirePermission(actor,"users.role_wallet.ban");
@@ -1682,71 +1695,59 @@ async function handleUsers(request, db, actor, url, parts) {
     }
     const current = await db.prepare("SELECT role,coins,diamonds FROM users WHERE id=?")
       .bind(userId).first();
-    if (!current) return json({ ok:false,error:"not_found" }, { status:404 });
-
-    const coinDelta=clampInt(body.coin_delta ?? 0,-900000000000000,900000000000000,0);
-    const diamondDelta=clampInt(body.diamond_delta ?? 0,-900000000000000,900000000000000,0);
-    const nextCoins=Number(current.coins ?? 0)+coinDelta;
-    const nextDiamonds=Number(current.diamonds ?? 0)+diamondDelta;
-    if(!Number.isSafeInteger(nextCoins)||!Number.isSafeInteger(nextDiamonds)||
-       nextCoins<0||nextDiamonds<0){
-      return json({ok:false,error:"invalid_balance_change"},{status:400});
-    }
+    if (!current) return json({ok:false,error:"not_found"},{status:404});
 
     const ts=now();
-    const statements=[
-      db.prepare("UPDATE users SET coins=?,diamonds=?,updated_at=? WHERE id=?")
-        .bind(nextCoins,nextDiamonds,ts,userId),
-    ];
-    if(coinDelta!==0){
-      statements.push(
-        db.prepare(
-          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
-        ).bind(id(),userId,coinDelta,nextCoins,actor.id,ts)
-      );
-    }
-    await db.batch(statements);
-
-    let roleWallet=null;
-    const walletType=String(body.role_wallet_type ?? "").trim();
-    if(walletType){
-      if(walletType!=="coin_seller"&&walletType!=="merchant"){
-        return json({ok:false,error:"invalid_role_wallet"},{status:400});
-      }
-      const roleCoinDelta=clampInt(
-        body.role_coin_delta ?? 0,
-        -900000000000000,900000000000000,0,
-      );
+    if(hasRoleType){
       try{
-        roleWallet=await adjustRoleWallet(db,{
-          userId,
-          walletType,
-          coinDelta:roleCoinDelta,
-          referenceId:"owner:"+actor.id,
-          ts,
-        });
-        if(Object.prototype.hasOwnProperty.call(body,"role_wallet_banned")){
+        let roleWallet;
+        if(changesRole){
+          roleWallet=await adjustRoleWallet(db,{
+            userId,
+            walletType,
+            coinDelta:rawRoleDelta,
+            referenceId:"owner:"+actor.id,
+            ts,
+          });
+        }else{
+          roleWallet=await roleWalletDetail(db,userId,walletType,25,ts);
+        }
+        if(changesRoleStatus){
           const nextStatus=body.role_wallet_banned===true?"banned":"active";
           await db.prepare(
             "UPDATE role_wallets SET status=?,updated_at=? WHERE user_id=? AND wallet_type=?"
           ).bind(nextStatus,ts,userId,walletType).run();
           roleWallet={...roleWallet,status:nextStatus,banned:nextStatus==="banned"};
         }
+        await audit(db,actor,"role_wallet_adjustment","user",userId,
+          `wallet=${walletType}; coins=${rawRoleDelta}; banned=${body.role_wallet_banned===true}`);
+        return json({ok:true,role_wallet:roleWallet});
       }catch(error){
         return json({ok:false,error:String(error?.message ?? error)},{status:400});
       }
     }
 
-    await audit(
-      db,actor,"wallet_adjustment","user",userId,
-      `coins=${coinDelta}; diamonds=${diamondDelta}; role=${walletType || "-"}; role_banned=${body.role_wallet_banned===true}`
-    );
-    return json({
-      ok:true,
-      coins:nextCoins,
-      diamonds:nextDiamonds,
-      role_wallet:roleWallet,
-    });
+    const nextCoins=Number(current.coins ?? 0)+rawCoinDelta;
+    const nextDiamonds=Number(current.diamonds ?? 0)+rawDiamondDelta;
+    if(!Number.isSafeInteger(nextCoins)||!Number.isSafeInteger(nextDiamonds)||
+       nextCoins<0||nextDiamonds<0){
+      return json({ok:false,error:"invalid_balance_change"},{status:400});
+    }
+    const statements=[
+      db.prepare("UPDATE users SET coins=?,diamonds=?,updated_at=? WHERE id=?")
+        .bind(nextCoins,nextDiamonds,ts,userId),
+    ];
+    if(rawCoinDelta!==0){
+      statements.push(
+        db.prepare(
+          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
+        ).bind(id(),userId,rawCoinDelta,nextCoins,actor.id,ts)
+      );
+    }
+    await db.batch(statements);
+    await audit(db,actor,"user_wallet_adjustment","user",userId,
+      `coins=${rawCoinDelta}; diamonds=${rawDiamondDelta}`);
+    return json({ok:true,coins:nextCoins,diamonds:nextDiamonds});
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
