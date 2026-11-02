@@ -1027,7 +1027,7 @@ async function ensureUser(db, userId, displayName = "DarkVibeX User") {
   ).bind(userId, displayName, ts, ts).run();
   await ensureUserPublicId(db, userId);
   return db.prepare(
-    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
+    "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"
   ).bind(userId).first();
 }
 
