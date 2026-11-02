@@ -45,6 +45,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
   String _resolvedUrl = '';
   Map<String, String>? _resolvedHeaders;
   bool? _resolvedRequireTransparentCenter;
+  bool? _resolvedAutoCenterSlice;
   bool? _alphaValid;
   Rect? _autoCenterSlice;
   bool _checking = false;
@@ -73,7 +74,8 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     if (url == _resolvedUrl &&
         identical(widget.imageProvider, _resolvedSourceProvider) &&
         mapEquals(_resolvedHeaders, widget.headers) &&
-        _resolvedRequireTransparentCenter == widget.requireTransparentCenter) {
+        _resolvedRequireTransparentCenter == widget.requireTransparentCenter &&
+        _resolvedAutoCenterSlice == widget.autoCenterSlice) {
       return;
     }
     if (_stream != null && _listener != null) {
@@ -84,6 +86,7 @@ class _TransparentArtworkImageState extends State<TransparentArtworkImage> {
     _resolvedUrl = url;
     _resolvedSourceProvider = widget.imageProvider;
     _resolvedRequireTransparentCenter = widget.requireTransparentCenter;
+    _resolvedAutoCenterSlice = widget.autoCenterSlice;
     _resolvedHeaders = widget.headers == null
         ? null
         : Map<String, String>.from(widget.headers!);
