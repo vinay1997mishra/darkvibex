@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -2214,34 +2212,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             ),
                           ),
                         ),
-                        IconButton(
-                          key: const Key('room-create-custom-gift-grid'),
-                          tooltip: 'Add custom gift',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () async {
-                            final created = await _createRoomCustomGift();
-                            if (created == null || !sheetContext.mounted) {
-                              return;
-                            }
-                            final customGift =
-                                Map<String, dynamic>.from(created);
-                            customGift['category'] = 'normal';
-                            final customKey = giftSelectionKey(customGift);
-                            setSheetState(() {
-                              if (!giftOptions.any(
-                                (item) => giftSelectionKey(item) == customKey,
-                              )) {
-                                giftOptions.add(customGift);
-                              }
-                              selectedGiftCategory = 'Normal';
-                            });
-                          },
-                          icon: const Icon(
-                            Icons.add_photo_alternate_rounded,
-                            color: Color(0xFFB77BE5),
-                            size: 25,
-                          ),
-                        ),
+
                       ],
                     ),
                   ),
@@ -6567,104 +6538,6 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
       ),
     );
-  }
-
-  Future<Map<String, dynamic>?> _createRoomCustomGift() async {
-    if (!widget.state.backendConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connect to the server before creating a Custom Gift.')),
-      );
-      return null;
-    }
-    final files = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const <String>['png', 'jpg', 'jpeg', 'webp', 'mp4'],
-    );
-    if (files.isEmpty || !mounted) return null;
-    final file = files.first;
-    final path = file.path;
-    if (path == null || path.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This custom gift file could not be opened.')),
-      );
-      return null;
-    }
-    final lower = file.name.toLowerCase();
-    final extension = lower.contains('.') ? lower.split('.').last : '';
-    final contentType = switch (extension) {
-      'png' => 'image/png',
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'webp' => 'image/webp',
-      'mp4' => 'video/mp4',
-      _ => '',
-    };
-    if (contentType.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Choose PNG, JPG, WebP or MP4.')),
-      );
-      return null;
-    }
-
-    final nameController = TextEditingController(
-      text: file.name.contains('.')
-          ? file.name.substring(0, file.name.lastIndexOf('.'))
-          : file.name,
-    );
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Custom Gift'),
-        content: TextField(
-          controller: nameController,
-          maxLength: 40,
-          decoration: const InputDecoration(labelText: 'Gift name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = nameController.text.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    nameController.dispose();
-    if (name == null || name.trim().isEmpty || !mounted) return null;
-
-    try {
-      final bytes = await File(path).readAsBytes();
-      final normalizedExtension = extension == 'jpeg' ? 'jpg' : extension;
-      final key = await widget.state.backend.uploadImage(
-        key: 'custom-gifts/${widget.state.userId}/gift-${DateTime.now().microsecondsSinceEpoch}.$normalizedExtension',
-        bytes: bytes,
-        contentType: contentType,
-      );
-      if (key == null) throw StateError('upload_failed');
-      final result = await widget.state.backend.createCustomGift(
-        userId: widget.state.userId,
-        name: name.trim(),
-        assetKey: key,
-      );
-      final gift = result?['gift'];
-      if (gift is! Map) throw StateError('create_failed');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(name.trim() + ' added to Custom Gifts.')),
-      );
-      return Map<String, dynamic>.from(gift);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Custom Gift could not be created.')),
-        );
-      }
-      return null;
-    }
   }
 
   Future<void> _playGiftGlb(
