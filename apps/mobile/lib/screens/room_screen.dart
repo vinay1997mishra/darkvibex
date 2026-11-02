@@ -250,7 +250,8 @@ class _RoomScreenState extends State<RoomScreen> {
     // every 4 seconds. User actions still refresh data immediately.
     bool appIsActive() =>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-    memberRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+    // Detect room arrivals promptly instead of waiting up to 12 seconds.
+    memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (appIsActive()) unawaited(_loadRoomMembers());
     });
     messageRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
@@ -325,9 +326,11 @@ class _RoomScreenState extends State<RoomScreen> {
     final requestedMs = int.tryParse(
       (member['active_entry_animation_ms'] ?? member['active_vehicle_animation_ms'] ?? '').toString(),
     ) ?? 0;
-    final durationMs = requestedMs > 0
+    // Keep the overlay visible while remote media initializes.
+    final durationMs = (requestedMs > 0
         ? requestedMs.clamp(2000, 10000).toInt()
-        : (hasCustomMedia ? 6000 : (hasBuiltInVehicle ? 4800 : 2000));
+        : (hasCustomMedia ? 6000 : (hasBuiltInVehicle ? 4800 : 2000))) +
+        (hasCustomMedia ? 5000 : 0);
     arrivalEffectTimer = Timer(Duration(milliseconds: durationMs), () {
       if (mounted) setState(() => arrivalEffectMember = null);
     });
@@ -8009,7 +8012,11 @@ class _RoomScreenState extends State<RoomScreen> {
               (carEffectsEnabled ||
                   (arrivalEffectMember?['active_entry_id']?.toString() ?? '')
                       .startsWith('entrance-vip-')))
-            Positioned.fill(
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: MediaQuery.sizeOf(context).height * .50,
               child: ((arrivalEffectMember?['active_entry_id']?.toString() ?? '')
                       .startsWith('entrance-vip-'))
                   ? IgnorePointer(
@@ -8025,46 +8032,28 @@ class _RoomScreenState extends State<RoomScreen> {
                     )
                   : CustomAssetEffectPlayback(
                       backend: widget.state.backend,
-                      videoKey: ((arrivalEffectMember?['active_entry_video_key'] ?? '').toString().trim().isNotEmpty)
-                          ? arrivalEffectMember!['active_entry_video_key'].toString()
-                          : (arrivalEffectMember?['active_vehicle_video_key'] ?? '').toString(),
-                      glbKey: ((arrivalEffectMember?['active_entry_glb_key'] ?? '').toString().trim().isNotEmpty)
-                          ? arrivalEffectMember!['active_entry_glb_key'].toString()
-                          : (arrivalEffectMember?['active_vehicle_glb_key'] ?? '').toString(),
+                      videoKey: ((arrivalEffectMember?['active_vehicle_video_key'] ?? '').toString().trim().isNotEmpty)
+                          ? arrivalEffectMember!['active_vehicle_video_key'].toString()
+                          : (arrivalEffectMember?['active_entry_video_key'] ?? '').toString(),
+                      glbKey: ((arrivalEffectMember?['active_vehicle_glb_key'] ?? '').toString().trim().isNotEmpty)
+                          ? arrivalEffectMember!['active_vehicle_glb_key'].toString()
+                          : (arrivalEffectMember?['active_entry_glb_key'] ?? '').toString(),
                       fallback: VehicleEntryEffect(
                         displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
                             ? arrivalEffectMember!['display_name'].toString()
                             : 'VIP member',
                         level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
-                        showVehicle: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 8 ||
-                            arrivalEffectMember?['active_vehicle_id'] != null ||
-                            arrivalEffectMember?['active_entry_id'] != null,
+                        showVehicle: true,
                         customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
                             arrivalEffectMember?['active_entry_id'] != null ||
                             (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
                         vehicleId: (arrivalEffectMember?['active_vehicle_id']?.toString().trim().isNotEmpty == true)
                             ? arrivalEffectMember!['active_vehicle_id'].toString()
                             : arrivalEffectMember?['active_entry_id']?.toString(),
-                        vehicleLabel: arrivalEffectMember?['active_entry_id']?.toString().isNotEmpty == true
-                            ? arrivalEffectMember!['active_entry_id']
-                                .toString()
-                                .replaceAll('entry-', '')
-                                .replaceAll('-', ' ')
-                                .toUpperCase()
-                            : switch (arrivalEffectMember?['active_vehicle_id']?.toString()) {
-                                'vehicle_king' => 'KING OF VIP',
-                                'vehicle_phoenix' => 'PHOENIX GT',
-                                'vehicle_royal' => 'ROYAL CHARIOT',
-                                'vehicle_neon_comet' => 'NEON COMET GT',
-                                'vehicle_dragon_royal' => 'DRAGON ROYAL CHARIOT',
-                                'vehicle_celestial_phoenix' => 'CELESTIAL PHOENIX',
-                                'vehicle_spark' => 'STARLIGHT COUPE',
-                                _ => null,
-                              },
+                        vehicleLabel: arrivalEffectMember?['active_vehicle_id']?.toString() ?? 'VEHICLE ENTRY',
                       ),
                     ),
-            ),
-        ],
+            ),        ],
       ),
       bottomNavigationBar: AnimatedPadding(
         duration: const Duration(milliseconds: 180),
