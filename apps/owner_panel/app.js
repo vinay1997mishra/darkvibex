@@ -845,6 +845,7 @@ function clearStoreForm(){
   $("#storeCategory").value="";
   $("#storeDescription").value="";
   $("#storeEnabled").checked=true;
+  fillGeneratedId("#storeId",$("#storeKind").value,state.storeItems||[]);
 }
 async function loadStore(){
   if(!can("store.view"))return;
@@ -852,6 +853,7 @@ async function loadStore(){
   if(!kind)return;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.storeItems=d.items||[];
+  fillGeneratedId("#storeId",kind,state.storeItems);
   $("#storeList").innerHTML=state.storeItems.length?state.storeItems.map(item=>{
     const data=item.data||{};
     const enabled=Number(item.enabled)!==0;
@@ -1087,10 +1089,26 @@ function setGiftImagePreview(key="",file=null){
   image.onload=()=>{wrap.hidden=false;};
   image.src=src;
 }
+function assetIdPrefix(kind){
+  const slug=String(kind||"asset").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")||"asset";
+  return "dvx_"+slug;
+}
+function generateNextAssetId(kind,items=[]){
+  const prefix=assetIdPrefix(kind),used=new Set((items||[]).map(item=>String(item?.id||"").toLowerCase()));
+  let max=0;
+  for(const id of used){if(id.startsWith(prefix.toLowerCase()+"_")){const suffix=id.slice(prefix.length+1);if(/^\d+$/.test(suffix))max=Math.max(max,Number(suffix)||0);}}
+  let next=max+1,candidate="";
+  do{candidate=prefix+"_"+String(next++).padStart(3,"0");}while(used.has(candidate.toLowerCase()));
+  return candidate;
+}
+function fillGeneratedId(selector,kind,items=[]){
+  const input=$(selector);if(input&&!input.value.trim())input.value=generateNextAssetId(kind,items);
+}
 function clearGiftForm(){
   $("#giftId").value="";$("#giftName").value="";$("#giftPrice").value=0;$("#giftVip").value=0;
   $("#giftEmoji").value="";$("#giftCategory").value=state.giftCategoryFilter!=="all"?state.giftCategoryFilter:"normal";$("#giftAsset").value="";$("#giftImageFile").value="";$("#giftImageStatus").textContent="";setGiftImagePreview("");$("#giftVideoKey").value="";$("#giftVideoType").value="";$("#giftVideoFile").value="";$("#giftVideoStatus").textContent="";$("#giftOrder").value=0;
   $("#giftStart").value="";$("#giftEnd").value="";$("#giftEnabled").checked=true;$("#giftDescription").value="";
+  fillGeneratedId("#giftId","gift",state.giftItems||[]);
 }
 const GIFT_IMAGE_TYPES={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp"};
 function giftImageTypeForFile(file){
@@ -1217,6 +1235,7 @@ async function loadGifts(){
   if(!can("gifts.view"))return;
   const d=await api("/api/owner/store?kind=gift");
   state.giftItems=d.items||[];
+  fillGeneratedId("#giftId","gift",state.giftItems);
   await loadGiftCategories();
   renderGiftList();
 }
@@ -1251,6 +1270,7 @@ function clearAssetForm(){
   $("#assetAnimationType").value="";$("#assetAnimationMs").value=5000;$("#assetMediaFile").value="";$("#assetMediaStatus").textContent="";
   $("#assetStart").value="";$("#assetEnd").value="";
   $("#assetEnabled").checked=true;$("#assetDescription").value="";
+  fillGeneratedId("#assetId",$("#assetKind").value,[...(state.assetItems||[]),...($("#assetKind").value==="gift"?(state.giftItems||[]):[])]);
 }
 async function loadAssets(){
   const giftOption=$("#assetKind").querySelector('option[value="gift"]');
@@ -1260,6 +1280,7 @@ async function loadAssets(){
   if(!can(kind==="gift"?"gifts.view":"assets.view"))return;
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.assetItems=d.items||[];
+  fillGeneratedId("#assetId",kind,[...state.assetItems,...(kind==="gift"?(state.giftItems||[]):[])]);
   $("#assetList").innerHTML=state.assetItems.length?state.assetItems.map(item=>{
     const data=item.data||{},enabled=Number(item.enabled)!==0;
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
@@ -1347,7 +1368,7 @@ async function removeAsset(id){
 }
 
 function clearCatalogForm(){$("#catalogId").value="";$("#catalogName").value="";$("#catalogPrice").value=0;$("#catalogOrder").value=0;$("#catalogAsset").value="";$("#catalogLevel").value="";$("#catalogDescription").value="";$("#catalogEnabled").checked=true;}
-async function loadCatalog(){if(!can("catalog.view"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
+async function loadCatalog(){if(!can("catalog.view"))return;const kind=$("#catalogKind").value;const d=await api('/api/owner/catalog?kind='+encodeURIComponent(kind));state.catalog=d.items||[];fillGeneratedId("#catalogId",kind,state.catalog);$("#catalogList").innerHTML=state.catalog.length?state.catalog.map(i=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(i.name)} <span class="pill ${Number(i.enabled)?'active':'banned'}">${Number(i.enabled)?'Enabled':'Disabled'}</span></div><div class="item-meta">ID ${esc(i.id)} · ${num(i.price_coins)} coins · order ${num(i.sort_order)}<br>${esc(i.data?.description||i.data?.level||i.data?.asset||'')}</div></div><div class="item-actions"><button class="secondary mini" data-catalog-edit="${esc(i.id)}">Edit</button><button class="danger mini" data-catalog-delete="${esc(i.id)}">Delete</button></div></div></div>`).join(""):empty("No items in this category");$$('[data-catalog-edit]').forEach(b=>b.onclick=()=>editCatalog(b.dataset.catalogEdit));$$('[data-catalog-delete]').forEach(b=>b.onclick=()=>deleteCatalog(b.dataset.catalogDelete));}
 function editCatalog(id){const i=state.catalog.find(x=>x.id===id);if(!i)return;$("#catalogId").value=i.id;$("#catalogName").value=i.name;$("#catalogPrice").value=i.price_coins||0;$("#catalogOrder").value=i.sort_order||0;$("#catalogAsset").value=i.data?.asset||"";$("#catalogLevel").value=i.data?.level||"";$("#catalogDescription").value=i.data?.description||"";$("#catalogEnabled").checked=!!Number(i.enabled);window.scrollTo({top:0,behavior:'smooth'});}
 async function saveCatalog(){const payload={kind:$("#catalogKind").value,id:$("#catalogId").value.trim()||undefined,name:$("#catalogName").value.trim(),price_coins:Number($("#catalogPrice").value||0),sort_order:Number($("#catalogOrder").value||0),enabled:$("#catalogEnabled").checked,data:{asset:$("#catalogAsset").value.trim(),level:$("#catalogLevel").value.trim(),description:$("#catalogDescription").value.trim()}};if(!payload.name)return toast('Enter a display name',false);await api('/api/owner/catalog',{method:'POST',body:JSON.stringify(payload)});toast('Content item saved');clearCatalogForm();await loadCatalog();}
 
