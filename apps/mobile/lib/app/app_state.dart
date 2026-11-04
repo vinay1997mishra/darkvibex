@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -627,17 +628,20 @@ class AppState extends ChangeNotifier {
     }
     setLanguagePreference(restoredLanguage);
     if (preLoginLanguage.isNotEmpty) {
-      try {
-        await backend.setUserLanguage(
-          userId: userId,
-          language: restoredLanguage,
-        );
-        await (await SharedPreferences.getInstance())
-            .setString('dvx.language', restoredLanguage);
-      } catch (error) {
-        debugPrint('DarkVibeX login language could not be synced: $error');
-      }
       _loginLanguageSelected = false;
+      // Do not hold first login behind a preference-sync request.
+      unawaited(() async {
+        try {
+          await backend.setUserLanguage(
+            userId: userId,
+            language: restoredLanguage,
+          );
+          await (await SharedPreferences.getInstance())
+              .setString('dvx.language', restoredLanguage);
+        } catch (error) {
+          debugPrint('DarkVibeX login language could not be synced: $error');
+        }
+      }());
     }
     if (dateOfBirth == null || dateOfBirth!.trim().isEmpty) {
       final prefs = await SharedPreferences.getInstance();
@@ -660,14 +664,13 @@ class AppState extends ChangeNotifier {
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
 
     await _persistSession();
-    // Core authentication should succeed even if an optional dashboard endpoint
-    // (rooms, wallet, inbox) is temporarily unavailable.
-    try {
-      await _loadRemoteData();
-    } catch (error) {
-      debugPrint('DarkVibeX post-login refresh failed: $error');
-    }
+    // Enter the app as soon as authentication/profile checks succeed.
+    // Wallet, rooms, VIP and inbox refresh in the background instead of
+    // serially delaying the login transition.
     if (notify) notifyListeners();
+    unawaited(_loadRemoteData().catchError((Object error) {
+      debugPrint('DarkVibeX background post-login refresh failed: $error');
+    }));
     return true;
   }
 
