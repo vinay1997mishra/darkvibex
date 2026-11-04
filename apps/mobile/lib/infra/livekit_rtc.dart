@@ -146,6 +146,21 @@ class LiveKitRtcAdapter implements RtcAdapter {
     _publishing = enabled;
   }
 
+  /// Broadcast a committed room gift to every connected room participant.
+  /// LiveKit's reliable data channel delivers this immediately without waiting
+  /// for the Worker fallback poll.
+  Future<void> publishGiftEvent(Map<String, dynamic> event) async {
+    final participant = _room?.localParticipant;
+    if (state != RtcConnectionState.joined || participant == null) {
+      throw StateError('Voice room is not joined');
+    }
+    await participant.publishData(
+      utf8.encode(jsonEncode(event)),
+      reliable: true,
+      topic: 'darkvibex.gift',
+    );
+  }
+
   Future<void> setCameraPublished(bool enabled) async {
     final participant = _room?.localParticipant;
     if (state != RtcConnectionState.joined || participant == null) {
