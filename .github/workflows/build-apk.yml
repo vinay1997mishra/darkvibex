@@ -305,6 +305,16 @@ jobs:
           fi
           echo "APK_SIGNING_SHA1=$sha1"
 
+      - name: Upload APK workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkVibeX-APK-${{ github.run_number }}
+          path: |
+            apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
+            apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Publish APK to rolling GitHub Release
         if: github.event_name != 'pull_request'
         env:
