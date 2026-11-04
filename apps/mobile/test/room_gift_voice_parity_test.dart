@@ -63,6 +63,20 @@ void main() {
     expect(source, contains('top: -(compactSeats ? 9.0 : 12.0)'));
   });
 
+
+  test('room gift events are polled and played once for remote members', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    final backend = File('lib/infra/backend_api.dart').readAsStringSync();
+    expect(backend, contains('roomGiftEvents('));
+    expect(backend, contains('/gift-events?after='));
+    expect(source, contains('unawaited(_loadRoomGiftEvents())'));
+    expect(source, contains('event[\'sender_user_id\']?.toString() == widget.state.userId'));
+    expect(source, contains('_seenGiftEventIds.add(eventId)'));
+    expect(source, contains('_giftPlaybackQueue'));
+    expect(source, contains('senderName: senderName'));
+    expect(source, contains('required String videoKey'));
+  });
+
   test('LiveKit speaking levels are sampled from active speakers', () {
     final source = File('lib/infra/livekit_rtc.dart').readAsStringSync();
     expect(source, contains('for (final participant in room.activeSpeakers)'));
