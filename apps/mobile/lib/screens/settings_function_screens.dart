@@ -155,7 +155,7 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
         content: Text(
           ok
               ? 'Google account linked to ID ${formatPublicUserId(widget.state.publicId)}'
-              : widget.state.authError ?? 'Google account could not be linked',
+              : widget.state.authError ?? _settingsText(widget.state, 'google_bind_failed'),
         ),
       ),
     );
@@ -313,9 +313,7 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
               const Padding(
                 padding: EdgeInsets.all(14),
                 child: Text(
-                  'This language is saved to your DarkVibeX account. '
-                  'Create ID and Settings use the same language list. '
-                  'User names, room text, chat and numeric IDs are not auto-translated.',
+                  _settingsText(widget.state, 'language_note'),
                   style: TextStyle(
                     color: TinniPalette.muted,
                     fontSize: 11,
@@ -436,7 +434,7 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
           child: loading
               ? const Center(child: CircularProgressIndicator())
               : rows.isEmpty
-                  ? const Center(child: Text('No blocked users'))
+                  ? Center(child: Text(_settingsText(widget.state, 'no_blocked_users')))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                       itemCount: rows.length,
@@ -470,7 +468,7 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
                                   : null,
                             ),
                             title: Text(
-                              row['display_name']?.toString() ?? 'User',
+                              row['display_name']?.toString() ?? _settingsText(widget.state, 'user'),
                             ),
                             subtitle: Text('ID ${formatPublicUserId(row['public_id'])}'),
                             trailing: TextButton(
@@ -565,7 +563,7 @@ class _PropsScreenState extends State<PropsScreen> {
           child: loading
               ? const Center(child: CircularProgressIndicator())
               : owned.isEmpty
-                  ? const Center(child: Text('No owned props yet'))
+                  ? Center(child: Text(_settingsText(widget.state, 'no_props')))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                       itemCount: owned.length,
@@ -585,8 +583,8 @@ class _PropsScreenState extends State<PropsScreen> {
                             ),
                             title: Text(item?['name']?.toString() ?? id),
                             subtitle: Text(
-                              '${row['kind'] ?? item?['kind'] ?? 'prop'}'
-                              '${row['expires_at'] == null ? '' : ' • owned'}',
+                              '${row['kind'] ?? item?['kind'] ?? _settingsText(widget.state, 'prop')}'
+                              '${row['expires_at'] == null ? '' : ' • ${_settingsText(widget.state, 'owned')}'}',
                             ),
                             trailing: active
                                 ? Chip(label: Text(_settingsText(widget.state, 'using')))
