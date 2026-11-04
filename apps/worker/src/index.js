@@ -6246,15 +6246,17 @@ async function handleApi(request, env, url) {
 
     const after = Math.max(0, Number(url.searchParams.get("after") ?? 0) || 0);
     const afterId = String(url.searchParams.get("after_id") ?? "").slice(0,100);
+    const eventId = String(url.searchParams.get("event_id") ?? "").slice(0,100);
     const rows = await db.prepare(
       `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.created_at,
               s.display_name AS sender_name,r.display_name AS receiver_name
          FROM gift_events g
          LEFT JOIN users s ON s.id=g.sender_user_id
          LEFT JOIN users r ON r.id=g.receiver_user_id
-        WHERE g.room_id=? AND (g.created_at>? OR (g.created_at=? AND g.id>?))
+        WHERE g.room_id=?
+          AND ((?<>'' AND g.id=?) OR (?='' AND (g.created_at>? OR (g.created_at=? AND g.id>?))))
         ORDER BY g.created_at ASC,g.id ASC LIMIT 20`
-    ).bind(roomId,after,after,afterId).all();
+    ).bind(roomId,eventId,eventId,eventId,after,after,afterId).all();
     const catalog = await effectiveGiftCatalog(db);
     const catalogById = new Map(catalog.map((gift) => [String(gift.id), gift]));
     const events = (rows.results ?? []).map((row) => {
