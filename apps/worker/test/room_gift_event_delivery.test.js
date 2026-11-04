@@ -24,3 +24,13 @@ test('room gift event feed uses stable incremental ordering and includes playbac
   assert.match(endpoint, /glb_key:String\(gift\.glb_key/);
   assert.match(endpoint, /receiver_user_id:String\(row\.receiver_user_id\)/);
 });
+
+
+test('room gift event feed can verify one committed event by id', () => {
+  const start = source.indexOf('parts[3] === "gift-events"');
+  const end = source.indexOf('parts[3] === "messages"', start);
+  const endpoint = source.slice(start, end);
+  assert.match(endpoint, /url\.searchParams\.get\("event_id"\)/);
+  assert.match(endpoint, /g\.id=\?/);
+  assert.match(endpoint, /room_id=\?/);
+});
