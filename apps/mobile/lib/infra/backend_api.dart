@@ -680,10 +680,12 @@ class BackendApi {
     required String roomId,
     required int after,
     String afterId = '',
+    String eventId = '',
   }) async {
+    final eventQuery = eventId.isEmpty ? '' : '&event_id=${Uri.encodeQueryComponent(eventId)}';
     final value = await _json(
       'GET',
-      '/api/rooms/${Uri.encodeComponent(roomId)}/gift-events?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/gift-events?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}$eventQuery',
       returnErrorBody: true,
     );
     final rows = value?['events'];
