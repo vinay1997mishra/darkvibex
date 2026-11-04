@@ -247,18 +247,16 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
 
   Future<void> _select(String value) async {
     if (saving || value == selected) return;
-    final old = selected;
     setState(() {
       selected = value;
       saving = true;
     });
 
-    final ok = await widget.state.saveLanguagePreference(value);
+    // The app state changes language immediately; account sync continues in background.
+    final sync = widget.state.saveLanguagePreference(value);
+    if (mounted) setState(() => saving = false);
+    final ok = await sync;
     if (!mounted) return;
-    setState(() {
-      saving = false;
-      if (!ok) selected = old;
-    });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
