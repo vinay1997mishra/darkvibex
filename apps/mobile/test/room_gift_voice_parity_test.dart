@@ -63,6 +63,48 @@ void main() {
     expect(source, contains('top: -(compactSeats ? 9.0 : 12.0)'));
   });
 
+
+  test('room gift events are polled and played once for remote members', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    final backend = File('lib/infra/backend_api.dart').readAsStringSync();
+    expect(backend, contains('roomGiftEvents('));
+    expect(backend, contains('/gift-events?after='));
+    expect(backend, contains('eventId ='));
+    expect(source, contains('unawaited(_loadRoomGiftEvents())'));
+    expect(source, contains('event[\'sender_user_id\']?.toString() == widget.state.userId'));
+    expect(source, contains('_seenGiftEventIds.add(eventId)'));
+    expect(source, contains('_giftPlaybackQueue'));
+    expect(source, contains('senderName: senderName'));
+    expect(source, contains('required String videoKey'));
+  });
+
+  test('gift events use LiveKit reliable room-wide data delivery', () {
+    final rtc = File('lib/infra/livekit_rtc.dart').readAsStringSync();
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+    expect(rtc, contains('publishGiftEvent('));
+    expect(rtc, contains('reliable: true'));
+    expect(rtc, contains("topic: 'darkvibex.gift'"));
+    expect(room, contains('on<DataReceivedEvent>'));
+    expect(room, contains("event.topic != 'darkvibex.gift'"));
+    expect(room, contains('_handleLiveGiftEvent('));
+    expect(room, contains('senderIdentity: event.participant?.identity ??')); 
+    expect(room, contains('eventId: eventId'));
+    expect(room, contains('candidate[\'sender_user_id\']?.toString() == senderIdentity'));
+  });
+
+  test('gift sender sees their own gift immediately without duplicate polling playback', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    final sendStart = source.indexOf('Future<void> _sendGiftByDefinition');
+    final sendEnd = source.indexOf('Future<void> ', sendStart + 20);
+    final sendFlow = source.substring(sendStart, sendEnd);
+    expect(sendFlow, contains('_seenGiftEventIds.add(committedEventId)'));
+    expect(sendFlow, contains('await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey)'));
+    expect(sendFlow, contains('await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey)'));
+    expect(sendFlow, contains('_playGiftEffect(gift, receiverId: receiverId)'));
+    expect(sendFlow, contains('sendRoomMessage('));
+    expect(source, contains("if (event['sender_user_id']?.toString() == widget.state.userId) continue;"));
+  });
+
   test('LiveKit speaking levels are sampled from active speakers', () {
     final source = File('lib/infra/livekit_rtc.dart').readAsStringSync();
     expect(source, contains('for (final participant in room.activeSpeakers)'));

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
@@ -78,6 +79,10 @@ class _RoomScreenState extends State<RoomScreen> {
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   List<Map<String, dynamic>> roomMembers = <Map<String, dynamic>>[];
   int roomGiftLifetimeTotal = 0;
+  int _giftEventCursorMs = DateTime.now().millisecondsSinceEpoch;
+  String _giftEventCursorId = '';
+  final Set<String> _seenGiftEventIds = <String>{};
+  Future<void> _giftPlaybackQueue = Future<void>.value();
   List<Map<String, dynamic>> roomGiftRanking = <Map<String, dynamic>>[];
   bool _roomGiftRankingInitialized = false;
   int _lastObservedRocketCompleted = 0;
@@ -245,6 +250,7 @@ class _RoomScreenState extends State<RoomScreen> {
     unawaited(_loadRoomControls());
     unawaited(_loadRoomGiftRanking());
     unawaited(_loadRoomMessages());
+    unawaited(_loadRoomGiftEvents());
 
     // Keep responsive fallback polling, but avoid refetching every resource
     // every 4 seconds. User actions still refresh data immediately.
@@ -252,7 +258,10 @@ class _RoomScreenState extends State<RoomScreen> {
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     // Detect room arrivals promptly instead of waiting up to 12 seconds.
     memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (appIsActive()) unawaited(_loadRoomMembers());
+      if (appIsActive()) {
+        unawaited(_loadRoomMembers());
+        unawaited(_loadRoomGiftEvents());
+      }
     });
     messageRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       if (appIsActive()) unawaited(_loadRoomMessages());
@@ -471,6 +480,60 @@ class _RoomScreenState extends State<RoomScreen> {
     // polling. Refresh totals only when a new gift event arrives, rather than
     // adding a high-frequency room-ranking poll for every participant.
     if (hasNewGiftAnnouncement) unawaited(_loadRoomGiftRanking());
+  }
+
+  Future<void> _loadRoomGiftEvents() async {
+    if (!mounted || !widget.state.backendConnected) return;
+    final events = await widget.state.backend.roomGiftEvents(
+      roomId: widget.room.id,
+      after: _giftEventCursorMs,
+      afterId: _giftEventCursorId,
+    );
+    if (!mounted || events.isEmpty) return;
+
+    for (final event in events) {
+      final eventId = event['id']?.toString() ?? '';
+      final createdAt = int.tryParse(event['created_at']?.toString() ?? '') ?? 0;
+      if (createdAt > _giftEventCursorMs ||
+          (createdAt == _giftEventCursorMs &&
+              eventId.compareTo(_giftEventCursorId) > 0)) {
+        _giftEventCursorMs = createdAt;
+        _giftEventCursorId = eventId;
+      }
+      if (eventId.isEmpty || !_seenGiftEventIds.add(eventId)) continue;
+      // The sender already plays the animation immediately after the
+      // successful send response. Do not play the same event twice locally.
+      if (event['sender_user_id']?.toString() == widget.state.userId) continue;
+
+      final gift = <String, dynamic>{
+        'id': event['gift_id']?.toString() ?? '',
+        'name': event['gift_name']?.toString() ?? 'Gift',
+        'emoji': event['emoji']?.toString() ?? '🎁',
+        'coin_cost': event['coin_cost'] ?? 0,
+        'video_key': event['video_key']?.toString() ?? '',
+        'glb_key': event['glb_key']?.toString() ?? '',
+        'asset_key': event['asset_key']?.toString() ?? '',
+      };
+      final receiverId = event['receiver_user_id']?.toString() ?? '';
+      final senderName = event['sender_name']?.toString() ?? 'User';
+      _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
+        if (!mounted || receiverId.isEmpty) return;
+        final videoKey = gift['video_key']?.toString() ?? '';
+        final glbKey = gift['glb_key']?.toString() ?? '';
+        if (videoKey.isNotEmpty) {
+          await _playGiftVideo(
+            gift,
+            receiverId: receiverId,
+            videoKey: videoKey,
+            senderName: senderName,
+          );
+        } else if (glbKey.isNotEmpty) {
+          await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
+        } else {
+          _playGiftEffect(gift, receiverId: receiverId);
+        }
+      });
+    }
   }
 
   static const _legalVersion = 'darkvibex-terms-privacy-2026-10-v1';
@@ -1842,6 +1905,58 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _handleLiveGiftEvent(
+    Map<String, dynamic> packet, {
+    required String senderIdentity,
+  }) async {
+    if (!mounted || packet['type'] != 'gift') return;
+    final eventId = packet['id']?.toString() ?? '';
+    if (eventId.isEmpty || _seenGiftEventIds.contains(eventId)) return;
+    // LiveKit identity is minted from the authenticated DarkVibeX user ID.
+    // Do not trust media metadata sent by a client: resolve the event from D1.
+    final claimedSender = packet['sender_user_id']?.toString() ?? '';
+    if (senderIdentity.isEmpty || claimedSender != senderIdentity) return;
+    final verifiedEvents = await widget.state.backend.roomGiftEvents(
+      roomId: widget.room.id,
+      after: 0,
+      eventId: eventId,
+    );
+    if (!mounted) return;
+    Map<String, dynamic>? verified;
+    for (final candidate in verifiedEvents) {
+      if (candidate['id']?.toString() == eventId &&
+          candidate['sender_user_id']?.toString() == senderIdentity) {
+        verified = candidate;
+        break;
+      }
+    }
+    if (verified == null || !_seenGiftEventIds.add(eventId)) return;
+    final receiverId = verified['receiver_user_id']?.toString() ?? '';
+    if (receiverId.isEmpty) return;
+    final gift = <String, dynamic>{
+      'id': verified['gift_id']?.toString() ?? '',
+      'name': verified['gift_name']?.toString() ?? 'Gift',
+      'emoji': verified['emoji']?.toString() ?? '🎁',
+      'coin_cost': verified['coin_cost'] ?? 0,
+      'video_key': verified['video_key']?.toString() ?? '',
+      'glb_key': verified['glb_key']?.toString() ?? '',
+      'asset_key': verified['asset_key']?.toString() ?? '',
+    };
+    final senderName = verified['sender_name']?.toString() ?? 'User';
+    _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
+      if (!mounted) return;
+      final videoKey = gift['video_key']?.toString() ?? '';
+      final glbKey = gift['glb_key']?.toString() ?? '';
+      if (videoKey.isNotEmpty) {
+        await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey, senderName: senderName);
+      } else if (glbKey.isNotEmpty) {
+        await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
+      } else {
+        _playGiftEffect(gift, receiverId: receiverId);
+      }
+    });
+  }
+
   void _bindVideoTracks(LiveKitRtcAdapter adapter) {
     final room = adapter.room;
     if (room == null) return;
@@ -1851,7 +1966,21 @@ class _RoomScreenState extends State<RoomScreen> {
       ..on<TrackUnsubscribedEvent>((_) => _refreshVideoTracks(adapter))
       ..on<TrackPublishedEvent>((_) => _refreshVideoTracks(adapter))
       ..on<TrackUnpublishedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<ParticipantDisconnectedEvent>((_) => _refreshVideoTracks(adapter));
+      ..on<ParticipantDisconnectedEvent>((_) => _refreshVideoTracks(adapter))
+      ..on<DataReceivedEvent>((event) {
+        if (event.topic != 'darkvibex.gift') return;
+        try {
+          final decoded = jsonDecode(utf8.decode(event.data));
+          if (decoded is Map) {
+            unawaited(_handleLiveGiftEvent(
+              Map<String, dynamic>.from(decoded),
+              senderIdentity: event.participant?.identity ?? '',
+            ));
+          }
+        } catch (_) {
+          // Ignore unrelated or malformed LiveKit data packets.
+        }
+      });
     _refreshVideoTracks(adapter);
   }
 
@@ -6562,6 +6691,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 : receiverId))
         .toString();
     final giftName = (gift['name'] ?? 'Gift').toString();
+    final senderDisplayName = widget.state.displayName;
     var closeTriggered = false;
     Timer? closeTimer;
     try {
@@ -6627,7 +6757,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '${widget.state.displayName} sent $giftName',
+                                '$senderDisplayName sent $giftName',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w900,
@@ -6678,6 +6808,7 @@ class _RoomScreenState extends State<RoomScreen> {
     Map<String, dynamic> gift, {
     required String receiverId,
     required String videoKey,
+    String? senderName,
   }) async {
     gift_video.VideoPlayerController? controller;
     VoidCallback? playbackListener;
@@ -6706,6 +6837,9 @@ class _RoomScreenState extends State<RoomScreen> {
                   : receiverId))
           .toString();
       final giftName = (gift['name'] ?? 'Gift').toString();
+      final senderDisplayName = senderName?.trim().isNotEmpty == true
+          ? senderName!.trim()
+          : widget.state.displayName;
 
       await showDialog<void>(
         context: context,
@@ -6762,7 +6896,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '${widget.state.displayName} sent $giftName',
+                                '$senderDisplayName sent $giftName',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w900,
@@ -6830,6 +6964,30 @@ class _RoomScreenState extends State<RoomScreen> {
       widget.state.setDiamondBalance(receiverDiamondBalance);
     }
     if (remoteBalance != null) {
+      final committedEventId = result?['event_id']?.toString() ?? '';
+      if (committedEventId.isNotEmpty) {
+        _seenGiftEventIds.add(committedEventId);
+        final adapter = rtc;
+        if (adapter is LiveKitRtcAdapter) {
+          unawaited(adapter.publishGiftEvent(<String, dynamic>{
+            'type': 'gift',
+            'id': committedEventId,
+            'sender_user_id': widget.state.userId,
+            'receiver_user_id': receiverId,
+            'sender_name': widget.state.displayName,
+            'gift_id': giftId,
+            'gift_name': gift['name']?.toString() ?? 'Gift',
+            'emoji': gift['emoji']?.toString() ?? '🎁',
+            'coin_cost': giftCost,
+            'video_key': (gift['video_key'] ?? gift['videoKey'] ?? '').toString(),
+            'glb_key': (gift['glb_key'] ?? gift['glbKey'] ?? '').toString(),
+            'asset_key': (gift['asset_key'] ?? gift['asset'] ?? '').toString(),
+          }).catchError((_) {
+            // The committed Worker event feed remains the recovery path if a
+            // transient LiveKit data-channel publish fails.
+          }));
+        }
+      }
       widget.state.setCoinBalance(remoteBalance);
       final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
           .toString()
