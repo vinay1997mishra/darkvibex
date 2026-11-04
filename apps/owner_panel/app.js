@@ -8,7 +8,7 @@ function applyOwnerPanelLanguage(language) {
   const dict = ownerPanelTranslations[language] || {};
   document.documentElement.lang = language === "Hindi" ? "hi" : language === "Urdu" ? "ur" : language === "Arabic" ? "ar" : "en";
   document.documentElement.dir = ["Urdu","Arabic","Persian (Farsi)","Kurdish","Baluchi"].includes(language) ? "rtl" : "ltr";
-  $("[data-view]").forEach(button => {
+  document.querySelectorAll("[data-view]").forEach(button => {
     const original = button.dataset.originalLabel || button.textContent.trim();
     button.dataset.originalLabel = original;
     button.textContent = dict[original] || original;
@@ -19,7 +19,7 @@ function applyOwnerPanelLanguage(language) {
     title.dataset.originalLabel = original;
     title.textContent = dict[original] || original;
   }
-  $('[data-view-panel="settings"] .panel-head h2').forEach(node => {
+  document.querySelectorAll('[data-view-panel="settings"] .panel-head h2').forEach(node => {
     const original = node.dataset.originalLabel || node.textContent.trim();
     node.dataset.originalLabel = original;
     node.textContent = dict[original] || original;
