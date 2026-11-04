@@ -50,7 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _nameController.text = savedName;
     }
     final savedDob = DateTime.tryParse(state.dateOfBirth?.trim() ?? '');
-    if (_dateOfBirth == null && savedDob != null) _dateOfBirth = savedDob;
+    if (_dateOfBirth == null) {
+      _dateOfBirth = savedDob ?? _defaultDateOfBirthFor21Plus();
+    }
     final savedCountryCode = state.countryCode.trim();
     if (_selectedCountry == null && savedCountryCode.isNotEmpty) {
       _selectedCountry = CountryParser.tryParseCountryCode(savedCountryCode);
@@ -70,6 +72,11 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _nameController.dispose();
     super.dispose();
+  }
+
+  DateTime _defaultDateOfBirthFor21Plus() {
+    final now = DateTime.now();
+    return DateTime(now.year - 21, now.month, now.day);
   }
 
   String get _dobLabel {
@@ -149,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final now = DateTime.now();
     final selected = await showDatePicker(
       context: context,
-      initialDate: _dateOfBirth ?? DateTime(now.year - 18, now.month, now.day),
+      initialDate: _dateOfBirth ?? _defaultDateOfBirthFor21Plus(),
       firstDate: DateTime(1900),
       lastDate: DateTime(now.year, now.month, now.day),
       helpText: 'Select date of birth',
@@ -615,6 +622,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 12),
                             InkWell(
+                              key: const Key('create-id-date-of-birth'),
                               onTap: busy ? null : _pickDateOfBirth,
                               borderRadius: BorderRadius.circular(12),
                               child: InputDecorator(
