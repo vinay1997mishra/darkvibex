@@ -83,7 +83,7 @@ class AppSettingsScreen extends StatelessWidget {
                       title: darkVibeXText(language, 'about_tinni'),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const AboutDarkVibeXScreen(),
+                          builder: (_) => AboutDarkVibeXScreen(state: state),
                         ),
                       ),
                     ),

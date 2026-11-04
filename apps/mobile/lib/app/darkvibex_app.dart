@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../background/message_push_service.dart';
 import '../core/app_identity.dart';
 import '../infra/invite_referral_service.dart';
+import '../i18n/darkvibex_localization.dart';
 import '../screens/home_shell.dart';
 import '../screens/login_screen.dart';
 import '../ui/tinni_style.dart';
@@ -49,31 +50,36 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
       title: AppIdentity.appName,
       debugShowCheckedModeBanner: false,
       theme: buildTinniStyleTheme(),
-      builder: (context, child) => AnimatedBuilder(
-        animation: state,
-        builder: (context, _) {
-          final room = state.minimizedRoom;
-          return DarkVibeXGlobalBackground(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: child ?? const SizedBox.shrink(),
-                ),
-                if (room != null)
+      builder: (context, child) => Directionality(
+        textDirection: darkVibeXIsRtlLanguage(state.languagePreference.value)
+            ? TextDirection.rtl
+            : TextDirection.ltr,
+        child: AnimatedBuilder(
+          animation: state,
+          builder: (context, _) {
+            final room = state.minimizedRoom;
+            return DarkVibeXGlobalBackground(
+              child: Stack(
+                children: [
                   Positioned.fill(
-                    child: SafeArea(
-                      child: MinimizedRoomBubble(
-                        state: state,
-                        room: room,
-                        onResume: state.minimizedRoomResume,
-                        onClose: state.minimizedRoomClose,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                  if (room != null)
+                    Positioned.fill(
+                      child: SafeArea(
+                        child: MinimizedRoomBubble(
+                          state: state,
+                          room: room,
+                          onResume: state.minimizedRoomResume,
+                          onClose: state.minimizedRoomClose,
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
       home: AnimatedBuilder(
         animation: state,

@@ -8,6 +8,9 @@ import '../ui/tinni_style.dart';
 import 'cosmetics_shop_screen.dart';
 import 'profile_screen.dart';
 
+String _settingsText(AppState state, String key) =>
+    darkVibeXText(state.languagePreference.value, key);
+
 class MessageNotificationScreen extends StatefulWidget {
   const MessageNotificationScreen({super.key, required this.state});
   final AppState state;
@@ -58,7 +61,7 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Message notification')),
+        appBar: AppBar(title: Text(_settingsText(widget.state, 'message_title'))),
         body: TinniBackground(
           child: loading
               ? const Center(child: CircularProgressIndicator())
@@ -70,9 +73,9 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
                       child: Column(
                         children: [
                           SwitchListTile(
-                            title: const Text('Message notification'),
+                            title: Text(_settingsText(widget.state, 'message_title')),
                             subtitle:
-                                const Text('Private chat and inbox alerts'),
+                                Text(_settingsText(widget.state, 'private_chat_alerts')),
                             value: messageNotifications,
                             onChanged: (value) => _set(
                               'dvx.notifications.messages',
@@ -83,9 +86,9 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
                             ),
                           ),
                           SwitchListTile(
-                            title: const Text('Room notifications'),
+                            title: Text(_settingsText(widget.state, 'room_notifications')),
                             subtitle:
-                                const Text('Room activity and invitations'),
+                                Text(_settingsText(widget.state, 'room_activity')),
                             value: roomNotifications,
                             onChanged: (value) => _set(
                               'dvx.notifications.rooms',
@@ -94,8 +97,8 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
                             ),
                           ),
                           SwitchListTile(
-                            title: const Text('Voice'),
-                            subtitle: const Text('Notification sound'),
+                            title: Text(_settingsText(widget.state, 'voice')),
+                            subtitle: Text(_settingsText(widget.state, 'notification_sound')),
                             value: voice,
                             onChanged: (value) => _set(
                               'dvx.notifications.voice',
@@ -104,7 +107,7 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
                             ),
                           ),
                           SwitchListTile(
-                            title: const Text('Vibration'),
+                            title: Text(_settingsText(widget.state, 'vibration')),
                             value: vibration,
                             onChanged: (value) => _set(
                               'dvx.notifications.vibration',
@@ -113,9 +116,7 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
                             ),
                           ),
                           SwitchListTile(
-                            title: const Text(
-                              'Only receive floating screen in the room',
-                            ),
+                            title: Text(_settingsText(widget.state, 'floating_room')),
                             value: floatingRoomOnly,
                             onChanged: (value) => _set(
                               'dvx.notifications.floating_room_only',
@@ -154,7 +155,7 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
         content: Text(
           ok
               ? 'Google account linked to ID ${formatPublicUserId(widget.state.publicId)}'
-              : widget.state.authError ?? 'Google account could not be linked',
+              : widget.state.authError ?? _settingsText(widget.state, 'google_bind_failed'),
         ),
       ),
     );
@@ -163,7 +164,7 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Bind account')),
+        appBar: AppBar(title: Text(_settingsText(widget.state, 'google_bind_title'))),
         body: TinniBackground(
           child: ListView(
             padding: const EdgeInsets.all(14),
@@ -188,12 +189,12 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
                     const SizedBox(height: 12),
                     Text(
                       widget.state.authProvider == 'google'
-                          ? 'Google account linked'
-                          : 'Guest account',
+                          ? _settingsText(widget.state, 'google_linked')
+                          : _settingsText(widget.state, 'guest_account'),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      'Binding Google keeps this same DarkVibeX ID and profile.',
+                    Text(
+                      _settingsText(widget.state, 'binding_note'),
                       style: TextStyle(
                         color: TinniPalette.muted,
                         fontSize: 11,
@@ -215,8 +216,8 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
                     : const Icon(Icons.account_circle_rounded),
                 label: Text(
                   widget.state.authProvider == 'google'
-                      ? 'Google linked'
-                      : 'Bind Google account',
+                      ? _settingsText(widget.state, 'google_linked_short')
+                      : _settingsText(widget.state, 'bind_google'),
                 ),
               ),
             ],
@@ -247,26 +248,24 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
 
   Future<void> _select(String value) async {
     if (saving || value == selected) return;
-    final old = selected;
     setState(() {
       selected = value;
       saving = true;
     });
 
-    final ok = await widget.state.saveLanguagePreference(value);
+    // The app state changes language immediately; account sync continues in background.
+    final sync = widget.state.saveLanguagePreference(value);
+    if (mounted) setState(() => saving = false);
+    final ok = await sync;
     if (!mounted) return;
-    setState(() {
-      saving = false;
-      if (!ok) selected = old;
-    });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           ok
-              ? 'Language preference saved: $value'
+              ? _settingsText(widget.state, 'language_saved').replaceAll('{value}', value)
               : (widget.state.authError ??
-                  'Language preference could not be saved'),
+                  _settingsText(widget.state, 'language_save_failed')),
         ),
       ),
     );
@@ -275,7 +274,7 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Language settings')),
+        appBar: AppBar(title: Text(_settingsText(widget.state, 'language_title'))),
         body: TinniBackground(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
@@ -311,12 +310,10 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
                           },
                   ),
                 ),
-              const Padding(
-                padding: EdgeInsets.all(14),
+              Padding(
+                padding: const EdgeInsets.all(14),
                 child: Text(
-                  'This language is saved to your DarkVibeX account. '
-                  'Create ID and Settings use the same language list. '
-                  'User names, room text, chat and numeric IDs are not auto-translated.',
+                  _settingsText(widget.state, 'language_note'),
                   style: TextStyle(
                     color: TinniPalette.muted,
                     fontSize: 11,
@@ -331,44 +328,49 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
 }
 
 class AboutDarkVibeXScreen extends StatelessWidget {
-  const AboutDarkVibeXScreen({super.key});
+  const AboutDarkVibeXScreen({super.key, required this.state});
+
+  final AppState state;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('About DarkVibeX')),
-        body: TinniBackground(
-          child: ListView(
-            padding: EdgeInsets.all(16),
-            children: [
-              TinniPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'DarkVibeX',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
+  Widget build(BuildContext context) => ValueListenableBuilder<String>(
+        valueListenable: state.languagePreference,
+        builder: (context, language, _) => Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            title: Text(darkVibeXText(language, 'about_title')),
+          ),
+          body: TinniBackground(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                TinniPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'DarkVibeX',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Social voice rooms, live room controls, messaging, Family, CP, gifts, games, VIP, wallet and profile features.',
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'BD, Agency, Host, Guardian and country-specific modules are intentionally not part of DarkVibeX.',
-                      style: TextStyle(
-                        color: TinniPalette.muted,
-                        fontSize: 11,
+                      const SizedBox(height: 8),
+                      Text(darkVibeXText(language, 'about_description')),
+                      const SizedBox(height: 12),
+                      Text(
+                        darkVibeXText(language, 'modules_note'),
+                        style: const TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -420,7 +422,7 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Blocklist'),
+          title: Text(_settingsText(widget.state, 'blocklist_title')),
           actions: [
             IconButton(
               onPressed: loading ? null : _load,
@@ -432,7 +434,7 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
           child: loading
               ? const Center(child: CircularProgressIndicator())
               : rows.isEmpty
-                  ? const Center(child: Text('No blocked users'))
+                  ? Center(child: Text(_settingsText(widget.state, 'no_blocked_users')))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                       itemCount: rows.length,
@@ -466,14 +468,14 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
                                   : null,
                             ),
                             title: Text(
-                              row['display_name']?.toString() ?? 'User',
+                              row['display_name']?.toString() ?? _settingsText(widget.state, 'user'),
                             ),
                             subtitle: Text('ID ${formatPublicUserId(row['public_id'])}'),
                             trailing: TextButton(
                               onPressed: id.isEmpty || busy.contains(id)
                                   ? null
                                   : () => _unblock(id),
-                              child: const Text('Unblock'),
+                              child: Text(_settingsText(widget.state, 'unblock')),
                             ),
                           ),
                         );
@@ -541,7 +543,7 @@ class _PropsScreenState extends State<PropsScreen> {
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Props'),
+          title: Text(_settingsText(widget.state, 'props_title')),
           actions: [
             IconButton(
               onPressed: () => Navigator.of(context)
@@ -553,7 +555,7 @@ class _PropsScreenState extends State<PropsScreen> {
                   )
                   .then((_) => _load()),
               icon: const Icon(Icons.storefront_rounded),
-              tooltip: 'Shop',
+              tooltip: _settingsText(widget.state, 'shop_title'),
             ),
           ],
         ),
@@ -561,7 +563,7 @@ class _PropsScreenState extends State<PropsScreen> {
           child: loading
               ? const Center(child: CircularProgressIndicator())
               : owned.isEmpty
-                  ? const Center(child: Text('No owned props yet'))
+                  ? Center(child: Text(_settingsText(widget.state, 'no_props')))
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                       itemCount: owned.length,
@@ -581,16 +583,16 @@ class _PropsScreenState extends State<PropsScreen> {
                             ),
                             title: Text(item?['name']?.toString() ?? id),
                             subtitle: Text(
-                              '${row['kind'] ?? item?['kind'] ?? 'prop'}'
-                              '${row['expires_at'] == null ? '' : ' • owned'}',
+                              '${row['kind'] ?? item?['kind'] ?? _settingsText(widget.state, 'prop')}'
+                              '${row['expires_at'] == null ? '' : ' • ${_settingsText(widget.state, 'owned')}'}',
                             ),
                             trailing: active
-                                ? const Chip(label: Text('Using'))
+                                ? Chip(label: Text(_settingsText(widget.state, 'using')))
                                 : TextButton(
                                     onPressed: id.isEmpty
                                         ? null
                                         : () => _equip(id),
-                                    child: const Text('Use'),
+                                    child: Text(_settingsText(widget.state, 'use')),
                                   ),
                           ),
                         );
