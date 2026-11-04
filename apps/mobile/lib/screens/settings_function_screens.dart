@@ -310,8 +310,8 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
                           },
                   ),
                 ),
-              const Padding(
-                padding: EdgeInsets.all(14),
+              Padding(
+                padding: const EdgeInsets.all(14),
                 child: Text(
                   _settingsText(widget.state, 'language_note'),
                   style: TextStyle(
