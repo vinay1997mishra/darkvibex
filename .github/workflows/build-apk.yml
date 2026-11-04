@@ -334,7 +334,25 @@ jobs:
             gh release create darkvibex-latest               --title "DarkVibeX Latest APK"               --notes "Rolling latest APK build from main. Asset is replaced on each successful build."
           fi
           cp "$apk" "$RUNNER_TEMP/$asset_name"
-          gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name" --clobber
+
+          # GitHub's release-assets API can transiently return HTTP 5xx while
+          # replacing an existing asset. Retry the complete clobber operation
+          # with backoff instead of failing an otherwise successful APK build.
+          uploaded=false
+          for attempt in 1 2 3 4 5; do
+            echo "Release APK upload attempt $attempt/5"
+            if gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name" --clobber; then
+              uploaded=true
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          if [ "$uploaded" != true ]; then
+            echo "::error::Could not publish $asset_name after 5 attempts."
+            exit 1
+          fi
 
       - name: Mark APK build success
         if: success() && github.event_name != 'pull_request'
@@ -388,10 +406,26 @@ jobs:
           apk="$(find "$RUNNER_TEMP/dvx-apk" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$apk"
           cp "$apk" "$RUNNER_TEMP/DarkVibeX-latest.apk"
-          gh release upload darkvibex-latest \
-            "$RUNNER_TEMP/DarkVibeX-latest.apk" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+
+          # Use the same retry policy for the stable direct-download alias.
+          uploaded=false
+          for attempt in 1 2 3 4 5; do
+            echo "Direct APK alias upload attempt $attempt/5"
+            if gh release upload darkvibex-latest \
+              "$RUNNER_TEMP/DarkVibeX-latest.apk" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber; then
+              uploaded=true
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          if [ "$uploaded" != true ]; then
+            echo "::error::Could not publish the direct APK alias after 5 attempts."
+            exit 1
+          fi
 
       - name: Mark direct APK success
         if: success()
