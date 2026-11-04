@@ -77,6 +77,17 @@ void main() {
     expect(source, contains('required String videoKey'));
   });
 
+  test('gift events use LiveKit reliable room-wide data delivery', () {
+    final rtc = File('lib/infra/livekit_rtc.dart').readAsStringSync();
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+    expect(rtc, contains('publishGiftEvent('));
+    expect(rtc, contains('reliable: true'));
+    expect(rtc, contains("topic: 'darkvibex.gift'"));
+    expect(room, contains('on<DataReceivedEvent>'));
+    expect(room, contains("event.topic != 'darkvibex.gift'"));
+    expect(room, contains('_handleLiveGiftEvent('));
+  });
+
   test('gift sender sees their own gift immediately without duplicate polling playback', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
     final sendStart = source.indexOf('Future<void> _sendGiftByDefinition');
