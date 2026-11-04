@@ -77,6 +77,19 @@ void main() {
     expect(source, contains('required String videoKey'));
   });
 
+  test('gift sender sees their own gift immediately without duplicate polling playback', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    final sendStart = source.indexOf('Future<void> _sendGiftByDefinition');
+    final sendEnd = source.indexOf('Future<void> ', sendStart + 20);
+    final sendFlow = source.substring(sendStart, sendEnd);
+    expect(sendFlow, contains('_seenGiftEventIds.add(committedEventId)'));
+    expect(sendFlow, contains('await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey)'));
+    expect(sendFlow, contains('await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey)'));
+    expect(sendFlow, contains('_playGiftEffect(gift, receiverId: receiverId)'));
+    expect(sendFlow, contains('sendRoomMessage('));
+    expect(source, contains("if (event['sender_user_id']?.toString() == widget.state.userId) continue;"));
+  });
+
   test('LiveKit speaking levels are sampled from active speakers', () {
     final source = File('lib/infra/livekit_rtc.dart').readAsStringSync();
     expect(source, contains('for (final participant in room.activeSpeakers)'));
