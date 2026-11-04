@@ -1904,6 +1904,40 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  Future<void> _handleLiveGiftEvent(Map<String, dynamic> event) async {
+    if (!mounted || event['type'] != 'gift') return;
+    final eventId = event['id']?.toString() ?? '';
+    if (eventId.isEmpty || !_seenGiftEventIds.add(eventId)) return;
+    final senderId = event['sender_user_id']?.toString() ?? '';
+    // The sender starts playback locally as soon as the server confirms the
+    // transaction. The reliable data packet is for every other room member.
+    if (senderId == widget.state.userId) return;
+    final receiverId = event['receiver_user_id']?.toString() ?? '';
+    if (receiverId.isEmpty) return;
+    final gift = <String, dynamic>{
+      'id': event['gift_id']?.toString() ?? '',
+      'name': event['gift_name']?.toString() ?? 'Gift',
+      'emoji': event['emoji']?.toString() ?? '🎁',
+      'coin_cost': event['coin_cost'] ?? 0,
+      'video_key': event['video_key']?.toString() ?? '',
+      'glb_key': event['glb_key']?.toString() ?? '',
+      'asset_key': event['asset_key']?.toString() ?? '',
+    };
+    final senderName = event['sender_name']?.toString() ?? 'User';
+    _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
+      if (!mounted) return;
+      final videoKey = gift['video_key']?.toString() ?? '';
+      final glbKey = gift['glb_key']?.toString() ?? '';
+      if (videoKey.isNotEmpty) {
+        await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey, senderName: senderName);
+      } else if (glbKey.isNotEmpty) {
+        await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
+      } else {
+        _playGiftEffect(gift, receiverId: receiverId);
+      }
+    });
+  }
+
   void _bindVideoTracks(LiveKitRtcAdapter adapter) {
     final room = adapter.room;
     if (room == null) return;
@@ -1913,7 +1947,18 @@ class _RoomScreenState extends State<RoomScreen> {
       ..on<TrackUnsubscribedEvent>((_) => _refreshVideoTracks(adapter))
       ..on<TrackPublishedEvent>((_) => _refreshVideoTracks(adapter))
       ..on<TrackUnpublishedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<ParticipantDisconnectedEvent>((_) => _refreshVideoTracks(adapter));
+      ..on<ParticipantDisconnectedEvent>((_) => _refreshVideoTracks(adapter))
+      ..on<DataReceivedEvent>((event) {
+        if (event.topic != 'darkvibex.gift') return;
+        try {
+          final decoded = jsonDecode(utf8.decode(event.data));
+          if (decoded is Map) {
+            unawaited(_handleLiveGiftEvent(Map<String, dynamic>.from(decoded)));
+          }
+        } catch (_) {
+          // Ignore unrelated or malformed LiveKit data packets.
+        }
+      });
     _refreshVideoTracks(adapter);
   }
 
@@ -6899,6 +6944,26 @@ class _RoomScreenState extends State<RoomScreen> {
       final committedEventId = result?['event_id']?.toString() ?? '';
       if (committedEventId.isNotEmpty) {
         _seenGiftEventIds.add(committedEventId);
+        final adapter = rtc;
+        if (adapter is LiveKitRtcAdapter) {
+          unawaited(adapter.publishGiftEvent(<String, dynamic>{
+            'type': 'gift',
+            'id': committedEventId,
+            'sender_user_id': widget.state.userId,
+            'receiver_user_id': receiverId,
+            'sender_name': widget.state.displayName,
+            'gift_id': giftId,
+            'gift_name': gift['name']?.toString() ?? 'Gift',
+            'emoji': gift['emoji']?.toString() ?? '🎁',
+            'coin_cost': giftCost,
+            'video_key': (gift['video_key'] ?? gift['videoKey'] ?? '').toString(),
+            'glb_key': (gift['glb_key'] ?? gift['glbKey'] ?? '').toString(),
+            'asset_key': (gift['asset_key'] ?? gift['asset'] ?? '').toString(),
+          }).catchError((_) {
+            // The committed Worker event feed remains the recovery path if a
+            // transient LiveKit data-channel publish fails.
+          }));
+        }
       }
       widget.state.setCoinBalance(remoteBalance);
       final videoKey = (gift['video_key'] ?? gift['videoKey'] ?? '')
