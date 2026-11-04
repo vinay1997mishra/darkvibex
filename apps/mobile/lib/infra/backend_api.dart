@@ -676,6 +676,24 @@ class BackendApi {
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> roomGiftEvents({
+    required String roomId,
+    required int after,
+    String afterId = '',
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/gift-events?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['events'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
   Future<bool> leaveRoom({required String roomId, required String userId}) async {
     final value = await _json(
       'POST',
