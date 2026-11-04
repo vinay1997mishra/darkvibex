@@ -69,6 +69,7 @@ void main() {
     final backend = File('lib/infra/backend_api.dart').readAsStringSync();
     expect(backend, contains('roomGiftEvents('));
     expect(backend, contains('/gift-events?after='));
+    expect(backend, contains('eventId ='));
     expect(source, contains('unawaited(_loadRoomGiftEvents())'));
     expect(source, contains('event[\'sender_user_id\']?.toString() == widget.state.userId'));
     expect(source, contains('_seenGiftEventIds.add(eventId)'));
@@ -86,6 +87,9 @@ void main() {
     expect(room, contains('on<DataReceivedEvent>'));
     expect(room, contains("event.topic != 'darkvibex.gift'"));
     expect(room, contains('_handleLiveGiftEvent('));
+    expect(room, contains('senderIdentity: event.participant?.identity ??')); 
+    expect(room, contains('eventId: eventId'));
+    expect(room, contains('candidate[\'sender_user_id\']?.toString() == senderIdentity'));
   });
 
   test('gift sender sees their own gift immediately without duplicate polling playback', () {
