@@ -6691,6 +6691,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 : receiverId))
         .toString();
     final giftName = (gift['name'] ?? 'Gift').toString();
+    final senderDisplayName = widget.state.displayName;
     var closeTriggered = false;
     Timer? closeTimer;
     try {
@@ -6895,7 +6896,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '${widget.state.displayName} sent $giftName',
+                                '$senderDisplayName sent $giftName',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w900,
