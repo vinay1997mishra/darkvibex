@@ -1905,26 +1905,44 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
-  Future<void> _handleLiveGiftEvent(Map<String, dynamic> event) async {
-    if (!mounted || event['type'] != 'gift') return;
-    final eventId = event['id']?.toString() ?? '';
-    if (eventId.isEmpty || !_seenGiftEventIds.add(eventId)) return;
-    final senderId = event['sender_user_id']?.toString() ?? '';
-    // The sender starts playback locally as soon as the server confirms the
-    // transaction. The reliable data packet is for every other room member.
-    if (senderId == widget.state.userId) return;
-    final receiverId = event['receiver_user_id']?.toString() ?? '';
+  Future<void> _handleLiveGiftEvent(
+    Map<String, dynamic> packet, {
+    required String senderIdentity,
+  }) async {
+    if (!mounted || packet['type'] != 'gift') return;
+    final eventId = packet['id']?.toString() ?? '';
+    if (eventId.isEmpty || _seenGiftEventIds.contains(eventId)) return;
+    // LiveKit identity is minted from the authenticated DarkVibeX user ID.
+    // Do not trust media metadata sent by a client: resolve the event from D1.
+    final claimedSender = packet['sender_user_id']?.toString() ?? '';
+    if (senderIdentity.isEmpty || claimedSender != senderIdentity) return;
+    final verifiedEvents = await widget.state.backend.roomGiftEvents(
+      roomId: widget.room.id,
+      after: 0,
+      eventId: eventId,
+    );
+    if (!mounted) return;
+    Map<String, dynamic>? verified;
+    for (final candidate in verifiedEvents) {
+      if (candidate['id']?.toString() == eventId &&
+          candidate['sender_user_id']?.toString() == senderIdentity) {
+        verified = candidate;
+        break;
+      }
+    }
+    if (verified == null || !_seenGiftEventIds.add(eventId)) return;
+    final receiverId = verified['receiver_user_id']?.toString() ?? '';
     if (receiverId.isEmpty) return;
     final gift = <String, dynamic>{
-      'id': event['gift_id']?.toString() ?? '',
-      'name': event['gift_name']?.toString() ?? 'Gift',
-      'emoji': event['emoji']?.toString() ?? '🎁',
-      'coin_cost': event['coin_cost'] ?? 0,
-      'video_key': event['video_key']?.toString() ?? '',
-      'glb_key': event['glb_key']?.toString() ?? '',
-      'asset_key': event['asset_key']?.toString() ?? '',
+      'id': verified['gift_id']?.toString() ?? '',
+      'name': verified['gift_name']?.toString() ?? 'Gift',
+      'emoji': verified['emoji']?.toString() ?? '🎁',
+      'coin_cost': verified['coin_cost'] ?? 0,
+      'video_key': verified['video_key']?.toString() ?? '',
+      'glb_key': verified['glb_key']?.toString() ?? '',
+      'asset_key': verified['asset_key']?.toString() ?? '',
     };
-    final senderName = event['sender_name']?.toString() ?? 'User';
+    final senderName = verified['sender_name']?.toString() ?? 'User';
     _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
       if (!mounted) return;
       final videoKey = gift['video_key']?.toString() ?? '';
@@ -1954,7 +1972,10 @@ class _RoomScreenState extends State<RoomScreen> {
         try {
           final decoded = jsonDecode(utf8.decode(event.data));
           if (decoded is Map) {
-            unawaited(_handleLiveGiftEvent(Map<String, dynamic>.from(decoded)));
+            unawaited(_handleLiveGiftEvent(
+              Map<String, dynamic>.from(decoded),
+              senderIdentity: event.participant?.identity ?? '',
+            ));
           }
         } catch (_) {
           // Ignore unrelated or malformed LiveKit data packets.
