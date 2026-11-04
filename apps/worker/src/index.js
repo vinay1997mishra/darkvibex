@@ -6233,6 +6233,51 @@ async function handleApi(request, env, url) {
     });
   }
 
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "gift-events" && request.method === "GET") {
+    const roomId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const viewerId = String(session.sub);
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?"
+    ).bind(roomId, viewerId).first();
+    if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
+
+    const after = Math.max(0, Number(url.searchParams.get("after") ?? 0) || 0);
+    const afterId = String(url.searchParams.get("after_id") ?? "").slice(0,100);
+    const rows = await db.prepare(
+      `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.created_at,
+              s.display_name AS sender_name,r.display_name AS receiver_name
+         FROM gift_events g
+         LEFT JOIN users s ON s.id=g.sender_user_id
+         LEFT JOIN users r ON r.id=g.receiver_user_id
+        WHERE g.room_id=? AND (g.created_at>? OR (g.created_at=? AND g.id>?))
+        ORDER BY g.created_at ASC,g.id ASC LIMIT 20`
+    ).bind(roomId,after,after,afterId).all();
+    const catalog = await effectiveGiftCatalog(db);
+    const catalogById = new Map(catalog.map((gift) => [String(gift.id), gift]));
+    const events = (rows.results ?? []).map((row) => {
+      const gift = catalogById.get(String(row.gift_id)) ?? {};
+      return {
+        id:String(row.id),
+        sender_user_id:String(row.sender_user_id),
+        receiver_user_id:String(row.receiver_user_id),
+        sender_name:String(row.sender_name ?? "User"),
+        receiver_name:String(row.receiver_name ?? "User"),
+        gift_id:String(row.gift_id),
+        gift_name:String(gift.name ?? "Gift"),
+        emoji:String(gift.emoji ?? "🎁"),
+        coin_cost:Number(row.coin_cost ?? 0),
+        video_key:String(gift.video_key ?? gift.videoKey ?? ""),
+        glb_key:String(gift.glb_key ?? gift.glbKey ?? ""),
+        asset_key:String(gift.asset_key ?? gift.asset ?? ""),
+        created_at:Number(row.created_at ?? 0),
+      };
+    });
+    return json({ok:true,events});
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "messages") {
     const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
