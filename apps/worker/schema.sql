@@ -269,6 +269,7 @@ CREATE INDEX IF NOT EXISTS idx_room_messages_room_time ON room_messages(room_id,
 CREATE INDEX IF NOT EXISTS idx_dm_receiver_time ON direct_messages(receiver_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_wallet_user_time ON wallet_ledger(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_gifts_receiver_time ON gift_events(receiver_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gifts_room_time ON gift_events(room_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_game_bets_user_time ON game_bets(user_id, created_at DESC);
 
 
