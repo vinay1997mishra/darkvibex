@@ -330,44 +330,49 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
 }
 
 class AboutDarkVibeXScreen extends StatelessWidget {
-  const AboutDarkVibeXScreen({super.key});
+  const AboutDarkVibeXScreen({super.key, required this.state});
+
+  final AppState state;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('About DarkVibeX')),
-        body: TinniBackground(
-          child: ListView(
-            padding: EdgeInsets.all(16),
-            children: [
-              TinniPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'DarkVibeX',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
+  Widget build(BuildContext context) => ValueListenableBuilder<String>(
+        valueListenable: state.languagePreference,
+        builder: (context, language, _) => Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            title: Text(darkVibeXText(language, 'about_title')),
+          ),
+          body: TinniBackground(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                TinniPanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'DarkVibeX',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Social voice rooms, live room controls, messaging, Family, CP, gifts, games, VIP, wallet and profile features.',
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'BD, Agency, Host, Guardian and country-specific modules are intentionally not part of DarkVibeX.',
-                      style: TextStyle(
-                        color: TinniPalette.muted,
-                        fontSize: 11,
+                      const SizedBox(height: 8),
+                      Text(darkVibeXText(language, 'about_description')),
+                      const SizedBox(height: 12),
+                      Text(
+                        darkVibeXText(language, 'modules_note'),
+                        style: const TextStyle(
+                          color: TinniPalette.muted,
+                          fontSize: 11,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
