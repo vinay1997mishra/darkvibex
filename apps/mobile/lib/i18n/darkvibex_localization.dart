@@ -1,24 +1,16 @@
 const List<String> darkVibeXSupportedLanguages = <String>[
   'English',
   'Hindi',
-  'Urdu',
   'Arabic',
   'Bengali',
   'Malayalam',
-  'Filipino (Tagalog)',
-  'Persian (Farsi)',
-  'Kurdish',
   'Baluchi',
   'Chinese (Simplified)',
   'Chinese (Traditional)',
-  'Korean',
 ];
 
 const Set<String> darkVibeXRtlLanguages = <String>{
-  'Urdu',
   'Arabic',
-  'Persian (Farsi)',
-  'Kurdish',
   'Baluchi',
 };
 
@@ -35,9 +27,6 @@ String darkVibeXText(String language, String key) {
     case 'hindi':
       values = _hindi;
       break;
-    case 'urdu':
-      values = _urdu;
-      break;
     case 'arabic':
       values = _arabic;
       break;
@@ -47,15 +36,6 @@ String darkVibeXText(String language, String key) {
     case 'malayalam':
       values = _malayalam;
       break;
-    case 'filipino (tagalog)':
-      values = _filipino;
-      break;
-    case 'persian (farsi)':
-      values = _persian;
-      break;
-    case 'kurdish':
-      values = _kurdish;
-      break;
     case 'baluchi':
       values = _baluchi;
       break;
@@ -64,9 +44,6 @@ String darkVibeXText(String language, String key) {
       break;
     case 'chinese (traditional)':
       values = _chineseTraditional;
-      break;
-    case 'korean':
-      values = _korean;
       break;
     default:
       values = _english;
