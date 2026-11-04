@@ -1,4 +1,42 @@
 const $ = (s) => document.querySelector(s);
+const ownerPanelTranslations = {
+  Hindi: {Dashboard:"डैशबोर्ड",Users:"यूज़र्स",Notifications:"सूचनाएँ","Messages & Tags":"मैसेज और टैग",Rooms:"रूम्स","Roles / Posts":"रोल / पोस्ट",Banners:"बैनर",Games:"गेम्स",Policies:"नीतियाँ","Wallets / Treasury":"वॉलेट / ट्रेजरी","Unique ID / Coin Rate":"यूज़र ID / कॉइन रेट","VIP Manager":"VIP मैनेजर","Gift Box / Gifts":"गिफ्ट बॉक्स / गिफ्ट्स","Entries / Frames":"एंट्री / फ्रेम्स","App Store":"ऐप स्टोर","Advanced Catalog":"एडवांस कैटलॉग","Master Switches":"मुख्य सेटिंग्स",Announcements:"घोषणाएँ","VIP Support":"VIP सहायता","Custom Panels":"कस्टम पैनल","Audit Log":"ऑडिट लॉग",Overview:"ओवरव्यू","Feature switches":"फीचर स्विच","Maintenance mode":"मेंटेनेंस मोड"},
+  Urdu: {Dashboard:"ڈیش بورڈ",Users:"صارفین",Notifications:"اطلاعات","Messages & Tags":"پیغامات اور ٹیگز",Rooms:"رومز","Roles / Posts":"کردار / پوسٹس",Banners:"بینرز",Games:"گیمز",Policies:"پالیسیاں","Wallets / Treasury":"والیٹ / خزانہ","Unique ID / Coin Rate":"یونیک ID / کوائن ریٹ","VIP Manager":"VIP مینیجر","Gift Box / Gifts":"گفٹ باکس / تحائف","Entries / Frames":"انٹریز / فریمز","App Store":"ایپ اسٹور","Advanced Catalog":"ایڈوانس کیٹلاگ","Master Switches":"ماسٹر سوئچز",Announcements:"اعلانات","VIP Support":"VIP سپورٹ","Custom Panels":"کسٹم پینلز","Audit Log":"آڈٹ لاگ",Overview:"جائزہ","Feature switches":"فیچر سوئچز","Maintenance mode":"مینٹیننس موڈ"},
+  Arabic: {Dashboard:"لوحة التحكم",Users:"المستخدمون",Notifications:"الإشعارات","Messages & Tags":"الرسائل والعلامات",Rooms:"الغرف","Roles / Posts":"الأدوار / المنشورات",Banners:"اللافتات",Games:"الألعاب",Policies:"السياسات","Wallets / Treasury":"المحافظ / الخزينة","Unique ID / Coin Rate":"المعرّف / سعر العملات","VIP Manager":"إدارة VIP","Gift Box / Gifts":"صندوق الهدايا","Entries / Frames":"الدخول / الإطارات","App Store":"متجر التطبيق","Advanced Catalog":"الكتالوج المتقدم","Master Switches":"مفاتيح التحكم",Announcements:"الإعلانات","VIP Support":"دعم VIP","Custom Panels":"لوحات مخصصة","Audit Log":"سجل التدقيق",Overview:"نظرة عامة","Feature switches":"مفاتيح الميزات","Maintenance mode":"وضع الصيانة"}
+};
+function applyOwnerPanelLanguage(language) {
+  const dict = ownerPanelTranslations[language] || {};
+  document.documentElement.lang = language === "Hindi" ? "hi" : language === "Urdu" ? "ur" : language === "Arabic" ? "ar" : "en";
+  document.documentElement.dir = ["Urdu","Arabic","Persian (Farsi)","Kurdish","Baluchi"].includes(language) ? "rtl" : "ltr";
+  $("[data-view]").forEach(button => {
+    const original = button.dataset.originalLabel || button.textContent.trim();
+    button.dataset.originalLabel = original;
+    button.textContent = dict[original] || original;
+  });
+  const title = $("#viewTitle");
+  if (title) {
+    const original = title.dataset.originalLabel || title.textContent.trim();
+    title.dataset.originalLabel = original;
+    title.textContent = dict[original] || original;
+  }
+  $('[data-view-panel="settings"] .panel-head h2').forEach(node => {
+    const original = node.dataset.originalLabel || node.textContent.trim();
+    node.dataset.originalLabel = original;
+    node.textContent = dict[original] || original;
+  });
+}
+function initializeOwnerPanelLanguage() {
+  const select = $("#ownerPanelLanguage");
+  if (!select) return;
+  const saved = localStorage.getItem("dvx.ownerPanel.language") || "English";
+  select.value = [...select.options].some(option => option.value === saved || option.textContent === saved) ? saved : "English";
+  applyOwnerPanelLanguage(select.value);
+  select.addEventListener("change", () => {
+    localStorage.setItem("dvx.ownerPanel.language", select.value);
+    applyOwnerPanelLanguage(select.value);
+  });
+}
+
 const $$ = (s) => [...document.querySelectorAll(s)];
 const initialLoginMode = new URLSearchParams(window.location.search).get("staff")==="1" ? "staff" : "owner";
 const state = {
@@ -2167,6 +2205,7 @@ $("#supportStatus").onchange=()=>loadSupport().catch(e=>toast(e.message,false));
 
 const permissionObserver=new MutationObserver(()=>applyActionPermissions());
 permissionObserver.observe(document.body,{childList:true,subtree:true});
+initializeOwnerPanelLanguage();
 showApp(false);
 setLoginMode(state.loginMode,false);
 if(state.token){
