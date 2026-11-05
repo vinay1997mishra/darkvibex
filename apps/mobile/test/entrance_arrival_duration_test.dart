@@ -13,14 +13,14 @@ void main() {
     expect(source, contains('Timer(Duration(milliseconds: durationMs)'));
   });
 
-  test('custom vehicle video is rendered in the lower half without cropping', () {
+  test('custom vehicle video fills the lower 45 percent entry area', () {
     final room = File('lib/screens/room_screen.dart').readAsStringSync();
     final playback =
         File('lib/widgets/custom_asset_effect_playback.dart').readAsStringSync();
 
     expect(room, contains('bottom: 0,'));
-    expect(room, contains('height: MediaQuery.sizeOf(context).height * .50'));
+    expect(room, contains('height: MediaQuery.sizeOf(context).height * .45'));
     expect(room, contains("'active_vehicle_video_key'"));
-    expect(playback, contains('fit: BoxFit.contain'));
+    expect(playback, contains('fit: BoxFit.cover'));
   });
 }
