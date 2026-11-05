@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
@@ -5,10 +7,23 @@ import '../ui/tinni_style.dart';
 import '../ui/currency_badge.dart';
 import 'wallet_detail_screens.dart';
 
-class WalletScreen extends StatelessWidget {
+class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key, required this.state});
 
   final AppState state;
+
+  @override
+  State<WalletScreen> createState() => _WalletScreenState();
+}
+
+class _WalletScreenState extends State<WalletScreen> {
+  AppState get state => widget.state;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(state.refreshWallet());
+  }
 
   Future<void> _openRoleWallet(BuildContext context) async {
     final role = state.userRole;
