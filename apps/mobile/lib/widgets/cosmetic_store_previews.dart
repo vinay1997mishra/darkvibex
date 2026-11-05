@@ -393,12 +393,9 @@ Rect _bubbleRawCenterSlice(String styleId) => switch (styleId) {
 
 Rect _bubbleCenterSlice(String styleId) {
   final raw = _bubbleRawCenterSlice(styleId);
-  return Rect.fromLTRB(
-    raw.left / _bubbleChatImageScale,
-    raw.top / _bubbleChatImageScale,
-    raw.right / _bubbleChatImageScale,
-    raw.bottom / _bubbleChatImageScale,
-  );
+  // centerSlice is in source-image pixels. MemoryImage.scale changes the
+  // rendered density, not the source rectangle passed to Flutter's painter.
+  return raw;
 }
 
 class BubbleCosmeticPreview extends StatelessWidget {
