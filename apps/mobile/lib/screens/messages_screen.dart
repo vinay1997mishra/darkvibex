@@ -12,10 +12,12 @@ class MessagesScreen extends StatefulWidget {
     super.key,
     required this.state,
     this.standalone = false,
+    this.refreshToken = 0,
   });
 
   final AppState state;
   final bool standalone;
+  final int refreshToken;
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
@@ -43,6 +45,21 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
     unawaited(_checkIncomingCall());
     unawaited(_refreshInbox());
+  }
+
+  @override
+  void didUpdateWidget(covariant MessagesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      unawaited(_refreshOpenedTab());
+    }
+  }
+
+  Future<void> _refreshOpenedTab() async {
+    await Future.wait<void>([
+      _refreshInbox(),
+      _loadFeeds(),
+    ]);
   }
 
   @override
