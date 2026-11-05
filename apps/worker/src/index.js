@@ -644,8 +644,15 @@ export async function effectiveCosmeticCatalog(db) {
       min_vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.min_vip_level ?? 0),
       duration_days: Number(row.data?.duration_days ?? previous.duration_days ?? 30),
       tier: Number(row.data?.tier ?? previous.tier ?? 0),
-      asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
-      video_key: String(row.data?.video_key ?? previous.video_key ?? ""),
+      // Owner Panel versions have used asset_key/asset and older imports may
+      // contain poster_key, image_key or dp_key. Normalize all of them into
+      // the single field consumed by the mobile gift picker.
+      asset_key: String(
+        row.data?.asset_key ?? row.data?.asset ?? row.data?.poster_key ??
+        row.data?.image_key ?? row.data?.dp_key ?? previous.asset_key ??
+        previous.asset ?? previous.poster_key ?? previous.image_key ?? previous.dp_key ?? ""
+      ),
+      video_key: String(row.data?.video_key ?? row.data?.animation_key ?? previous.video_key ?? ""),
       glb_key: String(row.data?.glb_key ?? previous.glb_key ?? ""),
       media_type: String(row.data?.media_type ?? previous.media_type ?? ""),
       preview_key: String(row.data?.preview_key ?? previous.preview_key ?? ""),
@@ -719,7 +726,7 @@ async function effectiveGiftCatalog(db) {
     map.set(itemId, {
       ...previous,
       id: itemId,
-      name: String(row.name ?? previous.name ?? itemId),
+      name: String(row.name ?? row.data?.name ?? previous.name ?? itemId),
       emoji: String(row.data?.emoji ?? previous.emoji ?? "🎁"),
       coin_cost: Number(row.price_coins ?? previous.coin_cost ?? 0),
       vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.vip_level ?? 0),
