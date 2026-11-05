@@ -35,10 +35,9 @@ abstract final class _MineMenuPalette {
 }
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, required this.state, this.refreshToken = 0});
+  const ProfileScreen({super.key, required this.state});
 
   final AppState state;
-  final int refreshToken;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -53,14 +52,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadSocialStats();
-  }
-
-  @override
-  void didUpdateWidget(covariant ProfileScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshToken != widget.refreshToken) {
-      _refreshProfile();
-    }
   }
 
   Future<void> _loadSocialStats() async {
@@ -78,17 +69,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       vsRelation =
           rawVs is Map ? Map<String, dynamic>.from(rawVs) : null;
     });
-  }
-
-  Future<void> _refreshProfile() async {
-    if (!state.backendConnected) return;
-    await Future.wait<void>([
-      state.refreshWallet(),
-      state.refreshVip(),
-      state.refreshIdLevel(),
-      state.refreshCosmetics(),
-      _loadSocialStats(),
-    ]);
   }
 
   Future<void> _showFriends(BuildContext context) async {
@@ -247,11 +227,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, language, _) => AnimatedBuilder(
         animation: state,
         builder: (context, _) => TinniBackground(
-        child: RefreshIndicator(
-          onRefresh: _refreshProfile,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
           children: [
             InkWell(
               key: const Key('mine-profile-card'),
@@ -917,7 +894,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-    ),
     ),
     );
   }
@@ -1616,10 +1592,6 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
                     );
                   },
                 ),
-          ),
-        ),
-      ),
-    ),
     );
   }
 }
