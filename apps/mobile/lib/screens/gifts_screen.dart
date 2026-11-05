@@ -342,13 +342,8 @@ class _GiftsScreenState extends State<GiftsScreen> {
                                         backend: state.backend,
                                         videoKey:
                                             gift['video_key']?.toString() ?? '',
-                                        assetKey: (gift['asset_key'] ??
-                                                gift['asset'] ??
-                                                gift['poster_key'] ??
-                                                gift['image_key'] ??
-                                                gift['dp_key'])
-                                            ?.toString() ??
-                                            '',
+                                        assetKey:
+                                            gift['asset_key']?.toString() ?? '',
                                         glbKey:
                                             gift['glb_key']?.toString() ?? '',
                                         emoji:
@@ -358,9 +353,7 @@ class _GiftsScreenState extends State<GiftsScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    (gift['name'] ?? gift['gift_name'])
-                                            ?.toString() ??
-                                        'Gift',
+                                    gift['name']?.toString() ?? 'Gift',
                                     maxLines: 2,
                                     textAlign: TextAlign.center,
                                     overflow: TextOverflow.ellipsis,
