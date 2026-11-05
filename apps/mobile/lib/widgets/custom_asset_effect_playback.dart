@@ -92,15 +92,21 @@ class _CustomAssetEffectPlaybackState extends State<CustomAssetEffectPlayback> {
     final controller = _controller;
     if (_ready && !_failed && controller != null && controller.value.isInitialized) {
       final size = controller.value.size;
+      // Fill the room's allocated entry area while preserving the video's
+      // aspect ratio. Cover intentionally crops excess edges instead of
+      // shrinking a portrait clip into a small centered strip.
       return IgnorePointer(
-        child: Center(
-          child: FittedBox(
-            fit: BoxFit.contain,
-            clipBehavior: Clip.hardEdge,
-            child: SizedBox(
-              width: size.width > 0 ? size.width : 1,
-              height: size.height > 0 ? size.height : 1,
-              child: VideoPlayer(controller),
+        child: ClipRect(
+          child: SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: size.width > 0 ? size.width : 1,
+                height: size.height > 0 ? size.height : 1,
+                child: VideoPlayer(controller),
+              ),
             ),
           ),
         ),
