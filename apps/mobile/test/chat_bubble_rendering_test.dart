@@ -32,12 +32,12 @@ void main() {
     );
     expect(standardSlice, isNotNull);
     expect(largeSlice, isNotNull);
-    // Keep the decorative left/right caps a stable logical size at either
-    // export resolution instead of letting them consume the entire chat row.
-    expect(standardSlice!.left, closeTo(46.24, 0.01));
-    expect(largeSlice!.left, closeTo(46.24, 0.01));
-    expect(standardSlice.right, closeTo(89.76, 0.01));
-    expect(largeSlice.right, closeTo(89.76, 0.01));
+    // Keep the source-pixel slice proportional at either export resolution.
+    // The separate image scale controls the final logical cap size.
+    expect(standardSlice!.left, closeTo(254.32, 0.01));
+    expect(largeSlice!.left, closeTo(508.64, 0.01));
+    expect(standardSlice.right, closeTo(493.68, 0.01));
+    expect(largeSlice.right, closeTo(987.36, 0.01));
   });
 
   testWidgets('bubble text remains readable and long messages do not overflow',

@@ -15,20 +15,21 @@ double adaptiveArtworkNineSliceScale(int width) {
   return (width / 748 * 5.5).clamp(1.0, 12.0).toDouble();
 }
 
-/// Returns the stretchable centre region in the image's logical coordinates.
-/// Only the centre stretches; left/right/top/bottom artwork remains intact.
+/// Returns the stretchable centre region in source-image pixel coordinates.
+/// Flutter's centerSlice uses source pixels; image scale affects only layout size.
 Rect? adaptiveArtworkCenterSlice(
   int width,
   int height, {
   double imageScale = 1.0,
 }) {
   if (width < 12 || height < 12) return null;
-  final safeScale = imageScale.isFinite && imageScale > 0 ? imageScale : 1.0;
+  // Do not divide by ImageInfo.scale/RawImage.scale here. centerSlice is
+  // expressed in decoded source pixels, not logical layout coordinates.
   return Rect.fromLTRB(
-    width * .34 / safeScale,
-    height * .28 / safeScale,
-    width * .66 / safeScale,
-    height * .72 / safeScale,
+    width * .34,
+    height * .28,
+    width * .66,
+    height * .72,
   );
 }
 
