@@ -8171,7 +8171,7 @@ class _RoomScreenState extends State<RoomScreen> {
               left: 0,
               right: 0,
               bottom: 0,
-              height: MediaQuery.sizeOf(context).height * .50,
+              height: MediaQuery.sizeOf(context).height * .45,
               child: ((arrivalEffectMember?['active_entry_id']?.toString() ?? '')
                       .startsWith('entrance-vip-'))
                   ? IgnorePointer(
