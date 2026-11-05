@@ -1136,9 +1136,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
         .whereType<RoomSummary>()
         .toList(growable: false);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
+    return RefreshIndicator(
+      onRefresh: () => _refreshPartyTab(0),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        children: [
         const Text(
           'My room',
           style: TextStyle(
@@ -1286,7 +1289,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 onTap: () => _openRoom(room),
               ),
             ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1337,9 +1341,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
         ),
       ),
     ];
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
+    return RefreshIndicator(
+      onRefresh: () => _refreshPartyTab(2),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        children: [
         const TinniPanel(
           child: Row(
             children: [
@@ -1414,7 +1421,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1470,8 +1478,11 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
         .toList();
 
     return TinniBackground(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+      child: RefreshIndicator(
+        onRefresh: widget.state.refreshRooms,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
         children: [
           const Row(
             children: [
@@ -1521,6 +1532,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
               ),
             ),
         ],
+        ),
       ),
     );
   }
