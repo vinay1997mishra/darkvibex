@@ -39,6 +39,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int index = 0;
+  int _refreshToken = 0;
   final Set<int> visited = <int>{0};
   bool _weeklyDialogScheduled = false;
 
@@ -96,6 +97,7 @@ class _HomeShellState extends State<HomeShell> {
     setState(() {
       index = value;
       visited.add(value);
+      _refreshToken++;
     });
     unawaited(_refreshMainTab(value));
   }
@@ -127,8 +129,8 @@ class _HomeShellState extends State<HomeShell> {
         onSelect: _selectMainTab,
       ),
       _DiscoverHome(state: widget.state),
-      MessagesScreen(state: widget.state),
-      ProfileScreen(state: widget.state),
+      MessagesScreen(state: widget.state, refreshToken: _refreshToken),
+      ProfileScreen(state: widget.state, refreshToken: _refreshToken),
     ];
 
     return Scaffold(
