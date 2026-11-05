@@ -1034,7 +1034,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
               ),
             ],
           ),
-          ),
         ),
       ),
     );
