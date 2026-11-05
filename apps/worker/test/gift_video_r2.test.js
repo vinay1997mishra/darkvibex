@@ -31,11 +31,15 @@ test("Owner Panel uploads supported gift video containers into R2", () => {
 });
 
 test("live gift catalog exposes uploaded video keys and media types", () => {
-  assert.match(worker, /name: String\(row\.name \?\? row\.data\?\.name \?\? previous\.name/);
-  assert.match(worker, /row\.data\?\.poster_key/);
-  assert.match(worker, /row\.data\?\.image_key/);
-  assert.match(worker, /row\.data\?\.dp_key/);
-  assert.match(worker, /video_key: String\(row\.data\?\.video_key/);
-  assert.match(worker, /row\.data\?\.animation_key/);
-  assert.match(worker, /media_type: String\(row\.data\?\.media_type/);
+  const giftCatalogStart = worker.indexOf('async function effectiveGiftCatalog(db)');
+  const giftCatalogEnd = worker.indexOf('// Resolve the visual bundle', giftCatalogStart);
+  assert.ok(giftCatalogStart >= 0 && giftCatalogEnd > giftCatalogStart);
+  const giftCatalog = worker.slice(giftCatalogStart, giftCatalogEnd);
+  assert.match(giftCatalog, /row\.data\?\.poster_key/);
+  assert.match(giftCatalog, /row\.data\?\.image_key/);
+  assert.match(giftCatalog, /row\.data\?\.dp_key/);
+  assert.match(giftCatalog, /row\.data\?\.animation_key/);
+  assert.match(giftCatalog, /asset_key: String\(/);
+  assert.match(giftCatalog, /video_key: String\(/);
+  assert.match(giftCatalog, /media_type: String\(row\.data\?\.media_type/);
 });
