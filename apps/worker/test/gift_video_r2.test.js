@@ -31,6 +31,11 @@ test("Owner Panel uploads supported gift video containers into R2", () => {
 });
 
 test("live gift catalog exposes uploaded video keys and media types", () => {
+  assert.match(worker, /name: String\(row\.name \?\? row\.data\?\.name \?\? previous\.name/);
+  assert.match(worker, /row\.data\?\.poster_key/);
+  assert.match(worker, /row\.data\?\.image_key/);
+  assert.match(worker, /row\.data\?\.dp_key/);
   assert.match(worker, /video_key: String\(row\.data\?\.video_key/);
+  assert.match(worker, /row\.data\?\.animation_key/);
   assert.match(worker, /media_type: String\(row\.data\?\.media_type/);
 });
