@@ -756,8 +756,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => TinniBackground(
-        child: CustomScrollView(
-          slivers: [
+        child: RefreshIndicator(
+          onRefresh: () => _refreshPartyTab(1),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -1028,6 +1031,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                       ),
               ),
             ],
+          ),
           ),
         ),
       ),
