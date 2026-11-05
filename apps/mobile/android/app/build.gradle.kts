@@ -17,7 +17,8 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "com.darkvibex.app"
-    compileSdk = flutter.compileSdkVersion
+    // Android 17 (API 37) compile-time support.
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -28,7 +29,8 @@ android {
         applicationId = "com.darkvibex.app"
         // model_viewer_plus requires Android API 24; keep the SDK floor explicit.
         minSdk = maxOf(flutter.minSdkVersion, 24)
-        targetSdk = flutter.targetSdkVersion
+        // Opt in to Android 17 behavior changes after the API 37 compatibility audit.
+        targetSdk = 37
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
