@@ -896,54 +896,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Top 3 Rooms',
-                      style: TextStyle(
-                        color: const Color(0xFFB1A6FF),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (var rank = 0; rank < 3; rank++) ...[
-                          Expanded(
-                            child: Builder(
-                              builder: (context) {
-                                final rooms = [...publicRooms];
-                                if (popular) {
-                                  rooms.sort((a, b) => b.online.compareTo(a.online));
-                                } else {
-                                  rooms.sort((a, b) => b.id.compareTo(a.id));
-                                }
-                                if (rank >= rooms.length) {
-                                  return const SizedBox.shrink();
-                                }
-                                return _TopRoomCard(
-                                  state: state,
-                                  room: rooms[rank],
-                                  rank: rank + 1,
-                                  onTap: () => _openRoom(rooms[rank]),
-                                );
-                              },
-                            ),
-                          ),
-                          if (rank != 2) const SizedBox(width: 8),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
               sliver: SliverGrid(
@@ -961,14 +913,14 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     } else {
                       rooms.sort((a, b) => b.id.compareTo(a.id));
                     }
-                    final room = rooms[roomIndex + 3];
+                    final room = rooms[roomIndex];
                     return _RoomCard(
                       state: state,
                       room: room,
                       onTap: () => _openRoom(room),
                     );
                   },
-                  childCount: publicRooms.length > 3 ? publicRooms.length - 3 : 0,
+                  childCount: publicRooms.length,
                 ),
               ),
             ),
