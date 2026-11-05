@@ -67,6 +67,39 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
+  Future<void> _refreshMainTab(int tab) async {
+    if (!widget.state.backendConnected) return;
+    try {
+      switch (tab) {
+        case 0:
+        case 1:
+          await widget.state.refreshRooms();
+          break;
+        case 2:
+          await widget.state.refreshInbox();
+          break;
+        case 3:
+          await Future.wait<void>([
+            widget.state.refreshWallet(),
+            widget.state.refreshVip(),
+            widget.state.refreshIdLevel(),
+            widget.state.refreshCosmetics(),
+          ]);
+          break;
+      }
+    } catch (error) {
+      debugPrint('DarkVibeX tab refresh failed ($tab): $error');
+    }
+  }
+
+  void _selectMainTab(int value) {
+    setState(() {
+      index = value;
+      visited.add(value);
+    });
+    unawaited(_refreshMainTab(value));
+  }
+
   void _weeklyStateChanged() {
     if (!mounted) return;
     _scheduleWeeklySignIn();
@@ -91,10 +124,7 @@ class _HomeShellState extends State<HomeShell> {
     final pages = <Widget>[
       _RoomsHome(
         state: widget.state,
-        onSelect: (value) => setState(() {
-          index = value;
-          visited.add(value);
-        }),
+        onSelect: _selectMainTab,
       ),
       _DiscoverHome(state: widget.state),
       MessagesScreen(state: widget.state),
@@ -112,12 +142,10 @@ class _HomeShellState extends State<HomeShell> {
                 onHorizontalDragEnd: (details) {
                   final velocity = details.primaryVelocity ?? 0;
                   if (velocity.abs() < 250) return;
-                  setState(() {
-                    index = (index + (velocity < 0 ? 1 : -1))
-                        .clamp(0, pages.length - 1)
-                        .toInt();
-                    visited.add(index);
-                  });
+                  final next = (index + (velocity < 0 ? 1 : -1))
+                      .clamp(0, pages.length - 1)
+                      .toInt();
+                  _selectMainTab(next);
                 },
                 child: IndexedStack(
                   index: index,
@@ -172,10 +200,7 @@ class _HomeShellState extends State<HomeShell> {
             backgroundColor: Colors.transparent,
             indicatorColor: TinniPalette.gold.withValues(alpha: .12),
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            onDestinationSelected: (value) => setState(() {
-              index = value;
-              visited.add(value);
-            }),
+            onDestinationSelected: _selectMainTab,
             destinations: [
               NavigationDestination(
                 icon: const Icon(
