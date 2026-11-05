@@ -130,7 +130,10 @@ class _HomeShellState extends State<HomeShell> {
       ),
       _DiscoverHome(state: widget.state),
       MessagesScreen(state: widget.state, refreshToken: _refreshToken),
-      ProfileScreen(state: widget.state, refreshToken: _refreshToken),
+      RefreshIndicator(
+        onRefresh: () => _refreshMainTab(3),
+        child: ProfileScreen(state: widget.state),
+      ),
     ];
 
     return Scaffold(
