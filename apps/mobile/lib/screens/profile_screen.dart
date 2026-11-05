@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
@@ -1729,6 +1730,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (invisible && !isSelf) return 'Hidden';
     // Vanity IDs and internal database keys are not the public user ID.
     return formatPublicUserId(value['public_id']);
+  }
+
+  Future<void> _copyPublicId(Map<String, dynamic> value) async {
+    final publicId = _publicId(value);
+    if (publicId.isEmpty || publicId == 'Hidden') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This user ID is hidden')),
+      );
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: publicId));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('ID copied')),
+    );
   }
 
   Color _ownerTagColor(String? value) {
@@ -4110,13 +4126,23 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         Row(
                           children: [
                             Flexible(
-                              child: Text(
-                                'ID ${_publicId(value)}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
+                              child: InkWell(
+                                key: const Key('public-profile-copy-id'),
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () => _copyPublicId(value),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Text(
+                                    'ID ${_publicId(value)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
