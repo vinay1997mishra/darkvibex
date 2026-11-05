@@ -39,6 +39,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int index = 0;
+  int _refreshToken = 0;
   final Set<int> visited = <int>{0};
   bool _weeklyDialogScheduled = false;
 
@@ -67,6 +68,40 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
+  Future<void> _refreshMainTab(int tab) async {
+    if (!widget.state.backendConnected) return;
+    try {
+      switch (tab) {
+        case 0:
+        case 1:
+          await widget.state.refreshRooms();
+          break;
+        case 2:
+          await widget.state.refreshInbox();
+          break;
+        case 3:
+          await Future.wait<void>([
+            widget.state.refreshWallet(),
+            widget.state.refreshVip(),
+            widget.state.refreshIdLevel(),
+            widget.state.refreshCosmetics(),
+          ]);
+          break;
+      }
+    } catch (error) {
+      debugPrint('DarkVibeX tab refresh failed ($tab): $error');
+    }
+  }
+
+  void _selectMainTab(int value) {
+    setState(() {
+      index = value;
+      visited.add(value);
+      _refreshToken++;
+    });
+    unawaited(_refreshMainTab(value));
+  }
+
   void _weeklyStateChanged() {
     if (!mounted) return;
     _scheduleWeeklySignIn();
@@ -91,14 +126,14 @@ class _HomeShellState extends State<HomeShell> {
     final pages = <Widget>[
       _RoomsHome(
         state: widget.state,
-        onSelect: (value) => setState(() {
-          index = value;
-          visited.add(value);
-        }),
+        onSelect: _selectMainTab,
       ),
       _DiscoverHome(state: widget.state),
-      MessagesScreen(state: widget.state),
-      ProfileScreen(state: widget.state),
+      MessagesScreen(state: widget.state, refreshToken: _refreshToken),
+      RefreshIndicator(
+        onRefresh: () => _refreshMainTab(3),
+        child: ProfileScreen(state: widget.state),
+      ),
     ];
 
     return Scaffold(
@@ -112,12 +147,10 @@ class _HomeShellState extends State<HomeShell> {
                 onHorizontalDragEnd: (details) {
                   final velocity = details.primaryVelocity ?? 0;
                   if (velocity.abs() < 250) return;
-                  setState(() {
-                    index = (index + (velocity < 0 ? 1 : -1))
-                        .clamp(0, pages.length - 1)
-                        .toInt();
-                    visited.add(index);
-                  });
+                  final next = (index + (velocity < 0 ? 1 : -1))
+                      .clamp(0, pages.length - 1)
+                      .toInt();
+                  _selectMainTab(next);
                 },
                 child: IndexedStack(
                   index: index,
@@ -172,10 +205,7 @@ class _HomeShellState extends State<HomeShell> {
             backgroundColor: Colors.transparent,
             indicatorColor: TinniPalette.gold.withValues(alpha: .12),
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            onDestinationSelected: (value) => setState(() {
-              index = value;
-              visited.add(value);
-            }),
+            onDestinationSelected: _selectMainTab,
             destinations: [
               NavigationDestination(
                 icon: const Icon(
@@ -481,6 +511,29 @@ class _RoomsHomeState extends State<_RoomsHome> {
     super.dispose();
   }
 
+  Future<void> _refreshPartyTab(int tab) async {
+    if (!state.backendConnected) return;
+    try {
+      if (tab == 0) {
+        await state.refreshRooms();
+        await _loadFollowedRooms();
+      } else if (tab == 1) {
+        await Future.wait<void>([
+          state.refreshRooms(),
+          _loadBanners(),
+          _loadFollowedRooms(),
+        ]);
+      } else {
+        await Future.wait<void>([
+          state.refreshVip(),
+          state.refreshCosmetics(),
+        ]);
+      }
+    } catch (error) {
+      debugPrint('DarkVibeX Party tab refresh failed ($tab): $error');
+    }
+  }
+
   Future<void> _loadFollowedRooms() async {
     if (!state.backendConnected) return;
     final rows = await state.backend.followedRooms(userId: state.userId);
@@ -708,8 +761,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => TinniBackground(
-        child: CustomScrollView(
-          slivers: [
+        child: RefreshIndicator(
+          onRefresh: () => _refreshPartyTab(1),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -927,6 +983,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -999,7 +1056,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: TextButton(
-                      onPressed: () => setState(() => topPage = i),
+                      onPressed: () {
+                        setState(() => topPage = i);
+                        unawaited(_refreshPartyTab(i));
+                      },
                       style: TextButton.styleFrom(
                         foregroundColor: topPage == i
                             ? (i == 1
@@ -1085,9 +1145,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
         .whereType<RoomSummary>()
         .toList(growable: false);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
+    return RefreshIndicator(
+      onRefresh: () => _refreshPartyTab(0),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        children: [
         const Text(
           'My room',
           style: TextStyle(
@@ -1235,7 +1298,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 onTap: () => _openRoom(room),
               ),
             ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1286,9 +1350,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
         ),
       ),
     ];
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
+    return RefreshIndicator(
+      onRefresh: () => _refreshPartyTab(2),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        children: [
         const TinniPanel(
           child: Row(
             children: [
@@ -1363,7 +1430,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1419,8 +1487,11 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
         .toList();
 
     return TinniBackground(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+      child: RefreshIndicator(
+        onRefresh: widget.state.refreshRooms,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
         children: [
           const Row(
             children: [
@@ -1470,6 +1541,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
               ),
             ),
         ],
+        ),
       ),
     );
   }
