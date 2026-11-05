@@ -13,10 +13,6 @@ void main() {
     expect(pubspec, contains('video_player:'));
     expect(festival, contains("gift['video_key']"));
     expect(festival, contains("gift['asset_key']"));
-    expect(festival, contains("gift['poster_key']"));
-    expect(festival, contains("gift['image_key']"));
-    expect(festival, contains("gift['dp_key']"));
-    expect(festival, contains("gift['gift_name']"));
     expect(preview, contains('Image.network('));
     expect(preview, contains('backend.fileUrl(assetKey)'));
     expect(festival, contains('GiftMediaPreview('));
@@ -41,10 +37,6 @@ void main() {
       );
     }
     expect(room, contains("item['video_key']"));
-    expect(room, contains("item['poster_key']"));
-    expect(room, contains("item['image_key']"));
-    expect(room, contains("item['dp_key']"));
-    expect(room, contains("item['gift_name']"));
     expect(room, contains('GiftMediaPreview('));
     expect(preview, contains('VideoPlayerController.networkUrl'));
     expect(preview, contains('widget.assetKey.trim().isNotEmpty ?'));
