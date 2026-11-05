@@ -724,8 +724,14 @@ async function effectiveGiftCatalog(db) {
       coin_cost: Number(row.price_coins ?? previous.coin_cost ?? 0),
       vip_level: Number(row.data?.min_vip_level ?? row.data?.vip_level ?? previous.vip_level ?? 0),
       category: String(row.data?.category ?? previous.category ?? "normal"),
-      asset_key: String(row.data?.asset_key ?? row.data?.asset ?? previous.asset_key ?? ""),
-      video_key: String(row.data?.video_key ?? previous.video_key ?? ""),
+      // Normalize legacy artwork/animation aliases once at the API boundary;
+      // mobile screens consume only asset_key and video_key.
+      asset_key: String(
+        row.data?.asset_key ?? row.data?.asset ?? row.data?.poster_key ??
+        row.data?.image_key ?? row.data?.dp_key ?? previous.asset_key ??
+        previous.asset ?? previous.poster_key ?? previous.image_key ?? previous.dp_key ?? ""
+      ),
+      video_key: String(row.data?.video_key ?? row.data?.animation_key ?? previous.video_key ?? ""),
       glb_key: String(row.data?.glb_key ?? previous.glb_key ?? ""),
       media_type: String(row.data?.media_type ?? previous.media_type ?? ""),
       animation_ms: Number(row.data?.animation_ms ?? previous.animation_ms ?? 0),
