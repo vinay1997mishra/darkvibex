@@ -506,6 +506,29 @@ class _RoomsHomeState extends State<_RoomsHome> {
     super.dispose();
   }
 
+  Future<void> _refreshPartyTab(int tab) async {
+    if (!state.backendConnected) return;
+    try {
+      if (tab == 0) {
+        await state.refreshRooms();
+        await _loadFollowedRooms();
+      } else if (tab == 1) {
+        await Future.wait<void>([
+          state.refreshRooms(),
+          _loadBanners(),
+          _loadFollowedRooms(),
+        ]);
+      } else {
+        await Future.wait<void>([
+          state.refreshVip(),
+          state.refreshCosmetics(),
+        ]);
+      }
+    } catch (error) {
+      debugPrint('DarkVibeX Party tab refresh failed ($tab): $error');
+    }
+  }
+
   Future<void> _loadFollowedRooms() async {
     if (!state.backendConnected) return;
     final rows = await state.backend.followedRooms(userId: state.userId);
@@ -1024,7 +1047,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: TextButton(
-                      onPressed: () => setState(() => topPage = i),
+                      onPressed: () {
+                        setState(() => topPage = i);
+                        unawaited(_refreshPartyTab(i));
+                      },
                       style: TextButton.styleFrom(
                         foregroundColor: topPage == i
                             ? (i == 1
