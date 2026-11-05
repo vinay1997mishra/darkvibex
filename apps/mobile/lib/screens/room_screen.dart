@@ -2557,11 +2557,17 @@ class _RoomScreenState extends State<RoomScreen> {
                               final id = giftSelectionKey(item);
                               final chosen = selectedGiftIds.contains(id);
                               final name =
-                                  item['name']?.toString() ?? 'Gift';
+                                  (item['name'] ?? item['gift_name'])
+                                      ?.toString() ?? 'Gift';
                               final emoji =
                                   item['emoji']?.toString() ?? '🎁';
-                              final assetKey =
-                                  item['asset_key']?.toString().trim() ?? '';
+                              final assetKey = (item['asset_key'] ??
+                                      item['asset'] ??
+                                      item['poster_key'] ??
+                                      item['image_key'] ??
+                                      item['dp_key'])
+                                  ?.toString()
+                                  .trim() ?? '';
                               final videoKey =
                                   item['video_key']?.toString().trim() ?? '';
                               final glbKey =
