@@ -71,6 +71,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  Future<void> _refreshProfile() async {
+    if (!state.backendConnected) return;
+    await Future.wait<void>([
+      state.refreshWallet(),
+      state.refreshVip(),
+      state.refreshIdLevel(),
+      state.refreshCosmetics(),
+      _loadSocialStats(),
+    ]);
+  }
+
   Future<void> _showFriends(BuildContext context) async {
     final friends = await state.backend.friends(userId: state.userId);
     if (!context.mounted) return;
@@ -227,8 +238,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, language, _) => AnimatedBuilder(
         animation: state,
         builder: (context, _) => TinniBackground(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
+        child: RefreshIndicator(
+          onRefresh: _refreshProfile,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 22),
           children: [
             InkWell(
               key: const Key('mine-profile-card'),
@@ -1592,6 +1606,9 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
                     );
                   },
                 ),
+          ),
+        ),
+      ),
     );
   }
 }
