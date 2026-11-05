@@ -35,9 +35,10 @@ abstract final class _MineMenuPalette {
 }
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, required this.state});
+  const ProfileScreen({super.key, required this.state, this.refreshToken = 0});
 
   final AppState state;
+  final int refreshToken;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -52,6 +53,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadSocialStats();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      _refreshProfile();
+    }
   }
 
   Future<void> _loadSocialStats() async {
