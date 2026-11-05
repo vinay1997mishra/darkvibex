@@ -1619,6 +1619,7 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }
