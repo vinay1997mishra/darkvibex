@@ -24,6 +24,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/room_chat_sender_header.dart';
 import '../widgets/custom_asset_effect_playback.dart';
 import '../widgets/vehicle_entry_effect.dart';
 import '../widgets/room_floating_logos.dart';
@@ -7929,11 +7930,13 @@ class _RoomScreenState extends State<RoomScreen> {
                           children: [
                             if (text.isNotEmpty)
                               hasBubble
-                                  ? BubbleChatText(
-                                      text: '${name == null || name.isEmpty ? 'User' : name}: $text',
-                                    )
+                                  ? BubbleChatText(text: text)
                                   : Text(
-                                      '${name == null || name.isEmpty ? 'User' : name}: $text',
+                                      text,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                             if (imageKey != null && imageKey.isNotEmpty)
                               Padding(
@@ -7958,6 +7961,41 @@ class _RoomScreenState extends State<RoomScreen> {
                               ),
                           ],
                         );
+                        final rawTags = message['profile_tags'];
+                        final profileTags = rawTags is List
+                            ? rawTags
+                                .whereType<Map>()
+                                .map((tag) => Map<String, dynamic>.from(tag))
+                                .toList(growable: false)
+                            : const <Map<String, dynamic>>[];
+                        final rawMedals = message['medals'];
+                        final profileMedals = rawMedals is List
+                            ? rawMedals
+                                .whereType<Map>()
+                                .map((medal) => Map<String, dynamic>.from(medal))
+                                .toList(growable: false)
+                            : const <Map<String, dynamic>>[];
+                        final avatarKey = message['avatar_key']?.toString().trim() ?? '';
+                        final messageBubble = hasBubble
+                            ? StretchableCosmeticBubble(
+                                styleId: effectiveBubbleId,
+                                assetImageUrl: bubbleAssetKey.isNotEmpty
+                                    ? widget.state.backend.fileUrl(bubbleAssetKey)
+                                    : null,
+                                assetImageHeaders: widget.state.backend.fileHeaders,
+                                maxWidth: 280,
+                                minWidth: 112,
+                                minHeight: 44,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 44,
+                                  vertical: 10,
+                                ),
+                                child: messageContent,
+                              )
+                            : ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 280),
+                                child: messageContent,
+                              );
                         return Padding(
                           key: Key('room-chat-message-$index'),
                           // Keep every room message visually separate and
@@ -7965,28 +8003,28 @@ class _RoomScreenState extends State<RoomScreen> {
                           padding: const EdgeInsets.fromLTRB(0, 7, 76, 7),
                           child: Align(
                             alignment: Alignment.centerLeft,
-                            child: hasBubble
-                                ? StretchableCosmeticBubble(
-                                    styleId: effectiveBubbleId,
-                                    assetImageUrl: bubbleAssetKey.isNotEmpty
-                                        ? widget.state.backend.fileUrl(bubbleAssetKey)
-                                        : null,
-                                    assetImageHeaders: widget.state.backend.fileHeaders,
-                                    maxWidth: 280,
-                                    minWidth: 112,
-                                    minHeight: 44,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                      horizontal: 44,
-                                      vertical: 10,
-                                    ),
-                                    child: messageContent,
-                                  )
-                                : ConstrainedBox(
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 280),
-                                    child: messageContent,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 280),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  RoomChatSenderHeader(
+                                    displayName: name == null || name.isEmpty
+                                        ? 'User'
+                                        : name,
+                                    avatarUrl: avatarKey.isEmpty
+                                        ? null
+                                        : widget.state.backend.fileUrl(avatarKey),
+                                    avatarHeaders: widget.state.backend.fileHeaders,
+                                    tags: profileTags,
+                                    medals: profileMedals,
                                   ),
+                                  const SizedBox(height: 4),
+                                  messageBubble,
+                                ],
+                              ),
+                            ),
                           ),
                         );
                       },
