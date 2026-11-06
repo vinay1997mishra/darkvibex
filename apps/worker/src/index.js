@@ -100,6 +100,137 @@ const json = (data, init = {}) =>
     },
   });
 
+
+async function decorateRoomChatProfileMetadata(db, messages) {
+  const userIds = [...new Set(
+    messages
+      .map((message) => String(message.user_id ?? "").trim())
+      .filter(Boolean),
+  )];
+  if (!userIds.length) return messages;
+
+  // Owner-managed profile tags live separately from the user's core profile.
+  // Initialize their table before reading chat metadata.
+  await ensureOwnerControlSchema(db);
+  const placeholders = userIds.map(() => "?").join(",");
+  const tagsResult = await db.prepare(
+    `SELECT user_id,tag_id,name,color,kind,designation,background_color
+       FROM owner_user_tags
+      WHERE user_id IN (${placeholders})
+      ORDER BY updated_at DESC`
+  ).bind(...userIds).all();
+
+  // Build medals for all distinct authors in one query. This mirrors
+  // /api/medals without issuing multiple profile-stat requests per message.
+  const medalQuery = (includeIdLevel) => `
+    SELECT u.id AS user_id,
+           COALESCE(u.vip_level,0) AS vip_level,
+           CASE WHEN EXISTS(
+             SELECT 1 FROM gift_events ge
+              WHERE ge.sender_user_id=u.id AND COALESCE(ge.coin_cost,0)>0
+           ) THEN 1 ELSE 0 END AS has_gifter_medal,
+           CASE WHEN EXISTS(
+             SELECT 1 FROM gift_events ge
+              WHERE ge.receiver_user_id=u.id AND COALESCE(ge.coin_cost,0)>0
+           ) THEN 1 ELSE 0 END AS has_charm_medal
+           ${includeIdLevel
+             ? ", COALESCE((SELECT level FROM user_id_levels ul WHERE ul.user_id=u.id LIMIT 1),0) AS id_level"
+             : ", 0 AS id_level"}
+      FROM users u
+     WHERE u.id IN (${placeholders})
+  `;
+  let medalRows;
+  try {
+    const result = await db.prepare(medalQuery(true)).bind(...userIds).all();
+    medalRows = result.results ?? [];
+  } catch (error) {
+    if (!/no such table.*user_id_levels/i.test(String(error?.message ?? error))) {
+      throw error;
+    }
+    const result = await db.prepare(medalQuery(false)).bind(...userIds).all();
+    medalRows = result.results ?? [];
+  }
+
+  const tagsByUser = new Map();
+  for (const tag of tagsResult.results ?? []) {
+    const userId = String(tag.user_id ?? "");
+    if (!tagsByUser.has(userId)) tagsByUser.set(userId, []);
+    tagsByUser.get(userId).push({
+      id: String(tag.tag_id ?? ""),
+      name: String(tag.name ?? ""),
+      color: String(tag.color ?? "#FFD36A"),
+      kind: String(tag.kind ?? "custom"),
+      designation: String(tag.designation ?? ""),
+      background_color: String(tag.background_color ?? ""),
+    });
+  }
+  const medalsByUser = new Map();
+  for (const row of medalRows) {
+    const medals = [];
+    if (Number(row.vip_level ?? 0) > 0) {
+      medals.push({ id: "vip", name: "VIP", color: "#D09A0A" });
+    }
+    if (Number(row.has_gifter_medal ?? 0) === 1) {
+      medals.push({ id: "gifter", name: "Gift Sender", color: "#A55EEA" });
+    }
+    if (Number(row.has_charm_medal ?? 0) === 1) {
+      medals.push({ id: "charm", name: "Charm", color: "#FF6B9A" });
+    }
+    if (Number(row.id_level ?? 0) > 0) {
+      medals.push({
+        id: "level",
+        name: "ID Level " + Number(row.id_level),
+        color: "#45AAF2",
+      });
+    }
+    medalsByUser.set(String(row.user_id), medals);
+  }
+
+  return messages.map((message) => {
+    const userId = String(message.user_id ?? "");
+    const anonymous = Number(message.is_anonymous ?? 0) === 1;
+    const profileTags = [];
+    if (!anonymous) {
+      if (Number(message.is_room_owner ?? 0) === 1) {
+        profileTags.push({
+          id: "room-owner",
+          name: "Room Owner",
+          color: "#FFD36A",
+          background_color: "#49320F",
+          kind: "role",
+        });
+      } else if (Number(message.is_room_admin ?? 0) === 1) {
+        profileTags.push({
+          id: "room-admin",
+          name: "Room Admin",
+          color: "#73CFFF",
+          background_color: "#102F4B",
+          kind: "role",
+        });
+      }
+      const vipLevel = Math.max(0, Number(message.active_vip_level ?? 0));
+      if (vipLevel > 0) {
+        profileTags.push({
+          id: "active-vip",
+          name: "VIP " + vipLevel,
+          color: "#FFD36A",
+          background_color: "#49320F",
+          kind: "vip",
+        });
+      }
+      profileTags.push(...(tagsByUser.get(userId) ?? []));
+    }
+    return {
+      ...message,
+      // Level-18 anonymous-everywhere members must not leak their DP or
+      // owner-assigned tags/medals through room chat metadata.
+      avatar_key: anonymous ? "" : String(message.avatar_key ?? ""),
+      profile_tags: anonymous ? [] : profileTags,
+      medals: anonymous ? [] : (medalsByUser.get(userId) ?? []),
+    };
+  });
+}
+
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 
@@ -6291,6 +6422,8 @@ async function handleApi(request, env, url) {
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const roomId = parts[2];
     if (request.method === "GET") {
+      await ensureOwnerControlSchema(db);
+      await ensureRoomAdminTable(db);
       await ensureVipSchema(db);
       await ensureImageTables(db);
       await ensureCosmeticsSchema(db);
@@ -6306,6 +6439,17 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 18 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                      THEN 'Anonymous' ELSE u.display_name END AS display_name,
+                u.avatar_key,
+                CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
+                CASE WHEN v.level >= 18 AND v.active_until > ?
+                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                     THEN 1 ELSE 0 END AS is_anonymous,
+                CASE WHEN EXISTS(
+                  SELECT 1 FROM rooms r WHERE r.id=m.room_id AND r.owner_user_id=m.user_id
+                ) THEN 1 ELSE 0 END AS is_room_owner,
+                CASE WHEN EXISTS(
+                  SELECT 1 FROM room_admins ra WHERE ra.room_id=m.room_id AND ra.user_id=m.user_id
+                ) THEN 1 ELSE 0 END AS is_room_admin,
                 m.text, m.created_at, mi.image_key,
                 (SELECT p.item_id FROM user_props p
                   WHERE p.user_id=m.user_id AND p.kind='bubble'
@@ -6322,11 +6466,17 @@ async function handleApi(request, env, url) {
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.room_id = ?
           ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
-      ).bind(now(), now(), now(), roomId).all();
-      const messages = await decorateMessagesWithVipChatBox(db, (rows.results ?? []).reverse());
+      ).bind(now(), now(), now(), now(), now(), roomId).all();
+      const messagesWithProfiles = await decorateRoomChatProfileMetadata(
+        db,
+        (rows.results ?? []).reverse(),
+      );
+      const messages = await decorateMessagesWithVipChatBox(db, messagesWithProfiles);
       return json({ ok: true, messages });
     }
     if (request.method === "POST") {
+      await ensureOwnerControlSchema(db);
+      await ensureRoomAdminTable(db);
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
       const authError = await requireSession(request, env, userId);
@@ -6376,6 +6526,17 @@ async function handleApi(request, env, url) {
                 CASE WHEN v.level >= 18 AND v.active_until > ?
                            AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                      THEN 'Anonymous' ELSE u.display_name END AS display_name,
+                u.avatar_key,
+                CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
+                CASE WHEN v.level >= 18 AND v.active_until > ?
+                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                     THEN 1 ELSE 0 END AS is_anonymous,
+                CASE WHEN EXISTS(
+                  SELECT 1 FROM rooms r WHERE r.id=m.room_id AND r.owner_user_id=m.user_id
+                ) THEN 1 ELSE 0 END AS is_room_owner,
+                CASE WHEN EXISTS(
+                  SELECT 1 FROM room_admins ra WHERE ra.room_id=m.room_id AND ra.user_id=m.user_id
+                ) THEN 1 ELSE 0 END AS is_room_admin,
                 m.text, m.created_at, mi.image_key,
                 (SELECT p.item_id FROM user_props p
                   WHERE p.user_id=m.user_id AND p.kind='bubble'
@@ -6391,7 +6552,7 @@ async function handleApi(request, env, url) {
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
           WHERE m.id = ?
           LIMIT 1`
-      ).bind(createdAt, createdAt, createdAt, messageId).first();
+      ).bind(createdAt, createdAt, createdAt, createdAt, createdAt, messageId).first();
       const outgoingEnvelope = {
         message: createdMessage ?? {
           id: messageId,
@@ -6401,7 +6562,11 @@ async function handleApi(request, env, url) {
           image_key: imageKey || null,
         },
       };
-      const decoratedMessage = (await decorateMessagesWithVipChatBox(db, [outgoingEnvelope.message]))[0];
+      const [profiledMessage] = await decorateRoomChatProfileMetadata(
+        db,
+        [outgoingEnvelope.message],
+      );
+      const decoratedMessage = (await decorateMessagesWithVipChatBox(db, [profiledMessage]))[0];
       return json({
         ok: true,
         message_id: messageId,
