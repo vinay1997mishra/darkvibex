@@ -695,14 +695,23 @@ class AppState extends ChangeNotifier {
     await loadOptional('ID level', () => refreshIdLevel(notify: false));
     await loadOptional('cosmetics', () => refreshCosmetics(notify: false));
     await loadOptional('rooms', () async {
-      await _replaceRoomsFromRemote(await backend.listRooms());
+      final remoteRooms = await backend.listRooms();
+      if (remoteRooms != null) {
+        await _replaceRoomsFromRemote(remoteRooms);
+      }
     });
     await loadOptional('inbox', () => refreshInbox(notify: false));
   }
 
   Future<void> refreshRooms({bool notify = true}) async {
     if (!backendConnected) return;
-    await _replaceRoomsFromRemote(await backend.listRooms());
+    final remoteRooms = await backend.listRooms();
+    // Preserve the last successful list when the API fails or sends an
+    // invalid payload. Only a valid rooms array (including a true empty
+    // array) is allowed to replace the visible room state.
+    if (remoteRooms != null) {
+      await _replaceRoomsFromRemote(remoteRooms);
+    }
     if (notify) notifyListeners();
   }
 
