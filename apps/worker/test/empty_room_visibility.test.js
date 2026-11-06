@@ -38,12 +38,22 @@ test("public room discovery hides empty rooms but owner can recover own room", (
 });
 
 test("mobile state retains own empty room while public surfaces filter it", () => {
-  const sharedRefreshPath =
-    "await _replaceRoomsFromRemote(await backend.listRooms());";
+  const guardedRefreshPath =
+    "final remoteRooms = await backend.listRooms();";
   assert.equal(
-    appStateSource.split(sharedRefreshPath).length - 1,
+    appStateSource.split(guardedRefreshPath).length - 1,
     2,
-    "initial load and periodic refresh must share the owner-room cache path",
+    "initial load and on-demand refresh must use the owner-room cache path",
+  );
+  assert.equal(
+    appStateSource.split("if (remoteRooms != null)").length - 1,
+    2,
+    "failed room requests must not clear the last successful room list",
+  );
+  assert.equal(
+    homeSource.includes("roomListRefreshTimer"),
+    false,
+    "rooms must not refresh on a periodic timer",
   );
   assert.ok(appStateSource.includes("_readOwnedRoomCache"));
   assert.ok(appStateSource.includes("_writeOwnedRoomCache"));
