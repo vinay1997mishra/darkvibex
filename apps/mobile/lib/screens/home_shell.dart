@@ -536,26 +536,32 @@ class _RoomsHomeState extends State<_RoomsHome> {
 
   Future<void> _loadFollowedRooms() async {
     if (!state.backendConnected) return;
-    final rows = await state.backend.followedRooms(userId: state.userId);
-    final values = rows.map((row) {
-      return RoomSummary(
-        id: row['id']?.toString() ?? '',
-        displayId: row['display_id']?.toString(),
-        name: row['name']?.toString() ?? 'Room',
-        ownerName: row['owner_name']?.toString() ?? 'Owner',
-        ownerUserId: row['owner_user_id']?.toString() ?? '',
-        online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
-        seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-        avatarKey: row['avatar_key']?.toString().isNotEmpty == true
-            ? row['avatar_key']?.toString()
-            : null,
-        partyMode:
-            row['party_mode']?.toString() ?? 'Friends-making Party',
-        roomMode: row['room_mode']?.toString() ?? 'voice',
-      );
-    }).where((room) => room.id.isNotEmpty).toList(growable: false);
-    if (!mounted) return;
-    setState(() => followedRooms = values);
+    try {
+      final rows = await state.backend.followedRooms(userId: state.userId);
+      final values = rows.map((row) {
+        return RoomSummary(
+          id: row['id']?.toString() ?? '',
+          displayId: row['display_id']?.toString(),
+          name: row['name']?.toString() ?? 'Room',
+          ownerName: row['owner_name']?.toString() ?? 'Owner',
+          ownerUserId: row['owner_user_id']?.toString() ?? '',
+          online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+          seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+          avatarKey: row['avatar_key']?.toString().isNotEmpty == true
+              ? row['avatar_key']?.toString()
+              : null,
+          partyMode:
+              row['party_mode']?.toString() ?? 'Friends-making Party',
+          roomMode: row['room_mode']?.toString() ?? 'voice',
+        );
+      }).where((room) => room.id.isNotEmpty).toList(growable: false);
+      if (!mounted) return;
+      setState(() => followedRooms = values);
+    } catch (error) {
+      // Keep the last successful list visible if the followings endpoint is
+      // temporarily unavailable; an empty/error response must not crash Mine.
+      debugPrint('DarkVibeX followed rooms refresh failed: $error');
+    }
   }
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
