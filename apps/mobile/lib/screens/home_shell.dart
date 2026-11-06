@@ -536,26 +536,32 @@ class _RoomsHomeState extends State<_RoomsHome> {
 
   Future<void> _loadFollowedRooms() async {
     if (!state.backendConnected) return;
-    final rows = await state.backend.followedRooms(userId: state.userId);
-    final values = rows.map((row) {
-      return RoomSummary(
-        id: row['id']?.toString() ?? '',
-        displayId: row['display_id']?.toString(),
-        name: row['name']?.toString() ?? 'Room',
-        ownerName: row['owner_name']?.toString() ?? 'Owner',
-        ownerUserId: row['owner_user_id']?.toString() ?? '',
-        online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
-        seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-        avatarKey: row['avatar_key']?.toString().isNotEmpty == true
-            ? row['avatar_key']?.toString()
-            : null,
-        partyMode:
-            row['party_mode']?.toString() ?? 'Friends-making Party',
-        roomMode: row['room_mode']?.toString() ?? 'voice',
-      );
-    }).where((room) => room.id.isNotEmpty).toList(growable: false);
-    if (!mounted) return;
-    setState(() => followedRooms = values);
+    try {
+      final rows = await state.backend.followedRooms(userId: state.userId);
+      final values = rows.map((row) {
+        return RoomSummary(
+          id: row['id']?.toString() ?? '',
+          displayId: row['display_id']?.toString(),
+          name: row['name']?.toString() ?? 'Room',
+          ownerName: row['owner_name']?.toString() ?? 'Owner',
+          ownerUserId: row['owner_user_id']?.toString() ?? '',
+          online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+          seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+          avatarKey: row['avatar_key']?.toString().isNotEmpty == true
+              ? row['avatar_key']?.toString()
+              : null,
+          partyMode:
+              row['party_mode']?.toString() ?? 'Friends-making Party',
+          roomMode: row['room_mode']?.toString() ?? 'voice',
+        );
+      }).where((room) => room.id.isNotEmpty).toList(growable: false);
+      if (!mounted) return;
+      setState(() => followedRooms = values);
+    } catch (error) {
+      // Keep the last successful list visible if the followings endpoint is
+      // temporarily unavailable; an empty/error response must not crash Mine.
+      debugPrint('DarkVibeX followed rooms refresh failed: $error');
+    }
   }
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
@@ -624,15 +630,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
     }
   }
 
-  List<RoomSummary> get visibleFollowedRooms {
-    final allowed = state.rooms
-        .where((room) => room.online > 0)
-        .map((room) => room.id)
-        .toSet();
-    return followedRooms
-        .where((room) => allowed.contains(room.id))
-        .toList(growable: false);
-  }
+  // The followed-rooms endpoint is the source of truth for this section.
+  // Do not intersect it with the live room list: that list intentionally omits
+  // offline rooms, which previously made followed rooms disappear from Mine.
+  List<RoomSummary> get visibleFollowedRooms => followedRooms;
 
   Future<void> _openRankings(
     BuildContext context, {
@@ -1201,10 +1202,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
             ),
           )
         else
-          _RoomCard(
-            state: state,
-            room: owned.first,
-            onTap: () => _openRoom(owned.first),
+          SizedBox(
+            height: 190,
+            child: _RoomCard(
+              state: state,
+              room: owned.first,
+              onTap: () => _openRoom(owned.first),
+            ),
           ),
         const SizedBox(height: 20),
         Row(
@@ -1292,10 +1296,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
           for (final room in visibleFollowedRooms)
             Padding(
               padding: const EdgeInsets.only(bottom: 9),
-              child: _RoomCard(
-                state: state,
-                room: room,
-                onTap: () => _openRoom(room),
+              child: SizedBox(
+                height: 190,
+                child: _RoomCard(
+                  state: state,
+                  room: room,
+                  onTap: () => _openRoom(room),
+                ),
               ),
             ),
         ],
