@@ -14,7 +14,7 @@ void main() {
     expect(app, contains('final remoteRooms = await backend.listRooms();'));
     expect(app, contains('if (remoteRooms != null)'));
     expect(api, contains('Future<List<Map<String, dynamic>>?> listRooms()'));
-    expect(api, contains("if (value?['ok'] != true) return null;'));
+    expect(api, contains("if (value?['ok'] != true) return null;"));
     expect(api, contains('if (rows is! List) return null;'));
     expect(app, contains('existing.ownerUserId == userId'));
     expect(home, contains('room.ownerUserId == state.userId'));
