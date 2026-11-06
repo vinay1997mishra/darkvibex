@@ -521,10 +521,14 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
-  Future<List<Map<String, dynamic>>> listRooms() async {
+  Future<List<Map<String, dynamic>>?> listRooms() async {
     final value = await _json('GET', '/api/rooms');
+    // A failed request or malformed response is not an empty room list.
+    // Return null so AppState can retain the last known rooms instead of
+    // clearing Mine while the API is temporarily unavailable.
+    if (value?['ok'] != true) return null;
     final rows = value?['rooms'];
-    if (rows is! List) return const <Map<String, dynamic>>[];
+    if (rows is! List) return null;
     return rows
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
