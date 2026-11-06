@@ -624,15 +624,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
     }
   }
 
-  List<RoomSummary> get visibleFollowedRooms {
-    final allowed = state.rooms
-        .where((room) => room.online > 0)
-        .map((room) => room.id)
-        .toSet();
-    return followedRooms
-        .where((room) => allowed.contains(room.id))
-        .toList(growable: false);
-  }
+  // The followed-rooms endpoint is the source of truth for this section.
+  // Do not intersect it with the live room list: that list intentionally omits
+  // offline rooms, which previously made followed rooms disappear from Mine.
+  List<RoomSummary> get visibleFollowedRooms => followedRooms;
 
   Future<void> _openRankings(
     BuildContext context, {
@@ -1201,10 +1196,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
             ),
           )
         else
-          _RoomCard(
-            state: state,
-            room: owned.first,
-            onTap: () => _openRoom(owned.first),
+          SizedBox(
+            height: 190,
+            child: _RoomCard(
+              state: state,
+              room: owned.first,
+              onTap: () => _openRoom(owned.first),
+            ),
           ),
         const SizedBox(height: 20),
         Row(
@@ -1292,10 +1290,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
           for (final room in visibleFollowedRooms)
             Padding(
               padding: const EdgeInsets.only(bottom: 9),
-              child: _RoomCard(
-                state: state,
-                room: room,
-                onTap: () => _openRoom(room),
+              child: SizedBox(
+                height: 190,
+                child: _RoomCard(
+                  state: state,
+                  room: room,
+                  onTap: () => _openRoom(room),
+                ),
               ),
             ),
         ],
