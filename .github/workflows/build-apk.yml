@@ -335,23 +335,27 @@ jobs:
           fi
           cp "$apk" "$RUNNER_TEMP/$asset_name"
 
-          # GitHub's release-assets API can transiently return HTTP 5xx while
-          # replacing an existing asset. Retry the complete clobber operation
-          # with backoff instead of failing an otherwise successful APK build.
+          # GitHub can return HTTP 5xx while deleting an existing release asset
+          # during --clobber. Repeated clobber calls hit the same broken asset ID.
+          # If retries fail, recreate the rolling Release (not the git tag), then
+          # upload the freshly built APK to the clean release.
           uploaded=false
-          for attempt in 1 2 3 4 5; do
-            echo "Release APK upload attempt $attempt/5"
+          for attempt in 1 2 3; do
+            echo "Release APK upload attempt $attempt/3"
             if gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name" --clobber; then
               uploaded=true
               break
             fi
-            if [ "$attempt" -lt 5 ]; then
-              sleep $((attempt * 10))
-            fi
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
           if [ "$uploaded" != true ]; then
-            echo "::error::Could not publish $asset_name after 5 attempts."
-            exit 1
+            echo "Existing release asset could not be replaced; recreating rolling Release."
+            release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/darkvibex-latest" --jq .id)"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+            gh release create darkvibex-latest \
+              --title "DarkVibeX Latest APK" \
+              --notes "Rolling latest APK build from main. Asset is replaced on each successful build."
+            gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name"
           fi
 
       - name: Mark APK build success
@@ -407,10 +411,12 @@ jobs:
           test -n "$apk"
           cp "$apk" "$RUNNER_TEMP/DarkVibeX-latest.apk"
 
-          # Use the same retry policy for the stable direct-download alias.
+          # If replacing the alias hits a persistent GitHub asset API 5xx,
+          # preserve the primary APK locally, recreate the Release, then publish
+          # both assets without clobbering the broken asset IDs.
           uploaded=false
-          for attempt in 1 2 3 4 5; do
-            echo "Direct APK alias upload attempt $attempt/5"
+          for attempt in 1 2 3; do
+            echo "Direct APK alias upload attempt $attempt/3"
             if gh release upload darkvibex-latest \
               "$RUNNER_TEMP/DarkVibeX-latest.apk" \
               --repo "$GITHUB_REPOSITORY" \
@@ -418,13 +424,17 @@ jobs:
               uploaded=true
               break
             fi
-            if [ "$attempt" -lt 5 ]; then
-              sleep $((attempt * 10))
-            fi
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
           if [ "$uploaded" != true ]; then
-            echo "::error::Could not publish the direct APK alias after 5 attempts."
-            exit 1
+            echo "Alias replacement failed; rebuilding rolling Release with both APK assets."
+            release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/darkvibex-latest" --jq .id)"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+            gh release create darkvibex-latest \
+              --title "DarkVibeX Latest APK" \
+              --notes "Rolling latest APK build from main. Asset is replaced on each successful build."
+            gh release upload darkvibex-latest "$RUNNER_TEMP/dvx-apk/$(basename "$apk")"
+            gh release upload darkvibex-latest "$RUNNER_TEMP/DarkVibeX-latest.apk"
           fi
 
       - name: Mark direct APK success
