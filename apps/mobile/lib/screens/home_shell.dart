@@ -450,7 +450,6 @@ class _RoomsHome extends StatefulWidget {
 class _RoomsHomeState extends State<_RoomsHome> {
   AppState get state => widget.state;
   bool popular = true;
-  Timer? roomListRefreshTimer;
   final PageController _bannerPageController = PageController();
   Timer? _bannerAutoSlideTimer;
   int _currentBannerPage = 0;
@@ -483,7 +482,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
   @override
   void initState() {
     super.initState();
-    _loadFollowedRooms();
     _loadBanners();
     _bannerAutoSlideTimer =
         Timer.periodic(const Duration(seconds: 5), (_) {
@@ -497,15 +495,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
         curve: Curves.easeInOutCubic,
       );
     });
-    roomListRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted || !state.backendConnected) return;
-      unawaited(state.refreshRooms());
-    });
   }
 
   @override
   void dispose() {
-    roomListRefreshTimer?.cancel();
     _bannerAutoSlideTimer?.cancel();
     _bannerPageController.dispose();
     super.dispose();
