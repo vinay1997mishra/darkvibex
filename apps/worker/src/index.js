@@ -9271,9 +9271,6 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
       if (url.pathname === "/agora/token") {
         return await handleAgoraToken(request, env);
       }
-      if (url.pathname === "/livekit/token") {
-        return await handleLiveKitToken(request, env);
-      }
       if (url.pathname.startsWith("/api/owner/")) {
         return await handleOwnerApi(request, env, url);
       }
@@ -9295,3 +9292,5 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
     }
   },
 };
+
+export { buildAgoraRtcToken };
