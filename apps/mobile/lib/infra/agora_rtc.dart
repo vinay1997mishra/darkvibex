@@ -233,7 +233,7 @@ class AgoraRtcAdapter implements RtcAdapter {
       await _joinCompleter!.future.timeout(const Duration(seconds: 25));
       try {
         _giftStreamId = await engine.createDataStream(
-          config: const DataStreamConfig(
+          const DataStreamConfig(
             ordered: true,
             syncWithAudio: false,
           ),
