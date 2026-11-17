@@ -101,7 +101,12 @@ jobs:
           cp android/app/src/main/kotlin/com/darkvibex/app/MainActivity.kt /tmp/dvx-main-activity.kt
           cp android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXRoomForegroundService.kt /tmp/dvx-room-service.kt
           cp android/app/src/main/kotlin/com/darkvibex/app/DarkVibeXMessagingService.kt /tmp/dvx-messaging-service.kt
+          cp android/force-plugin-compile-sdk.gradle /tmp/dvx-force-plugin-compile-sdk.gradle
           flutter create --platforms=android --org com.darkvibex --project-name app .
+          cp /tmp/dvx-force-plugin-compile-sdk.gradle android/force-plugin-compile-sdk.gradle
+          # Apply the plugin compileSdk compatibility override before Gradle
+          # evaluates Android plugin subprojects.
+          sed -i '1i apply(from = "force-plugin-compile-sdk.gradle")' android/build.gradle.kts
           rm -rf lib test
           cp -R /tmp/dvx-lib lib
           cp -R /tmp/dvx-test test
