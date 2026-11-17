@@ -2,11 +2,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:darkvibex/infra/livekit_rtc.dart';
+import 'package:darkvibex/infra/agora_rtc.dart';
 import 'package:darkvibex/infra/realtime.dart';
 
 void main() {
-  test('LiveKit credential failure leaves the adapter in a retryable failed state',
+  test('Agora credential failure leaves the adapter in a retryable failed state',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
@@ -16,7 +16,7 @@ void main() {
       await request.response.close();
     });
 
-    final adapter = LiveKitRtcAdapter(
+    final adapter = AgoraRtcAdapter(
       apiBase: Uri(
         scheme: 'http',
         host: InternetAddress.loopbackIPv4.address,
