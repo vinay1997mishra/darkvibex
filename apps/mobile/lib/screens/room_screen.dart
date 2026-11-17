@@ -64,6 +64,7 @@ class _RoomScreenState extends State<RoomScreen> {
   VoidCallback? _rtcMediaListener;
   StreamSubscription<AgoraGiftEvent>? _rtcGiftSubscription;
   bool cameraPublished = false;
+  bool speakerphoneOn = true;
   bool followingRoom = false;
   bool followBusy = false;
   final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
@@ -1985,6 +1986,16 @@ class _RoomScreenState extends State<RoomScreen> {
     final subscription = _rtcGiftSubscription;
     _rtcGiftSubscription = null;
     if (subscription != null) unawaited(subscription.cancel());
+  }
+
+  Future<void> _toggleSpeaker() async {
+    final adapter = rtc;
+    if (adapter is! AgoraRtcAdapter) return;
+    final next = !speakerphoneOn;
+    try {
+      await adapter.setSpeakerphoneOn(next);
+      if (mounted) setState(() => speakerphoneOn = next);
+    } catch (_) {}
   }
 
   Future<void> _toggleCamera() async {
@@ -7341,6 +7352,17 @@ class _RoomScreenState extends State<RoomScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: rtc is AgoraRtcAdapter ? _toggleSpeaker : null,
+            tooltip: speakerphoneOn ? 'Use earpiece' : 'Use speaker',
+            icon: TinniGlowIcon(
+              icon: speakerphoneOn
+                  ? Icons.volume_up_rounded
+                  : Icons.hearing_rounded,
+              size: 18,
+              boxSize: 34,
+            ),
+          ),
           if (roomMode == 'live')
             IconButton(
               onPressed: mySeat == null ? null : _toggleCamera,
