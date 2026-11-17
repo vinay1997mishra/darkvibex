@@ -6,17 +6,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:livekit_client/livekit_client.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart' as gift_video; // Avoid LiveKit's VideoTrack name collision.
+import 'package:video_player/video_player.dart' as gift_video;
 
 import '../utils/public_user_id.dart';
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
 import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
-import '../infra/livekit_rtc.dart';
+import '../infra/agora_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
@@ -62,9 +61,8 @@ class _RoomScreenState extends State<RoomScreen> {
   bool muted = true;
   String voiceStatus = 'Connecting…';
   RtcAdapter? rtc;
-  EventsListener<RoomEvent>? rtcEvents;
-  VideoTrack? localVideoTrack;
-  final Map<String, VideoTrack> remoteVideoTracks = <String, VideoTrack>{};
+  VoidCallback? _rtcMediaListener;
+  StreamSubscription<AgoraGiftEvent>? _rtcGiftSubscription;
   bool cameraPublished = false;
   bool followingRoom = false;
   bool followBusy = false;
@@ -1661,13 +1659,13 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     final savedRoomMode = result['room_mode'] as String;
-    if (savedRoomMode != 'live' && cameraPublished && rtc is LiveKitRtcAdapter) {
+    if (savedRoomMode != 'live' && cameraPublished && rtc is AgoraRtcAdapter) {
       try {
-        await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+        await (rtc as AgoraRtcAdapter).setCameraPublished(false);
         if (mounted) {
           setState(() {
             cameraPublished = false;
-            localVideoTrack = null;
+
           });
         }
       } catch (_) {}
@@ -1873,7 +1871,10 @@ class _RoomScreenState extends State<RoomScreen> {
         token != null &&
         token.isNotEmpty &&
         BackendApi.origin.isNotEmpty) {
-      candidate = LiveKitRtcAdapter(apiBase: Uri.parse(BackendApi.origin));
+      candidate = AgoraRtcAdapter(
+        apiBase: Uri.parse(BackendApi.origin),
+        channelType: 'party',
+      );
     } else {
       candidate = LocalRtcAdapter();
     }
@@ -1885,19 +1886,19 @@ class _RoomScreenState extends State<RoomScreen> {
         authToken: token,
       );
       rtc = candidate;
-      if (candidate is LiveKitRtcAdapter) {
-        _bindVideoTracks(candidate);
+      if (candidate is AgoraRtcAdapter) {
+        _bindAgoraEvents(candidate);
       }
       if (!mounted) return;
       setState(() {
         voiceStatus = !voicePermissionGranted
             ? 'Listening • microphone permission needed'
-            : candidate is LiveKitRtcAdapter
+            : candidate is AgoraRtcAdapter
                 ? 'Voice/video connected'
                 : 'Local voice mode';
       });
     } catch (_) {
-      if (candidate is LiveKitRtcAdapter) candidate.dispose();
+      if (candidate is AgoraRtcAdapter) candidate.dispose();
       final fallback = LocalRtcAdapter();
       await fallback.join(widget.room.id, widget.state.userId);
       rtc = fallback;
@@ -1913,7 +1914,7 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!mounted || packet['type'] != 'gift') return;
     final eventId = packet['id']?.toString() ?? '';
     if (eventId.isEmpty || _seenGiftEventIds.contains(eventId)) return;
-    // LiveKit identity is minted from the authenticated DarkVibeX user ID.
+    // Agora account identity is the authenticated DarkVibeX user ID.
     // Do not trust media metadata sent by a client: resolve the event from D1.
     final claimedSender = packet['sender_user_id']?.toString() ?? '';
     if (senderIdentity.isEmpty || claimedSender != senderIdentity) return;
@@ -1958,72 +1959,38 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
-  void _bindVideoTracks(LiveKitRtcAdapter adapter) {
-    final room = adapter.room;
-    if (room == null) return;
-    rtcEvents?.dispose();
-    rtcEvents = room.createListener()
-      ..on<TrackSubscribedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<TrackUnsubscribedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<TrackPublishedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<TrackUnpublishedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<ParticipantDisconnectedEvent>((_) => _refreshVideoTracks(adapter))
-      ..on<DataReceivedEvent>((event) {
-        if (event.topic != 'darkvibex.gift') return;
-        try {
-          final decoded = jsonDecode(utf8.decode(event.data));
-          if (decoded is Map) {
-            unawaited(_handleLiveGiftEvent(
-              Map<String, dynamic>.from(decoded),
-              senderIdentity: event.participant?.identity ?? '',
-            ));
-          }
-        } catch (_) {
-          // Ignore unrelated or malformed LiveKit data packets.
-        }
-      });
-    _refreshVideoTracks(adapter);
+  void _bindAgoraEvents(AgoraRtcAdapter adapter) {
+    _unbindAgoraEvents();
+    void refreshMedia() {
+      if (mounted) setState(() {});
+    }
+    _rtcMediaListener = refreshMedia;
+    adapter.mediaRevisionListenable.addListener(refreshMedia);
+    _rtcGiftSubscription = adapter.giftEvents.listen((event) {
+      if (event.packet['type'] != 'gift') return;
+      unawaited(_handleLiveGiftEvent(
+        event.packet,
+        senderIdentity: event.senderAccount,
+      ));
+    });
   }
 
-  void _refreshVideoTracks(LiveKitRtcAdapter adapter) {
-    final room = adapter.room;
-    if (room == null || !mounted) return;
-
-    VideoTrack? local;
-    final localParticipant = room.localParticipant;
-    if (localParticipant != null) {
-      for (final publication in localParticipant.videoTrackPublications) {
-        final track = publication.track;
-        if (track is VideoTrack && !publication.muted) {
-          local = track;
-          break;
-        }
-      }
+  void _unbindAgoraEvents() {
+    final adapter = rtc;
+    final listener = _rtcMediaListener;
+    if (adapter is AgoraRtcAdapter && listener != null) {
+      adapter.mediaRevisionListenable.removeListener(listener);
     }
-
-    final remotes = <String, VideoTrack>{};
-    for (final participant in room.remoteParticipants.values) {
-      for (final publication in participant.videoTrackPublications) {
-        final track = publication.track;
-        if (track is VideoTrack && !publication.muted) {
-          remotes[participant.identity] = track as VideoTrack;
-          break;
-        }
-      }
-    }
-
-    setState(() {
-      localVideoTrack = local;
-      remoteVideoTracks
-        ..clear()
-        ..addAll(remotes);
-    });
+    _rtcMediaListener = null;
+    final subscription = _rtcGiftSubscription;
+    _rtcGiftSubscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
   }
 
   Future<void> _toggleCamera() async {
     if (mySeat == null) return;
     final adapter = rtc;
-    if (adapter is! LiveKitRtcAdapter) {
+    if (adapter is! AgoraRtcAdapter) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Video needs the live room server')),
@@ -2036,7 +2003,6 @@ class _RoomScreenState extends State<RoomScreen> {
       await adapter.setCameraPublished(enable);
       if (!mounted) return;
       setState(() => cameraPublished = enable);
-      _refreshVideoTracks(adapter);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2067,15 +2033,14 @@ class _RoomScreenState extends State<RoomScreen> {
     roomChatController.dispose();
     roomChatScrollController.dispose();
     unawaited(roomMusic.dispose());
-    rtcEvents?.dispose();
-    rtcEvents = null;
+    _unbindAgoraEvents();
     unawaited(roomForegroundService.stop());
     roomForegroundServiceStarted = false;
     final current = rtc;
     if (current != null) {
       unawaited(
         current.leave().whenComplete(() {
-          if (current is LiveKitRtcAdapter) {
+          if (current is AgoraRtcAdapter) {
             current.dispose();
           } else if (current is LocalRtcAdapter) {
             current.dispose();
@@ -2125,15 +2090,15 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!muted) {
       await rtc?.setMicPublished(false);
     }
-    if (cameraPublished && rtc is LiveKitRtcAdapter) {
-      await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+    if (cameraPublished && rtc is AgoraRtcAdapter) {
+      await (rtc as AgoraRtcAdapter).setCameraPublished(false);
     }
     if (!mounted) return true;
     setState(() {
       mySeat = null;
       muted = true;
       cameraPublished = false;
-      localVideoTrack = null;
+
     });
     unawaited(_loadRoomMembers());
     unawaited(_loadRoomControls());
@@ -4429,26 +4394,24 @@ class _RoomScreenState extends State<RoomScreen> {
       await current?.setMicPublished(false);
     } catch (_) {}
     try {
-      if (cameraPublished && current is LiveKitRtcAdapter) {
+      if (cameraPublished && current is AgoraRtcAdapter) {
         await current.setCameraPublished(false);
       }
     } catch (_) {}
 
-    rtcEvents?.dispose();
-    rtcEvents = null;
+    _unbindAgoraEvents();
 
     try {
       await current?.leave();
     } catch (_) {}
-    if (current is LiveKitRtcAdapter) {
+    if (current is AgoraRtcAdapter) {
       current.dispose();
     } else if (current is LocalRtcAdapter) {
       current.dispose();
     }
 
     cameraPublished = false;
-    localVideoTrack = null;
-    remoteVideoTracks.clear();
+
     mySeat = null;
     muted = true;
 
@@ -5753,12 +5716,12 @@ class _RoomScreenState extends State<RoomScreen> {
       if (nextRoomMode != null &&
           nextRoomMode != 'live' &&
           cameraPublished &&
-          rtc is LiveKitRtcAdapter) {
+          rtc is AgoraRtcAdapter) {
         try {
-          await (rtc as LiveKitRtcAdapter).setCameraPublished(false);
+          await (rtc as AgoraRtcAdapter).setCameraPublished(false);
           if (mounted) {
             cameraPublished = false;
-            localVideoTrack = null;
+
           }
         } catch (_) {}
       }
@@ -6969,7 +6932,7 @@ class _RoomScreenState extends State<RoomScreen> {
       if (committedEventId.isNotEmpty) {
         _seenGiftEventIds.add(committedEventId);
         final adapter = rtc;
-        if (adapter is LiveKitRtcAdapter) {
+        if (adapter is AgoraRtcAdapter) {
           unawaited(adapter.publishGiftEvent(<String, dynamic>{
             'type': 'gift',
             'id': committedEventId,
@@ -6985,7 +6948,7 @@ class _RoomScreenState extends State<RoomScreen> {
             'asset_key': (gift['asset_key'] ?? gift['asset'] ?? '').toString(),
           }).catchError((_) {
             // The committed Worker event feed remains the recovery path if a
-            // transient LiveKit data-channel publish fails.
+            // Agora data stream can fail transiently; committed Worker feed is the fallback.
           }));
         }
       }
@@ -7271,11 +7234,18 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Widget _videoStage() {
     if (roomMode != 'live') return const SizedBox.shrink();
-    final entries = <MapEntry<String, VideoTrack>>[];
-    if (localVideoTrack != null) {
-      entries.add(MapEntry<String, VideoTrack>('You', localVideoTrack!));
+    final adapter = rtc;
+    final engine = adapter is AgoraRtcAdapter ? adapter.engine : null;
+    if (adapter is! AgoraRtcAdapter || engine == null) {
+      return const SizedBox.shrink();
     }
-    entries.addAll(remoteVideoTracks.entries);
+    final entries = <MapEntry<String, int>>[];
+    if (adapter.publishingCamera) {
+      entries.add(const MapEntry<String, int>('You', 0));
+    }
+    for (final uid in adapter.remoteVideoUids) {
+      entries.add(MapEntry<String, int>(adapter.accountForUid(uid), uid));
+    }
     if (entries.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
@@ -7287,6 +7257,16 @@ class _RoomScreenState extends State<RoomScreen> {
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final entry = entries[index];
+          final controller = entry.value == 0
+              ? VideoViewController(
+                  rtcEngine: engine,
+                  canvas: VideoCanvas(uid: 0),
+                )
+              : VideoViewController.remote(
+                  rtcEngine: engine,
+                  canvas: VideoCanvas(uid: entry.value),
+                  connection: adapter.connection,
+                );
           return SizedBox(
             width: 132,
             child: Column(
@@ -7297,7 +7277,7 @@ class _RoomScreenState extends State<RoomScreen> {
                     borderRadius: BorderRadius.circular(16),
                     child: ColoredBox(
                       color: Colors.black,
-                      child: VideoTrackRenderer(entry.value),
+                      child: AgoraVideoView(controller: controller),
                     ),
                   ),
                 ),
