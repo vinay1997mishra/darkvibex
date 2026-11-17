@@ -100,6 +100,12 @@ class AgoraRtcAdapter implements RtcAdapter {
         channelProfile: ChannelProfileType.channelProfileCommunication,
       ));
       engine.registerEventHandler(RtcEngineEventHandler(
+        onError: (error, message) {
+          _state = RtcConnectionState.failed;
+          if (!(_joinCompleter?.isCompleted ?? true)) {
+            _joinCompleter!.completeError(StateError(message));
+          }
+        },
         onJoinChannelSuccess: (connection, elapsed) {
           _localUid = connection.localUid;
           _state = RtcConnectionState.joined;
@@ -203,6 +209,8 @@ class AgoraRtcAdapter implements RtcAdapter {
       ));
 
       await engine.enableAudio();
+      await engine.setEnableSpeakerphone(true);
+      _speakerphoneOn = true;
       await engine.enableAudioVolumeIndication(200, 3, true);
       _joinCompleter = Completer<void>();
       await engine.joinChannelWithUserAccount(
