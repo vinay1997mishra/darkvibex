@@ -31,7 +31,7 @@ extensions.configure<ApplicationExtension> {
     defaultConfig {
         applicationId = "com.darkvibex.app"
         // model_viewer_plus requires Android API 24; keep the SDK floor explicit.
-        minSdk = maxOf(24, 24)
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         // Opt in to Android 17 behavior changes after the API 37 compatibility audit.
         targetSdk = 37
         versionCode = flutter.versionCode
