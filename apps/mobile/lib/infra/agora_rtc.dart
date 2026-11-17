@@ -144,9 +144,8 @@ class AgoraRtcAdapter implements RtcAdapter {
           _notifyMediaChanged();
         },
         onUserOffline: (connection, remoteUid, reason) {
-          _userAccounts.remove(remoteUid);
+          final identity = _userAccounts.remove(remoteUid) ?? remoteUid.toString();
           _remoteVideoUids.remove(remoteUid);
-          final identity = _userAccounts[remoteUid] ?? remoteUid.toString();
           final next = Map<String, double>.from(_speakingLevels.value)
             ..remove(identity);
           _speakingLevels.value = Map<String, double>.unmodifiable(next);
@@ -247,7 +246,8 @@ class AgoraRtcAdapter implements RtcAdapter {
     final delaySeconds = (expiry -
             (DateTime.now().millisecondsSinceEpoch ~/ 1000) -
             90)
-        .clamp(30, 3500);
+        .clamp(30, 3500)
+        .toInt();
     _renewTimer = Timer(Duration(seconds: delaySeconds), () {
       unawaited(_renewToken());
     });
