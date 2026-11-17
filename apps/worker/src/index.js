@@ -418,6 +418,7 @@ async function handleAgoraToken(request, env) {
   await ensureUserAllowed(db, actorId);
   let membership = null;
   if (roomType === "party") {
+    await ensureRoomCoreSchema(db);
     membership = await db.prepare(
       "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1",
     ).bind(roomId, actorId).first();
