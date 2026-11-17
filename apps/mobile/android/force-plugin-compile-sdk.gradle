@@ -1,0 +1,18 @@
+// Agora 6.6.x currently declares Android API 31 in its plugin module,
+// while its AndroidX AAR dependencies require compileSdk 34+. Raise Android
+// plugin modules to the app's supported compile SDK before their tasks are
+// configured. This does not change minSdk or targetSdk runtime behavior.
+subprojects { pluginProject ->
+    pluginProject.plugins.withId("com.android.library") {
+        def androidExtension = pluginProject.extensions.findByName("android")
+        if (androidExtension != null) {
+            androidExtension.compileSdkVersion(37)
+        }
+    }
+    pluginProject.plugins.withId("com.android.application") {
+        def androidExtension = pluginProject.extensions.findByName("android")
+        if (androidExtension != null) {
+            androidExtension.compileSdkVersion(37)
+        }
+    }
+}
