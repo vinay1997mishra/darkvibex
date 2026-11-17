@@ -31,6 +31,7 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
   String callState = 'ringing';
   String statusText = 'Ringing…';
   bool micMuted = false;
+  bool speakerphoneOn = true;
   bool ending = false;
   bool joining = false;
 
@@ -124,6 +125,16 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
     } catch (_) {}
   }
 
+  Future<void> _toggleSpeaker() async {
+    final adapter = rtc;
+    if (adapter == null) return;
+    final next = !speakerphoneOn;
+    try {
+      await adapter.setSpeakerphoneOn(next);
+      if (mounted) setState(() => speakerphoneOn = next);
+    } catch (_) {}
+  }
+
   Future<void> _endCall() async {
     if (ending) return;
     setState(() => ending = true);
@@ -214,6 +225,16 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
                               : Icons.mic_rounded,
                         ),
                       ),
+                      IconButton.filledTonal(
+                        tooltip: speakerphoneOn ? 'Use earpiece' : 'Use speaker',
+                        onPressed: rtc == null ? null : _toggleSpeaker,
+                        icon: Icon(
+                          speakerphoneOn
+                              ? Icons.volume_up_rounded
+                              : Icons.hearing_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
                       const SizedBox(width: 28),
                       SizedBox(
                         width: 66,
