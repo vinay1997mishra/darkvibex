@@ -1,3 +1,6 @@
+import com.android.build.api.dsl.ApplicationExtension
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -15,7 +18,7 @@ val hasReleaseSigning = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
-android {
+extensions.configure<ApplicationExtension> {
     namespace = "com.darkvibex.app"
     // Android 17 (API 37) compile-time support.
     compileSdk = 37
@@ -55,10 +58,16 @@ android {
     }
 }
 
+kotlin {
+    // Use the supported compilerOptions DSL and keep Kotlin bytecode aligned with Java 17.
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 flutter {
     source = "../.."
 }
-
 
 dependencies {
     // 24.1.2 keeps Android API 21 compatibility while providing native FCM delivery.
