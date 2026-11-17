@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
-import '../infra/livekit_rtc.dart';
+import '../infra/agora_rtc.dart';
 import '../ui/tinni_style.dart';
 
 class DirectCallScreen extends StatefulWidget {
@@ -27,7 +27,7 @@ class DirectCallScreen extends StatefulWidget {
 
 class _DirectCallScreenState extends State<DirectCallScreen> {
   Timer? pollTimer;
-  LiveKitRtcAdapter? rtc;
+  AgoraRtcAdapter? rtc;
   String callState = 'ringing';
   String statusText = 'Ringing…';
   bool micMuted = false;
@@ -84,7 +84,7 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
       return;
     }
     setState(() => joining = true);
-    final adapter = LiveKitRtcAdapter(apiBase: Uri.parse(BackendApi.origin));
+    final adapter = AgoraRtcAdapter(apiBase: Uri.parse(BackendApi.origin), channelType: 'call');
     try {
       await adapter.join(
         'call-${widget.callId}',
