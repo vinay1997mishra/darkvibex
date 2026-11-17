@@ -121,7 +121,10 @@ void main() {
 
   test('Agora speaking levels use SDK volume indication', () {
     final source = File('lib/infra/agora_rtc.dart').readAsStringSync();
-    expect(source, contains('enableAudioVolumeIndication(200, 3, true)'));
+    expect(source, contains('enableAudioVolumeIndication('));
+    expect(source, contains('interval: 200'));
+    expect(source, contains('smooth: 3'));
+    expect(source, contains('reportVad: true'));
     expect(source, contains('onAudioVolumeIndication'));
     expect(source, contains('speaker.volume / 255.0'));
     expect(source, contains('speakingLevelsListenable'));
