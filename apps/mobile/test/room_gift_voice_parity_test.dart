@@ -104,6 +104,21 @@ void main() {
     expect(source, contains("if (event['sender_user_id']?.toString() == widget.state.userId) continue;"));
   });
 
+  test('all voice surfaces use Agora and retain speaker controls', () {
+    final party = File('lib/screens/room_screen.dart').readAsStringSync();
+    final direct = File('lib/screens/direct_call_screen.dart').readAsStringSync();
+    final game = File('lib/screens/game_room_screen.dart').readAsStringSync();
+    expect(party, contains("channelType: 'party'"));
+    expect(direct, contains("channelType: 'call'"));
+    expect(game, contains("channelType: 'game'"));
+    expect(party, contains('setSpeakerphoneOn(next)'));
+    expect(direct, contains('setSpeakerphoneOn(next)'));
+    expect(game, contains('setSpeakerphoneOn(next)'));
+    expect(party, isNot(contains('LiveKitRtcAdapter')));
+    expect(direct, isNot(contains('LiveKitRtcAdapter')));
+    expect(game, isNot(contains('LiveKitRtcAdapter')));
+  });
+
   test('Agora speaking levels use SDK volume indication', () {
     final source = File('lib/infra/agora_rtc.dart').readAsStringSync();
     expect(source, contains('enableAudioVolumeIndication(200, 3, true)'));
