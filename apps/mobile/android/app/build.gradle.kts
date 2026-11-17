@@ -25,6 +25,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Keep Kotlin bytecode aligned with Java 17. Without this explicit target,
+    // newer CI JDK/Kotlin defaults can select JVM 25 and fail task validation.
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+
     defaultConfig {
         applicationId = "com.darkvibex.app"
         // model_viewer_plus requires Android API 24; keep the SDK floor explicit.
