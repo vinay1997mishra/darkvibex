@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
-import '../infra/livekit_rtc.dart';
+import '../infra/agora_rtc.dart';
 import '../ui/tinni_style.dart';
 
 class DirectCallScreen extends StatefulWidget {
@@ -27,10 +27,11 @@ class DirectCallScreen extends StatefulWidget {
 
 class _DirectCallScreenState extends State<DirectCallScreen> {
   Timer? pollTimer;
-  LiveKitRtcAdapter? rtc;
+  AgoraRtcAdapter? rtc;
   String callState = 'ringing';
   String statusText = 'Ringing…';
   bool micMuted = false;
+  bool speakerphoneOn = true;
   bool ending = false;
   bool joining = false;
 
@@ -84,7 +85,7 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
       return;
     }
     setState(() => joining = true);
-    final adapter = LiveKitRtcAdapter(apiBase: Uri.parse(BackendApi.origin));
+    final adapter = AgoraRtcAdapter(apiBase: Uri.parse(BackendApi.origin), channelType: 'call');
     try {
       await adapter.join(
         'call-${widget.callId}',
@@ -121,6 +122,16 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
     try {
       await adapter.setMicPublished(!nextMuted);
       if (mounted) setState(() => micMuted = nextMuted);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleSpeaker() async {
+    final adapter = rtc;
+    if (adapter == null) return;
+    final next = !speakerphoneOn;
+    try {
+      await adapter.setSpeakerphoneOn(next);
+      if (mounted) setState(() => speakerphoneOn = next);
     } catch (_) {}
   }
 
@@ -214,6 +225,16 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
                               : Icons.mic_rounded,
                         ),
                       ),
+                      IconButton.filledTonal(
+                        tooltip: speakerphoneOn ? 'Use earpiece' : 'Use speaker',
+                        onPressed: rtc == null ? null : _toggleSpeaker,
+                        icon: Icon(
+                          speakerphoneOn
+                              ? Icons.volume_up_rounded
+                              : Icons.hearing_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
                       const SizedBox(width: 28),
                       SizedBox(
                         width: 66,

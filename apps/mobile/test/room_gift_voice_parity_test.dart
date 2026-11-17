@@ -78,18 +78,17 @@ void main() {
     expect(source, contains('required String videoKey'));
   });
 
-  test('gift events use LiveKit reliable room-wide data delivery', () {
-    final rtc = File('lib/infra/livekit_rtc.dart').readAsStringSync();
+  test('gift events use Agora reliable room-wide data delivery', () {
+    final rtc = File('lib/infra/agora_rtc.dart').readAsStringSync();
     final room = File('lib/screens/room_screen.dart').readAsStringSync();
     expect(rtc, contains('publishGiftEvent('));
-    expect(rtc, contains('reliable: true'));
-    expect(rtc, contains("topic: 'darkvibex.gift'"));
-    expect(room, contains('on<DataReceivedEvent>'));
-    expect(room, contains("event.topic != 'darkvibex.gift'"));
+    expect(rtc, contains('ordered: true'));
+    expect(rtc, contains('sendStreamMessage('));
+    expect(room, contains('_rtcGiftSubscription'));
     expect(room, contains('_handleLiveGiftEvent('));
-    expect(room, contains('senderIdentity: event.participant?.identity ??')); 
+    expect(room, contains('senderIdentity: event.senderAccount'));
     expect(room, contains('eventId: eventId'));
-    expect(room, contains('candidate[\'sender_user_id\']?.toString() == senderIdentity'));
+    expect(room, contains("candidate['sender_user_id']?.toString() == senderIdentity"));
   });
 
   test('gift sender sees their own gift immediately without duplicate polling playback', () {
@@ -105,11 +104,29 @@ void main() {
     expect(source, contains("if (event['sender_user_id']?.toString() == widget.state.userId) continue;"));
   });
 
-  test('LiveKit speaking levels are sampled from active speakers', () {
-    final source = File('lib/infra/livekit_rtc.dart').readAsStringSync();
-    expect(source, contains('for (final participant in room.activeSpeakers)'));
-    expect(source, contains('participant.isSpeaking'));
-    expect(source, contains('participant.audioLevel'));
-    expect(source, contains('const Duration(milliseconds: 150)'));
+  test('all voice surfaces use Agora and retain speaker controls', () {
+    final party = File('lib/screens/room_screen.dart').readAsStringSync();
+    final direct = File('lib/screens/direct_call_screen.dart').readAsStringSync();
+    final game = File('lib/screens/game_room_screen.dart').readAsStringSync();
+    expect(party, contains("channelType: 'party'"));
+    expect(direct, contains("channelType: 'call'"));
+    expect(game, contains("channelType: 'game'"));
+    expect(party, contains('setSpeakerphoneOn(next)'));
+    expect(direct, contains('setSpeakerphoneOn(next)'));
+    expect(game, contains('setSpeakerphoneOn(next)'));
+    expect(party, isNot(contains('LiveKitRtcAdapter')));
+    expect(direct, isNot(contains('LiveKitRtcAdapter')));
+    expect(game, isNot(contains('LiveKitRtcAdapter')));
+  });
+
+  test('Agora speaking levels use SDK volume indication', () {
+    final source = File('lib/infra/agora_rtc.dart').readAsStringSync();
+    expect(source, contains('enableAudioVolumeIndication('));
+    expect(source, contains('interval: 200'));
+    expect(source, contains('smooth: 3'));
+    expect(source, contains('reportVad: true'));
+    expect(source, contains('onAudioVolumeIndication'));
+    expect(source, contains('(speaker.volume ?? 0) / 255.0'));
+    expect(source, contains('speakingLevelsListenable'));
   });
 }

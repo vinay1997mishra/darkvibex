@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  livekit_client: ^2.13.0
+  agora_rtc_engine: ^6.6.4
   google_sign_in: ^7.2.0
   country_picker: ^2.0.28
   image_picker: ^1.2.4

@@ -7,7 +7,7 @@ import '../app/app_state.dart';
 import '../utils/public_user_id.dart';
 import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
-import '../infra/livekit_rtc.dart';
+import '../infra/agora_rtc.dart';
 import '../ui/tinni_style.dart';
 import 'fruit_party_screen.dart';
 import 'greedy_girl_screen.dart';
@@ -232,10 +232,11 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
   Map<String, dynamic>? data;
   List<Map<String, dynamic>> chat = const <Map<String, dynamic>>[];
   Timer? timer;
-  LiveKitRtcAdapter? rtc;
+  AgoraRtcAdapter? rtc;
   bool tapping = false;
   bool sendingChat = false;
   bool muted = true;
+  bool speakerphoneOn = true;
   String voiceStatus = 'Connecting voice…';
 
   Map<String, dynamic> get room => data?['room'] is Map
@@ -295,8 +296,9 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
       return;
     }
 
-    final adapter = LiveKitRtcAdapter(
+    final adapter = AgoraRtcAdapter(
       apiBase: Uri.parse(BackendApi.origin),
+      channelType: 'game',
     );
     try {
       await adapter.join(
@@ -315,6 +317,16 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
       adapter.dispose();
       if (mounted) setState(() => voiceStatus = 'Voice unavailable');
     }
+  }
+
+  Future<void> _toggleSpeaker() async {
+    final adapter = rtc;
+    if (adapter == null) return;
+    final next = !speakerphoneOn;
+    try {
+      await adapter.setSpeakerphoneOn(next);
+      if (mounted) setState(() => speakerphoneOn = next);
+    } catch (_) {}
   }
 
   Future<void> _toggleMic() async {
@@ -819,6 +831,18 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
               onPressed: _toggleMic,
               icon: TinniGlowIcon(
                 icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                size: 20,
+                boxSize: 36,
+              ),
+            ),
+            IconButton(
+              key: const Key('game-room-speaker-button'),
+              tooltip: speakerphoneOn ? 'Use earpiece' : 'Use speaker',
+              onPressed: rtc == null ? null : _toggleSpeaker,
+              icon: TinniGlowIcon(
+                icon: speakerphoneOn
+                    ? Icons.volume_up_rounded
+                    : Icons.hearing_rounded,
                 size: 20,
                 boxSize: 36,
               ),
