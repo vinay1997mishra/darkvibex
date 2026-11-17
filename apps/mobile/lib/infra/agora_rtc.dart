@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
@@ -107,7 +106,7 @@ class AgoraRtcAdapter implements RtcAdapter {
           }
         },
         onJoinChannelSuccess: (connection, elapsed) {
-          _localUid = connection.localUid;
+          _localUid = connection.localUid ?? 0;
           _state = RtcConnectionState.joined;
           if (!(_joinCompleter?.isCompleted ?? true)) {
             _joinCompleter!.complete();
@@ -133,7 +132,7 @@ class AgoraRtcAdapter implements RtcAdapter {
           _localUid = uid;
         },
         onUserInfoUpdated: (uid, info) {
-          final account = info.userAccount.trim();
+          final account = (info.userAccount ?? '').trim();
           if (account.isNotEmpty) {
             _userAccounts[uid] = account;
             _notifyMediaChanged();
@@ -177,9 +176,10 @@ class AgoraRtcAdapter implements RtcAdapter {
         onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
           final next = <String, double>{};
           for (final speaker in speakers) {
-            if (speaker.uid == 0 || speaker.uid == _localUid) continue;
-            final account = _userAccounts[speaker.uid] ?? speaker.uid.toString();
-            final raw = (speaker.volume / 255.0).clamp(0.0, 1.0).toDouble();
+            final uid = speaker.uid ?? 0;
+            if (uid == 0 || uid == _localUid) continue;
+            final account = _userAccounts[uid] ?? uid.toString();
+            final raw = ((speaker.volume ?? 0) / 255.0).clamp(0.0, 1.0).toDouble();
             if (raw > 0.01) {
               next[account] = raw < 0.18 ? 0.18 : raw;
             }
@@ -211,13 +211,17 @@ class AgoraRtcAdapter implements RtcAdapter {
       await engine.enableAudio();
       await engine.setEnableSpeakerphone(true);
       _speakerphoneOn = true;
-      await engine.enableAudioVolumeIndication(200, 3, true);
+      await engine.enableAudioVolumeIndication(
+        interval: 200,
+        smooth: 3,
+        reportVad: true,
+      );
       _joinCompleter = Completer<void>();
       await engine.joinChannelWithUserAccount(
-        token,
-        channel,
-        _userAccount,
-        ChannelMediaOptions(
+        token: token,
+        channelId: channel,
+        userAccount: _userAccount,
+        options: ChannelMediaOptions(
           channelProfile: ChannelProfileType.channelProfileCommunication,
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
           publishMicrophoneTrack: false,
@@ -228,10 +232,9 @@ class AgoraRtcAdapter implements RtcAdapter {
       ).timeout(const Duration(seconds: 20));
       await _joinCompleter!.future.timeout(const Duration(seconds: 25));
       try {
-        _giftStreamId = await engine.createDataStreamWithConfig(
-          const DataStreamConfig(
-            reliable: true,
-            ordered: false,
+        _giftStreamId = await engine.createDataStream(
+          config: const DataStreamConfig(
+            ordered: true,
             syncWithAudio: false,
           ),
         );
