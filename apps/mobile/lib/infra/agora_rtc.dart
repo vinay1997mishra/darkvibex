@@ -374,6 +374,7 @@ class AgoraRtcAdapter implements RtcAdapter {
     _mediaRevision.value = _mediaRevision.value + 1;
   }
 
+  @override
   Future<void> leave() async {
     _renewTimer?.cancel();
     _renewTimer = null;
