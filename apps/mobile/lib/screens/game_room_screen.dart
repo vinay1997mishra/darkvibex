@@ -7,7 +7,7 @@ import '../app/app_state.dart';
 import '../utils/public_user_id.dart';
 import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
-import '../infra/livekit_rtc.dart';
+import '../infra/agora_rtc.dart';
 import '../ui/tinni_style.dart';
 import 'fruit_party_screen.dart';
 import 'greedy_girl_screen.dart';
@@ -232,7 +232,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
   Map<String, dynamic>? data;
   List<Map<String, dynamic>> chat = const <Map<String, dynamic>>[];
   Timer? timer;
-  LiveKitRtcAdapter? rtc;
+  AgoraRtcAdapter? rtc;
   bool tapping = false;
   bool sendingChat = false;
   bool muted = true;
@@ -295,8 +295,9 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
       return;
     }
 
-    final adapter = LiveKitRtcAdapter(
+    final adapter = AgoraRtcAdapter(
       apiBase: Uri.parse(BackendApi.origin),
+      channelType: 'game',
     );
     try {
       await adapter.join(
