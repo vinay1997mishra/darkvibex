@@ -126,7 +126,7 @@ void main() {
     expect(source, contains('smooth: 3'));
     expect(source, contains('reportVad: true'));
     expect(source, contains('onAudioVolumeIndication'));
-    expect(source, contains('speaker.volume / 255.0'));
+    expect(source, contains('(speaker.volume ?? 0) / 255.0'));
     expect(source, contains('speakingLevelsListenable'));
   });
 }
