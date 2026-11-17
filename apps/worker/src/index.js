@@ -279,6 +279,188 @@ async function signJwt(secret, header, payload) {
   return input + "." + await hmacSignature(secret, input);
 }
 
+
+// Agora AccessToken2 (Token007) builder. The App Certificate remains Worker-only.
+function agoraPackUint16(value) {
+  const bytes = new Uint8Array(2);
+  new DataView(bytes.buffer).setUint16(0, value, true);
+  return bytes;
+}
+
+function agoraPackUint32(value) {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, value >>> 0, true);
+  return bytes;
+}
+
+function agoraPackBytes(value) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  return concatUint8Arrays([agoraPackUint16(bytes.byteLength), bytes]);
+}
+
+function concatUint8Arrays(parts) {
+  const total = parts.reduce((size, part) => size + part.byteLength, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.byteLength;
+  }
+  return output;
+}
+
+async function agoraHmacBytes(keyBytes, messageBytes) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, messageBytes));
+}
+
+function agoraBase64(bytes) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+async function buildAgoraRtcToken({ appId, appCertificate, channelName, account, expireSeconds = 3600 }) {
+  const normalizedAppId = String(appId ?? "").trim();
+  const certificate = String(appCertificate ?? "").trim();
+  const normalizedChannel = String(channelName ?? "").trim();
+  const normalizedAccount = String(account ?? "").trim();
+  if (!/^[0-9a-f]{32}$/i.test(normalizedAppId) ||
+      !/^[0-9a-f]{32}$/i.test(certificate)) {
+    throw new Error("agora_credentials_invalid");
+  }
+  if (!normalizedChannel || encoder.encode(normalizedChannel).byteLength >= 64 ||
+      !normalizedAccount || encoder.encode(normalizedAccount).byteLength > 255) {
+    throw new Error("agora_channel_or_account_invalid");
+  }
+
+  const issueTs = Math.floor(Date.now() / 1000);
+  const saltBytes = crypto.getRandomValues(new Uint8Array(4));
+  const salt = new DataView(saltBytes.buffer).getUint32(0, true) % 99999999 + 1;
+  const expiry = Math.min(86400, Math.max(60, Number(expireSeconds) || 3600));
+
+  // RTC service type 1; privileges: join=1, publish audio=2,
+  // publish video=3, publish data=4. Privilege values are durations.
+  const privilegeMap = concatUint8Arrays([
+    agoraPackUint16(4),
+    agoraPackUint16(1), agoraPackUint32(expiry),
+    agoraPackUint16(2), agoraPackUint32(expiry),
+    agoraPackUint16(3), agoraPackUint32(expiry),
+    agoraPackUint16(4), agoraPackUint32(expiry),
+  ]);
+  const rtcService = concatUint8Arrays([
+    agoraPackUint16(1),
+    privilegeMap,
+    agoraPackBytes(encoder.encode(normalizedChannel)),
+    agoraPackBytes(encoder.encode(normalizedAccount)),
+  ]);
+
+  const signingInfo = concatUint8Arrays([
+    agoraPackBytes(encoder.encode(normalizedAppId)),
+    agoraPackUint32(issueTs),
+    agoraPackUint32(expiry),
+    agoraPackUint32(salt),
+    agoraPackUint16(1),
+    rtcService,
+  ]);
+
+  const certificateBytes = encoder.encode(certificate);
+  const signingKey1 = await agoraHmacBytes(certificateBytes, agoraPackUint32(issueTs));
+  const signingKey2 = await agoraHmacBytes(signingKey1, agoraPackUint32(salt));
+  const signature = await agoraHmacBytes(signingKey2, signingInfo);
+  const tokenContent = concatUint8Arrays([
+    agoraPackBytes(signature),
+    signingInfo,
+  ]);
+  const compressionStream = new CompressionStream("deflate");
+  const compressedStream = new Blob([tokenContent]).stream().pipeThrough(compressionStream);
+  const compressed = new Uint8Array(await new Response(compressedStream).arrayBuffer());
+  return "007" + agoraBase64(compressed);
+}
+
+async function handleAgoraToken(request, env) {
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+  if (!env.SESSION_SECRET || !env.AGORA_APP_ID || !env.AGORA_APP_CERTIFICATE) {
+    return json({ ok: false, error: "voice_not_configured" }, { status: 503 });
+  }
+  const authError = await requireSession(request, env);
+  if (authError) return authError;
+
+  const session = await verifySessionToken(
+    bearerToken(request),
+    String(env.SESSION_SECRET),
+  );
+  const db = requireDb(env);
+  const voiceFeature = await ownerSetting(db, "feature.voice", { enabled: true });
+  if (voiceFeature.enabled === false) {
+    return json({ ok: false, error: "voice_disabled" }, { status: 403 });
+  }
+
+  const body = await bodyJson(request);
+  const roomId = String(body.room_id ?? "").trim().slice(0, 100);
+  const roomType = String(body.room_type ?? "party").trim().toLowerCase();
+  if (!roomId) return json({ ok: false, error: "room_id_required" }, { status: 400 });
+  if (!["party", "game", "call"].includes(roomType)) {
+    return json({ ok: false, error: "invalid_room_type" }, { status: 400 });
+  }
+
+  const actorId = String(session.sub);
+  await ensureUserAllowed(db, actorId);
+  let membership = null;
+  if (roomType === "party") {
+    membership = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1",
+    ).bind(roomId, actorId).first();
+  } else if (roomType === "game") {
+    await db.prepare(
+      "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))",
+    ).run();
+    membership = await db.prepare(
+      "SELECT 1 AS active FROM game_room_members WHERE room_id=? AND user_id=? LIMIT 1",
+    ).bind(roomId, actorId).first();
+  } else {
+    const callId = roomId.startsWith("call-") ? roomId.slice(5) : roomId;
+    await expireDirectCalls(db);
+    membership = await db.prepare(
+      `SELECT 1 AS active FROM direct_calls
+        WHERE id=? AND state IN ('ringing','active')
+          AND (caller_user_id=? OR receiver_user_id=?) LIMIT 1`,
+    ).bind(callId, actorId, actorId).first();
+  }
+  if (!membership) {
+    return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+  }
+
+  const roomHash = await sha256Hex(roomType + ":" + roomId);
+  const channelName = "dvx_" + roomType + "_" + roomHash.slice(0, 24);
+  const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+  const token = await buildAgoraRtcToken({
+    appId: env.AGORA_APP_ID,
+    appCertificate: env.AGORA_APP_CERTIFICATE,
+    channelName,
+    account: actorId,
+    expireSeconds: 3600,
+  });
+  return json({
+    ok: true,
+    app_id: String(env.AGORA_APP_ID).trim(),
+    channel_name: channelName,
+    user_account: actorId,
+    token,
+    expires_at: expiresAt,
+  });
+}
+
 async function verifySessionToken(token, secret) {
   const parts = String(token ?? "").split(".");
   if (parts.length !== 3) throw new Error("invalid_session");
@@ -9084,6 +9266,9 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
         headers.set("cache-control", privacyProtectedAvatar ? "private, no-store" : "public, max-age=3600");
         headers.set("x-content-type-options", "nosniff");
         return new Response(object.body, { headers });
+      }
+      if (url.pathname === "/agora/token") {
+        return await handleAgoraToken(request, env);
       }
       if (url.pathname === "/livekit/token") {
         return await handleLiveKitToken(request, env);
