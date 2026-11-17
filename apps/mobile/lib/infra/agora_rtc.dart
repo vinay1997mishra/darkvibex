@@ -114,7 +114,7 @@ class AgoraRtcAdapter implements RtcAdapter {
           _notifyMediaChanged();
         },
         onRejoinChannelSuccess: (connection, elapsed) {
-          _localUid = connection.localUid;
+          _localUid = connection.localUid ?? 0;
           _state = RtcConnectionState.joined;
           _notifyMediaChanged();
         },
