@@ -1,3 +1,6 @@
+import com.android.build.api.dsl.ApplicationExtension
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -15,7 +18,7 @@ val hasReleaseSigning = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
-android {
+extensions.configure<ApplicationExtension> {
     namespace = "com.darkvibex.app"
     // Android 17 (API 37) compile-time support.
     compileSdk = 37
@@ -25,16 +28,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Keep Kotlin bytecode aligned with Java 17. Without this explicit target,
-    // newer CI JDK/Kotlin defaults can select JVM 25 and fail task validation.
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
         applicationId = "com.darkvibex.app"
         // model_viewer_plus requires Android API 24; keep the SDK floor explicit.
-        minSdk = maxOf(flutter.minSdkVersion, 24)
+        minSdk = maxOf(24, 24)
         // Opt in to Android 17 behavior changes after the API 37 compatibility audit.
         targetSdk = 37
         versionCode = flutter.versionCode
@@ -61,10 +58,16 @@ android {
     }
 }
 
+kotlin {
+    // Use the supported compilerOptions DSL and keep Kotlin bytecode aligned with Java 17.
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 flutter {
     source = "../.."
 }
-
 
 dependencies {
     // 24.1.2 keeps Android API 21 compatibility while providing native FCM delivery.
