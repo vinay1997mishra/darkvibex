@@ -82,7 +82,7 @@ void main() {
     final rtc = File('lib/infra/agora_rtc.dart').readAsStringSync();
     final room = File('lib/screens/room_screen.dart').readAsStringSync();
     expect(rtc, contains('publishGiftEvent('));
-    expect(rtc, contains('reliable: true'));
+    expect(rtc, contains('ordered: true'));
     expect(rtc, contains('sendStreamMessage('));
     expect(room, contains('_rtcGiftSubscription'));
     expect(room, contains('_handleLiveGiftEvent('));
