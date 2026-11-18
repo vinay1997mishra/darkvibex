@@ -82,7 +82,7 @@ class VipPolicy {
     VipPrivilege(id: 'many_seats', title: 'Room With Many Seats', description: 'DarkVibeX rooms use the Tinnistar 8–42 seat layouts.', minLevel: 7),
     VipPrivilege(id: 'nickname_light', title: 'Nickname Light Effect', description: 'Exclusive nickname light effect from VIP8 through VIP17.', minLevel: 8, maxLevel: 17),
     VipPrivilege(id: 'disable_say_hi', title: 'Disable Say Hi', description: 'Prevent other users from initiating Say Hi with you.', minLevel: 8),
-    VipPrivilege(id: 'entrance_vehicle', title: 'Entrance Vehicle', description: 'Level-specific entrance vehicle; higher VIP means more premium vehicles.', minLevel: 8),
+    VipPrivilege(id: 'entrance_vehicle', title: 'Entrance Vehicle', description: 'Level-specific entrance vehicle; higher VIP means more premium vehicles. VIP5-15 bottom 40%, VIP16-18 full-screen.', minLevel: 5),
     VipPrivilege(id: 'exclusive_mic_emoticon', title: 'Exclusive Mic Emoticon', description: 'Use a special animated microphone emoticon while speaking.', minLevel: 9),
     VipPrivilege(id: 'customer_service', title: 'Exclusive Customer Service', description: 'Dedicated VIP support channel.', minLevel: 9),
     VipPrivilege(id: 'send_pictures', title: 'Send Pictures in Chatroom', description: 'Send picture messages inside chatrooms.', minLevel: 10),
