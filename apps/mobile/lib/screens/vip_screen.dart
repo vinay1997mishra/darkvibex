@@ -267,12 +267,12 @@ class VipScreen extends StatelessWidget {
             Text('Available VIP Exp: ${_compact(state.vipExpBalance)}'),
             Text('Total eligible coins received: ${_compact(state.vipTotalReceivedCoins)}'),
             Text(
-              'Coin Seller EXP rate: 1 VIP EXP per 400 coins received',
+              'Coin Seller EXP rate: 1.5 VIP EXP per \$1 of coins bought',
             ),
             if (until != null) Text('Active until: ${_date(until)}'),
             const SizedBox(height: 8),
             const Text(
-              'Only eligible coins received into the wallet from a Coin Seller earn VIP Exp.',
+              'Only coins bought from a Coin Seller earn VIP Exp. Spending coins on gifts does not earn EXP.',
               style: TextStyle(color: Colors.white60),
             ),
           ],
@@ -423,7 +423,7 @@ class VipScreen extends StatelessWidget {
         _ => Icons.star_rounded,
       };
 
-  static String _compact(int value) {
+  static String _compact(num value) {
     if (value >= 1000000000) {
       return '${(value / 1000000000).toStringAsFixed(value % 1000000000 == 0 ? 0 : 1)}B';
     }
@@ -433,7 +433,8 @@ class VipScreen extends StatelessWidget {
     if (value >= 1000) {
       return '${(value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1)}K';
     }
-    return value.toString();
+    if (value == value.toInt()) return value.toInt().toString();
+    return value.toStringAsFixed(1);
   }
 
   static String _date(DateTime value) =>
@@ -452,8 +453,8 @@ class _HeroCard extends StatelessWidget {
 
   final int level;
   final bool active;
-  final int exp;
-  final int target;
+  final num exp;
+  final num target;
   final double progress;
   final DateTime? activeUntil;
 
@@ -662,12 +663,12 @@ class VipRulesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'DarkVibeX VIP has 18 levels. Every 400 eligible coins received from a Coin Seller earn 1 VIP EXP. Partial amounts carry across transfers; there is no monthly or total EXP cap.',
+            'DarkVibeX VIP has 18 levels. You earn VIP EXP only by buying coins from a Coin Seller — 1.5 EXP per \$1 spent (\$1 = 8,000,000 coins). Spending coins on gifts does not earn EXP. VIP lasts 1 month (VIP16–18: 2 months) from the day you level up; on the expiry date you either level up by buying more coins or drop by 1 level.',
             style: TextStyle(color: Colors.white70, height: 1.45),
           ),
           const SizedBox(height: 18),
           const Text(
-            'Upgrade and maintain EXP',
+            'Upgrade EXP by level',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 10),
@@ -681,7 +682,7 @@ class VipRulesScreen extends StatelessWidget {
               columns: const [
                 DataColumn(label: Text('Level')),
                 DataColumn(label: Text('Upgrade EXP')),
-                DataColumn(label: Text('Maintain EXP')),
+                DataColumn(label: Text('Total EXP')),
                 DataColumn(label: Text('Validity')),
               ],
               rows: [
@@ -690,7 +691,7 @@ class VipRulesScreen extends StatelessWidget {
                     cells: [
                       DataCell(Text('VIP${item.level}')),
                       DataCell(Text(VipScreen._compact(item.upgradeExp))),
-                      DataCell(Text(VipScreen._compact(item.maintainExp))),
+                      DataCell(Text(VipScreen._compact(item.totalExp))),
                       DataCell(Text('${item.validityDays} days')),
                     ],
                   ),

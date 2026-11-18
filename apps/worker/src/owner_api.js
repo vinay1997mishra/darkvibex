@@ -2428,8 +2428,8 @@ async function handleVipRules(request, db, actor, parts) {
     const upgrade=Number(body.upgrade_exp);
     const maintain=Number(body.maintain_exp);
     const days=Number(body.validity_days);
-    if(!Number.isSafeInteger(upgrade)||upgrade<0)return json({ok:false,error:"invalid_upgrade_exp"},{status:400});
-    if(!Number.isSafeInteger(maintain)||maintain<0)return json({ok:false,error:"invalid_maintain_exp"},{status:400});
+    if(!Number.isFinite(upgrade)||upgrade<0)return json({ok:false,error:"invalid_upgrade_exp"},{status:400});
+    if(!Number.isFinite(maintain)||maintain<0)return json({ok:false,error:"invalid_maintain_exp"},{status:400});
     if(!Number.isSafeInteger(days)||days<1||days>3650)return json({ok:false,error:"invalid_validity_days"},{status:400});
     const name=String(body.name ?? ("VIP "+level)).trim().slice(0,80)||("VIP "+level);
     const data={

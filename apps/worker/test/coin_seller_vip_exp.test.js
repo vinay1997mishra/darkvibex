@@ -39,6 +39,12 @@ async function sessionToken(userId, secret) {
   return `${input}.${base64url(signature)}`;
 }
 
+// EXP is fractional (VIP1 needs only 4.5 EXP), so compare with a small
+// epsilon instead of exact equality where floats are involved.
+const approx = (actual, expected, message) => {
+  assert.ok(Math.abs(actual - expected) < 1e-9, `${message ?? "EXP mismatch"}: got ${actual}, expected ${expected}`);
+};
+
 async function fixture() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
@@ -73,25 +79,24 @@ async function fixture() {
   return { sqlite, request };
 }
 
-test("Coin Seller transfers have no monthly or per-transfer VIP EXP cap", async () => {
+test("Coin Seller purchases earn 1.5 VIP EXP per $1, with no cap", async () => {
   const { sqlite, request } = await fixture();
   const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
     body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
   });
 
-  const amounts = [10000, 20000, 30000, 100000000];
+  // $1 = 8,000,000 coins, so 8,000,000 coins = 1.5 EXP, 16,000,000 = 3
+  // EXP and 80,000,000 ($10) = 15 EXP. Cumulative 19.5 EXP reaches VIP2
+  // (4.5 + 7.5 = 12) with 7.5 EXP left toward VIP3.
+  const amounts = [8000000, 16000000, 80000000];
+  const expectedAwarded = [1.5, 3, 15];
   const receiverCoinsBefore = sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins;
-  let priorCoins = 0;
-  let awardedTotal = 0;
-  for (const coins of amounts) {
-    const result = await transfer(coins);
+  for (let i = 0; i < amounts.length; i++) {
+    const result = await transfer(amounts[i]);
     assert.equal(result.status, 200);
-    const awarded = Math.floor((priorCoins + coins) / 400) - Math.floor(priorCoins / 400);
-    assert.equal(result.body.vip_award.awarded_exp, awarded);
-    assert.equal(result.body.vip_award.multiplier, 1 / 400);
-    priorCoins += coins;
-    awardedTotal += awarded;
+    approx(result.body.vip_award.awarded_exp, expectedAwarded[i], "awarded EXP");
+    assert.equal(result.body.vip_award.multiplier, 3 / 16000000);
     assert.equal("monthly_grants_remaining" in result.body.vip_award, false);
   }
 
@@ -103,90 +108,100 @@ test("Coin Seller transfers have no monthly or per-transfer VIP EXP cap", async 
   );
   assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, receiverCoinsBefore + amounts.reduce((sum, n) => sum + n, 0));
   assert.equal(sqlite.prepare("SELECT total_received_coins FROM user_vip WHERE user_id='receiver'").get().total_received_coins, amounts.reduce((sum, n) => sum + n, 0));
-  assert.equal(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, awardedTotal);
+  approx(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, 19.5, "total awarded EXP");
+  const vip = sqlite.prepare("SELECT level, exp_balance FROM user_vip WHERE user_id='receiver'").get();
+  assert.equal(vip.level, 2);
+  approx(vip.exp_balance, 7.5, "EXP balance after VIP2");
   sqlite.close();
 });
 
-test("VIP coin EXP carries partial coin amounts and resets to zero on every level-up", async () => {
+test("VIP EXP carries fractional amounts across purchases", async () => {
   const { sqlite, request } = await fixture();
   const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
     body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
   });
 
-  const first = await transfer(399);
-  assert.equal(first.body.vip_award.awarded_exp, 0);
-  assert.equal(first.body.vip_award.vip.exp_balance, 0);
-  const second = await transfer(1);
-  assert.equal(second.body.vip_award.awarded_exp, 1);
-  assert.equal(second.body.vip_award.vip.exp_balance, 1);
-
-  sqlite.prepare(
-    "UPDATE user_vip SET exp_balance=59999 WHERE user_id='receiver'"
-  ).run();
-  const toVip1 = await transfer(400);
-  assert.equal(toVip1.body.vip_award.awarded_exp, 1);
-  assert.equal(toVip1.body.vip_award.vip.level, 1);
-  assert.equal(toVip1.body.vip_award.vip.exp_balance, 0);
-
-  sqlite.prepare(
-    "UPDATE user_vip SET exp_balance=99999 WHERE user_id='receiver'"
-  ).run();
-  const toVip2 = await transfer(400);
-  assert.equal(toVip2.body.vip_award.awarded_exp, 1);
-  assert.equal(toVip2.body.vip_award.vip.level, 2);
-  assert.equal(toVip2.body.vip_award.vip.exp_balance, 0);
+  // 4,000,000 coins ($0.50) = 0.75 EXP — fractions accumulate in the
+  // balance instead of being floored away.
+  const first = await transfer(4000000);
+  assert.equal(first.status, 200);
+  approx(first.body.vip_award.awarded_exp, 0.75, "first purchase EXP");
+  approx(first.body.vip_award.vip.exp_balance, 0.75, "balance after first purchase");
+  const second = await transfer(4000000);
+  approx(second.body.vip_award.awarded_exp, 0.75, "second purchase EXP");
+  approx(second.body.vip_award.vip.exp_balance, 1.5, "balance after second purchase");
   sqlite.close();
 });
 
-test("Coin Seller receipts earn one VIP EXP per 400 coins at VIP17", async () => {
+test("one large Coin Seller purchase can level up more than once", async () => {
   const { sqlite, request } = await fixture();
-  sqlite.prepare("UPDATE users SET vip_level=17 WHERE id='receiver'").run();
-  await request("/api/vip/receiver", { userId: "receiver" });
-  sqlite.prepare("UPDATE user_vip SET level=17,active_until=? WHERE user_id='receiver'").run(Date.now() + 86400000);
-
-  const coins = 40000;
-  const result = await request("/api/wallet/coin-seller-transfer", {
-    method: "POST", userId: "seller",
-    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
-  });
-  assert.equal(result.status, 200);
-  assert.equal(result.body.vip_award.multiplier, 1 / 400);
-  assert.equal(result.body.vip_award.awarded_exp, 100);
-  assert.equal(result.body.vip_award.vip.exp_multiplier, 1);
-  sqlite.close();
-});
-
-test("one large Coin Seller receipt can level up more than once", async () => {
-  const { sqlite, request } = await fixture();
+  sqlite.prepare("UPDATE users SET coins=100000000000 WHERE id='seller'").run();
+  sqlite.prepare(
+    "UPDATE role_wallets SET balance_coins=100000000000 WHERE user_id='seller' AND wallet_type='coin_seller'"
+  ).run();
   const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
     method: "POST", userId: "seller",
     body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
   });
 
-  // 160,000,000 coins = 400,000 EXP. VIP1 needs 60,000 EXP, VIP2 needs
-  // 100,000 more and VIP3 needs 240,000 more; excess EXP carries, so
-  // one receipt reaches VIP3 with a zero balance instead of stopping
-  // at VIP1 and discarding it.
-  const result = await transfer(160000000);
+  // 80,000,000,000 coins = $10,000 = 15,000 EXP = exactly VIP18's
+  // cumulative threshold, so one purchase reaches VIP18 with a zero
+  // balance and excess EXP carries through every level on the way.
+  const result = await transfer(80000000000);
   assert.equal(result.status, 200);
-  assert.equal(result.body.vip_award.awarded_exp, 400000);
-  assert.equal(result.body.vip_award.vip.level, 3);
+  assert.equal(result.body.vip_award.awarded_exp, 15000);
+  assert.equal(result.body.vip_award.vip.level, 18);
   assert.equal(result.body.vip_award.vip.exp_balance, 0);
   assert.equal(result.body.vip_award.level_up, true);
-  assert.equal(result.body.vip_award.new_level, 3);
+  assert.equal(result.body.vip_award.new_level, 18);
   assert.equal(result.body.vip_award.previous_level, 0);
   sqlite.close();
 });
 
-test("existing VIP balances migrate from the old one-EXP-per-coin rate", async () => {
+test("spending coins on a gift earns no VIP EXP", async () => {
+  const { sqlite, request } = await fixture();
+  const transfer = await request("/api/wallet/coin-seller-transfer", {
+    method: "POST", userId: "seller",
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins: 8000000, pin: "1234" },
+  });
+  assert.equal(transfer.status, 200);
+  approx(transfer.body.vip_award.vip.exp_balance, 1.5, "EXP after purchase");
+
+  // The receiver spends 100 coins on a Rose gift for the seller. The
+  // gift commits (coins debited, diamonds credited) but EXP does not move.
+  const gift = await request("/api/gifts/send", {
+    method: "POST", userId: "receiver",
+    body: { sender_user_id: "receiver", receiver_user_id: "seller", gift_id: "rose" },
+  });
+  assert.equal(gift.status, 200);
+  const vip = sqlite.prepare("SELECT exp_balance FROM user_vip WHERE user_id='receiver'").get();
+  approx(vip.exp_balance, 1.5, "EXP after gift spend");
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM vip_events WHERE user_id='receiver'").get().n,
+    1,
+  );
+  sqlite.close();
+});
+
+test("existing VIP balances migrate to the purchase-EXP scale", async () => {
   const { sqlite, request } = await fixture();
   await request("/api/vip/receiver", { userId: "receiver" });
-  sqlite.prepare("UPDATE user_vip SET exp_balance=80000,exp_rate_version=0 WHERE user_id='receiver'").run();
 
-  const result = await request("/api/vip/receiver", { userId: "receiver" });
-  assert.equal(result.status, 200);
-  assert.equal(result.body.vip.exp_balance, 200);
-  assert.equal(sqlite.prepare("SELECT exp_rate_version FROM user_vip WHERE user_id='receiver'").get().exp_rate_version, 1);
+  // Old rate version 0 (1 EXP per coin): 80,000 EXP = 80,000 coins
+  // received = 80,000 x 1.5 / 8,000,000 = 0.015 EXP in the new scale.
+  sqlite.prepare("UPDATE user_vip SET exp_balance=80000,exp_rate_version=0 WHERE user_id='receiver'").run();
+  const migrated0 = await request("/api/vip/receiver", { userId: "receiver" });
+  assert.equal(migrated0.status, 200);
+  approx(migrated0.body.vip.exp_balance, 0.015, "migrated v0 balance");
+  assert.equal(sqlite.prepare("SELECT exp_rate_version FROM user_vip WHERE user_id='receiver'").get().exp_rate_version, 2);
+
+  // Old rate version 1 (1 EXP per 400 coins): 60,000 EXP was exactly
+  // VIP1's upgrade; in the new scale that is 60,000 x 3 / 40,000 = 4.5.
+  sqlite.prepare("UPDATE user_vip SET exp_balance=60000,exp_rate_version=1,level=0,active_until=NULL WHERE user_id='receiver'").run();
+  const migrated1 = await request("/api/vip/receiver", { userId: "receiver" });
+  assert.equal(migrated1.status, 200);
+  approx(migrated1.body.vip.exp_balance, 4.5, "migrated v1 balance");
+  assert.equal(sqlite.prepare("SELECT exp_rate_version FROM user_vip WHERE user_id='receiver'").get().exp_rate_version, 2);
   sqlite.close();
 });
