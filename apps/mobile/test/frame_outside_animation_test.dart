@@ -8,6 +8,7 @@ void main() {
         File('lib/widgets/vip_animated_frame.dart').readAsStringSync();
 
     expect(source, contains('const frameScale = 1.86'));
+    // The current frame delegates sizing through a local resolved `size`.
     expect(source, contains('dimension: size'));
     expect(source, contains('animation: controller'));
     expect(source, contains('_FrameElementPainter'));
