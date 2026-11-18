@@ -4,6 +4,7 @@ import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, owned
 import { frameVisualForVipLevel } from "./vip_frame_catalog.js";
 import { entryEffectVisualForVipLevel } from "./vip_entry_effect_catalog.js";
 import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
+import { giftRibbonForVipLevel } from "./gift_ribbon_catalog.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
@@ -6581,7 +6582,8 @@ async function handleApi(request, env, url) {
     const eventId = String(url.searchParams.get("event_id") ?? "").slice(0,100);
     const rows = await db.prepare(
       `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.created_at,
-              s.display_name AS sender_name,r.display_name AS receiver_name
+              s.display_name AS sender_name,r.display_name AS receiver_name,
+              COALESCE(s.vip_level,0) AS sender_vip_level
          FROM gift_events g
          LEFT JOIN users s ON s.id=g.sender_user_id
          LEFT JOIN users r ON r.id=g.receiver_user_id
@@ -6603,6 +6605,11 @@ async function handleApi(request, env, url) {
         gift_name:String(gift.name ?? "Gift"),
         emoji:String(gift.emoji ?? "🎁"),
         coin_cost:Number(row.coin_cost ?? 0),
+        sender_vip_level:Number(row.sender_vip_level ?? 0),
+        // Gift ribbon: the banner for the SENDER's VIP level (basic
+        // Sleek Gold tier for VIP0/no-VIP), so the room shows the
+        // sender -> receiver banner with no extra lookup.
+        gift_ribbon:giftRibbonForVipLevel(Number(row.sender_vip_level ?? 0)),
         video_key:String(gift.video_key ?? gift.videoKey ?? ""),
         glb_key:String(gift.glb_key ?? gift.glbKey ?? ""),
         asset_key:String(gift.asset_key ?? gift.asset ?? ""),
@@ -8562,6 +8569,19 @@ async function handleApi(request, env, url) {
       "SELECT diamonds FROM users WHERE id=? LIMIT 1"
     ).bind(receiver).first();
 
+    // Gift ribbon: the banner for the SENDER's VIP level (basic Sleek
+    // Gold tier for VIP0/no-VIP), plus the names the banner shows —
+    // sender name, gift name AND receiver name (sender -> receiver,
+    // gift below). The sender sees it immediately from this response;
+    // other members get the same ribbon from gift-events.
+    const senderVipLevel = vip.active ? Number(vip.level ?? 0) : 0;
+    const senderRow = await db.prepare(
+      "SELECT display_name FROM users WHERE id=? LIMIT 1"
+    ).bind(sender).first();
+    const receiverRow = await db.prepare(
+      "SELECT display_name FROM users WHERE id=? LIMIT 1"
+    ).bind(receiver).first();
+
     // Once the gift is committed, secondary progression failures must not tell
     // the client the paid send failed (which could cause a duplicate charge).
     let cpProgress = null;
@@ -8585,6 +8605,11 @@ async function handleApi(request, env, url) {
       ok: true,
       event_id: eventId,
       gift_cost: cost,
+      gift_name: String(gift.name ?? giftId),
+      sender_name: String(senderRow?.display_name ?? "User"),
+      receiver_name: String(receiverRow?.display_name ?? "User"),
+      sender_vip_level: senderVipLevel,
+      gift_ribbon: giftRibbonForVipLevel(senderVipLevel),
       owner_price_override: pricing.overridden,
       sender_coin_balance: Number(senderWallet?.coins ?? 0),
       receiver_diamond_balance: Number(receiverWallet?.diamonds ?? 0),

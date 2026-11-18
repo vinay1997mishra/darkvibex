@@ -154,4 +154,119 @@ void main() {
     expect(isDirectR2AssetKey('frames/vip5-deer-transparent.webm'), isTrue);
     expect(isDirectR2AssetKey('users/abc/avatar-1.png'), isFalse);
   });
+
+  test('gift ribbon tiers cover VIP1-18: 4 tiers, boundaries at 1/5/11/16',
+      () {
+    expect(giftRibbonStyles.length, 4);
+    expect(giftRibbonStyles[GiftRibbonTier.basic]?.asset,
+        'gift-ribbons/ribbon-sleek-gold.webp');
+    expect(giftRibbonStyles[GiftRibbonTier.premium]?.asset,
+        'gift-ribbons/ribbon-purple-gold.webp');
+    expect(giftRibbonStyles[GiftRibbonTier.royal]?.asset,
+        'gift-ribbons/ribbon-royal-gold.webp');
+    expect(giftRibbonStyles[GiftRibbonTier.superPremium]?.asset,
+        'gift-ribbons/ribbon-dragon-super.webp');
+    expect(giftRibbonTierForVipLevel(1), GiftRibbonTier.basic);
+    expect(giftRibbonTierForVipLevel(4), GiftRibbonTier.basic);
+    expect(giftRibbonTierForVipLevel(5), GiftRibbonTier.premium);
+    expect(giftRibbonTierForVipLevel(10), GiftRibbonTier.premium);
+    expect(giftRibbonTierForVipLevel(11), GiftRibbonTier.royal);
+    expect(giftRibbonTierForVipLevel(15), GiftRibbonTier.royal);
+    expect(giftRibbonTierForVipLevel(16), GiftRibbonTier.superPremium);
+    expect(giftRibbonTierForVipLevel(18), GiftRibbonTier.superPremium);
+    expect(giftRibbonTierForVipLevel(0), isNull);
+    expect(giftRibbonTierForVipLevel(19), isNull);
+    expect(giftRibbonForVipLevel(0), isNull);
+    for (var level = 1; level <= 18; level++) {
+      expect(giftRibbonForVipLevel(level), isNotNull);
+    }
+  });
+
+  test('gift ribbon URLs point at the R2 gift-ribbons/ WebPs', () {
+    String fileUrl(String key) => 'https://worker.example/api/files?key=$key';
+    expect(
+      giftRibbonUrlForVipLevel(2),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-sleek-gold.webp',
+    );
+    expect(
+      giftRibbonUrlForVipLevel(7),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-purple-gold.webp',
+    );
+    expect(
+      giftRibbonUrlForVipLevel(13),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-royal-gold.webp',
+    );
+    expect(
+      giftRibbonUrlForVipLevel(17),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-dragon-super.webp',
+    );
+    expect(giftRibbonKeyForVipLevel(0), isNull);
+    expect(giftRibbonKeyForVipLevel(19), isNull);
+    // VIP0 / no-VIP falls back to the basic tier (mirrors the Worker).
+    expect(
+      giftRibbonUrlForVipLevel(0),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-sleek-gold.webp',
+    );
+    expect(
+      giftRibbonUrlForVipLevel(19),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-sleek-gold.webp',
+    );
+    expect(kGiftRibbonAspectRatio, 3.0);
+    expect(
+      resolveVipVisualAssetUrl(
+          'gift-ribbons/ribbon-royal-gold.webp', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-royal-gold.webp',
+    );
+    expect(isDirectR2AssetKey('gift-ribbons/ribbon-dragon-super.webp'),
+        isTrue);
+  });
+
+  test('gift ribbon event resolution prefers the server ribbon URL', () {
+    const serverUrl =
+        'https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/gift-ribbons/ribbon-royal-gold.webp';
+    final event = <String, dynamic>{
+      'gift_ribbon': <String, dynamic>{
+        'tier': 'royal',
+        'id': 'ribbon_royal_gold',
+        'asset_key': 'gift-ribbons/ribbon-royal-gold.webp',
+        'url': serverUrl,
+        'vip_level': 13,
+      },
+      'sender_vip_level': 13,
+    };
+    expect(giftRibbonVipLevelFromEvent(event), 13);
+    expect(giftRibbonUrlFromEvent(event), serverUrl);
+    // No server ribbon: local mapping by sender VIP level.
+    final localEvent = <String, dynamic>{'sender_vip_level': 7};
+    expect(giftRibbonVipLevelFromEvent(localEvent), 7);
+    expect(
+      giftRibbonUrlFromEvent(localEvent),
+      '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-purple-gold.webp',
+    );
+    // No VIP at all: basic tier.
+    expect(giftRibbonUrlFromEvent(<String, dynamic>{}),
+        '$kVipVisualR2PublicBaseUrl/gift-ribbons/ribbon-sleek-gold.webp');
+  });
+
+  test('gift ribbon panel colours match the preview tiers', () {
+    // Tier 1: gold plaque + dark bronze text.
+    final basic = giftRibbonPanelColorsForTier(GiftRibbonTier.basic);
+    expect(basic.panel, 0xFFD09E48);
+    expect(basic.vipText, 0xFF785514);
+    // Tier 3: deep purple + gold text.
+    final royal = giftRibbonPanelColorsForTier(GiftRibbonTier.royal);
+    expect(royal.panel, 0xFF300873);
+    expect(royal.vipText, 0xFFE8C882);
+    // Tiers 2 and 4: black + gold text.
+    final premium = giftRibbonPanelColorsForTier(GiftRibbonTier.premium);
+    expect(premium.panel, 0xFF050508);
+    expect(premium.vipText, 0xFFE8C882);
+    final superPremium =
+        giftRibbonPanelColorsForTier(GiftRibbonTier.superPremium);
+    expect(superPremium.panel, 0xFF050508);
+    // Level mapping: VIP13 is royal purple, VIP2 is the gold plaque.
+    expect(giftRibbonPanelColorsForVipLevel(13).panel, 0xFF300873);
+    expect(giftRibbonPanelColorsForVipLevel(2).panel, 0xFFD09E48);
+    expect(giftRibbonPanelColorsForVipLevel(0).panel, 0xFFD09E48);
+  });
 }

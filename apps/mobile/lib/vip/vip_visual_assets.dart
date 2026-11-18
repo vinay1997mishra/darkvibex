@@ -66,6 +66,7 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'vip-tags/',
   'vehicles/',
   'vap/',
+  'gift-ribbons/',
 ];
 
 /// True when [key] is a direct-R2 asset key (never send it to /api/files).
@@ -278,4 +279,209 @@ String? vipTagUrlForVipLevel(int level) {
   final String? key = vipTagKeys[level];
   if (key == null) return null;
   return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+// ---------------------------------------------------------------------------
+// Gift ribbons (VIP1-18)
+// ---------------------------------------------------------------------------
+//
+// The gift ribbon is the banner shown in the room when a VIP sends a
+// gift. 4 tiers, colour and premium quality increasing with the level:
+//   VIP1-4   = Sleek Gold (basic, gold-dominant)
+//   VIP5-10  = Purple & Gold Ornate (premium)
+//   VIP11-15 = Royal Gold (more premium, purple-dominant)
+//   VIP16-18 = Dragon Super Premium (richest colours)
+// Every level gets its OWN banner: the tier base image (R2, direct,
+// image/webp under gift-ribbons/) plus the VIP level written BIG and
+// bold at runtime ("VIP N" is the most prominent text), plus the
+// sender name, the gift name and the receiver name (sender -> receiver,
+// gift below). The banner is 2736x912 (aspect ratio 3.0) with its own
+// background, so no transparency is needed.
+//
+// The Worker attaches the ribbon to the gift flow (/api/gifts/send
+// response + /api/rooms/:id/gift-events): gift_ribbon { tier, id, name,
+// asset_key, url, vip_level } for the SENDER's VIP level, falling back
+// to the basic tier for VIP0/no-VIP. The widget prefers the server URL
+// and falls back to the local mapping by sender VIP level
+// (giftRibbonUrlFromEvent). Panel colours per tier mirror the preview
+// compositor (~/workspace/darkvibex-vip-section/gift-ribbons/
+// make_previews.py): tier 1 gold plaque + dark bronze text; tiers 2
+// and 4 black + gold text; tier 3 deep purple + gold text.
+
+/// Gift ribbon tier (one tier covers a range of VIP levels).
+enum GiftRibbonTier { basic, premium, royal, superPremium }
+
+class GiftRibbonStyle {
+  final String id;
+  final String name;
+  final String asset;
+  final int minVip;
+  final int maxVip;
+  const GiftRibbonStyle({
+    required this.id,
+    required this.name,
+    required this.asset,
+    required this.minVip,
+    required this.maxVip,
+  });
+}
+
+const Map<GiftRibbonTier, GiftRibbonStyle> giftRibbonStyles = {
+  GiftRibbonTier.basic: GiftRibbonStyle(
+    id: 'ribbon_sleek_gold',
+    name: 'Sleek Gold',
+    asset: 'gift-ribbons/ribbon-sleek-gold.webp',
+    minVip: 1,
+    maxVip: 4,
+  ),
+  GiftRibbonTier.premium: GiftRibbonStyle(
+    id: 'ribbon_purple_gold',
+    name: 'Purple & Gold Ornate',
+    asset: 'gift-ribbons/ribbon-purple-gold.webp',
+    minVip: 5,
+    maxVip: 10,
+  ),
+  GiftRibbonTier.royal: GiftRibbonStyle(
+    id: 'ribbon_royal_gold',
+    name: 'Royal Gold',
+    asset: 'gift-ribbons/ribbon-royal-gold.webp',
+    minVip: 11,
+    maxVip: 15,
+  ),
+  GiftRibbonTier.superPremium: GiftRibbonStyle(
+    id: 'ribbon_dragon_super',
+    name: 'Dragon Super Premium',
+    asset: 'gift-ribbons/ribbon-dragon-super.webp',
+    minVip: 16,
+    maxVip: 18,
+  ),
+};
+
+/// Width / height of every ribbon banner image (2736x912).
+const double kGiftRibbonAspectRatio = 3.0;
+
+/// Centre panel of the banner, as fractions of the image (measured from
+/// the designs: the baked placeholder text sits inside x 0.33-0.67,
+/// y 0.43-0.69 on all four ribbons, so one panel covers it on every
+/// design without touching the side mic icons or the frame edges).
+/// The runtime overlay in GiftRibbonBanner uses these fractions.
+const double kGiftRibbonPanelLeft = 0.315;
+const double kGiftRibbonPanelTop = 0.40;
+const double kGiftRibbonPanelRight = 0.685;
+const double kGiftRibbonPanelBottom = 0.72;
+
+/// Strict tier for a VIP level, or null for VIP0 / out of range.
+/// (The gift flow falls back to basic separately — see below.)
+GiftRibbonTier? giftRibbonTierForVipLevel(int level) {
+  if (level < 1 || level > 18) return null;
+  if (level >= 16) return GiftRibbonTier.superPremium;
+  if (level >= 11) return GiftRibbonTier.royal;
+  if (level >= 5) return GiftRibbonTier.premium;
+  return GiftRibbonTier.basic;
+}
+
+/// Strict style for a VIP level, or null for VIP0 / out of range.
+GiftRibbonStyle? giftRibbonForVipLevel(int level) {
+  final GiftRibbonTier? tier = giftRibbonTierForVipLevel(level);
+  return tier == null ? null : giftRibbonStyles[tier];
+}
+
+/// R2 key of the ribbon banner for [level], or null for VIP0 / out of
+/// range. All levels in a tier share one base image; the level is
+/// written on it at runtime.
+String? giftRibbonKeyForVipLevel(int level) {
+  return giftRibbonForVipLevel(level)?.asset;
+}
+
+/// Direct R2 URL of the ribbon banner for [level]. VIP0 / no-VIP falls
+/// back to the basic (Sleek Gold) tier, mirroring the Worker
+/// (giftRibbonForVipLevel) — every gift gets a ribbon.
+String giftRibbonUrlForVipLevel(int level) {
+  final GiftRibbonStyle style =
+      giftRibbonForVipLevel(level) ?? giftRibbonStyles[GiftRibbonTier.basic]!;
+  return '$kVipVisualR2PublicBaseUrl/${style.asset}';
+}
+
+/// VIP level a gift event's ribbon belongs to: the server ribbon's
+/// vip_level when present, else the event's sender_vip_level, else 0.
+int giftRibbonVipLevelFromEvent(Map<String, dynamic> event) {
+  final Object? ribbon = event['gift_ribbon'];
+  if (ribbon is Map) {
+    final int? level = int.tryParse(ribbon['vip_level']?.toString() ?? '');
+    if (level != null) return level;
+  }
+  return int.tryParse(event['sender_vip_level']?.toString() ?? '') ?? 0;
+}
+
+/// Direct R2 URL of the ribbon banner for a gift event: the server
+/// ribbon URL when present, else the local mapping by sender VIP level
+/// (basic tier for VIP0/no-VIP).
+String giftRibbonUrlFromEvent(Map<String, dynamic> event) {
+  final Object? ribbon = event['gift_ribbon'];
+  if (ribbon is Map) {
+    final String url = ribbon['url']?.toString().trim() ?? '';
+    if (url.isNotEmpty) return url;
+    final String key = ribbon['asset_key']?.toString().trim() ?? '';
+    if (key.isNotEmpty) {
+      return resolveVipVisualAssetUrl(key, (_) => '');
+    }
+  }
+  return giftRibbonUrlForVipLevel(giftRibbonVipLevelFromEvent(event));
+}
+
+/// Centre-panel colours for a ribbon tier (as 0xFFRRGGBB ints, so this
+/// file stays pure Dart — the widget turns them into Colors).
+/// Tier 1: gold plaque + dark bronze text. Tiers 2 and 4: black + gold
+/// text. Tier 3: deep purple + gold text.
+class GiftRibbonPanelColors {
+  const GiftRibbonPanelColors({
+    required this.panel,
+    required this.border,
+    required this.vipText,
+    required this.nameText,
+    required this.giftText,
+  });
+
+  final int panel;
+  final int border;
+  final int vipText;
+  final int nameText;
+  final int giftText;
+}
+
+GiftRibbonPanelColors giftRibbonPanelColorsForTier(GiftRibbonTier tier) {
+  switch (tier) {
+    case GiftRibbonTier.basic:
+      return const GiftRibbonPanelColors(
+        panel: 0xFFD09E48,
+        border: 0xFF8C641E,
+        vipText: 0xFF785514,
+        nameText: 0xFF6E4E12,
+        giftText: 0xFF6E4E12,
+      );
+    case GiftRibbonTier.royal:
+      return const GiftRibbonPanelColors(
+        panel: 0xFF300873,
+        border: 0xFFD4AF69,
+        vipText: 0xFFE8C882,
+        nameText: 0xFFE8C882,
+        giftText: 0xFFC8AA64,
+      );
+    case GiftRibbonTier.premium:
+    case GiftRibbonTier.superPremium:
+      return const GiftRibbonPanelColors(
+        panel: 0xFF050508,
+        border: 0xFFD4AF69,
+        vipText: 0xFFE8C882,
+        nameText: 0xFFE8C882,
+        giftText: 0xFFC8AA64,
+      );
+  }
+}
+
+/// Panel colours for a VIP level (basic tier colours for VIP0/no-VIP).
+GiftRibbonPanelColors giftRibbonPanelColorsForVipLevel(int level) {
+  final GiftRibbonTier tier =
+      giftRibbonTierForVipLevel(level) ?? GiftRibbonTier.basic;
+  return giftRibbonPanelColorsForTier(tier);
 }

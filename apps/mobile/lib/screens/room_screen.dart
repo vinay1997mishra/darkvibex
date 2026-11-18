@@ -22,6 +22,7 @@ import '../room/ktv_service.dart';
 import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../widgets/vip_entry_effect_banner.dart';
+import '../widgets/gift_ribbon_banner.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -137,6 +138,12 @@ class _RoomScreenState extends State<RoomScreen> {
   String? activeGiftReceiverAvatarKey;
   int giftEffectSequence = 0;
   Timer? giftEffectTimer;
+  // Gift ribbon banner (VIP gift banner, shown with the gift display):
+  // tier image for the sender's VIP level with the VIP level BIG and
+  // bold, sender -> receiver, and the gift name. Cleared on its own
+  // timer so it also shows after a gift video/GLB dialog closes.
+  Map<String, dynamic>? activeGiftRibbon;
+  Timer? giftRibbonTimer;
   final Map<String, String> activeSeatReactions = <String, String>{};
   final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
   final Set<String> seenSeatReactionMessageIds = <String>{};
@@ -559,6 +566,7 @@ class _RoomScreenState extends State<RoomScreen> {
       };
       final receiverId = event['receiver_user_id']?.toString() ?? '';
       final senderName = event['sender_name']?.toString() ?? 'User';
+      final receiverName = event['receiver_name']?.toString() ?? 'User';
       _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
         if (!mounted || receiverId.isEmpty) return;
         final videoKey = gift['video_key']?.toString() ?? '';
@@ -575,6 +583,14 @@ class _RoomScreenState extends State<RoomScreen> {
         } else {
           _playGiftEffect(gift, receiverId: receiverId);
         }
+        // Gift ribbon banner (sender's VIP tier, basic for VIP0):
+        // shown with the gift display, after any video/GLB dialog.
+        _showGiftRibbon(
+          event: event,
+          senderName: senderName,
+          receiverName: receiverName,
+          giftName: gift['name']?.toString() ?? 'Gift',
+        );
       });
     }
   }
@@ -1989,6 +2005,7 @@ class _RoomScreenState extends State<RoomScreen> {
       'asset_key': verified['asset_key']?.toString() ?? '',
     };
     final senderName = verified['sender_name']?.toString() ?? 'User';
+    final receiverName = verified['receiver_name']?.toString() ?? 'User';
     _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
       if (!mounted) return;
       final videoKey = gift['video_key']?.toString() ?? '';
@@ -2000,6 +2017,14 @@ class _RoomScreenState extends State<RoomScreen> {
       } else {
         _playGiftEffect(gift, receiverId: receiverId);
       }
+      // Gift ribbon banner (sender's VIP tier, basic for VIP0):
+      // shown with the gift display, after any video/GLB dialog.
+      _showGiftRibbon(
+        event: verified,
+        senderName: senderName,
+        receiverName: receiverName,
+        giftName: gift['name']?.toString() ?? 'Gift',
+      );
     });
   }
 
@@ -2079,6 +2104,7 @@ class _RoomScreenState extends State<RoomScreen> {
     controlsRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
+    giftRibbonTimer?.cancel();
     for (final timer in seatReactionTimers.values) {
       timer.cancel();
     }
@@ -5712,6 +5738,40 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  /// Shows the VIP gift ribbon banner for a gift event, for a few
+  /// seconds, ALONGSIDE (never instead of) the existing gift display
+  /// (emoji fly-in / video / GLB). The banner is the tier image for the
+  /// SENDER's VIP level (basic Sleek Gold for VIP0/no-VIP), with the VIP
+  /// level BIG and bold, sender -> receiver, and the gift name. The
+  /// server ribbon (gift_ribbon.url) is preferred; without it the local
+  /// mapping by sender VIP level is used. It has its own timer so it
+  /// also shows after a gift video/GLB dialog closes.
+  void _showGiftRibbon({
+    required Map<String, dynamic> event,
+    required String senderName,
+    required String receiverName,
+    required String giftName,
+  }) {
+    if (!mounted || !effectsEnabled || !giftEffectsEnabled) return;
+    final int vipLevel = giftRibbonVipLevelFromEvent(event);
+    giftRibbonTimer?.cancel();
+    setState(() {
+      activeGiftRibbon = <String, dynamic>{
+        'vip_level': vipLevel,
+        'sender_name': senderName,
+        'receiver_name': receiverName,
+        'gift_name': giftName,
+        'ribbon_url': giftRibbonUrlFromEvent(event),
+      };
+    });
+    giftRibbonTimer = Timer(const Duration(milliseconds: 4000), () {
+      if (!mounted) return;
+      setState(() {
+        activeGiftRibbon = null;
+      });
+    });
+  }
+
   Widget _buildSeatGiftImpactEffect(double seatDiameter) {
     final gift = activeGiftEffect;
     if (gift == null) return const SizedBox.shrink();
@@ -7073,6 +7133,15 @@ class _RoomScreenState extends State<RoomScreen> {
       } else {
         _playGiftEffect(gift, receiverId: receiverId);
       }
+      // Gift ribbon banner (sender's VIP tier from the send response,
+      // basic for VIP0): shown with the gift display, after any
+      // video/GLB dialog.
+      _showGiftRibbon(
+        event: result ?? <String, dynamic>{},
+        senderName: widget.state.displayName,
+        receiverName: receiverName,
+        giftName: giftName,
+      );
       await widget.state.refreshIdLevel(notify: false);
       if (!mounted) return;
       unawaited(_loadRoomGiftRanking());
@@ -8215,6 +8284,34 @@ class _RoomScreenState extends State<RoomScreen> {
               ],
             ),
           ),
+          if (activeGiftRibbon != null && effectsEnabled && giftEffectsEnabled)
+            Positioned(
+              // Gift ribbon banner (sender's VIP tier): full-width
+              // banner with the VIP level BIG and bold, sender ->
+              // receiver, and the gift name. An addition to the gift
+              // effect bar below — never a replacement for it.
+              left: 12,
+              right: 12,
+              bottom: 220,
+              child: IgnorePointer(
+                child: GiftRibbonBanner(
+                  key: const Key('room-gift-ribbon'),
+                  vipLevel: int.tryParse(
+                        activeGiftRibbon?['vip_level']?.toString() ?? '',
+                      ) ??
+                      0,
+                  senderName: activeGiftRibbon?['sender_name']?.toString() ??
+                      'User',
+                  receiverName:
+                      activeGiftRibbon?['receiver_name']?.toString() ??
+                          'User',
+                  giftName:
+                      activeGiftRibbon?['gift_name']?.toString() ?? 'Gift',
+                  ribbonUrl:
+                      activeGiftRibbon?['ribbon_url']?.toString(),
+                ),
+              ),
+            ),
           if (activeGiftEffect != null && effectsEnabled && giftEffectsEnabled)
             Positioned(
               left: 24,
