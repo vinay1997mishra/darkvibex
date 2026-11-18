@@ -8,7 +8,7 @@ void main() {
         File('lib/widgets/vip_animated_frame.dart').readAsStringSync();
 
     expect(source, contains('const frameScale = 1.86'));
-    expect(source, contains('dimension: widget.size'));
+    expect(source, contains('dimension: size'));
     expect(source, contains('animation: _controller'));
     expect(source, contains('_FrameElementPainter'));
     expect(source, contains('_ButterflyFlightPainter'));
