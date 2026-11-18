@@ -1,6 +1,9 @@
 import { normalizeRole } from "./role_policy.js";
 import { awardIdLevelDaily, awardIdLevelGift, claimIdLevelReward, getIdLevelStatus } from "./id_level.js";
 import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, ownedCosmetics } from "./cosmetics.js";
+import { frameVisualForVipLevel } from "./vip_frame_catalog.js";
+import { entryEffectVisualForVipLevel } from "./vip_entry_effect_catalog.js";
+import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
@@ -1088,13 +1091,18 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
       animation_type: String(item.animation_type ?? ""), animation_ms: Number(item.animation_ms ?? 0),
     };
   };
+  // Animal visuals are the FALLBACK when the Owner has not configured an
+  // item for the level (VIP5-18 only; null below VIP5). Precedence stays:
+  // equipped custom item > Owner vip_rule item > animal visual.
+  // The VIP tag has no Owner override — it is purely the level's badge.
   return {
-    frame: find(config.frame_id, "frame"),
+    frame: find(config.frame_id, "frame") ?? frameVisualForVipLevel(vipLevel),
     chat_box: find(config.chat_box_id, "bubble"),
-    entry_effect: find(config.entry_effect_id || config.entry_id, "entry"),
+    entry_effect: find(config.entry_effect_id || config.entry_id, "entry") ?? entryEffectVisualForVipLevel(vipLevel),
     vip_banner: find(config.vip_banner_id, "banner"),
     vehicle_entry: find(config.vehicle_entry_id, "vehicle"),
     mini_profile_panel: find(config.mini_profile_panel_id, "profile_card"),
+    vip_tag: tagVisualForVipLevel(vipLevel),
   };
 }
 
@@ -6857,9 +6865,15 @@ async function handleApi(request, env, url) {
           const entry = visuals.entry_effect;
           if (!member.active_entry_id && entry?.id) {
             member.active_entry_id = entry.id;
+            member.active_entry_asset_key = entry.asset_key ?? "";
             member.active_entry_video_key = entry.video_key ?? "";
             member.active_entry_glb_key = entry.glb_key ?? "";
             member.active_entry_animation_ms = entry.animation_ms ?? 0;
+          }
+          const tag = visuals.vip_tag;
+          if (tag?.id) {
+            member.active_vip_tag_id = tag.id;
+            member.active_vip_tag_asset_key = tag.asset_key ?? "";
           }
           const vehicle = visuals.vehicle_entry;
           if (!member.active_vehicle_id && vehicle?.id) {

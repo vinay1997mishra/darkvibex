@@ -15,7 +15,9 @@ import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
 import 'personal_profile_screen.dart';
 import 'room_screen.dart';
+import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
+import '../widgets/vip_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -280,14 +282,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Row(
                 children: [
-                  VipAnimatedFrame(
-                    size: 72,
+                  VipAnimatedFrame.auto(
+                    // Auto-sizing: reads the profile DP size at runtime
+                    // and scales ring/gems/head/plate proportionally.
+                    // Falls back to the level's animal frame still when
+                    // no frame is equipped (frames/ keys resolve to a
+                    // direct R2 URL, never backend.fileUrl()).
                     enabled: state.activeFrameId != null ||
-                        state.hasVipPrivilege('dynamic_avatar'),
+                        state.hasVipPrivilege('dynamic_avatar') ||
+                        vipFrameStillUrlForVipLevel(state.vipLevel) != null,
                     styleId: state.activeFrameId,
                     assetUrl: state.activeFrameAssetKey?.isNotEmpty == true
-                        ? state.backend.fileUrl(state.activeFrameAssetKey!)
-                        : null,
+                        ? resolveVipVisualAssetUrl(
+                            state.activeFrameAssetKey!,
+                            state.backend.fileUrl,
+                          )
+                        : vipFrameStillUrlForVipLevel(state.vipLevel),
                     assetHeaders: state.backend.fileHeaders,
                     child: Container(
                       padding: EdgeInsets.all(ringId == null ? 0 : 1.5),
@@ -371,6 +381,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: [
                             _mineTag('Lv.${state.idLevel}'),
                             _mineTag('VIP ${state.vipLevel}'),
+                            // Golden VIP tag (VIP5-18), sized to the tag chip (~21px).
+                            if (state.vipLevel >= 5)
+                              VipTagImage(vipLevel: state.vipLevel, fontSize: 12),
                             if (state.hasVipPrivilege('honorary_title'))
                               _mineTag('King of VIP'),
                           ],

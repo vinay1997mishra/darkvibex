@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'vip_animated_frame.dart';
+import 'vip_tag_image.dart';
+
 /// Sender identity shown above each room chat bubble.
 ///
 /// Message text and images stay inside the bubble; profile data, Owner Panel
@@ -12,11 +15,21 @@ class RoomChatSenderHeader extends StatelessWidget {
     required this.medals,
     this.avatarUrl,
     this.avatarHeaders,
+    this.vipLevel = 0,
+    this.frameAssetUrl,
   });
 
   final String displayName;
   final String? avatarUrl;
   final Map<String, String>? avatarHeaders;
+
+  /// Sender's active VIP level (0 = none). Drives the golden tag
+  /// (VIP5-18) next to the name and the frame level.
+  final int vipLevel;
+
+  /// Direct URL of the sender's frame image (already resolved to a
+  /// direct R2 URL by the caller). Empty/null = no frame on the avatar.
+  final String? frameAssetUrl;
   final List<Map<String, dynamic>> tags;
   final List<Map<String, dynamic>> medals;
 
@@ -53,20 +66,34 @@ class RoomChatSenderHeader extends StatelessWidget {
 
   Widget _avatar() {
     final url = avatarUrl?.trim() ?? '';
-    if (url.isEmpty) return _fallbackAvatar();
-    return SizedBox(
-      width: 28,
-      height: 28,
-      child: ClipOval(
-        child: Image.network(
-          url,
-          headers: avatarHeaders,
-          width: 28,
-          height: 28,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallbackAvatar(),
+    final Widget avatar;
+    if (url.isEmpty) {
+      avatar = _fallbackAvatar();
+    } else {
+      avatar = SizedBox(
+        width: 28,
+        height: 28,
+        child: ClipOval(
+          child: Image.network(
+            url,
+            headers: avatarHeaders,
+            width: 28,
+            height: 28,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _fallbackAvatar(),
+          ),
         ),
-      ),
+      );
+    }
+    // The frame auto-sizes to the 28px chat avatar (VipAnimatedFrame.auto
+    // measures the avatar at runtime). No frame when frameAssetUrl is empty.
+    final String frameUrl = frameAssetUrl?.trim() ?? '';
+    if (frameUrl.isEmpty) return avatar;
+    return VipAnimatedFrame.auto(
+      enabled: true,
+      level: vipLevel,
+      assetUrl: frameUrl,
+      child: avatar,
     );
   }
 
@@ -188,6 +215,11 @@ class RoomChatSenderHeader extends StatelessWidget {
                 ),
               ),
             ),
+            // Golden VIP tag (VIP5-18), sized from the 11pt name text.
+            if (vipLevel >= 5) ...<Widget>[
+              const SizedBox(width: 4),
+              VipTagImage(vipLevel: vipLevel, fontSize: 11),
+            ],
           ],
         ),
         if (visibleTags.isNotEmpty || visibleMedals.isNotEmpty)
