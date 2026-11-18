@@ -33,6 +33,52 @@ void main() {
     expect(vipFrameVideoUrlForVipLevel(4), isNull);
   });
 
+  test('frame VAP URLs point at the R2 vap/ mp4s', () {
+    // Tencent VAP v1 (alpha mask LEFT, RGB RIGHT) — played by
+    // VipFrameAlphaVideo via flutter_vap_player (enableOldVersion).
+    expect(
+      vipFrameVapUrlForVipLevel(13),
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla.mp4',
+    );
+    expect(
+      vipFrameVapUrlForVipLevel(5),
+      '$kVipVisualR2PublicBaseUrl/vap/vip5-deer.mp4',
+    );
+    expect(vipFrameVapUrlForVipLevel(4), isNull);
+    expect(vipFrameVapUrlForVipLevel(19), isNull);
+    for (var level = 5; level <= 18; level++) {
+      expect(
+        vipFrameVapKeys[level],
+        'vap/vip$level-${vipFrameAnimals[level]}.mp4',
+      );
+    }
+  });
+
+  test('vipFrameVapUrlForDisplay returns the VAP URL only for the animal frame',
+      () {
+    // The displayed frame IS the animal still (or no frame configured,
+    // so the animal still is shown): the VAP video plays.
+    expect(
+      vipFrameVapUrlForDisplay('frames/vip13-gorilla-transparent.png', 13),
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla.mp4',
+    );
+    expect(
+      vipFrameVapUrlForDisplay('', 13),
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla.mp4',
+    );
+    expect(
+      vipFrameVapUrlForDisplay(null, 13),
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla.mp4',
+    );
+    // A custom/Owner frame has no VAP video: the still shows only.
+    expect(
+      vipFrameVapUrlForDisplay('custom-assets/frame-123.png', 13),
+      isNull,
+    );
+    // VIP1-4 have no animal frame at all.
+    expect(vipFrameVapUrlForDisplay('', 4), isNull);
+  });
+
   test('entry effect URLs point at the R2 entry-effects/ PNGs', () {
     expect(
       vipEntryEffectUrlForVipLevel(10),
@@ -89,6 +135,10 @@ void main() {
     expect(
       resolveVipVisualAssetUrl('vehicles/vip5-deer.mp4', fileUrl),
       '$kVipVisualR2PublicBaseUrl/vehicles/vip5-deer.mp4',
+    );
+    expect(
+      resolveVipVisualAssetUrl('vap/vip13-gorilla.mp4', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla.mp4',
     );
     expect(
       resolveVipVisualAssetUrl(

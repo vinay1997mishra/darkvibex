@@ -6,8 +6,10 @@ import {
   frameVisualForVipLevel,
   frameVideoUrlForVipLevel,
   frameStillUrlForVipLevel,
+  frameVapUrlForVipLevel,
   allFrameVideoUrls,
   allFrameStillUrls,
+  allFrameVapUrls,
 } from "../src/vip_frame_catalog.js";
 import {
   VIP_ENTRY_EFFECT_CATALOG,
@@ -64,6 +66,26 @@ test("VIP frame visual uses the PNG still as the display asset", () => {
   assert.equal(visual.kind, "frame");
   assert.equal(visual.asset_key, "frames/vip7-eagle-transparent.png");
   assert.equal(visual.video_key, "frames/vip7-eagle-transparent.webm");
+});
+
+test("VIP frame VAP URLs point at the R2 vap/ keys (Tencent VAP mp4)", () => {
+  // VAP v1: H.264 MP4, alpha mask on the LEFT half, RGB on the RIGHT half
+  // of each frame; played by flutter_vap_player with enableOldVersion.
+  assert.equal(
+    frameVapUrlForVipLevel(13),
+    `${R2_BASE}/vap/vip13-gorilla.mp4`,
+  );
+  assert.equal(
+    frameVapUrlForVipLevel(5),
+    `${R2_BASE}/vap/vip5-deer.mp4`,
+  );
+  assert.equal(frameVapUrlForVipLevel(4), null);
+  assert.equal(frameVapUrlForVipLevel(19), null);
+  assert.equal(allFrameVapUrls().length, 14);
+  assert.ok(allFrameVapUrls().every((url) => url.startsWith(`${R2_BASE}/vap/`)));
+  assert.ok(allFrameVapUrls().every((url) => url.endsWith(".mp4")));
+  assert.equal(frameVisualForVipLevel(7).vap_key, "vap/vip7-eagle.mp4");
+  assert.equal(frameVisualForVipLevel(18).vap_key, "vap/vip18-dragon.mp4");
 });
 
 test("VIP entry-effect catalog covers VIP5-18 with R2 banner URLs", () => {

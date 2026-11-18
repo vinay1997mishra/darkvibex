@@ -9,24 +9,28 @@
 // The Worker's /api/files endpoint REJECTS these prefixes (400
 // invalid_file_key) — its allowlist is only users/rooms/messages/
 // custom-gifts/room-themes/banners/custom-assets/creator-assets. So the
-// app must NEVER pass a frames/, entry-effects/, vip-tags/ or vehicles/
-// key through backend.fileUrl(); use resolveVipVisualAssetUrl() instead,
-// which builds the direct R2 URL for those prefixes and falls back to
-// fileUrl() for everything else (user avatars, custom uploads).
+// app must NEVER pass a frames/, entry-effects/, vip-tags/, vehicles/ or
+// vap/ key through backend.fileUrl(); use resolveVipVisualAssetUrl()
+// instead, which builds the direct R2 URL for those prefixes and falls
+// back to fileUrl() for everything else (user avatars, custom uploads).
 //
 // FRAMES — one transparent animal frame per VIP level 5-18:
-//   video: frames/vip<N>-<animal>-transparent.webm (VP9 WITH alpha)
-//   still: frames/vip<N>-<animal>-transparent.png (transparent PNG)
+//   vap:   vap/vip<N>-<animal>.mp4 (Tencent VAP v1: H.264, alpha mask on
+//          the LEFT half, RGB on the RIGHT half of each frame) — the
+//          ANIMATED frame the app plays (VipFrameAlphaVideo).
+//   video: frames/vip<N>-<animal>-transparent.webm (VP9 WITH alpha) —
+//          source for the VAP conversion; NOT played in the app.
+//   still: frames/vip<N>-<animal>-transparent.png (transparent PNG) —
+//          fallback/poster: shown while the VAP loads, and after the 5 s
+//          animation finishes (it plays once, then ends calmly).
 // WEBM-ALPHA LIMITATION: Flutter's video_player (ExoPlayer on Android)
 // renders video to an OPAQUE texture — it does not carry the VP9 alpha
 // channel, so a transparent WebM played through it shows a BLACK box.
-// The app has no SVGA/Lottie/VAP player. The frame display path is
-// therefore the transparent PNG still via VipAnimatedFrame.assetUrl
-// (TransparentArtworkImage renders PNG alpha natively). The WebM URL
-// helper exists for a future alpha-capable player. The PNG stills are
-// NOT on R2 yet (upload needs Vinay's go-ahead); until they are,
-// vipFrameStillUrlForVipLevel() resolves to a URL that 404s and
-// VipAnimatedFrame falls back to its painted ring.
+// Do NOT feed the WebM to video_player. The animated path is the VAP mp4
+// via flutter_vap_player (VapPlayerController.networkUrl with
+// enableOldVersion: true). The PNG still is the fallback, never a black
+// box: VipFrameAlphaVideo shows the still while the VAP loads and swaps
+// back to it if the video errors or finishes.
 //
 // ENTRY EFFECTS — one wide banner per VIP level 5-18:
 //   entry-effects/vip<N>-entry.png (transparent background, transparent
@@ -61,6 +65,7 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'entry-effects/',
   'vip-tags/',
   'vehicles/',
+  'vap/',
 ];
 
 /// True when [key] is a direct-R2 asset key (never send it to /api/files).
@@ -78,7 +83,7 @@ bool isDirectR2AssetKey(String key) {
 
 /// Turns a worker asset key into a URL the app can load:
 /// - full http(s) URL -> used as-is (already a direct R2 URL);
-/// - frames//entry-effects//vip-tags//vehicles/ key -> direct R2 URL;
+/// - frames//entry-effects//vip-tags//vehicles//vap/ key -> direct R2 URL;
 /// - anything else -> fileUrl(key) (Worker /api/files, e.g. user avatars).
 /// [fileUrl] is backend.fileUrl — passed in so this file stays pure Dart.
 String resolveVipVisualAssetUrl(
@@ -147,6 +152,41 @@ String? vipFrameStillUrlForVipLevel(int level) {
   final String? key = vipFrameStillKeys[level];
   if (key == null) return null;
   return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// R2 key of the Tencent VAP mp4 per level (the animated frame).
+Map<int, String> get vipFrameVapKeys => <int, String>{
+      for (final MapEntry<int, String> entry in vipFrameAnimals.entries)
+        entry.key: 'vap/vip${entry.key}-${entry.value}.mp4',
+    };
+
+/// Direct R2 URL of the Tencent VAP mp4 for [level], or null for VIP1-4 /
+/// out of range. Played by VipFrameAlphaVideo (flutter_vap_player,
+/// enableOldVersion: true — VAP v1, alpha on the LEFT half of the frame).
+String? vipFrameVapUrlForVipLevel(int level) {
+  final String? key = vipFrameVapKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// VAP video URL for the frame actually being displayed, or null when the
+/// frame has no VAP video.
+///
+/// A VAP video exists ONLY for the ANIMAL frame (VIP5-18). It is used
+/// when the displayed still IS the animal still: [assetKey] is the
+/// member's active_frame_asset_key — the animal still key, or empty (no
+/// frame configured, so the caller falls back to the animal still).
+/// A custom/Owner frame has no VAP video, so this returns null and the
+/// caller shows the PNG still only. Never guess a VAP URL for a custom
+/// frame — that would play the wrong animal's animation over it.
+String? vipFrameVapUrlForDisplay(String? assetKey, int level) {
+  final String? stillKey = vipFrameStillKeys[level];
+  if (stillKey == null) return null; // VIP1-4 / out of range: no animal frame.
+  final String key = (assetKey ?? '').trim();
+  if (key.isEmpty || key == stillKey) {
+    return vipFrameVapUrlForVipLevel(level);
+  }
+  return null; // Custom/Owner frame: PNG still only, no VAP video.
 }
 
 // ---------------------------------------------------------------------------

@@ -3556,6 +3556,13 @@ class _RoomScreenState extends State<RoomScreen> {
                                         widget.state.backend.fileUrl,
                                       )
                                     : vipFrameStillUrlForVipLevel(activeVipLevel),
+                                // VAP alpha-video: only when the frame
+                                // shown IS the animal frame (custom frames
+                                // have no VAP video and show the still).
+                                videoUrl: vipFrameVapUrlForDisplay(
+                                  vipFrame['asset_key']?.toString(),
+                                  activeVipLevel,
+                                ),
                                 assetHeaders: widget.state.backend.fileHeaders,
                                 child: Container(
                                   padding: const EdgeInsets.all(3),
@@ -4269,6 +4276,13 @@ class _RoomScreenState extends State<RoomScreen> {
                                   : vipFrameStillUrlForVipLevel(
                                       int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0,
                                     ),
+                              // VAP alpha-video: only when the frame shown
+                              // IS the animal frame (custom frames have no
+                              // VAP video and show the still).
+                              videoUrl: vipFrameVapUrlForDisplay(
+                                member['active_frame_asset_key']?.toString(),
+                                int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0,
+                              ),
                               assetHeaders: widget.state.backend.fileHeaders,
                               child: CircleAvatar(
                                 radius: 21,
@@ -7709,6 +7723,14 @@ class _RoomScreenState extends State<RoomScreen> {
                                         level: frameTier,
                                         styleId: activeFrame,
                                         assetUrl: seatFrameAssetUrl,
+                                        // VAP alpha-video: only when the
+                                        // frame shown IS the animal frame
+                                        // (custom frames have no VAP video
+                                        // and show the still).
+                                        videoUrl: vipFrameVapUrlForDisplay(
+                                          activeFrameAssetKey,
+                                          vipLevel,
+                                        ),
                                         assetHeaders: widget.state.backend.fileHeaders,
                                         child: CircleAvatar(
                                           radius: (diameter / 2) - 1,
@@ -8065,7 +8087,11 @@ class _RoomScreenState extends State<RoomScreen> {
                                     tags: profileTags,
                                     medals: profileMedals,
                                     vipLevel: senderVipLevel,
+                                    // Animal frame still (VIP5-18) with its
+                                    // VAP alpha-video; the frame animates
+                                    // once and then shows the still.
                                     frameAssetUrl: vipFrameStillUrlForVipLevel(senderVipLevel),
+                                    frameVideoUrl: vipFrameVapUrlForVipLevel(senderVipLevel),
                                   ),
                                   const SizedBox(height: 4),
                                   messageBubble,
