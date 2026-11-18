@@ -19,7 +19,9 @@ import '../infra/agora_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
+import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
+import '../widgets/vip_entry_effect_banner.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -3539,14 +3541,21 @@ class _RoomScreenState extends State<RoomScreen> {
                                   () => openFullProfile(userId),
                                 );
                               },
-                              child: VipAnimatedFrame(
-                                size: 88,
-                                enabled: activeVipLevel > 0 && vipFrame.isNotEmpty,
+                              child: VipAnimatedFrame.auto(
+                                // Auto-sizing: reads the sheet avatar size
+                                // at runtime (88px box). Falls back to the
+                                // level's animal frame still when the
+                                // profile has no frame configured.
+                                enabled: (activeVipLevel > 0 && vipFrame.isNotEmpty) ||
+                                    vipFrameStillUrlForVipLevel(activeVipLevel) != null,
                                 level: activeVipLevel > 0 ? activeVipLevel : level,
                                 styleId: vipFrame['id']?.toString(),
                                 assetUrl: (vipFrame['asset_key']?.toString().trim().isNotEmpty == true)
-                                    ? widget.state.backend.fileUrl(vipFrame['asset_key'].toString())
-                                    : null,
+                                    ? resolveVipVisualAssetUrl(
+                                        vipFrame['asset_key'].toString(),
+                                        widget.state.backend.fileUrl,
+                                      )
+                                    : vipFrameStillUrlForVipLevel(activeVipLevel),
                                 assetHeaders: widget.state.backend.fileHeaders,
                                 child: Container(
                                   padding: const EdgeInsets.all(3),
@@ -4244,9 +4253,23 @@ class _RoomScreenState extends State<RoomScreen> {
                                       _showSeatMemberProfile(member, seat);
                                     });
                                   },
-                            leading: VipAnimatedFrame(
-                              size: 44,
-                              enabled: (int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 7,
+                            leading: VipAnimatedFrame.auto(
+                              // Auto-sizing: reads the 42px list avatar at
+                              // runtime. Shows the animal frame from VIP5
+                              // (not just the painted ring from VIP7).
+                              enabled: (member['active_frame_id']?.toString().isNotEmpty == true) ||
+                                  (int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0) >= 5,
+                              level: int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 7,
+                              styleId: member['active_frame_id']?.toString(),
+                              assetUrl: (member['active_frame_asset_key']?.toString().trim().isNotEmpty == true)
+                                  ? resolveVipVisualAssetUrl(
+                                      member['active_frame_asset_key'].toString(),
+                                      widget.state.backend.fileUrl,
+                                    )
+                                  : vipFrameStillUrlForVipLevel(
+                                      int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0,
+                                    ),
+                              assetHeaders: widget.state.backend.fileHeaders,
                               child: CircleAvatar(
                                 radius: 21,
                                 backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(widget.state.backend.fileUrl(avatar), headers: widget.state.backend.fileHeaders) : null,
@@ -7585,6 +7608,18 @@ class _RoomScreenState extends State<RoomScreen> {
                   final activeEntry = mine
                       ? widget.state.activeCosmetic('entry')
                       : member?['active_entry_id']?.toString();
+                  // Animal frame URL: the member payload's asset key first
+                  // (equipped custom frame, or the worker's animal-frame
+                  // fallback); otherwise the level's animal frame still,
+                  // direct from R2. frames/ keys must NOT go through
+                  // backend.fileUrl() — /api/files rejects them.
+                  final String? seatFrameAssetUrl =
+                      activeFrameAssetKey.isNotEmpty
+                          ? resolveVipVisualAssetUrl(
+                              activeFrameAssetKey,
+                              widget.state.backend.fileUrl,
+                            )
+                          : vipFrameStillUrlForVipLevel(vipLevel);
                   final frameTier = switch (activeFrame) {
                     'frame_royal' => 1,
                     'frame_king' => 18,
@@ -7661,16 +7696,19 @@ class _RoomScreenState extends State<RoomScreen> {
                                       : null,
                                 ),
                                 child: member != null
-                                    ? VipAnimatedFrame(
-                                        size: diameter - 2,
+                                    ? VipAnimatedFrame.auto(
+                                        // Auto-sizing: the frame reads the
+                                        // seat diameter at runtime (the seat
+                                        // container is diameter x diameter)
+                                        // and scales ring/gems/head/plate
+                                        // proportionally. No fixed size.
                                         enabled: activeFrame != null ||
+                                            seatFrameAssetUrl != null ||
                                             vipLevel >= 7 ||
                                             (vipLevel >= 16 && micOn),
                                         level: frameTier,
                                         styleId: activeFrame,
-                                        assetUrl: activeFrameAssetKey.isNotEmpty
-                                            ? widget.state.backend.fileUrl(activeFrameAssetKey)
-                                            : null,
+                                        assetUrl: seatFrameAssetUrl,
                                         assetHeaders: widget.state.backend.fileHeaders,
                                         child: CircleAvatar(
                                           radius: (diameter / 2) - 1,
@@ -7915,6 +7953,11 @@ class _RoomScreenState extends State<RoomScreen> {
                         final text = message['text']?.toString() ?? '';
                         final imageKey = message['image_key']?.toString();
                         final senderId = message['user_id']?.toString() ?? '';
+                        // The message carries the sender's active VIP level;
+                        // the header resolves the animal frame + golden tag
+                        // from it (frame still = direct R2 URL).
+                        final senderVipLevel =
+                            int.tryParse(message['active_vip_level']?.toString() ?? '') ?? 0;
                         final bubbleId = senderId == widget.state.userId
                             ? widget.state.activeCosmetic('bubble')
                             : message['active_bubble_id']?.toString();
@@ -8021,6 +8064,8 @@ class _RoomScreenState extends State<RoomScreen> {
                                     avatarHeaders: widget.state.backend.fileHeaders,
                                     tags: profileTags,
                                     medals: profileMedals,
+                                    vipLevel: senderVipLevel,
+                                    frameAssetUrl: vipFrameStillUrlForVipLevel(senderVipLevel),
                                   ),
                                   const SizedBox(height: 4),
                                   messageBubble,
@@ -8200,6 +8245,28 @@ class _RoomScreenState extends State<RoomScreen> {
                       ),
                     ],
                   ),
+                ),
+              ),
+            ),
+          if (arrivalEffectMember != null && effectsEnabled &&
+              (carEffectsEnabled ||
+                  (arrivalEffectMember?['active_entry_id']?.toString() ?? '')
+                      .startsWith('entrance-vip-')) &&
+              (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 5)
+            Positioned(
+              // Animal entry banner (VIP5-18): full-width top banner with
+              // the arriving user's DP in its transparent circle. Sizes
+              // itself to the room width (aspect ratio per level).
+              left: 0,
+              right: 0,
+              top: 0,
+              child: IgnorePointer(
+                child: VipEntryEffectBanner(
+                  vipLevel: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
+                  avatarUrl: (arrivalEffectMember?['avatar_key']?.toString().trim().isNotEmpty == true)
+                      ? widget.state.backend.fileUrl(arrivalEffectMember!['avatar_key'].toString())
+                      : null,
+                  avatarHeaders: widget.state.backend.fileHeaders,
                 ),
               ),
             ),

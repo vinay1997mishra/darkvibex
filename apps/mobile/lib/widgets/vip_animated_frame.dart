@@ -106,9 +106,29 @@ class VipAnimatedFrame extends StatefulWidget {
     this.styleId,
     this.assetUrl,
     this.assetHeaders,
-  });
+  }) : _autoSize = false;
 
-  final double size;
+  /// Auto-sizing frame: reads the seat/avatar size it is placed on AT
+  /// RUNTIME and scales itself to it — no fixed size, no per-seat size
+  /// passed by the caller. The same frame code works on a big host seat,
+  /// a small guest seat, a room-list avatar, a profile DP and a chat
+  /// avatar. Ring, gems, animal head and VIP plate scale proportionally.
+  const VipAnimatedFrame.auto({
+    super.key,
+    required this.child,
+    this.enabled = true,
+    this.level = 7,
+    this.styleId,
+    this.assetUrl,
+    this.assetHeaders,
+  })  : size = null,
+        _autoSize = true;
+
+  /// Fixed path only; null for [VipAnimatedFrame.auto].
+  final double? size;
+
+  /// True for [VipAnimatedFrame.auto].
+  final bool _autoSize;
   final Widget child;
   final bool enabled;
   final int level;
@@ -120,9 +140,96 @@ class VipAnimatedFrame extends StatefulWidget {
   State<VipAnimatedFrame> createState() => _VipAnimatedFrameState();
 }
 
+/// Auto-sizing body for [VipAnimatedFrame.auto].
+///
+/// The frame reads the seat/avatar size it is placed on AT RUNTIME —
+/// the caller never passes a size:
+/// 1. When the parent gives TIGHT constraints (the seat's diameter
+///    container, the chat avatar's 28x28 box, the profile sheet's box),
+///    the frame takes min(width, height) from them.
+/// 2. Otherwise (loose constraints, e.g. ListTile.leading or a Row) the
+///    frame measures its CHILD avatar once (GlobalKey + post-frame) and
+///    sizes itself to that.
+/// Either way the ring, gems, animal head and VIP plate scale
+/// proportionally — every painter and the artwork clipper use fractions
+/// of the resolved size, never fixed pixels.
+class _VipAnimatedFrameAuto extends StatefulWidget {
+  const _VipAnimatedFrameAuto({
+    required this.child,
+    this.enabled = true,
+    this.level = 7,
+    this.styleId,
+    this.assetUrl,
+    this.assetHeaders,
+  });
+
+  final Widget child;
+  final bool enabled;
+  final int level;
+  final String? styleId;
+  final String? assetUrl;
+  final Map<String, String>? assetHeaders;
+
+  @override
+  State<_VipAnimatedFrameAuto> createState() => _VipAnimatedFrameAutoState();
+}
+
+class _VipAnimatedFrameAutoState extends State<_VipAnimatedFrameAuto> {
+  final GlobalKey _childKey = GlobalKey();
+  double? _measuredSize;
+
+  void _measureChild() {
+    final Size? size = _childKey.currentContext?.size;
+    if (size != null &&
+        size.shortestSide > 0 &&
+        size.shortestSide != _measuredSize) {
+      setState(() => _measuredSize = size.shortestSide);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _VipAnimatedFrameAuto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.child != widget.child) _measuredSize = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double? size;
+        if (constraints.maxWidth.isFinite &&
+            constraints.maxHeight.isFinite) {
+          size = math.min(constraints.maxWidth, constraints.maxHeight);
+        } else {
+          size = _measuredSize;
+        }
+        if (size == null || size <= 0) {
+          // Not measured yet: lay the avatar out alone (loose
+          // constraints, so its natural size can be measured), then
+          // rebuild with the frame on top.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _measureChild();
+          });
+          return SizedBox(key: _childKey, child: widget.child);
+        }
+        return VipAnimatedFrame(
+          size: size,
+          enabled: widget.enabled,
+          level: widget.level,
+          styleId: widget.styleId,
+          assetUrl: widget.assetUrl,
+          assetHeaders: widget.assetHeaders,
+          child: widget.child,
+        );
+      },
+    );
+  }
+}
+
 class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  AnimationController? _controller;
 
   Duration _durationFor(String? styleId) => Duration(
         milliseconds: (_freeAnimatedFrameIds.contains(styleId) ||
@@ -134,31 +241,36 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
   @override
   void initState() {
     super.initState();
+    // Auto-sizing frames delegate to a nested fixed frame, which owns
+    // its own controller; this state needs none.
+    if (widget._autoSize) return;
     _controller = AnimationController(
       vsync: this,
       duration: _durationFor(widget.styleId),
     );
-    if (widget.enabled) _controller.repeat();
+    if (widget.enabled) _controller!.repeat();
   }
 
   @override
   void didUpdateWidget(covariant VipAnimatedFrame oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final AnimationController? controller = _controller;
+    if (controller == null) return;
     if (oldWidget.styleId != widget.styleId) {
-      _controller.duration = _durationFor(widget.styleId);
+      controller.duration = _durationFor(widget.styleId);
       if (widget.enabled) {
-        _controller
+        controller
           ..reset()
           ..repeat();
       }
     }
-    if (widget.enabled && !oldWidget.enabled) _controller.repeat();
-    if (!widget.enabled && oldWidget.enabled) _controller.stop();
+    if (widget.enabled && !oldWidget.enabled) controller.repeat();
+    if (!widget.enabled && oldWidget.enabled) controller.stop();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -168,23 +280,38 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     final artwork = widget.enabled ? _frameArtwork(widget.styleId) : null;
     final customAssetUrl = widget.assetUrl?.trim() ?? '';
 
+    // Auto-sizing frames resolve their size from the seat/avatar at
+    // runtime (see _VipAnimatedFrameAuto) and render the fixed frame.
+    if (widget._autoSize) {
+      return _VipAnimatedFrameAuto(
+        enabled: widget.enabled,
+        level: widget.level,
+        styleId: widget.styleId,
+        assetUrl: widget.assetUrl,
+        assetHeaders: widget.assetHeaders,
+        child: widget.child,
+      );
+    }
+    final double size = widget.size!;
+    final AnimationController controller = _controller!;
+
     if (widget.enabled && customAssetUrl.isNotEmpty) {
       // Uploaded transparent artwork sits above the DP at the same scale as
       // built-in frames. Keep a true circular cut-out for older assets, and
       // animate light/sparkle ornaments independently from the photo.
       const customFrameScale = 1.86;
       return SizedBox.square(
-        dimension: widget.size,
+        dimension: size,
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: <Widget>[
-            SizedBox.square(dimension: widget.size, child: widget.child),
+            SizedBox.square(dimension: size, child: widget.child),
             IgnorePointer(
               child: Transform.scale(
                 scale: customFrameScale,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: ClipPath(
                     clipper: const _TransparentFrameArtworkClipper(
                       frameScale: customFrameScale,
@@ -196,10 +323,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                       requireTransparentCenter: true,
                       fallback: artwork == null
                           ? AnimatedBuilder(
-                            animation: _controller,
+                            animation: controller,
                             builder: (context, child) => CustomPaint(
                               painter: _TransparentFrameFallbackPainter(
-                                phase: _controller.value,
+                                phase: controller.value,
                                 level: widget.level,
                                 styleId: visualStyleId,
                               ),
@@ -210,10 +337,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                               fit: BoxFit.contain,
                               requireTransparentCenter: true,
                               fallback: AnimatedBuilder(
-                            animation: _controller,
+                            animation: controller,
                             builder: (context, child) => CustomPaint(
                               painter: _TransparentFrameFallbackPainter(
-                                phase: _controller.value,
+                                phase: controller.value,
                                 level: widget.level,
                                 styleId: visualStyleId,
                               ),
@@ -229,13 +356,13 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
               child: Transform.scale(
                 scale: customFrameScale,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: AnimatedBuilder(
-                    animation: _controller,
+                    animation: controller,
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
                         styleId: visualStyleId,
-                        phase: _controller.value,
+                        phase: controller.value,
                       ),
                     ),
                   ),
@@ -251,23 +378,23 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
       // These five shop frames use native vector artwork so every ornament can
       // animate smoothly without rotating or shrinking the user's avatar.
       return SizedBox.square(
-        dimension: widget.size,
+        dimension: size,
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: <Widget>[
-            SizedBox.square(dimension: widget.size, child: widget.child),
+            SizedBox.square(dimension: size, child: widget.child),
             IgnorePointer(
               child: Transform.scale(
                 scale: 1.42,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: AnimatedBuilder(
-                    animation: _controller,
+                    animation: controller,
                     builder: (context, child) => CustomPaint(
                       painter: _PremiumVectorFramePainter(
                         styleId: widget.styleId!,
-                        phase: _controller.value,
+                        phase: controller.value,
                       ),
                     ),
                   ),
@@ -284,20 +411,20 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
       // The avatar itself stays at its original size. All ornamental artwork is
       // drawn in a separate layer outside the avatar circle.
       return SizedBox.square(
-        dimension: widget.size,
+        dimension: size,
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: <Widget>[
             SizedBox.square(
-              dimension: widget.size,
+              dimension: size,
               child: widget.child,
             ),
             IgnorePointer(
               child: Transform.scale(
                 scale: 1.42,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: CustomPaint(
                     painter: _ButterflyFrameBasePainter(visualStyleId),
                   ),
@@ -308,13 +435,13 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
               child: Transform.scale(
                 scale: 1.42,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: AnimatedBuilder(
-                    animation: _controller,
+                    animation: controller,
                     builder: (context, child) => CustomPaint(
                       painter: _ButterflyFlightPainter(
                         styleId: visualStyleId,
-                        phase: _controller.value,
+                        phase: controller.value,
                       ),
                     ),
                   ),
@@ -332,13 +459,13 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
       const frameScale = 1.86;
 
       return SizedBox.square(
-        dimension: widget.size,
+        dimension: size,
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: <Widget>[
             SizedBox.square(
-              dimension: widget.size,
+              dimension: size,
               child: widget.child,
             ),
             IgnorePointer(
@@ -346,7 +473,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 scale: frameScale,
                 alignment: Alignment.center,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   // Preserve the artwork's native alpha channel. Recomputing
                   // alpha from RGB can turn transparent edge pixels opaque and
                   // create square/matte artefacts around the circular frame.
@@ -359,10 +486,10 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                       fit: BoxFit.contain,
                       requireTransparentCenter: true,
                       fallback: AnimatedBuilder(
-                        animation: _controller,
+                        animation: controller,
                         builder: (context, child) => CustomPaint(
                           painter: _TransparentFrameFallbackPainter(
-                            phase: _controller.value,
+                            phase: controller.value,
                             level: widget.level,
                             styleId: visualStyleId,
                           ),
@@ -378,13 +505,13 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                 scale: frameScale,
                 alignment: Alignment.center,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: AnimatedBuilder(
-                    animation: _controller,
+                    animation: controller,
                     builder: (context, child) => CustomPaint(
                       painter: _FrameElementPainter(
                         styleId: visualStyleId,
-                        phase: _controller.value,
+                        phase: controller.value,
                       ),
                     ),
                   ),
@@ -399,23 +526,23 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
     // Preserve the avatar's full diameter (0% shrink). Draw the animated
     // ring in a separate enlarged layer so decoration stays outside the DP.
     return SizedBox.square(
-      dimension: widget.size,
+      dimension: size,
       child: Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: <Widget>[
-          SizedBox.square(dimension: widget.size, child: widget.child),
+          SizedBox.square(dimension: size, child: widget.child),
           if (widget.enabled)
             IgnorePointer(
               child: Transform.scale(
                 scale: 1.42,
                 child: SizedBox.square(
-                  dimension: widget.size,
+                  dimension: size,
                   child: AnimatedBuilder(
-                    animation: _controller,
+                    animation: controller,
                     builder: (context, child) => CustomPaint(
                       painter: _VipRingPainter(
-                        _controller.value,
+                        controller.value,
                         widget.level,
                         visualStyleId,
                       ),
