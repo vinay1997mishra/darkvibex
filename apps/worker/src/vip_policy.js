@@ -49,7 +49,7 @@ export function vipCapabilities(level, active){
     message_retention_days: active ? (level >= 12 ? 120 : level >= 8 ? 60 : level >= 5 ? 30 : 0) : 0,
     show_id_style_level: !active || level < 5 ? 0 : Math.min(level,14),
     nickname_light_enabled: active && level >= 8 && level <= 17,
-    entrance_vehicle_tier: active && level >= 8 ? Math.max(1,level-7) : 0,
+    entrance_vehicle_tier: active && level >= 5 ? Math.max(1,level-4) : 0,
     validity_days: level >= 18 ? 45 : 30,
   };
 }
