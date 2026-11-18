@@ -357,7 +357,7 @@ String? animalVideoFileForVipLevel(int level) => animalVideoFiles[level];
 /// bucket. Set to the bucket's custom domain (recommended) or its
 /// public r2.dev URL, with NO trailing slash. Empty = not configured
 /// yet; keep it empty rather than inventing a domain.
-const String r2PublicBaseUrl = '';
+const String r2PublicBaseUrl = 'https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev';
 
 /// R2 object key per VIP level — clean names uploaded by
 /// cloudflare-r2-upload.sh into bucket "darkvibex-files".

@@ -58,7 +58,7 @@
 //   Leave it '' until the domain is set — videoUrlForVipLevel()
 //   then returns null and the CustomPaint fallback is used.
 //   Do NOT invent a domain here; the real one is set by Vinay.
-export const R2_PUBLIC_BASE_URL = '';
+export const R2_PUBLIC_BASE_URL = 'https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev';
 
 // R2 object key per vehicle (clean names, uploaded by
 // cloudflare-r2-upload.sh into bucket "darkvibex-files").
