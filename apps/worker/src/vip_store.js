@@ -34,7 +34,7 @@ export async function vipRuleForDb(db,level){
 }
 
 export async function ensureVipSchema(db){
-  await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance REAL NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 2, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance REAL NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 3, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
   try {
     await db.prepare("SELECT custom_id_expires_at FROM user_vip LIMIT 1").first();
   } catch (error) {
@@ -48,15 +48,23 @@ export async function ensureVipSchema(db){
     await db.prepare("ALTER TABLE user_vip ADD COLUMN exp_rate_version INTEGER NOT NULL DEFAULT 0").run();
   }
   await db.prepare("UPDATE user_vip SET exp_balance=CAST(exp_balance / 400 AS INTEGER), exp_rate_version=1 WHERE exp_rate_version=0").run();
-  // EXP rate version 2 (Vinay, 2026-11-18): EXP is now purchase-only at
-  // 1.5 EXP per $1 (1.5 EXP per 8,000,000 coins), replacing 1 EXP per
-  // 400 coins. Old balances are rescaled by the exact ratio between the
-  // scales — old upgrade / new upgrade is 8,000,000 / (400 x 1.5) =
-  // 13,333.33 for every level (e.g. VIP1: 60,000 old EXP = 4.5 new EXP),
-  // so exp_balance x 3 / 40,000 preserves each user's progress toward
-  // the next level. (SQLite columns accept REAL values regardless of
-  // the declared INTEGER type on old tables.)
-  await db.prepare("UPDATE user_vip SET exp_balance=exp_balance*3.0/40000.0, exp_rate_version=2 WHERE exp_rate_version=1").run();
+  // EXP rate version 3 (Vinay, 2026-11-18): EXP is now 150 EXP per $1
+  // (150 EXP per 8,000,000 coins), replacing the 1.5 EXP per $1 rate of
+  // version 2 — a 100x rescale of the whole ladder (VIP1 4.5 -> 450 EXP,
+  // VIP18 15,000 -> 1,500,000 EXP). Two migration paths, both exact:
+  // - v1 (1 EXP per 400 coins) -> v3: old upgrade / new upgrade is
+  //   60,000 / 450 = 400/3 for every level, so exp_balance x 3 / 400
+  //   preserves progress toward the next level (e.g. VIP1: 60,000 old
+  //   EXP = 450 new EXP). Also covers v0 (1 EXP per coin) via the v0->v1
+  //   step above (e.g. 80,000 v0 EXP = 200 v1 EXP = 1.5 v3 EXP, which is
+  //   80,000 coins = $0.01 x 150).
+  // - v2 (1.5 EXP per $1, PR #128) -> v3: x100 exactly (4.5 -> 450).
+  // Without rescaling, existing balances would instantly max at VIP18
+  // (old balances are ~100x the v2 scale and ~13,333x the v1 scale).
+  // (SQLite columns accept REAL values regardless of the declared
+  // INTEGER type on old tables.)
+  await db.prepare("UPDATE user_vip SET exp_balance=exp_balance*3.0/400.0, exp_rate_version=3 WHERE exp_rate_version=1").run();
+  await db.prepare("UPDATE user_vip SET exp_balance=exp_balance*100.0, exp_rate_version=3 WHERE exp_rate_version=2").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta REAL NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
 }
@@ -166,14 +174,15 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   let total=Number(row.total_received_coins??0);
   let until=row.active_until==null?null:Number(row.active_until);
   const active=level>0&&until!=null&&until>ts;
-  // Purchase-only EXP (Vinay, 2026-11-18): 1.5 EXP per $1 of coins bought
-  // from a Coin Seller ($1 = 8,000,000 coins), i.e. 1.5 EXP per 8,000,000
-  // coins received. Computed as coins*3/16,000,000 so the numerator stays
-  // an exact integer; EXP is fractional (VIP1 needs only 4.5 EXP), so no
-  // flooring — fractions accumulate in exp_balance. Spending coins on
-  // gifts never calls this function, so it earns no EXP.
-  const multiplier=3/16000000;
-  const awarded=(coins*3)/16000000;
+  // Purchase-only EXP (Vinay, 2026-11-18): 150 EXP per $1 of coins bought
+  // from a Coin Seller ($1 = 8,000,000 coins), i.e. 150 EXP per 8,000,000
+  // coins received. Computed as coins*3/160,000 so the numerator stays
+  // an exact integer; EXP can still be fractional for odd coin amounts
+  // (e.g. 1,000,000 coins = 18.75 EXP), so no flooring — fractions
+  // accumulate in exp_balance. Spending coins on gifts never calls this
+  // function, so it earns no EXP.
+  const multiplier=3/160000;
+  const awarded=(coins*3)/160000;
   const before=level;
   exp+=awarded;
   total+=coins;

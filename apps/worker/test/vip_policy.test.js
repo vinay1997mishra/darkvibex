@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { vipCapabilities, vipRule } from "../src/vip_policy.js";
 test("VIP EXP thresholds match the purchase-only EXP ladder", () => {
   // Levels are defined in EXP (Vinay, 2026-11-18): each level's total is
-  // the CUMULATIVE EXP to reach it and equals the level's $ price x 1.5
-  // (VIP1 $3 = 4.5 EXP ... VIP18 $10,000 = 15,000 EXP). Upgrade EXP is
+  // the CUMULATIVE EXP to reach it and equals the level's $ price x 150
+  // (VIP1 $3 = 450 EXP ... VIP18 $10,000 = 1,500,000 EXP). Upgrade EXP is
   // the incremental total (total minus previous total) — NOT coins/400.
-  // EXP is earned only by buying coins (1.5 EXP per $1), never by
+  // EXP is earned only by buying coins (150 EXP per $1), never by
   // spending. Must match the Dart client (VipPolicy.levels[].upgradeExp).
-  const expected = [4.5,7.5,18,45,150,375,750,900,900,1050,900,1050,900,1050,1650,1650,1800,1800];
+  const expected = [450,750,1800,4500,15000,37500,75000,90000,90000,105000,90000,105000,90000,105000,165000,165000,180000,180000];
   assert.deepEqual(expected.map((_,i)=>vipRule(i+1).upgrade),expected);
   assert.deepEqual(
     expected.map((_,i)=>{
@@ -20,11 +20,11 @@ test("VIP EXP thresholds match the purchase-only EXP ladder", () => {
   );
 });
 
-test("VIP EXP ladder matches Vinay's $ price x 1.5 thresholds", () => {
-  const totals = [4.5,12,30,75,225,600,1350,2250,3150,4200,5100,6150,7050,8100,9750,11400,13200,15000];
+test("VIP EXP ladder matches Vinay's $ price x 150 thresholds", () => {
+  const totals = [450,1200,3000,7500,22500,60000,135000,225000,315000,420000,510000,615000,705000,810000,975000,1140000,1320000,1500000];
   assert.deepEqual(totals.map((_,i)=>vipRule(i+1).total),totals);
-  // $ prices: total / 1.5 — VIP1 $3 ... VIP18 $10,000.
-  assert.deepEqual(totals.map((t)=>t/1.5),[3,8,20,50,150,400,900,1500,2100,2800,3400,4100,4700,5400,6500,7600,8800,10000]);
+  // $ prices: total / 150 — VIP1 $3 ... VIP18 $10,000.
+  assert.deepEqual(totals.map((t)=>t/150),[3,8,20,50,150,400,900,1500,2100,2800,3400,4100,4700,5400,6500,7600,8800,10000]);
   // Validity: 30 days for VIP1-15, 60 days for VIP16-18.
   assert.deepEqual(totals.map((_,i)=>vipRule(i+1).days),[...Array(15).fill(30),60,60,60]);
   assert.equal(vipCapabilities(15, true).validity_days, 30);

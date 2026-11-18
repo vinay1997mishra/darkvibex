@@ -55,8 +55,8 @@ async function fixture() {
 test("expired VIP with enough EXP for the next level promotes at expiry", async () => {
   const { DB, setVip } = await fixture();
   const now = Date.now();
-  // Level 1, expired yesterday, 7.5 EXP banked = exactly VIP2's upgrade.
-  setVip(1, 7.5, now - DAY_MS);
+  // Level 1, expired yesterday, 750 EXP banked = exactly VIP2's upgrade.
+  setVip(1, 750, now - DAY_MS);
   const status = await getVipStatus(DB, "receiver", now);
   assert.equal(status.level, 2);
   assert.equal(status.exp_balance, 0);
@@ -68,9 +68,9 @@ test("expired VIP with enough EXP for the next level promotes at expiry", async 
 test("expired VIP without enough EXP to promote drops by exactly one level", async () => {
   const { DB, setVip } = await fixture();
   const now = Date.now();
-  // Level 1, expired yesterday, 4.5 EXP banked — below VIP2's 7.5 upgrade,
+  // Level 1, expired yesterday, 450 EXP banked — below VIP2's 750 upgrade,
   // so there is no maintain-in-place: the level drops by exactly 1.
-  setVip(1, 4.5, now - DAY_MS);
+  setVip(1, 450, now - DAY_MS);
   const status = await getVipStatus(DB, "receiver", now);
   assert.equal(status.level, 0);
   assert.equal(status.exp_balance, 0);
@@ -98,8 +98,8 @@ test("expired VIP with no EXP drops by exactly one level", async () => {
 test("promotion to VIP16 at expiry starts a 60-day validity", async () => {
   const { DB, setVip } = await fixture();
   const now = Date.now();
-  // Level 15, expired yesterday, 1,650 EXP banked = VIP16's upgrade.
-  setVip(15, 1650, now - DAY_MS);
+  // Level 15, expired yesterday, 165,000 EXP banked = VIP16's upgrade.
+  setVip(15, 165000, now - DAY_MS);
   const status = await getVipStatus(DB, "receiver", now);
   assert.equal(status.level, 16);
   assert.equal(status.exp_balance, 0);
@@ -111,11 +111,11 @@ test("promotion to VIP16 at expiry starts a 60-day validity", async () => {
 test("dropped EXP does not re-promote at the next expiry (no yo-yo)", async () => {
   const { DB, setVip } = await fixture();
   const now = Date.now();
-  // Level 5, expired yesterday, 200 EXP banked — below VIP6's 375 upgrade,
+  // Level 5, expired yesterday, 20,000 EXP banked — below VIP6's 37,500 upgrade,
   // so the level drops to 4 and the banked EXP is consumed (set to 0).
   // One month later, with no new purchases, the same EXP must NOT
   // promote the user back to 5: they drop to 3 instead.
-  setVip(5, 200, now - DAY_MS);
+  setVip(5, 20000, now - DAY_MS);
   const dropped = await getVipStatus(DB, "receiver", now);
   assert.equal(dropped.level, 4);
   assert.equal(dropped.exp_balance, 0);

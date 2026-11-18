@@ -154,8 +154,8 @@ test("VIP manager controls the real VIP1-VIP18 leveling rules", () => {
   // Upgrade EXP is the incremental EXP between cumulative EXP totals
   // (total minus previous total), so the leveling rules pinned in the
   // source are the EXP thresholds themselves (Vinay's 2026-11-18 ladder:
-  // VIP1 $3 = 4.5 EXP ... VIP18 $10,000 = 15,000 EXP; $ price x 1.5).
-  for(const threshold of ["4.5","12","30","75","15000"]){
+  // VIP1 $3 = 450 EXP ... VIP18 $10,000 = 1,500,000 EXP; $ price x 150).
+  for(const threshold of ["450","1200","3000","7500","1500000"]){
     assert.match(vipPolicy,new RegExp(threshold));
   }
   assert.doesNotMatch(vipPolicy, /\/400/);
