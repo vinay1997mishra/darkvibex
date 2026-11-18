@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS user_vip (
   user_id TEXT PRIMARY KEY,
   level INTEGER NOT NULL DEFAULT 0 CHECK (level BETWEEN 0 AND 18),
-  exp_balance INTEGER NOT NULL DEFAULT 0 CHECK (exp_balance >= 0),
+  exp_balance REAL NOT NULL DEFAULT 0 CHECK (exp_balance >= 0),
   total_received_coins INTEGER NOT NULL DEFAULT 0 CHECK (total_received_coins >= 0),
   active_until INTEGER,
   custom_id TEXT UNIQUE,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS vip_events (
   user_id TEXT NOT NULL,
   kind TEXT NOT NULL,
   coin_amount INTEGER NOT NULL DEFAULT 0,
-  exp_delta INTEGER NOT NULL DEFAULT 0,
+  exp_delta REAL NOT NULL DEFAULT 0,
   level_before INTEGER NOT NULL DEFAULT 0,
   level_after INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,

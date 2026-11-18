@@ -124,7 +124,7 @@ class AppState extends ChangeNotifier {
 
   String? activeCosmetic(String kind) => activeCosmetics[kind];
   int vipLevel = 0;
-  int vipExpBalance = 0;
+  double vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
   int vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
   DateTime? vipActiveUntil;
@@ -952,7 +952,7 @@ class AppState extends ChangeNotifier {
     if (vip is Map) {
       vipLevel = int.tryParse(vip['level']?.toString() ?? '') ?? vipLevel;
       vipExpBalance =
-          int.tryParse(vip['exp_balance']?.toString() ?? '') ?? vipExpBalance;
+          double.tryParse(vip['exp_balance']?.toString() ?? '') ?? vipExpBalance;
       vipTotalReceivedCoins =
           int.tryParse(vip['total_received_coins']?.toString() ?? '') ??
               vipTotalReceivedCoins;

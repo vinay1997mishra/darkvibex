@@ -1,16 +1,16 @@
 class VipLevelRule {
   const VipLevelRule({
     required this.level,
-    required this.totalRechargeCoins,
+    required this.totalExp,
     required this.upgradeExp,
     required this.maintainExp,
     this.validityDays = 30,
   });
 
   final int level;
-  final int totalRechargeCoins;
-  final int upgradeExp;
-  final int maintainExp;
+  final double totalExp;
+  final double upgradeExp;
+  final double maintainExp;
   final int validityDays;
 }
 
@@ -40,31 +40,37 @@ class VipPolicy {
   static const int freeSayHiUses = 4;
   static const int freeSayHiMaxWords = 30;
 
-  // VIP pricing ladder (Vinay, 2026-11-18): $1 = 8,000,000 coins.
-  // totalRechargeCoins is the CUMULATIVE coins to reach the level;
-  // upgradeExp is the incremental total / 400 (400 coins = 1 VIP EXP).
+  // VIP EXP ladder (Vinay, 2026-11-18): levels are defined in EXP, not in
+  // $ or coins. totalExp is the CUMULATIVE EXP to reach the level and
+  // equals the level's $ price x 1.5 (VIP1 $3 = 4.5 EXP ... VIP18 $10,000
+  // = 15,000 EXP). upgradeExp is the incremental EXP from the previous
+  // level. EXP is earned ONLY by buying coins from a Coin Seller — 1.5 EXP
+  // per $1 spent ($1 = 8,000,000 coins); spending coins on gifts earns no
+  // EXP. maintainExp is kept for parity with the worker; the expiry review
+  // no longer has a maintain branch — at expiry you either level up by
+  // buying coins or drop by exactly 1 level.
   // Must match apps/worker/src/vip_policy.js exactly — the EXP bug was
   // this table disagreeing with the worker. Validity: 30 days for
   // VIP1-15, 60 days for VIP16-18 (from the day of level-up).
   static const List<VipLevelRule> levels = <VipLevelRule>[
-    VipLevelRule(level: 1, totalRechargeCoins: 24000000, upgradeExp: 60000, maintainExp: 75),
-    VipLevelRule(level: 2, totalRechargeCoins: 64000000, upgradeExp: 100000, maintainExp: 75),
-    VipLevelRule(level: 3, totalRechargeCoins: 160000000, upgradeExp: 240000, maintainExp: 225),
-    VipLevelRule(level: 4, totalRechargeCoins: 400000000, upgradeExp: 600000, maintainExp: 1250),
-    VipLevelRule(level: 5, totalRechargeCoins: 1200000000, upgradeExp: 2000000, maintainExp: 3250),
-    VipLevelRule(level: 6, totalRechargeCoins: 3200000000, upgradeExp: 5000000, maintainExp: 6500),
-    VipLevelRule(level: 7, totalRechargeCoins: 7200000000, upgradeExp: 10000000, maintainExp: 11250),
-    VipLevelRule(level: 8, totalRechargeCoins: 12000000000, upgradeExp: 12000000, maintainExp: 19500),
-    VipLevelRule(level: 9, totalRechargeCoins: 16800000000, upgradeExp: 12000000, maintainExp: 27500),
-    VipLevelRule(level: 10, totalRechargeCoins: 22400000000, upgradeExp: 14000000, maintainExp: 35000),
-    VipLevelRule(level: 11, totalRechargeCoins: 27200000000, upgradeExp: 12000000, maintainExp: 70000),
-    VipLevelRule(level: 12, totalRechargeCoins: 32800000000, upgradeExp: 14000000, maintainExp: 207500),
-    VipLevelRule(level: 13, totalRechargeCoins: 37600000000, upgradeExp: 12000000, maintainExp: 375000),
-    VipLevelRule(level: 14, totalRechargeCoins: 43200000000, upgradeExp: 14000000, maintainExp: 775000),
-    VipLevelRule(level: 15, totalRechargeCoins: 52000000000, upgradeExp: 22000000, maintainExp: 1750000),
-    VipLevelRule(level: 16, totalRechargeCoins: 60800000000, upgradeExp: 22000000, maintainExp: 3500000, validityDays: 60),
-    VipLevelRule(level: 17, totalRechargeCoins: 70400000000, upgradeExp: 24000000, maintainExp: 7500000, validityDays: 60),
-    VipLevelRule(level: 18, totalRechargeCoins: 80000000000, upgradeExp: 24000000, maintainExp: 10000000, validityDays: 60),
+    VipLevelRule(level: 1, totalExp: 4.5, upgradeExp: 4.5, maintainExp: 4.5),
+    VipLevelRule(level: 2, totalExp: 12, upgradeExp: 7.5, maintainExp: 7.5),
+    VipLevelRule(level: 3, totalExp: 30, upgradeExp: 18, maintainExp: 18),
+    VipLevelRule(level: 4, totalExp: 75, upgradeExp: 45, maintainExp: 45),
+    VipLevelRule(level: 5, totalExp: 225, upgradeExp: 150, maintainExp: 150),
+    VipLevelRule(level: 6, totalExp: 600, upgradeExp: 375, maintainExp: 375),
+    VipLevelRule(level: 7, totalExp: 1350, upgradeExp: 750, maintainExp: 750),
+    VipLevelRule(level: 8, totalExp: 2250, upgradeExp: 900, maintainExp: 900),
+    VipLevelRule(level: 9, totalExp: 3150, upgradeExp: 900, maintainExp: 900),
+    VipLevelRule(level: 10, totalExp: 4200, upgradeExp: 1050, maintainExp: 1050),
+    VipLevelRule(level: 11, totalExp: 5100, upgradeExp: 900, maintainExp: 900),
+    VipLevelRule(level: 12, totalExp: 6150, upgradeExp: 1050, maintainExp: 1050),
+    VipLevelRule(level: 13, totalExp: 7050, upgradeExp: 900, maintainExp: 900),
+    VipLevelRule(level: 14, totalExp: 8100, upgradeExp: 1050, maintainExp: 1050),
+    VipLevelRule(level: 15, totalExp: 9750, upgradeExp: 1650, maintainExp: 1650),
+    VipLevelRule(level: 16, totalExp: 11400, upgradeExp: 1650, maintainExp: 1650, validityDays: 60),
+    VipLevelRule(level: 17, totalExp: 13200, upgradeExp: 1800, maintainExp: 1800, validityDays: 60),
+    VipLevelRule(level: 18, totalExp: 15000, upgradeExp: 1800, maintainExp: 1800, validityDays: 60),
   ];
 
   static const List<VipPrivilege> privileges = <VipPrivilege>[

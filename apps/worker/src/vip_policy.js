@@ -1,35 +1,36 @@
-// VIP pricing ladder (Vinay, 2026-11-18): $1 = 8,000,000 coins.
-// Each level's total is the CUMULATIVE coins to reach it; the $ price
-// is total / 8,000,000. VIP1-8 are Vinay's exact prices ($3, $8, $20,
-// $50, $150, $400, $900, $1,500); VIP9-14 step $600/$700; VIP15-18
-// were raised by Vinay ("vip 15 se price badha de") to $6,500 / $7,600
-// / $8,800 / $10,000, so the ladder lands on VIP18 = $10,000
-// (80,000,000,000 coins).
-// Upgrade EXP is the incremental total / 400 (400 coins = 1 VIP EXP),
-// matching the Dart client (VipPolicy.levels[].upgradeExp) — e.g. VIP1
-// needs 24,000,000 / 400 = 60,000 EXP.
+// VIP EXP ladder (Vinay, 2026-11-18): levels are defined in EXP, NOT in
+// $ or coins. Each level's total is the CUMULATIVE EXP to reach it and
+// equals the level's $ price x 1.5 (VIP1 $3 = 4.5 EXP ... VIP18 $10,000
+// = 15,000 EXP; $ prices: VIP1 3, VIP2 8, VIP3 20, VIP4 50, VIP5 150,
+// VIP6 400, VIP7 900, VIP8 1,500, VIP9 2,100, VIP10 2,800, VIP11 3,400,
+// VIP12 4,100, VIP13 4,700, VIP14 5,400, VIP15 6,500, VIP16 7,600,
+// VIP17 8,800, VIP18 10,000).
+// EXP is earned ONLY when coins are PURCHASED and transferred to the
+// user's wallet (Coin Seller transfer) — 1.5 EXP per $1 spent ($1 =
+// 8,000,000 coins, so 1.5 EXP per 8,000,000 coins bought). Spending
+// coins on gifts earns NO EXP. See awardSellerVipExp in vip_store.js.
+// `upgrade` is the incremental EXP to reach the level from the previous
+// one (total minus previous total). `maintain` is kept as data only
+// (same incremental EXP); the expiry review no longer has a maintain
+// branch — at expiry you either promote or drop by 1 (see settle()).
 // Validity: each level lasts from the day of level-up — 30 days for
-// VIP1-15, 60 days for VIP16-18 (days column). At expiry the level is
-// re-evaluated in vip_store.js settle(): up if leftover EXP qualifies
-// for the next level, maintained if EXP covers `maintain`, else down 1.
-// Legacy maintenance targets keep their original values, already
-// converted to EXP.
+// VIP1-15, 60 days for VIP16-18 (days column).
 const VIP_LEVEL_ROWS = [
-  [1,24000000,75,30],[2,64000000,75,30],
-  [3,160000000,225,30],[4,400000000,1250,30],
-  [5,1200000000,3250,30],[6,3200000000,6500,30],
-  [7,7200000000,11250,30],[8,12000000000,19500,30],
-  [9,16800000000,27500,30],[10,22400000000,35000,30],
-  [11,27200000000,70000,30],[12,32800000000,207500,30],
-  [13,37600000000,375000,30],[14,43200000000,775000,30],
-  [15,52000000000,1750000,30],[16,60800000000,3500000,60],
-  [17,70400000000,7500000,60],[18,80000000000,10000000,60],
+  [1,4.5,4.5,30],[2,12,7.5,30],
+  [3,30,18,30],[4,75,45,30],
+  [5,225,150,30],[6,600,375,30],
+  [7,1350,750,30],[8,2250,900,30],
+  [9,3150,900,30],[10,4200,1050,30],
+  [11,5100,900,30],[12,6150,1050,30],
+  [13,7050,900,30],[14,8100,1050,30],
+  [15,9750,1650,30],[16,11400,1650,60],
+  [17,13200,1800,60],[18,15000,1800,60],
 ];
 export const VIP_LEVELS = Object.freeze(
   VIP_LEVEL_ROWS.map(([level,total,maintain,days],index,rows)=>({
     level,
     total,
-    upgrade:Math.floor((total-(index>0?rows[index-1][1]:0))/400),
+    upgrade:total-(index>0?rows[index-1][1]:0),
     maintain,
     days,
   })),

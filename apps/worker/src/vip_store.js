@@ -19,8 +19,8 @@ export async function vipRuleForDb(db,level){
       ...base,
       enabled:Number(row.enabled ?? 1)!==0,
       name:String(row.name ?? ("VIP "+level)),
-      upgrade:Number.isSafeInteger(upgrade)&&upgrade>=0?upgrade:base.upgrade,
-      maintain:Number.isSafeInteger(maintain)&&maintain>=0?maintain:base.maintain,
+      upgrade:Number.isFinite(upgrade)&&upgrade>=0?upgrade:base.upgrade,
+      maintain:Number.isFinite(maintain)&&maintain>=0?maintain:base.maintain,
       days:Number.isSafeInteger(days)&&days>=1&&days<=3650?days:base.days,
       entry_id:String(data.entry_id ?? ""),
       frame_id:String(data.frame_id ?? ""),
@@ -34,7 +34,7 @@ export async function vipRuleForDb(db,level){
 }
 
 export async function ensureVipSchema(db){
-  await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance INTEGER NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS user_vip (user_id TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 0, exp_balance REAL NOT NULL DEFAULT 0, total_received_coins INTEGER NOT NULL DEFAULT 0, active_until INTEGER, custom_id TEXT UNIQUE, last_id_change_at INTEGER, id_change_level INTEGER NOT NULL DEFAULT 0, preferences_json TEXT NOT NULL DEFAULT '{}', free_say_hi_used INTEGER NOT NULL DEFAULT 0, free_say_hi_cycle TEXT NOT NULL DEFAULT '', exp_rate_version INTEGER NOT NULL DEFAULT 2, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)").run();
   try {
     await db.prepare("SELECT custom_id_expires_at FROM user_vip LIMIT 1").first();
   } catch (error) {
@@ -48,7 +48,16 @@ export async function ensureVipSchema(db){
     await db.prepare("ALTER TABLE user_vip ADD COLUMN exp_rate_version INTEGER NOT NULL DEFAULT 0").run();
   }
   await db.prepare("UPDATE user_vip SET exp_balance=CAST(exp_balance / 400 AS INTEGER), exp_rate_version=1 WHERE exp_rate_version=0").run();
-  await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta INTEGER NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
+  // EXP rate version 2 (Vinay, 2026-11-18): EXP is now purchase-only at
+  // 1.5 EXP per $1 (1.5 EXP per 8,000,000 coins), replacing 1 EXP per
+  // 400 coins. Old balances are rescaled by the exact ratio between the
+  // scales — old upgrade / new upgrade is 8,000,000 / (400 x 1.5) =
+  // 13,333.33 for every level (e.g. VIP1: 60,000 old EXP = 4.5 new EXP),
+  // so exp_balance x 3 / 40,000 preserves each user's progress toward
+  // the next level. (SQLite columns accept REAL values regardless of
+  // the declared INTEGER type on old tables.)
+  await db.prepare("UPDATE user_vip SET exp_balance=exp_balance*3.0/40000.0, exp_rate_version=2 WHERE exp_rate_version=1").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta REAL NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
 }
 
@@ -81,12 +90,18 @@ async function settle(db,row,ts=Date.now()){
   let until=row.active_until==null?null:Number(row.active_until);
   if(level<=0||until==null||until>ts) return row;
   const before=level;
-  // Expiry review (Vinay, 2026-11-18): on the expiry date the level is
-  // re-evaluated. First, level UP if leftover EXP qualifies for the
-  // next level(s) — same carry-over rule as awardSellerVipExp, so a
-  // pricing change (or an Owner-lowered upgrade) can promote the user
-  // instead of stranding their EXP. The new level starts a fresh
-  // validity period from today (30 days, 60 for VIP16-18).
+  // Expiry review (Vinay, 2026-11-18): VIP activates on a date and
+  // expires on the SAME DATE next month (30 days, 60 for VIP16-18). At
+  // expiry there are only two outcomes. First, level UP if leftover EXP
+  // qualifies for the next level(s) — same carry-over rule as
+  // awardSellerVipExp, so a user who levelled up during the period by
+  // buying coins keeps the new level, with a fresh validity period from
+  // today. Otherwise the level DROPS BY EXACTLY 1 — there is NO maintain
+  // in place; the only way to avoid dropping is to level up by buying
+  // coins. The drop consumes the period's banked EXP (exp set to 0):
+  // keeping it would let the same EXP re-promote the user at the next
+  // expiry without any new purchase (a 5→4→5 yo-yo), so progress toward
+  // the next level resets with the drop.
   let promoted=false;
   while(level<18){
     const next=await vipRuleForDb(db,level+1);
@@ -105,24 +120,14 @@ async function settle(db,row,ts=Date.now()){
     await logEvent(db,row.user_id,"expire_promote",0,0,before,level,ts);
     return db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(row.user_id).first();
   }
-  const rule=await vipRuleForDb(db,level);
-  const maintain=Number(rule?.maintain??0);
-  if(maintain>0&&exp>=maintain){
-    exp-=maintain;
-    until=ts+Number(rule?.days??30)*DAY_MS;
-    await db.prepare("UPDATE user_vip SET exp_balance=?,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?")
-      .bind(exp,until,String(until),ts,row.user_id).run();
-    await logEvent(db,row.user_id,"maintain",0,-maintain,before,before,ts);
-  }else{
-    level=Math.max(0,level-1);
-    const next=await vipRuleForDb(db,level);
-    until=level>0?ts+Number(next?.days??30)*DAY_MS:null;
-    await db.batch([
-      db.prepare("UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?").bind(level,until,String(until??""),ts,row.user_id),
-      db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(level,ts,row.user_id),
-    ]);
-    await logEvent(db,row.user_id,"expire_drop",0,0,before,level,ts);
-  }
+  level=Math.max(0,level-1);
+  const next=await vipRuleForDb(db,level);
+  until=level>0?ts+Number(next?.days??30)*DAY_MS:null;
+  await db.batch([
+    db.prepare("UPDATE user_vip SET level=?,exp_balance=0,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?").bind(level,until,String(until??""),ts,row.user_id),
+    db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(level,ts,row.user_id),
+  ]);
+  await logEvent(db,row.user_id,"expire_drop",0,0,before,level,ts);
   return db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(row.user_id).first();
 }
 
@@ -161,10 +166,14 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   let total=Number(row.total_received_coins??0);
   let until=row.active_until==null?null:Number(row.active_until);
   const active=level>0&&until!=null&&until>ts;
-  const multiplier=1/400;
-  // Carry sub-400 coin amounts across transfers using the existing lifetime
-  // coin counter, so 399 + 1 coins correctly produce 1 VIP EXP.
-  const awarded=Math.floor((total+coins)/400)-Math.floor(total/400);
+  // Purchase-only EXP (Vinay, 2026-11-18): 1.5 EXP per $1 of coins bought
+  // from a Coin Seller ($1 = 8,000,000 coins), i.e. 1.5 EXP per 8,000,000
+  // coins received. Computed as coins*3/16,000,000 so the numerator stays
+  // an exact integer; EXP is fractional (VIP1 needs only 4.5 EXP), so no
+  // flooring — fractions accumulate in exp_balance. Spending coins on
+  // gifts never calls this function, so it earns no EXP.
+  const multiplier=3/16000000;
+  const awarded=(coins*3)/16000000;
   const before=level;
   exp+=awarded;
   total+=coins;
