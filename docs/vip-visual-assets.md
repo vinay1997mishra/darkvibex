@@ -142,6 +142,19 @@ per seat:
 - Entry banners size to the room width (per-level aspect ratio +
   DP-circle geometry measured from the PNGs).
 
+## Gift ribbons
+
+The gift ribbon is the fourth VIP visual set: the banner shown in the
+room when a VIP sends a gift (4 tiers for VIP1-18, R2
+`gift-ribbons/`, `image/webp`). Full detail — tiers, keys, Worker gift
+flow, Dart widget, room-screen wiring — lives in
+[`docs/gift-ribbon.md`](gift-ribbon.md). Worker catalog:
+`apps/worker/src/gift_ribbon_catalog.js`; Dart data:
+`apps/mobile/lib/vip/vip_visual_assets.dart` (ribbon section) +
+`apps/mobile/lib/widgets/gift_ribbon_banner.dart`; wired in
+`apps/mobile/lib/screens/room_screen.dart` (`_showGiftRibbon`,
+`Key('room-gift-ribbon')`).
+
 ## Files
 
 Worker: `apps/worker/src/vip_frame_catalog.js`,
