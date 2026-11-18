@@ -298,6 +298,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             state.backend.fileUrl,
                           )
                         : vipFrameStillUrlForVipLevel(state.vipLevel),
+                    // VAP alpha-video: only when the frame shown IS the
+                    // animal frame (custom frames have no VAP video and
+                    // show the still).
+                    videoUrl: vipFrameVapUrlForDisplay(
+                      state.activeFrameAssetKey,
+                      state.vipLevel,
+                    ),
                     assetHeaders: state.backend.fileHeaders,
                     child: Container(
                       padding: EdgeInsets.all(ringId == null ? 0 : 1.5),

@@ -25,7 +25,8 @@ wired into the app by level. VIP1-4 have no animal visuals.
 
 Full URL = public base + `/` + key. The WebMs are on R2 (14 objects);
 the entry banners are on R2 (14 objects); the tags are on R2
-(14 objects). The PNG frame stills are NOT on R2 yet — see below.
+(14 objects); the VAP alpha-videos are on R2 (14 objects under `vap/`).
+The PNG frame stills are NOT on R2 yet (except VIP13) — see below.
 
 ## Where each set shows
 
@@ -44,40 +45,83 @@ the entry banners are on R2 (14 objects); the tags are on R2
 
 The Worker's `GET /api/files` allowlist is only
 `users|rooms|messages|custom-gifts|room-themes|banners|custom-assets|creator-assets`
-— `frames/`, `entry-effects/`, `vip-tags/` and `vehicles/` return 400
-`invalid_file_key`. So the app must NEVER pass those keys through
-`backend.fileUrl()`. Use `resolveVipVisualAssetUrl(key, backend.fileUrl)`
+— `frames/`, `entry-effects/`, `vip-tags/`, `vehicles/` and `vap/`
+return 400 `invalid_file_key`. So the app must NEVER pass those keys
+through `backend.fileUrl()`. Use `resolveVipVisualAssetUrl(key, backend.fileUrl)`
 (`apps/mobile/lib/vip/vip_visual_assets.dart`): direct R2 URL for those
 prefixes (and for full http(s) URLs), `fileUrl()` for everything else
 (user avatars, custom uploads).
 
-## WebM alpha — finding and recommendation
+## WebM alpha — finding, and the VAP alpha-video player (implemented)
 
 The frame WebMs are VP9 **with an alpha channel** (transparency so the
 DP shows through the centre). Flutter's `video_player` (^2.10.1,
 ExoPlayer on Android) renders video to an **opaque texture** — it does
 not carry the alpha channel, so a transparent WebM played through it
-shows a **black box**, not transparency. The app has no SVGA, Lottie or
-VAP player, and its existing video path (`CustomAssetEffectPlayback`)
-has no alpha handling anywhere. The ecosystem confirms this: alpha
-video in Flutter needs a dedicated alpha-video player (e.g. Tencent
-VAP via `flutter_vap_player`), which is why that package exists.
+shows a **black box**, not transparency. The app has no SVGA or Lottie
+player, and its existing video path (`CustomAssetEffectPlayback`) has no
+alpha handling anywhere. The ecosystem confirms this: alpha video in
+Flutter needs a dedicated alpha-video player — which is why Tencent VAP
+exists (it is the industry-standard player for live-app gift/frame
+animations).
 
-**Recommendation (implemented): display the transparent PNG still**
-through the existing frame image path (`VipAnimatedFrame.assetUrl` →
-`TransparentArtworkImage`, which renders PNG alpha natively and
-validates the transparent centre). The WebM URL helpers
-(`vipFrameVideoUrlForVipLevel` / `frameVideoUrlForVipLevel`) are kept
-so a future alpha-capable player can pick the animated version up
-without a catalog change. Do NOT wire the WebM through `video_player`
-expecting transparency.
+**Implemented (2026-11-18): Tencent VAP via `flutter_vap_player`
+^2.2.0** (`apps/mobile/pubspec.yaml`). The 14 frame videos were
+converted from the transparent WebMs to VAP v1 MP4s
+(`vap/vip<N>-<animal>.mp4` on R2, ~39.9 MB total) with
+`~/workspace/darkvibex-vip-section/alpha-video/webm_to_vap.py`:
+ffmpeg decodes the WebM with `-c:v libvpx-vp9` (the native VP9 decoder
+drops alpha), splits the stream, extracts the alpha with
+`alphaextract`, and stacks the halves side by side — **alpha mask on
+the LEFT half, RGB on the RIGHT half** of each frame — encoded
+`libx264 -crf 20 -preset medium -pix_fmt yuv420p -r 24 -an
+-movflags +faststart`. Each file was verified by decoding the VAP,
+splitting the halves, reconstructing RGBA, and comparing it against
+the source WebM frame (RGB/alpha mean abs diff ~1-2, centre alpha
+matches the source) plus red/dark composites in
+`~/workspace/darkvibex-vip-section/verify-2026-11-18/vap-vip<N>-*.jpg`.
+
+**Playback** (`apps/mobile/lib/widgets/vip_frame_alpha_video.dart`,
+`VipFrameAlphaVideo`): `VapPlayerController.networkUrl(url, options:
+VapPlayerOptions(viewType: textureView, repeatCount: 0, scaleType:
+fitCenter, enableOldVersion: true))` — `enableOldVersion` because our
+files are VAP v1 (no `vapc` box). The video plays **once** (5 s, ends
+calmly, per Vinay's frame rule) and then swaps back to the PNG still.
+The PNG still is the poster while the video loads and the fallback on
+any video error or on completion — **never a black box**. A VAP video
+exists only for the animal frames (VIP5-18); custom/Owner frames have
+none, so `vipFrameVapUrlForDisplay(assetKey, level)` returns null for
+them and the still shows only. `VipAnimatedFrame` takes an optional
+`videoUrl` (passed at the room seat, seat profile sheet, member list,
+profile DP and room chat sender header); when it is null/empty the
+widget shows the still directly, so the PR #125 display path is
+unchanged for custom frames. Catalog: each frame entry carries
+`vap_key` (`apps/worker/src/vip_frame_catalog.js`,
+`frameVapUrlForVipLevel` / `allFrameVapUrls`); the member block in
+`apps/worker/src/index.js` also returns `active_frame_vap_key`.
+
+**Do NOT wire the WebM through `video_player`** expecting transparency.
+
+**Device-test checklist (must be done in the real Flutter project, on
+a real Android device — VAP does not render on the iOS simulator):**
+1. Open a room with a VIP5-18 user: the frame animates once on seat
+   join and ends on the still (no black box, no loop).
+2. Check the halves are the right way round — if the frame looks like
+   a grey silhouette next to a black rectangle, the layout is swapped;
+   re-run the conversion with `LAYOUT=right` and re-upload.
+3. Kill the network mid-load: the PNG still shows (never a black box).
+4. A user with a custom frame: still only, no VAP video attempted.
+5. Chat avatar (28px) and profile DP: frame auto-sizes, animation
+   plays once there too.
 
 **Pending Vinay's go-ahead:** upload the 14 transparent PNG stills to
 R2 under `frames/vip<N>-<animal>-transparent.png` (Content-Type
 `image/png`). They already exist locally in
-`~/workspace/darkvibex-vip-section/final-frames/`. Until they are on R2,
-the frame still URLs 404 and `VipAnimatedFrame` falls back to its
-painted ring — the wiring is in place, the images are not.
+`~/workspace/darkvibex-vip-section/final-frames/`. Only VIP13's still
+is on R2 so far. Until the other 13 are on R2, the frame still URLs
+404 and `VipAnimatedFrame` falls back to its painted ring — the wiring
+is in place, the images are not. (The VAP videos ARE on R2, but the
+still is also the poster/fallback, so the PNGs are still needed.)
 
 ## Automatic sizing (Vinay, 2026-11-18)
 

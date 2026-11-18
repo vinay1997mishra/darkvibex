@@ -6859,6 +6859,10 @@ async function handleApi(request, env, url) {
           if (!member.active_frame_id && frame?.id) {
             member.active_frame_id = frame.id;
             member.active_frame_asset_key = frame.asset_key ?? "";
+            // VAP alpha-video key for the animal frame (Tencent VAP mp4,
+            // played by VipFrameAlphaVideo; empty for custom frames, which
+            // have no VAP video and show the PNG still only).
+            member.active_frame_vap_key = frame.vap_key ?? "";
           }
           const chatBox = visuals.chat_box;
           if (!member.active_bubble_id && chatBox?.id) member.active_bubble_id = chatBox.id;

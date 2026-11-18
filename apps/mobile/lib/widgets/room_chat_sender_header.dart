@@ -17,6 +17,7 @@ class RoomChatSenderHeader extends StatelessWidget {
     this.avatarHeaders,
     this.vipLevel = 0,
     this.frameAssetUrl,
+    this.frameVideoUrl,
   });
 
   final String displayName;
@@ -30,6 +31,11 @@ class RoomChatSenderHeader extends StatelessWidget {
   /// Direct URL of the sender's frame image (already resolved to a
   /// direct R2 URL by the caller). Empty/null = no frame on the avatar.
   final String? frameAssetUrl;
+
+  /// Direct R2 URL of the sender's Tencent VAP alpha-video for the
+  /// frame (vap/vip<N>-<animal>.mp4). Null/empty = no video: the PNG
+  /// still is shown directly. Only the animal frames (VIP5-18) have one.
+  final String? frameVideoUrl;
   final List<Map<String, dynamic>> tags;
   final List<Map<String, dynamic>> medals;
 
@@ -93,6 +99,7 @@ class RoomChatSenderHeader extends StatelessWidget {
       enabled: true,
       level: vipLevel,
       assetUrl: frameUrl,
+      videoUrl: frameVideoUrl,
       child: avatar,
     );
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'frame_artwork_data.dart';
 import 'transparent_artwork_image.dart';
+import 'vip_frame_alpha_video.dart';
 
 const Map<String, String> _rocketFrameStyleAliases = <String, String>{
   'rocket_frame_aurora': 'frame_blue_magic_butterfly',
@@ -106,6 +107,7 @@ class VipAnimatedFrame extends StatefulWidget {
     this.styleId,
     this.assetUrl,
     this.assetHeaders,
+    this.videoUrl,
   }) : _autoSize = false;
 
   /// Auto-sizing frame: reads the seat/avatar size it is placed on AT
@@ -121,6 +123,7 @@ class VipAnimatedFrame extends StatefulWidget {
     this.styleId,
     this.assetUrl,
     this.assetHeaders,
+    this.videoUrl,
   })  : size = null,
         _autoSize = true;
 
@@ -135,6 +138,12 @@ class VipAnimatedFrame extends StatefulWidget {
   final String? styleId;
   final String? assetUrl;
   final Map<String, String>? assetHeaders;
+
+  /// Direct R2 URL of the Tencent VAP alpha-video for this frame
+  /// (vap/vip<N>-<animal>.mp4). Null/empty = no video: the PNG still
+  /// ([assetUrl]) is shown directly. Only the animal frames (VIP5-18)
+  /// have a VAP video; custom/Owner frames pass null and show the still.
+  final String? videoUrl;
 
   @override
   State<VipAnimatedFrame> createState() => _VipAnimatedFrameState();
@@ -161,6 +170,7 @@ class _VipAnimatedFrameAuto extends StatefulWidget {
     this.styleId,
     this.assetUrl,
     this.assetHeaders,
+    this.videoUrl,
   });
 
   final Widget child;
@@ -169,6 +179,10 @@ class _VipAnimatedFrameAuto extends StatefulWidget {
   final String? styleId;
   final String? assetUrl;
   final Map<String, String>? assetHeaders;
+
+  /// Direct R2 URL of the Tencent VAP alpha-video for this frame.
+  /// Null/empty = no video: the PNG still is shown directly.
+  final String? videoUrl;
 
   @override
   State<_VipAnimatedFrameAuto> createState() => _VipAnimatedFrameAutoState();
@@ -220,6 +234,7 @@ class _VipAnimatedFrameAutoState extends State<_VipAnimatedFrameAuto> {
           styleId: widget.styleId,
           assetUrl: widget.assetUrl,
           assetHeaders: widget.assetHeaders,
+          videoUrl: widget.videoUrl,
           child: widget.child,
         );
       },
@@ -289,6 +304,7 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
         styleId: widget.styleId,
         assetUrl: widget.assetUrl,
         assetHeaders: widget.assetHeaders,
+        videoUrl: widget.videoUrl,
         child: widget.child,
       );
     }
@@ -316,11 +332,15 @@ class _VipAnimatedFrameState extends State<VipAnimatedFrame>
                     clipper: const _TransparentFrameArtworkClipper(
                       frameScale: customFrameScale,
                     ),
-                    child: TransparentArtworkImage(
-                      url: customAssetUrl,
+                    // Animated frame: the Tencent VAP alpha-video plays
+                    // once (5 s, ends calmly), with the PNG still as the
+                    // poster while it loads and the fallback if the video
+                    // errors or finishes. Custom/Owner frames have no VAP
+                    // video (videoUrl null) and show the still directly.
+                    child: VipFrameAlphaVideo(
+                      videoUrl: widget.videoUrl,
+                      stillUrl: customAssetUrl,
                       headers: widget.assetHeaders,
-                      fit: BoxFit.contain,
-                      requireTransparentCenter: true,
                       fallback: artwork == null
                           ? AnimatedBuilder(
                             animation: controller,
