@@ -2023,7 +2023,7 @@ class _RoomScreenState extends State<RoomScreen> {
       // Gift ribbon banner (sender's VIP tier, basic for VIP0):
       // shown with the gift display, after any video/GLB dialog.
       _showGiftRibbon(
-        event: verified,
+        event: verifiedEvent,
         senderName: senderName,
         receiverName: receiverName,
         giftName: gift['name']?.toString() ?? 'Gift',
