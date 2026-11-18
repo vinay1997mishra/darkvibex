@@ -36,7 +36,7 @@ class VipFrameAlphaVideo extends StatefulWidget {
     required this.stillUrl,
     this.headers,
     this.fit = BoxFit.contain,
-    this.fallback,
+    this.fallback = const SizedBox.shrink(),
   });
 
   /// Direct R2 URL of the VAP mp4. Empty/null = no video: the still is
@@ -54,7 +54,7 @@ class VipFrameAlphaVideo extends StatefulWidget {
   final BoxFit fit;
 
   /// Shown if the still also fails to load (the painted ring).
-  final Widget? fallback;
+  final Widget fallback;
 
   @override
   State<VipFrameAlphaVideo> createState() => _VipFrameAlphaVideoState();

@@ -1993,19 +1993,22 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     }
     if (verified == null || !_seenGiftEventIds.add(eventId)) return;
-    final receiverId = verified['receiver_user_id']?.toString() ?? '';
+    // Capture the promoted non-null event before entering the async queue
+    // callback; Dart cannot preserve nullable promotion across closures.
+    final verifiedEvent = verified;
+    final receiverId = verifiedEvent['receiver_user_id']?.toString() ?? '';
     if (receiverId.isEmpty) return;
     final gift = <String, dynamic>{
-      'id': verified['gift_id']?.toString() ?? '',
-      'name': verified['gift_name']?.toString() ?? 'Gift',
-      'emoji': verified['emoji']?.toString() ?? '🎁',
-      'coin_cost': verified['coin_cost'] ?? 0,
-      'video_key': verified['video_key']?.toString() ?? '',
-      'glb_key': verified['glb_key']?.toString() ?? '',
-      'asset_key': verified['asset_key']?.toString() ?? '',
+      'id': verifiedEvent['gift_id']?.toString() ?? '',
+      'name': verifiedEvent['gift_name']?.toString() ?? 'Gift',
+      'emoji': verifiedEvent['emoji']?.toString() ?? '🎁',
+      'coin_cost': verifiedEvent['coin_cost'] ?? 0,
+      'video_key': verifiedEvent['video_key']?.toString() ?? '',
+      'glb_key': verifiedEvent['glb_key']?.toString() ?? '',
+      'asset_key': verifiedEvent['asset_key']?.toString() ?? '',
     };
-    final senderName = verified['sender_name']?.toString() ?? 'User';
-    final receiverName = verified['receiver_name']?.toString() ?? 'User';
+    final senderName = verifiedEvent['sender_name']?.toString() ?? 'User';
+    final receiverName = verifiedEvent['receiver_name']?.toString() ?? 'User';
     _giftPlaybackQueue = _giftPlaybackQueue.then((_) async {
       if (!mounted) return;
       final videoKey = gift['video_key']?.toString() ?? '';
@@ -2020,7 +2023,7 @@ class _RoomScreenState extends State<RoomScreen> {
       // Gift ribbon banner (sender's VIP tier, basic for VIP0):
       // shown with the gift display, after any video/GLB dialog.
       _showGiftRibbon(
-        event: verified,
+        event: verifiedEvent,
         senderName: senderName,
         receiverName: receiverName,
         giftName: gift['name']?.toString() ?? 'Gift',

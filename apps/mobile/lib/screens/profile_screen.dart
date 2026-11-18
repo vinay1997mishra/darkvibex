@@ -305,7 +305,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       state.activeFrameAssetKey,
                       state.vipLevel,
                     ),
-                    assetHeaders: state.backend.fileHeaders,
+                    // Public R2 frames/VAP are fetched directly without Worker auth headers.
+                    // Keep backend headers only for custom Owner assets served by /api/files.
+                    assetHeaders: state.activeFrameAssetKey?.isNotEmpty == true &&
+                            !isDirectR2AssetKey(state.activeFrameAssetKey!)
+                        ? state.backend.fileHeaders
+                        : null,
                     child: Container(
                       padding: EdgeInsets.all(ringId == null ? 0 : 1.5),
                       decoration: BoxDecoration(
