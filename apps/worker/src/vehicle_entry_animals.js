@@ -35,9 +35,35 @@
 // VIDEO: every entry is a rendered MP4 (video_player), NOT SVGA /
 // Lottie — the app has NO SVGA and NO Lottie package. video_file is
 // the exact filename in videos/ (720x1280 vertical, 10 s, except
-// Bear VIP14 = 8 s). Play via CustomAssetEffectPlayback
-// (active_vehicle_video_key). Do NOT commit the MP4s to git — host
-// them on a CDN/server and store only the key (see README).
+// Bear VIP14 = 8 s). Playback is DIRECT from Cloudflare R2:
+// videoUrlForVipLevel(level) = R2_PUBLIC_BASE_URL + '/' + video_key,
+// played via video_player (VideoPlayerController.networkUrl) in
+// CustomAssetEffectPlayback (active_vehicle_video_key = that full
+// direct R2 URL). NO Worker URL in the playback path. Do NOT commit
+// the MP4s to git — they live in R2 bucket "darkvibex-files" under
+// vehicles/ (see README "Direct R2 playback").
+
+// DIRECT R2 PLAYBACK (Vinay, 2026-11-18) — videos play DIRECTLY from
+// Cloudflare R2, with NO Worker in the playback path. The Worker
+// (darkvibex-api, wrangler.jsonc) already has an R2 binding FILES ->
+// bucket "darkvibex-files", but that binding is only for upload/storage.
+// Playback: app video_player fetches the MP4 straight from the R2
+// public URL (Cloudflare CDN, zero egress) — fastest start on room
+// entry, no Worker hop. Set R2_PUBLIC_BASE_URL below to the bucket's
+// public base URL, with NO trailing slash:
+//   - Custom domain (recommended): e.g. 'https://cdn.example.com'
+//     (R2 bucket > Settings > Custom Domain — use your own domain)
+//   - Or the public r2.dev URL: e.g. 'https://pub-xxx.r2.dev'
+//     (R2 bucket > Settings > allow public access / r2.dev subdomain)
+//   Leave it '' until the domain is set — videoUrlForVipLevel()
+//   then returns null and the CustomPaint fallback is used.
+//   Do NOT invent a domain here; the real one is set by Vinay.
+export const R2_PUBLIC_BASE_URL = '';
+
+// R2 object key per vehicle (clean names, uploaded by
+// cloudflare-r2-upload.sh into bucket "darkvibex-files").
+// Public URL for a vehicle = R2_PUBLIC_BASE_URL + '/' + video_key.
+export const R2_BUCKET = 'darkvibex-files';
 
 export const VEHICLE_ENTRY_CATALOG = [
   {
@@ -55,6 +81,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'deer',
     video_file: 'media-generation-vip5-deer-superpower-0-ffb877e8-d2f5-4801-9edb-1cf2d632d369.mp4',
+    video_key: 'vehicles/vip5-deer.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'moonlit-forest',
     colors: ['#FFD700', '#7FB3FF', '#FFF3B0'],
@@ -75,6 +102,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'wolf',
     video_file: 'media-generation-vip6-wolf-superpower-0-f4092fd8-b6f2-4301-a37c-08c87b19dea7.mp4',
+    video_key: 'vehicles/vip6-wolf.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'moonlit-night-forest',
     colors: ['#C0C0C0', '#00B0FF', '#E8ECF5'],
@@ -95,6 +123,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'eagle',
     video_file: 'media-generation-vip7-eagle-superpower-0-6aa08eef-0bc5-4eab-85e1-1c83eac84732.mp4',
+    video_key: 'vehicles/vip7-eagle.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'golden-clouds-sky',
     colors: ['#FFD700', '#00B0FF', '#FFF3B0'],
@@ -115,6 +144,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'panther',
     video_file: 'media-generation-vip8-panther-superpower-0-0a0d1da0-6d2d-4125-89f9-bbebd0f3bbbf.mp4',
+    video_key: 'vehicles/vip8-panther.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'neon-night-jungle',
     colors: ['#111111', '#00E676', '#7B2FFF'],
@@ -135,6 +165,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'cobra',
     video_file: 'media-generation-vip9-cobra-superpower-0-b39a4267-c970-4cac-8254-621d22ec7fcf.mp4',
+    video_key: 'vehicles/vip9-cobra.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'golden-temple-fire',
     colors: ['#FFD700', '#FF6D00', '#FFF3B0'],
@@ -155,6 +186,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'lion',
     video_file: 'media-generation-vip10-lion-superpower-0-e9243c51-2b33-4742-947f-06f3b09d7b6f.mp4',
+    video_key: 'vehicles/vip10-lion.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'savanna-sunset',
     colors: ['#FFB300', '#FF6D00', '#FFD700'],
@@ -175,6 +207,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'tiger',
     video_file: 'media-generation-vip11-tiger-premium-0-243fd86c-1899-47c6-ba46-cd0aae7c6266.mp4',
+    video_key: 'vehicles/vip11-tiger.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'jungle-sunset-fire',
     colors: ['#FF6D00', '#FFC400', '#FFE082'],
@@ -195,6 +228,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'mammoth',
     video_file: 'media-generation-vip12-mammoth-premium-0-41b4160e-85fd-4b73-8f30-166576579a85.mp4',
+    video_key: 'vehicles/vip12-mammoth.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'snowy-mountain-ice',
     colors: ['#B3E5FC', '#00B0FF', '#FFFFFF'],
@@ -215,6 +249,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'gorilla',
     video_file: 'media-generation-vip13-gorilla-premium-0-5e0741a5-605c-49e6-b472-50773a3c75a2.mp4',
+    video_key: 'vehicles/vip13-gorilla.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'jungle-gold-earth',
     colors: ['#8D6E63', '#FFD700', '#FFF3B0'],
@@ -235,6 +270,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 8000,
     style_id: 'bear',
     video_file: 'media-generation-vip14-bear-premium-0-3679e073-39f9-40fd-9582-b58e2a03dcec.mp4',
+    video_key: 'vehicles/vip14-bear.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'pine-forest-fire',
     colors: ['#6D4C41', '#D50000', '#FF6D00'],
@@ -255,6 +291,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'kraken',
     video_file: 'media-generation-vip15-kraken-premium-0-3eab4c0a-43c0-4c1b-b923-44353f93b938.mp4',
+    video_key: 'vehicles/vip15-kraken.mp4',
     layout: { anchor: 'bottom', heightFraction: 0.40 },
     backgroundTheme: 'stormy-ocean',
     colors: ['#0B3D91', '#00B0FF', '#7FE3F2'],
@@ -275,6 +312,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'leviathan',
     video_file: 'media-generation-vip16-leviathan-superpremium-0-b26ea4d0-6ba8-4ef0-b87e-b47acf3d5a22.mp4',
+    video_key: 'vehicles/vip16-leviathan.mp4',
     layout: { anchor: 'full', heightFraction: 1.0 },
     backgroundTheme: 'storm-ocean-lightning',
     colors: ['#0B3D91', '#00E5FF', '#B3E5FC'],
@@ -295,6 +333,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'phoenix',
     video_file: 'media-generation-vip17-phoenix-superpremium-0-17afdbe2-e126-4aad-9342-654fad7e499d.mp4',
+    video_key: 'vehicles/vip17-phoenix.mp4',
     layout: { anchor: 'full', heightFraction: 1.0 },
     backgroundTheme: 'fire-dark-sky',
     colors: ['#FF3D00', '#FF9E00', '#FFD54F'],
@@ -315,6 +354,7 @@ export const VEHICLE_ENTRY_CATALOG = [
     animation_ms: 10000,
     style_id: 'dragon',
     video_file: 'media-generation-vip18-dragon-superpremium-0-e260a266-1eee-4158-b306-a98657b28d62.mp4',
+    video_key: 'vehicles/vip18-dragon.mp4',
     layout: { anchor: 'full', heightFraction: 1.0 },
     backgroundTheme: 'golden-clouds-storm',
     colors: ['#FFC400', '#FF6D00', '#FFE082'],
@@ -361,6 +401,33 @@ export function vehicleByStyleId(styleId) {
 export function videoFileForVipLevel(level) {
   const v = vehicleForVipLevel(level);
   return v == null ? null : v.video_file;
+}
+
+// Direct R2 playback helpers — the single place the public base URL
+// is joined to a vehicle's R2 key. Returns null when R2 is not
+// configured yet (R2_PUBLIC_BASE_URL == ''), so callers fall back
+// to the CustomPaint effect instead of playing a broken URL.
+export function isR2Configured() {
+  return typeof R2_PUBLIC_BASE_URL === 'string' && R2_PUBLIC_BASE_URL.trim() !== '';
+}
+
+export function videoUrlForVipLevel(level) {
+  const v = vehicleForVipLevel(level);
+  if (v == null || !isR2Configured()) return null;
+  const base = R2_PUBLIC_BASE_URL.replace(/\/+$/, '');
+  return `${base}/${v.video_key}`;
+}
+
+// Full direct R2 URL for every vehicle (null entries only when R2
+// is unconfigured). Example once configured:
+//   videoUrlForVipLevel(17) -> '<base>/vehicles/vip17-phoenix.mp4'
+export function allVideoUrls() {
+  return VEHICLE_ENTRY_CATALOG.map((v) => ({
+    min_vip_level: v.min_vip_level,
+    name: v.name,
+    video_key: v.video_key,
+    video_url: videoUrlForVipLevel(v.min_vip_level),
+  }));
 }
 
 // Legacy mapping — the 7 old vehicles in apps/worker/src/cosmetics.js
