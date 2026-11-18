@@ -4,6 +4,7 @@ import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, owned
 import { frameVisualForVipLevel } from "./vip_frame_catalog.js";
 import { entryEffectVisualForVipLevel } from "./vip_entry_effect_catalog.js";
 import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
+import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
@@ -1095,12 +1096,15 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
   // item for the level (VIP5-18 only; null below VIP5). Precedence stays:
   // equipped custom item > Owner vip_rule item > animal visual.
   // The VIP tag has no Owner override — it is purely the level's badge.
+  // The vehicle entry follows the same rule: without an Owner-configured
+  // vehicle, the level's animal video (direct R2 key) is returned, so
+  // the room can play it without any Owner setup.
   return {
     frame: find(config.frame_id, "frame") ?? frameVisualForVipLevel(vipLevel),
     chat_box: find(config.chat_box_id, "bubble"),
     entry_effect: find(config.entry_effect_id || config.entry_id, "entry") ?? entryEffectVisualForVipLevel(vipLevel),
     vip_banner: find(config.vip_banner_id, "banner"),
-    vehicle_entry: find(config.vehicle_entry_id, "vehicle"),
+    vehicle_entry: find(config.vehicle_entry_id, "vehicle") ?? vehicleVisualForVipLevel(vipLevel),
     mini_profile_panel: find(config.mini_profile_panel_id, "profile_card"),
     vip_tag: tagVisualForVipLevel(vipLevel),
   };

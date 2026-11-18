@@ -28,6 +28,7 @@ import '../widgets/cosmetic_store_previews.dart';
 import '../widgets/room_chat_sender_header.dart';
 import '../widgets/custom_asset_effect_playback.dart';
 import '../widgets/vehicle_entry_effect.dart';
+import '../widgets/vehicle_entry_effect_v2.dart';
 import '../widgets/room_floating_logos.dart';
 import 'aladdin_lamp_screen.dart';
 import 'legal_policy_screen.dart';
@@ -305,6 +306,9 @@ class _RoomScreenState extends State<RoomScreen> {
         amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
+    // Prefetch animal vehicle videos on room join / member refresh so
+    // the first frames are buffered before an entry plays.
+    _prefetchArrivalVehicleVideos(rows);
     for (final member in arrivals) {
       final level = int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
       final invisible = member['invisible_entry'] == true || member['invisible_entry']?.toString() == '1';
@@ -318,7 +322,44 @@ class _RoomScreenState extends State<RoomScreen> {
           (!hasVipNameplate && !hasEquippedVehicle && !hasBuiltInEntry && level < 4)) {
         continue;
       }
+      _prefetchArrivalVehicleVideos([member]);
       _showArrivalEffect(member);
+    }
+  }
+
+  /// Direct R2 URL for a member's animal vehicle video, or null when the
+  /// member has a custom (non-animal) video key that must keep going
+  /// through the Worker /api/files path.
+  /// Rules: no member video key at all -> the level's animal video
+  /// (VIP5-18 only, null below VIP5). Member key under vehicles/ -> the
+  /// direct R2 URL for THAT key (it may be another level's animal via
+  /// an Owner override). Any other key -> null (custom video, Worker path).
+  String? _directAnimalVideoUrlForMember(Map<String, dynamic> member) {
+    final memberVideoKey =
+        ((member['active_vehicle_video_key'] ?? '').toString().trim().isNotEmpty)
+            ? member['active_vehicle_video_key'].toString().trim()
+            : (member['active_entry_video_key'] ?? '').toString().trim();
+    if (memberVideoKey.isEmpty) {
+      final level =
+          int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
+      return animalVideoUrlForVipLevel(level);
+    }
+    if (memberVideoKey.startsWith('vehicles/')) {
+      return '$r2PublicBaseUrl/$memberVideoKey';
+    }
+    return null;
+  }
+
+  /// Prefetch the animal vehicle videos for the given members
+  /// (best-effort, unawaited) so the first frames are buffered before
+  /// an entry plays. The prefetch cache dedupes by URL, so calling
+  /// this on every member refresh is cheap.
+  void _prefetchArrivalVehicleVideos(List<Map<String, dynamic>> members) {
+    for (final member in members) {
+      final url = _directAnimalVideoUrlForMember(member);
+      if (url != null) {
+        CustomAssetEffectPlayback.prefetchDirectVideoUrl(url);
+      }
     }
   }
 
@@ -8300,47 +8341,76 @@ class _RoomScreenState extends State<RoomScreen> {
               (carEffectsEnabled ||
                   (arrivalEffectMember?['active_entry_id']?.toString() ?? '')
                       .startsWith('entrance-vip-')))
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: MediaQuery.sizeOf(context).height * .45,
-              child: ((arrivalEffectMember?['active_entry_id']?.toString() ?? '')
-                      .startsWith('entrance-vip-'))
-                  ? IgnorePointer(
-                      child: Center(
-                        child: EntranceNameplatePreview(
-                          styleId: arrivalEffectMember!['active_entry_id'].toString(),
-                          displayName: arrivalEffectMember?['display_name']?.toString() ?? 'VIP member',
-                          vipLevel: (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 1)
-                              .clamp(1, 18)
-                              .toInt(),
+            Builder(
+              builder: (context) {
+                final int arrivalVipLevel =
+                    int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0;
+                final Size arrivalScreenSize = MediaQuery.sizeOf(context);
+                // Animal vehicle layout (Vinay, 2026-11-18): VIP5-15
+                // bottom-anchored, 40% of screen height; VIP16-18
+                // full-screen. entryRectForVipLevel() is the single
+                // source of truth; the fallback matches it exactly.
+                final Rect arrivalRect =
+                    entryRectForVipLevel(arrivalVipLevel, arrivalScreenSize) ??
+                        Rect.fromLTWH(
+                          0,
+                          arrivalScreenSize.height * 0.60,
+                          arrivalScreenSize.width,
+                          arrivalScreenSize.height * bottomEntryHeightFraction,
+                        );
+                final String memberVideoKey =
+                    ((arrivalEffectMember?['active_vehicle_video_key'] ?? '')
+                                .toString()
+                                .trim()
+                                .isNotEmpty)
+                        ? arrivalEffectMember!['active_vehicle_video_key'].toString()
+                        : (arrivalEffectMember?['active_entry_video_key'] ?? '').toString();
+                // A custom equipped/Owner video key wins and keeps its
+                // Worker /api/files path; otherwise the animal video
+                // plays DIRECTLY from R2 (never through /api/files,
+                // whose allowlist rejects vehicles/ keys).
+                final String? directAnimalVideoUrl =
+                    _directAnimalVideoUrlForMember(arrivalEffectMember!);
+                return Positioned(
+                  left: arrivalRect.left,
+                  top: arrivalRect.top,
+                  width: arrivalRect.width,
+                  height: arrivalRect.height,
+                  child: ((arrivalEffectMember?['active_entry_id']?.toString() ?? '')
+                          .startsWith('entrance-vip-'))
+                      ? IgnorePointer(
+                          child: Center(
+                            child: EntranceNameplatePreview(
+                              styleId: arrivalEffectMember!['active_entry_id'].toString(),
+                              displayName: arrivalEffectMember?['display_name']?.toString() ?? 'VIP member',
+                              vipLevel: arrivalVipLevel.clamp(1, 18).toInt(),
+                            ),
+                          ),
+                        )
+                      : CustomAssetEffectPlayback(
+                          backend: widget.state.backend,
+                          videoKey: directAnimalVideoUrl != null ? '' : memberVideoKey,
+                          directVideoUrl: directAnimalVideoUrl,
+                          glbKey: ((arrivalEffectMember?['active_vehicle_glb_key'] ?? '').toString().trim().isNotEmpty)
+                              ? arrivalEffectMember!['active_vehicle_glb_key'].toString()
+                              : (arrivalEffectMember?['active_entry_glb_key'] ?? '').toString(),
+                          fallback: VehicleEntryEffect(
+                            displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
+                                ? arrivalEffectMember!['display_name'].toString()
+                                : 'VIP member',
+                            level: arrivalVipLevel,
+                            showVehicle: true,
+                            customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_dragon' ||
+                                arrivalEffectMember?['active_entry_id'] != null ||
+                                arrivalVipLevel >= 18,
+                            vehicleId: (arrivalEffectMember?['active_vehicle_id']?.toString().trim().isNotEmpty == true)
+                                ? arrivalEffectMember!['active_vehicle_id'].toString()
+                                : arrivalEffectMember?['active_entry_id']?.toString(),
+                            vehicleLabel: arrivalEffectMember?['active_vehicle_id']?.toString() ?? 'VEHICLE ENTRY',
+                          ),
                         ),
-                      ),
-                    )
-                  : CustomAssetEffectPlayback(
-                      backend: widget.state.backend,
-                      videoKey: ((arrivalEffectMember?['active_vehicle_video_key'] ?? '').toString().trim().isNotEmpty)
-                          ? arrivalEffectMember!['active_vehicle_video_key'].toString()
-                          : (arrivalEffectMember?['active_entry_video_key'] ?? '').toString(),
-                      glbKey: ((arrivalEffectMember?['active_vehicle_glb_key'] ?? '').toString().trim().isNotEmpty)
-                          ? arrivalEffectMember!['active_vehicle_glb_key'].toString()
-                          : (arrivalEffectMember?['active_entry_glb_key'] ?? '').toString(),
-                      fallback: VehicleEntryEffect(
-                        displayName: (arrivalEffectMember?['display_name']?.toString().trim().isNotEmpty == true)
-                            ? arrivalEffectMember!['display_name'].toString()
-                            : 'VIP member',
-                        level: int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0,
-                        showVehicle: true,
-                        customVehicle: arrivalEffectMember?['active_vehicle_id']?.toString() == 'vehicle_king' ||
-                            arrivalEffectMember?['active_entry_id'] != null ||
-                            (int.tryParse(arrivalEffectMember?['active_vip_level']?.toString() ?? '') ?? 0) >= 18,
-                        vehicleId: (arrivalEffectMember?['active_vehicle_id']?.toString().trim().isNotEmpty == true)
-                            ? arrivalEffectMember!['active_vehicle_id'].toString()
-                            : arrivalEffectMember?['active_entry_id']?.toString(),
-                        vehicleLabel: arrivalEffectMember?['active_vehicle_id']?.toString() ?? 'VEHICLE ENTRY',
-                      ),
-                    ),
+                );
+              },
             ),
         ],
       ),

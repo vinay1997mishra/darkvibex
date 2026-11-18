@@ -122,7 +122,7 @@ test("VIP coin EXP carries partial coin amounts and resets to zero on every leve
   assert.equal(second.body.vip_award.vip.exp_balance, 1);
 
   sqlite.prepare(
-    "UPDATE user_vip SET exp_balance=24999999 WHERE user_id='receiver'"
+    "UPDATE user_vip SET exp_balance=59999 WHERE user_id='receiver'"
   ).run();
   const toVip1 = await transfer(400);
   assert.equal(toVip1.body.vip_award.awarded_exp, 1);
@@ -130,7 +130,7 @@ test("VIP coin EXP carries partial coin amounts and resets to zero on every leve
   assert.equal(toVip1.body.vip_award.vip.exp_balance, 0);
 
   sqlite.prepare(
-    "UPDATE user_vip SET exp_balance=99999999 WHERE user_id='receiver'"
+    "UPDATE user_vip SET exp_balance=99999 WHERE user_id='receiver'"
   ).run();
   const toVip2 = await transfer(400);
   assert.equal(toVip2.body.vip_award.awarded_exp, 1);
@@ -154,6 +154,28 @@ test("Coin Seller receipts earn one VIP EXP per 400 coins at VIP17", async () =>
   assert.equal(result.body.vip_award.multiplier, 1 / 400);
   assert.equal(result.body.vip_award.awarded_exp, 100);
   assert.equal(result.body.vip_award.vip.exp_multiplier, 1);
+  sqlite.close();
+});
+
+test("one large Coin Seller receipt can level up more than once", async () => {
+  const { sqlite, request } = await fixture();
+  const transfer = (coins) => request("/api/wallet/coin-seller-transfer", {
+    method: "POST", userId: "seller",
+    body: { seller_user_id: "seller", receiver_user_id: "receiver", coins, pin: "1234" },
+  });
+
+  // 160,000,000 coins = 400,000 EXP. VIP1 needs 60,000 EXP, VIP2 needs
+  // 100,000 more and VIP3 needs 240,000 more; excess EXP carries, so
+  // one receipt reaches VIP3 with a zero balance instead of stopping
+  // at VIP1 and discarding it.
+  const result = await transfer(160000000);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.vip_award.awarded_exp, 400000);
+  assert.equal(result.body.vip_award.vip.level, 3);
+  assert.equal(result.body.vip_award.vip.exp_balance, 0);
+  assert.equal(result.body.vip_award.level_up, true);
+  assert.equal(result.body.vip_award.new_level, 3);
+  assert.equal(result.body.vip_award.previous_level, 0);
   sqlite.close();
 });
 

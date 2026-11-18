@@ -81,6 +81,30 @@ async function settle(db,row,ts=Date.now()){
   let until=row.active_until==null?null:Number(row.active_until);
   if(level<=0||until==null||until>ts) return row;
   const before=level;
+  // Expiry review (Vinay, 2026-11-18): on the expiry date the level is
+  // re-evaluated. First, level UP if leftover EXP qualifies for the
+  // next level(s) — same carry-over rule as awardSellerVipExp, so a
+  // pricing change (or an Owner-lowered upgrade) can promote the user
+  // instead of stranding their EXP. The new level starts a fresh
+  // validity period from today (30 days, 60 for VIP16-18).
+  let promoted=false;
+  while(level<18){
+    const next=await vipRuleForDb(db,level+1);
+    if(!next||next.enabled===false||exp<next.upgrade) break;
+    exp-=next.upgrade;
+    level+=1;
+    promoted=true;
+  }
+  if(promoted){
+    const rule=await vipRuleForDb(db,level);
+    until=ts+Number(rule?.days??30)*DAY_MS;
+    await db.batch([
+      db.prepare("UPDATE user_vip SET level=?,exp_balance=?,active_until=?,free_say_hi_used=0,free_say_hi_cycle=?,updated_at=? WHERE user_id=?").bind(level,exp,until,String(until),ts,row.user_id),
+      db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(level,ts,row.user_id),
+    ]);
+    await logEvent(db,row.user_id,"expire_promote",0,0,before,level,ts);
+    return db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(row.user_id).first();
+  }
   const rule=await vipRuleForDb(db,level);
   const maintain=Number(rule?.maintain??0);
   if(maintain>0&&exp>=maintain){
@@ -147,11 +171,12 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   while(level<18){
     const next=await vipRuleForDb(db,level+1);
     if(!next||next.enabled===false||exp<next.upgrade) break;
-    // Every VIP tier starts from zero; excess EXP is not carried forward.
-    exp=0;
+    // Excess EXP carries toward the next tier, so one large award can
+    // level up more than once (the old code reset exp to 0 and broke
+    // after a single level, discarding the excess).
+    exp-=next.upgrade;
     level+=1;
     until=ts+next.days*DAY_MS;
-    break;
   }
   const changed=level!==before;
   await db.batch([

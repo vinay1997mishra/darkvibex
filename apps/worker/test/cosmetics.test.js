@@ -88,17 +88,56 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
     assert.equal(frame.min_vip_level, 0);
   }
   const vehicles = COSMETIC_CATALOG.filter((item) => item.kind === "vehicle");
-  assert.equal(vehicles.length, 7);
-  for (const id of [
-    "vehicle_neon_comet",
-    "vehicle_dragon_royal",
-    "vehicle_celestial_phoenix",
-  ]) {
-    const vehicle = vehicles.find((item) => item.id === id);
-    assert.ok(vehicle, `missing vehicle store item: ${id}`);
-    assert.equal(vehicle.animation_ms, 4800);
+  // The vehicle set is the 14 animals (VIP5-18, tier 1-14) — the old
+  // 7-car list was superseded on 2026-11-18.
+  assert.equal(vehicles.length, 14);
+  assert.deepEqual(
+    vehicles.map((item) => item.id),
+    [
+      "vehicle_deer", "vehicle_wolf", "vehicle_eagle", "vehicle_panther",
+      "vehicle_cobra", "vehicle_lion", "vehicle_tiger", "vehicle_mammoth",
+      "vehicle_gorilla", "vehicle_bear", "vehicle_kraken", "vehicle_leviathan",
+      "vehicle_phoenix", "vehicle_dragon",
+    ],
+  );
+  assert.deepEqual(
+    vehicles.map((item) => item.min_vip_level),
+    [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+  );
+  assert.deepEqual(
+    vehicles.map((item) => item.tier),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  );
+  for (const vehicle of vehicles) {
     assert.equal(vehicle.duration_days, 30);
+    assert.equal(vehicle.price_coins, 0);
+    assert.ok(
+      String(vehicle.video_key ?? "").startsWith("vehicles/vip"),
+      `missing R2 video key for ${vehicle.id}`,
+    );
+    assert.ok(
+      String(vehicle.video_key ?? "").endsWith(".mp4"),
+      `vehicle video key must be an MP4 for ${vehicle.id}`,
+    );
   }
+  // Bear is the only 8 s clip; the other 13 are 10 s.
+  assert.equal(
+    vehicles.find((item) => item.id === "vehicle_bear").animation_ms,
+    8000,
+  );
+  assert.ok(
+    vehicles
+      .filter((item) => item.id !== "vehicle_bear")
+      .every((item) => item.animation_ms === 10000),
+  );
+  assert.equal(
+    vehicles.find((item) => item.id === "vehicle_phoenix").min_vip_level,
+    17,
+  );
+  assert.equal(
+    vehicles.find((item) => item.id === "vehicle_dragon").min_vip_level,
+    18,
+  );
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_card"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "ring"));
   assert.ok(COSMETIC_CATALOG.some((item) => item.kind === "profile_background"));
@@ -117,9 +156,5 @@ test("cosmetics shop has valid Tinni-style categories, VIP gates, and finite pri
       "bubble-ice",
       "bubble-sakura",
     ],
-  );
-  assert.equal(
-    COSMETIC_CATALOG.find((item) => item.id === "vehicle_king").min_vip_level,
-    18,
   );
 });
