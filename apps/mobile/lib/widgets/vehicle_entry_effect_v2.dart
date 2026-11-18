@@ -102,6 +102,43 @@
 //   are a function of progress, and paintVehicle() calls it BEFORE the
 //   per-style _paintCinematicBackdrop(). The MP4 videos themselves
 //   also carry the animated anime scene.
+//
+// DIRECT R2 PLAYBACK (Vinay, 2026-11-18) — videos play DIRECTLY from
+//   Cloudflare R2, with NO Worker in the playback path:
+//     video URL = r2PublicBaseUrl + '/' + animalVideoKeys[level]
+//     e.g. '<base>/vehicles/vip17-phoenix.mp4'
+//   The Worker (darkvibex-api) already has an R2 binding FILES ->
+//   bucket "darkvibex-files", but that binding is only for
+//   upload/storage. Playback must NOT go through a Worker URL:
+//   the room plays the MP4 straight from the R2 public URL with
+//   video_player (VideoPlayerController.networkUrl), served by the
+//   Cloudflare CDN with zero egress — fastest start on room entry.
+//   Set r2PublicBaseUrl below to the bucket's public base URL, with
+//   NO trailing slash: a custom domain (recommended, e.g.
+//   'https://cdn.example.com' — R2 bucket > Settings > Custom Domain)
+//   or the public r2.dev URL (e.g. 'https://pub-xxx.r2.dev').
+//   Leave it '' until the domain is set; animalVideoUrlForVipLevel()
+//   then returns null and the CustomPaint fallback below is used.
+//   Do NOT invent a real domain here.
+//
+//   PREFETCH / PRELOAD (for instant entry playback): the room must
+//   NOT wait for the entry moment to fetch the video. On room join
+//   (or when the joining user's VIP level is known), create the
+//   controller early and await initialize() so the first frames are
+//   already buffered when the entry plays:
+//     // final url = animalVideoUrlForVipLevel(vipLevel);
+//     // if (url != null) {
+//     //   _vehicleController = VideoPlayerController.networkUrl(
+//     //     Uri.parse(url),
+//     //   );
+//     //   await _vehicleController!.initialize(); // prefetch on join
+//     //   // ... on entry: show the video widget (entryRectForVipLevel)
+//     //   // and call _vehicleController!.play(); dispose it afterwards.
+//     // }
+//   (Requires package:video_player/video_player.dart in the real
+//   room widget — this snippet itself stays import-free of it.)
+//   The video widget is placed in entryRectForVipLevel(level):
+//   VIP5-15 bottom 40%, VIP16-18 full-screen.
 
 import 'dart:math' as math;
 
@@ -315,6 +352,46 @@ const Map<int, String> animalVideoFiles = <int, String>{
 };
 
 String? animalVideoFileForVipLevel(int level) => animalVideoFiles[level];
+
+/// DIRECT R2 PLAYBACK — public base URL of the "darkvibex-files"
+/// bucket. Set to the bucket's custom domain (recommended) or its
+/// public r2.dev URL, with NO trailing slash. Empty = not configured
+/// yet; keep it empty rather than inventing a domain.
+const String r2PublicBaseUrl = '';
+
+/// R2 object key per VIP level — clean names uploaded by
+/// cloudflare-r2-upload.sh into bucket "darkvibex-files".
+/// Mirrors vehicle_catalog.js (video_key per entry).
+const Map<int, String> animalVideoKeys = <int, String>{
+  5: 'vehicles/vip5-deer.mp4',
+  6: 'vehicles/vip6-wolf.mp4',
+  7: 'vehicles/vip7-eagle.mp4',
+  8: 'vehicles/vip8-panther.mp4',
+  9: 'vehicles/vip9-cobra.mp4',
+  10: 'vehicles/vip10-lion.mp4',
+  11: 'vehicles/vip11-tiger.mp4',
+  12: 'vehicles/vip12-mammoth.mp4',
+  13: 'vehicles/vip13-gorilla.mp4',
+  14: 'vehicles/vip14-bear.mp4',
+  15: 'vehicles/vip15-kraken.mp4',
+  16: 'vehicles/vip16-leviathan.mp4',
+  17: 'vehicles/vip17-phoenix.mp4',
+  18: 'vehicles/vip18-dragon.mp4',
+};
+
+/// True once r2PublicBaseUrl has been set to the real public URL.
+bool get isR2Configured => r2PublicBaseUrl.trim().isNotEmpty;
+
+/// Full DIRECT R2 URL for a VIP level's entry video, or null when
+/// R2 is not configured yet (or the level has no vehicle). This is
+/// the URL to feed to VideoPlayerController.networkUrl — never a
+/// Worker URL, never a local asset path for the hosted videos.
+String? animalVideoUrlForVipLevel(int level) {
+  final String? key = animalVideoKeys[level];
+  if (key == null || !isR2Configured) return null;
+  final String base = r2PublicBaseUrl.replaceAll(RegExp(r'/+$'), '');
+  return '$base/$key';
+}
 
 /// Animated anime backdrop theme per VIP level (matches the catalog's
 /// backgroundTheme). Used by _paintAnimatedBackground().

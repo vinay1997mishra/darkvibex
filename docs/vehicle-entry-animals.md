@@ -199,6 +199,66 @@ animated effects.
   `vehicle_entry_effect_v2.dart` remain the lightweight fallback
   when no video asset is set.
 
+## Direct R2 playback — videos play straight from R2, no Worker in the path
+
+Vinay, 2026-11-18: "R2 se direct video play ho aisa karna hai."
+
+- **Bucket:** the EXISTING bucket **`darkvibex-files`** — no new bucket.
+  It is already bound to the Worker in `apps/worker/wrangler.jsonc`
+  (`r2_buckets: [{ binding: 'FILES', bucket_name: 'darkvibex-files' }]`),
+  but that binding is only for **upload/storage**. Playback does NOT
+  go through the Worker (`darkvibex-api`) — a Worker hop would add
+  latency on every room entry, and direct CDN playback is faster.
+- **R2 keys (clean names):** `vehicles/vip5-deer.mp4`,
+  `vehicles/vip6-wolf.mp4`, `vehicles/vip7-eagle.mp4`,
+  `vehicles/vip8-panther.mp4`, `vehicles/vip9-cobra.mp4`,
+  `vehicles/vip10-lion.mp4`, `vehicles/vip11-tiger.mp4`,
+  `vehicles/vip12-mammoth.mp4`, `vehicles/vip13-gorilla.mp4`,
+  `vehicles/vip14-bear.mp4`, `vehicles/vip15-kraken.mp4`,
+  `vehicles/vip16-leviathan.mp4`, `vehicles/vip17-phoenix.mp4`,
+  `vehicles/vip18-dragon.mp4`. Uploaded by `cloudflare-r2-upload.sh`
+  (already targets `darkvibex-files`; see below).
+- **Make the bucket public — dashboard steps:**
+  1. Open [dash.cloudflare.com](https://dash.cloudflare.com) → **R2
+     Object Storage** → open bucket **`darkvibex-files`**.
+  2. Either connect a **Custom Domain** (recommended): bucket →
+     **Settings → Custom Domain** → add your domain, e.g.
+     `cdn.example.com` (must be a domain in your Cloudflare account).
+     Files are then served by the Cloudflare CDN from that domain.
+  3. Or enable the public **r2.dev** URL: bucket → **Settings** →
+     allow public access / the `https://pub-xxx.r2.dev` subdomain.
+  4. Upload the 14 MP4s under `vehicles/` (script or dashboard
+     drag-and-drop). R2 free tier is 10 GB storage with zero egress;
+     these 14 videos total ~157 MB.
+- **Public URL pattern:** `<R2_PUBLIC_BASE_URL>/vehicles/vip17-phoenix.mp4`
+  — e.g. `https://cdn.example.com/vehicles/vip17-phoenix.mp4` or
+  `https://pub-xxx.r2.dev/vehicles/vip17-phoenix.mp4`.
+- **Where to set the base URL (one place, same value in both files):**
+  - Worker catalog `vehicle_catalog.js`: `R2_PUBLIC_BASE_URL = ''` →
+    set to the custom domain / r2.dev URL (no trailing slash).
+    `videoUrlForVipLevel(level)` returns the full direct URL, or
+    `null` while it is still `''`; `isR2Configured()` reports it.
+  - Dart `vehicle_entry_effect_v2.dart`: `r2PublicBaseUrl = ''` →
+    same value. `animalVideoUrlForVipLevel(level)` returns the full
+    direct URL, or `null` while unconfigured. The exact domain is
+    NOT known yet — it is deliberately left `''`, do not invent one.
+- **Playback in the app:** the room plays the URL from
+  `videoUrlForVipLevel()` / `animalVideoUrlForVipLevel()` with
+  `video_player` (`VideoPlayerController.networkUrl(Uri.parse(url))`)
+  inside `CustomAssetEffectPlayback` (`active_vehicle_video_key` =
+  that full direct R2 URL). **Never a Worker URL.**
+- **Prefetch for instant entry:** on room join (once the joining
+  user's VIP level is known), create the controller early and
+  `await initialize()` so the first frames are buffered before the
+  entry plays; `play()` on entry, dispose afterwards. See the
+  commented example in `vehicle_entry_effect_v2.dart` (DIRECT R2
+  PLAYBACK header). Layout is unchanged: VIP5–15 bottom 40%,
+  VIP16–18 full-screen, animated anime background behind it.
+- **Upload script:** `cloudflare-r2-upload.sh` — needs
+  `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+  (R2 API token), bucket defaults to `darkvibex-files`. The actual
+  upload still needs Vinay's R2 access/keys.
+
 ## VIP rule change required on merge
 
 Vinay wants vehicle entry from **VIP5**, not VIP8. The old rule must
