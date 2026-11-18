@@ -6,7 +6,7 @@ void main() {
   test('DarkVibeX VIP has exactly 18 levels', () {
     expect(VipPolicy.levels.length, 18);
     expect(VipPolicy.maxLevel, 18);
-    expect(VipPolicy.ruleFor(18)?.validityDays, 45);
+    expect(VipPolicy.ruleFor(18)?.validityDays, 60);
   });
 
   test('Coin Seller VIP EXP stays one-to-one at every VIP level', () {

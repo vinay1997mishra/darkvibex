@@ -267,7 +267,7 @@ class VipScreen extends StatelessWidget {
             Text('Available VIP Exp: ${_compact(state.vipExpBalance)}'),
             Text('Total eligible coins received: ${_compact(state.vipTotalReceivedCoins)}'),
             Text(
-              'Coin Seller EXP rate: 1.5 VIP EXP per \$1 of coins bought',
+              'Coin Seller EXP rate: 150 VIP EXP per \$1 of coins bought',
             ),
             if (until != null) Text('Active until: ${_date(until)}'),
             const SizedBox(height: 8),
@@ -663,7 +663,7 @@ class VipRulesScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'DarkVibeX VIP has 18 levels. You earn VIP EXP only by buying coins from a Coin Seller — 1.5 EXP per \$1 spent (\$1 = 8,000,000 coins). Spending coins on gifts does not earn EXP. VIP lasts 1 month (VIP16–18: 2 months) from the day you level up; on the expiry date you either level up by buying more coins or drop by 1 level.',
+            'DarkVibeX VIP has 18 levels. You earn VIP EXP only by buying coins from a Coin Seller — 150 EXP per \$1 spent (\$1 = 8,000,000 coins). Spending coins on gifts does not earn EXP. VIP lasts 1 month (VIP16–18: 2 months) from the day you level up; on the expiry date you either level up by buying more coins or drop by 1 level.',
             style: TextStyle(color: Colors.white70, height: 1.45),
           ),
           const SizedBox(height: 18),
