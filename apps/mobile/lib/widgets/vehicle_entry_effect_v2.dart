@@ -1,33 +1,32 @@
 // DarkVibeX — Vehicle Entry Effect v2 (Flutter / Dart snippet)
 // ---------------------------------------------------------------------------
 // PURPOSE
-//   Add distinct painter branches for the vehicles that had no distinct
-//   shape in apps/mobile/lib/widgets/vehicle_entry_effect.dart, for the
-//   full 14-vehicle set (VIP5-18, tier 1-14; tier = VIP - 4):
-//     Silver Moon Coupe (tier 1, VIP5), Sapphire Falcon GT (tier 2, VIP6),
-//     Emerald Royal Carriage (tier 3, VIP7), Luxury Yacht (tier 9, VIP13),
-//     Royal Lion Carriage (tier 10, VIP14), Diamond Jet (tier 12, VIP16),
-//     Inferno Dragon (tier 13, VIP17), Golden Dragon (tier 7, VIP11),
-//     Eternal Sovereign / King of VIP (tier 14, VIP18),
-//     Phoenix GT (tier 8, VIP12) and Celestial Phoenix (tier 11, VIP15)
-//     — distinct layered-feather painters, not the old generic phoenix.
-//   The other 3 tiers (Starlight Coupe, Neon Comet GT, Royal Chariot)
-//   already have painter branches in the original file — keep those,
-//   do not replace them. Backdrops: _paintCinematicBackdrop() now paints
-//   a per-style cinematic backdrop for EVERY style before the vehicle.
+//   The CustomPaint FALLBACK for the animal vehicle entries (VIP5-18,
+//   tier 1-14; tier = VIP - 4), used ONLY when the member's animal video
+//   (direct R2 MP4, played by CustomAssetEffectPlayback via directVideoUrl)
+//   is unavailable — e.g. no network, or a level with no video yet.
+//   The animal set (single authoritative list, apps/worker/src/
+//   vehicle_entry_animals.js):
+//     Deer (VIP5), Wolf (VIP6), Eagle (VIP7), Panther (VIP8),
+//     Cobra (VIP9), Lion (VIP10), Tiger (VIP11), Mammoth (VIP12),
+//     Gorilla (VIP13), Bear (VIP14), Kraken (VIP15), Leviathan (VIP16),
+//     Phoenix (VIP17), Dragon (VIP18).
+//   The old 7-car list (Starlight Coupe, Royal Chariot, Phoenix GT,
+//   King of VIP, Neon Comet GT, Dragon Royal Chariot, Celestial
+//   Phoenix) was superseded by Vinay on 2026-11-18 and is gone from the
+//   worker catalog. The painter branches below are the legacy car
+//   shapes, kept as placeholder silhouettes keyed by animal theme — the
+//   video is primary and these painters are never the main visual.
 //
-// HOW TO MERGE (do not paste this file as-is over the original):
-//   1. In vehicle_entry_effect.dart, add the VEHICLE_STYLES map below
-//      next to the existing style table, or replace _vehicleColorsFor()
-//      with vehicleStyleForVipLevel() + the colors from this map.
-//   2. In _EntryVehiclePainter.paint(), add the new style_id cases in
-//      the existing switch (see paintVehicle() below for the exact
-//      case names) and delegate to the _paint* helpers in this file.
-//   3. Keep the existing 4.8 s animation, left-to-right drive, name +
-//      VIP LEVEL label, and transparent background — this file draws
-//      only with Canvas / Paint, no image or video assets.
-//   4. Update the style_id passed from room_screen.dart / the cosmetics
-//      store to the new style_id (e.g. 'luxury-yacht') for VIP13+.
+// HOW TO MERGE
+//   This file IS the vehicle-entry effect v2 (it replaces the original
+//   v2 file). For the room arrival flow, use animalVideoUrlForVipLevel()
+//   below and pass it as directVideoUrl to CustomAssetEffectPlayback —
+//   direct R2 playback, never through the Worker /api/files (its
+//   allowlist rejects vehicles/ keys). The CustomPaint branches below
+//   are the fallback only, when no video is available.
+//   entryRectForVipLevel() gives the arrival overlay rect: VIP5-15
+//   bottom-anchored 40% height, VIP16-18 full-screen.
 //
 //   This file is self-contained and compile-plausible as a Dart snippet:
 //   it only needs `package:flutter/material.dart` and `dart:math`.
@@ -67,11 +66,11 @@
 //   Shot list for the Yacht asset: 0-2 s purple clouds + sunset glow,
 //   swell rises; 2-5 s giant turquoise wave, yacht bow rises with spray;
 //   5-7 s yacht fills frame, decks/windows/pool in detail, gold lights;
-//   7-8 s name + "VIP 13" in glowing gold, fade. Shot list for the
+//   7-8 s name + "VIP 15" in glowing gold, fade. Shot list for the
 //   Phoenix asset: 0-2 s close-up head, glowing eyes, feathers ignite;
 //   2-5 s wings spread wide, flames + embers rising, tail feathers
 //   streaming; 5-7 s full bird flying toward camera, dark sky, flame
-//   trails; 7-8 s name + "VIP 12" in glowing gold, fade. Duration 8 s
+//   trails; 7-8 s name + "VIP 17" in glowing gold, fade. Duration 8 s
 //   (or cut to 4.8 s to match animation_ms), vertical, full-screen.
 //   Do NOT present the CustomPaint version as the finished realistic
 //   look — it is the fallback when no video/GLB asset is available.
@@ -83,9 +82,10 @@
 //   Land Legendary, VIP14 Bear Land Legendary, VIP15 Kraken Water
 //   Legendary, VIP16 Leviathan Water Mythic, VIP17 Phoenix Air Mythic,
 //   VIP18 Dragon Air Mythic. Each has a rendered MP4 in videos/ — see
-//   ANIMAL_VIDEO_FILES below and vehicle_catalog.js (video_file per
-//   entry). The old car style_ids in VEHICLE_STYLES below are kept as
-//   the CustomPaint fallback only; the video asset is what plays.
+//   ANIMAL_VIDEO_FILES below and vehicle_entry_animals.js (video_key
+//   per entry). vehicleStyles below is keyed by animal style_id
+//   ('deer' ... 'dragon'); the painter branches are the CustomPaint
+//   fallback only — the video asset is what plays.
 //
 // LAYOUT (Vinay, 2026-11-18):
 //   VIP5-15 : bottom-anchored, touching the bottom edge, height = 40%
@@ -113,13 +113,12 @@
 //   the room plays the MP4 straight from the R2 public URL with
 //   video_player (VideoPlayerController.networkUrl), served by the
 //   Cloudflare CDN with zero egress — fastest start on room entry.
-//   Set r2PublicBaseUrl below to the bucket's public base URL, with
-//   NO trailing slash: a custom domain (recommended, e.g.
-//   'https://cdn.example.com' — R2 bucket > Settings > Custom Domain)
-//   or the public r2.dev URL (e.g. 'https://pub-xxx.r2.dev').
-//   Leave it '' until the domain is set; animalVideoUrlForVipLevel()
-//   then returns null and the CustomPaint fallback below is used.
-//   Do NOT invent a real domain here.
+//   r2PublicBaseUrl below is already set to the bucket's public
+//   r2.dev URL (https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev),
+//   merged via PR #124. If the bucket later gets a custom domain,
+//   change that one constant and both the worker and Dart sides use it.
+//   If it were ever '' again, animalVideoUrlForVipLevel() would
+//   return null and the CustomPaint fallback below is used.
 //
 //   PREFETCH / PRELOAD (for instant entry playback): the room must
 //   NOT wait for the entry moment to fetch the video. On room join
@@ -164,124 +163,125 @@ class VehicleStyle {
   final int minVip;
   final int tier;
   final List<Color> colors; // [primary, secondary, accent]
-  final String animationType; // 'drive' | 'fly' | 'sail'
+  final String animationType; // 'run' | 'fly' | 'strike' | 'rise'
 }
 
 const Map<String, VehicleStyle> vehicleStyles = <String, VehicleStyle>{
-  'silver-moon-coupe': VehicleStyle(
-    styleId: 'silver-moon-coupe',
-    name: 'Silver Moon Coupe',
+  // One entry per animal (VIP5-18, tier 1-14). style_id, name, colors
+  // and animationType mirror apps/worker/src/vehicle_entry_animals.js.
+  // Phoenix is VIP17 and Dragon is VIP18 (the old car list had the
+  // Phoenix GT at VIP12 — that was superseded with the cars).
+  'deer': VehicleStyle(
+    styleId: 'deer',
+    name: 'Deer',
     minVip: 5,
     tier: 1,
-    colors: <Color>[Color(0xFFE8ECF5), Color(0xFF7FB3FF), Color(0xFFFFF3B0)],
-    animationType: 'drive',
+    colors: <Color>[Color(0xFFFFD700), Color(0xFF7FB3FF), Color(0xFFFFF3B0)],
+    animationType: 'run',
   ),
-  'sapphire-falcon-gt': VehicleStyle(
-    styleId: 'sapphire-falcon-gt',
-    name: 'Sapphire Falcon GT',
+  'wolf': VehicleStyle(
+    styleId: 'wolf',
+    name: 'Wolf',
     minVip: 6,
     tier: 2,
-    colors: <Color>[Color(0xFF0B3D91), Color(0xFF00B0FF), Color(0xFFB3E5FC)],
-    animationType: 'fly',
+    colors: <Color>[Color(0xFFC0C0C0), Color(0xFF00B0FF), Color(0xFFE8ECF5)],
+    animationType: 'run',
   ),
-  'emerald-royal-carriage': VehicleStyle(
-    styleId: 'emerald-royal-carriage',
-    name: 'Emerald Royal Carriage',
+  'eagle': VehicleStyle(
+    styleId: 'eagle',
+    name: 'Eagle',
     minVip: 7,
     tier: 3,
-    colors: <Color>[Color(0xFF00C853), Color(0xFFFFD700), Color(0xFFE8F5E9)],
-    animationType: 'drive',
-  ),
-  'starlight-coupe': VehicleStyle(
-    styleId: 'starlight-coupe',
-    name: 'Starlight Coupe',
-    minVip: 8,
-    tier: 4,
-    colors: <Color>[Color(0xFFFFD700), Color(0xFFFF8C00), Color(0xFFFFF3B0)],
-    animationType: 'drive',
-  ),
-  'neon-comet-gt': VehicleStyle(
-    styleId: 'neon-comet-gt',
-    name: 'Neon Comet GT',
-    minVip: 9,
-    tier: 5,
-    colors: <Color>[Color(0xFF00F0FF), Color(0xFFFF2E9A), Color(0xFF7B2FFF)],
-    animationType: 'drive',
-  ),
-  'royal-chariot': VehicleStyle(
-    styleId: 'royal-chariot',
-    name: 'Royal Chariot',
-    minVip: 10,
-    tier: 6,
-    colors: <Color>[Color(0xFFFFD700), Color(0xFFC8102E), Color(0xFFFFF8DC)],
-    animationType: 'drive',
-  ),
-  'golden-dragon': VehicleStyle(
-    styleId: 'golden-dragon',
-    name: 'Golden Dragon',
-    minVip: 11,
-    tier: 7,
-    colors: <Color>[Color(0xFFFFC400), Color(0xFFFF6D00), Color(0xFFFFE082)],
+    colors: <Color>[Color(0xFFFFD700), Color(0xFF00B0FF), Color(0xFFFFF3B0)],
     animationType: 'fly',
   ),
-  'phoenix-gt': VehicleStyle(
-    styleId: 'phoenix-gt',
-    name: 'Phoenix GT',
+  'panther': VehicleStyle(
+    styleId: 'panther',
+    name: 'Panther',
+    minVip: 8,
+    tier: 4,
+    colors: <Color>[Color(0xFF111111), Color(0xFF00E676), Color(0xFF7B2FFF)],
+    animationType: 'run',
+  ),
+  'cobra': VehicleStyle(
+    styleId: 'cobra',
+    name: 'Cobra',
+    minVip: 9,
+    tier: 5,
+    colors: <Color>[Color(0xFFFFD700), Color(0xFFFF6D00), Color(0xFFFFF3B0)],
+    animationType: 'strike',
+  ),
+  'lion': VehicleStyle(
+    styleId: 'lion',
+    name: 'Lion',
+    minVip: 10,
+    tier: 6,
+    colors: <Color>[Color(0xFFFFB300), Color(0xFFFF6D00), Color(0xFFFFD700)],
+    animationType: 'run',
+  ),
+  'tiger': VehicleStyle(
+    styleId: 'tiger',
+    name: 'Tiger',
+    minVip: 11,
+    tier: 7,
+    colors: <Color>[Color(0xFFFF6D00), Color(0xFFFFC400), Color(0xFFFFE082)],
+    animationType: 'run',
+  ),
+  'mammoth': VehicleStyle(
+    styleId: 'mammoth',
+    name: 'Mammoth',
     minVip: 12,
     tier: 8,
+    colors: <Color>[Color(0xFFB3E5FC), Color(0xFF00B0FF), Color(0xFFFFFFFF)],
+    animationType: 'run',
+  ),
+  'gorilla': VehicleStyle(
+    styleId: 'gorilla',
+    name: 'Gorilla',
+    minVip: 13,
+    tier: 9,
+    colors: <Color>[Color(0xFF8D6E63), Color(0xFFFFD700), Color(0xFFFFF3B0)],
+    animationType: 'run',
+  ),
+  'bear': VehicleStyle(
+    styleId: 'bear',
+    name: 'Bear',
+    minVip: 14,
+    tier: 10,
+    colors: <Color>[Color(0xFF6D4C41), Color(0xFFD50000), Color(0xFFFF6D00)],
+    animationType: 'run',
+  ),
+  'kraken': VehicleStyle(
+    styleId: 'kraken',
+    name: 'Kraken',
+    minVip: 15,
+    tier: 11,
+    colors: <Color>[Color(0xFF0B3D91), Color(0xFF00B0FF), Color(0xFF7FE3F2)],
+    animationType: 'rise',
+  ),
+  'leviathan': VehicleStyle(
+    styleId: 'leviathan',
+    name: 'Leviathan',
+    minVip: 16,
+    tier: 12,
+    colors: <Color>[Color(0xFF0B3D91), Color(0xFF00E5FF), Color(0xFFB3E5FC)],
+    animationType: 'fly',
+  ),
+  'phoenix': VehicleStyle(
+    styleId: 'phoenix',
+    name: 'Phoenix',
+    minVip: 17,
+    tier: 13,
     colors: <Color>[Color(0xFFFF3D00), Color(0xFFFF9E00), Color(0xFFFFD54F)],
     animationType: 'fly',
   ),
-  'luxury-yacht': VehicleStyle(
-    styleId: 'luxury-yacht',
-    name: 'Luxury Yacht',
-    minVip: 13,
-    tier: 9,
-    // Yacht colours: white hull, turquoise sea/pool, gold trim.
-    // The cinematic backdrop adds sunset purple/orange (see
-    // _paintYachtBackdrop) — those are backdrop colours, not hull colours.
-    colors: <Color>[Color(0xFFFFFFFF), Color(0xFF00B4D8), Color(0xFFFFD700)],
-    animationType: 'sail',
-  ),
-  'royal-lion-carriage': VehicleStyle(
-    styleId: 'royal-lion-carriage',
-    name: 'Royal Lion Carriage',
-    minVip: 14,
-    tier: 10,
-    colors: <Color>[Color(0xFFFFB300), Color(0xFF6D4C41), Color(0xFFFFD700)],
-    animationType: 'drive',
-  ),
-  'celestial-phoenix': VehicleStyle(
-    styleId: 'celestial-phoenix',
-    name: 'Celestial Phoenix',
-    minVip: 15,
-    tier: 11,
-    colors: <Color>[Color(0xFF7B2FFF), Color(0xFF00E5FF), Color(0xFFE1BEE7)],
-    animationType: 'fly',
-  ),
-  'diamond-jet': VehicleStyle(
-    styleId: 'diamond-jet',
-    name: 'Diamond Jet',
-    minVip: 16,
-    tier: 12,
-    colors: <Color>[Color(0xFFB3E5FC), Color(0xFFFFFFFF), Color(0xFF00B0FF)],
-    animationType: 'fly',
-  ),
-  'inferno-dragon': VehicleStyle(
-    styleId: 'inferno-dragon',
-    name: 'Inferno Dragon',
-    minVip: 17,
-    tier: 13,
-    colors: <Color>[Color(0xFFD50000), Color(0xFFFF6D00), Color(0xFFFFCA28)],
-    animationType: 'fly',
-  ),
-  'eternal-sovereign': VehicleStyle(
-    styleId: 'eternal-sovereign',
-    name: 'King of VIP',
+  'dragon': VehicleStyle(
+    styleId: 'dragon',
+    name: 'Dragon',
     minVip: 18,
     tier: 14,
-    colors: <Color>[Color(0xFFFFD700), Color(0xFF7B2FFF), Color(0xFFFFFFFF)],
-    animationType: 'drive',
+    colors: <Color>[Color(0xFFFFC400), Color(0xFFFF6D00), Color(0xFFFFE082)],
+    animationType: 'fly',
   ),
 };
 
@@ -426,9 +426,13 @@ void paintVehicle(
 ) {
   final VehicleStyle? style = vehicleStyles[styleId];
   if (style == null) return;
-  final double bob = style.animationType == 'drive'
-      ? 0.0
-      : math.sin(progress * math.pi * 2) * 5.0;
+  // Only flying / rising animals bob (fly, rise). Land animals (run) and
+  // the striking Cobra stay planted — a running Deer or striking Cobra
+  // must not float up and down.
+  final double bob = (style.animationType == 'fly' ||
+          style.animationType == 'rise')
+      ? math.sin(progress * math.pi * 2) * 5.0
+      : 0.0;
   final double cx = size.width * 0.5;
   final double cy = size.height * 0.52 + bob;
   final double w = size.width * 0.62;
@@ -441,48 +445,57 @@ void paintVehicle(
   // Then the per-style cinematic backdrop, then the vehicle.
   _paintAnimatedBackground(canvas, size, styleId, progress);
   // Cinematic backdrop for EVERY style, painted BEFORE the vehicle:
-  // per-style sky/scene (night city, fire, galaxy, ocean, palace...).
+  // per-style sky/scene (night forest, fire, galaxy, ocean, palace...).
   // _paintCinematicBackdrop() dispatches to _paintYachtBackdrop() for
-  // the Yacht and _paintPhoenixBackdrop() for the Phoenix.
+  // the water animals and _paintPhoenixBackdrop() for the Phoenix.
   _paintCinematicBackdrop(canvas, size, styleId, progress);
+  // FALLBACK silhouettes only — the real visual is the animal video.
+  // The legacy car painter branches are reused by animal theme (sleek
+  // silver for the Deer, winged shapes for the flyers, royal shapes
+  // for the big land animals, fire shapes for the fire animals).
   switch (styleId) {
-    case 'silver-moon-coupe':
+    case 'deer':
       _paintSilverMoonCoupe(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'sapphire-falcon-gt':
+    case 'wolf':
       _paintSapphireFalconGT(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'emerald-royal-carriage':
-      _paintEmeraldRoyalCarriage(canvas, cx, cy, w, h, style, progress);
+    case 'eagle':
+      _paintSapphireFalconGT(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'phoenix-gt':
-      _paintPhoenixGT(canvas, cx, cy, w, h, style, progress);
-      break;
-    case 'celestial-phoenix':
-      _paintCelestialPhoenix(canvas, cx, cy, w, h, style, progress);
-      break;
-    case 'golden-dragon':
+    case 'panther':
       _paintGoldenDragon(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'luxury-yacht':
-      _paintLuxuryYacht(canvas, cx, cy, w, h, style, progress);
+    case 'cobra':
+      _paintCelestialPhoenix(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'royal-lion-carriage':
+    case 'lion':
       _paintRoyalLionCarriage(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'diamond-jet':
-      _paintDiamondJet(canvas, cx, cy, w, h, style, progress);
+    case 'tiger':
+      _paintGoldenDragon(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'inferno-dragon':
-      _paintInfernoDragon(canvas, cx, cy, w, h, style, progress);
+    case 'mammoth':
+      _paintRoyalLionCarriage(canvas, cx, cy, w, h, style, progress);
       break;
-    case 'eternal-sovereign':
+    case 'gorilla':
       _paintEternalSovereign(canvas, cx, cy, w, h, style, progress);
       break;
-    // Existing branches stay in the original file:
-    // 'starlight-coupe', 'neon-comet-gt', 'royal-chariot'
-    // — do not duplicate them here. Phoenix GT and Celestial Phoenix
-    // now have dedicated branches above (layered feathers, glowing eyes).
+    case 'bear':
+      _paintRoyalLionCarriage(canvas, cx, cy, w, h, style, progress);
+      break;
+    case 'kraken':
+      _paintDiamondJet(canvas, cx, cy, w, h, style, progress);
+      break;
+    case 'leviathan':
+      _paintDiamondJet(canvas, cx, cy, w, h, style, progress);
+      break;
+    case 'phoenix':
+      _paintPhoenixGT(canvas, cx, cy, w, h, style, progress);
+      break;
+    case 'dragon':
+      _paintInfernoDragon(canvas, cx, cy, w, h, style, progress);
+      break;
     default:
       _paintFallbackCoupe(canvas, cx, cy, w, h, style);
       break;
@@ -589,9 +602,10 @@ void _paintGoldenDragon(
 }
 
 // ---------------------------------------------------------------------------
-// Luxury Yacht — realistic-anime backdrop + detailed multi-deck yacht.
-// See the STYLE DIRECTION note at the top of this file: this is a
-// CustomPaint approximation only. The finished look needs a video
+// Ocean backdrop (was the Luxury Yacht backdrop) — realistic-anime ocean
+// scene, now the fallback backdrop for the water animals (Kraken,
+// Leviathan). See the STYLE DIRECTION note at the top of this file: this
+// is a CustomPaint approximation only. The finished look needs a video
 // (video_player) or GLB (model_viewer_plus) asset (see the shot list
 // in the STYLE DIRECTION note); this painter is the lightweight
 // fallback when no such asset is available. No SVGA/Lottie in the app.
@@ -1067,10 +1081,13 @@ void _paintAnimatedBackground(
 ) {
   final double w = size.width;
   final double h = size.height;
-  final bool isFire = styleId == 'phoenix-gt' ||
-      styleId == 'inferno-dragon' ||
-      styleId == 'golden-dragon';
-  final bool isWater = styleId == 'luxury-yacht';
+  // Fire animals (Phoenix, Dragon, Tiger) get ember-orange particles;
+  // water animals (Kraken, Leviathan) get aqua particles; the rest get
+  // warm gold sparkles.
+  final bool isFire = styleId == 'phoenix' ||
+      styleId == 'dragon' ||
+      styleId == 'tiger';
+  final bool isWater = styleId == 'kraken' || styleId == 'leviathan';
   final Color particleColor = isFire
       ? const Color(0xFFFFB300)
       : isWater
@@ -1129,33 +1146,37 @@ void _paintCinematicBackdrop(
   String styleId,
   double progress,
 ) {
+  // Backdrop by the animal's backgroundTheme (vehicle_entry_animals.js):
+  // night forest / night sky for the night animals, fire for the fire
+  // animals, galaxy for the storm-ocean animals, sky for the flyers and
+  // the ice Mammoth, gold for the royal land animals.
   switch (styleId) {
-    case 'luxury-yacht':
+    case 'kraken':
+    case 'leviathan':
       _paintYachtBackdrop(canvas, size, progress);
       break;
-    case 'phoenix-gt':
-    case 'inferno-dragon':
+    case 'phoenix':
       _paintPhoenixBackdrop(canvas, size, progress);
       break;
-    case 'golden-dragon':
+    case 'tiger':
+    case 'dragon':
       _paintFireBackdrop(canvas, size, progress, const Color(0xFFFFC400));
       break;
-    case 'celestial-phoenix':
+    case 'panther':
       _paintGalaxyBackdrop(canvas, size, progress);
       break;
-    case 'diamond-jet':
+    case 'eagle':
+    case 'mammoth':
       _paintSkyBackdrop(canvas, size, progress);
       break;
-    case 'starlight-coupe':
-    case 'neon-comet-gt':
-    case 'sapphire-falcon-gt':
-    case 'silver-moon-coupe':
+    case 'deer':
+    case 'wolf':
+    case 'cobra':
       _paintNightSkyBackdrop(canvas, size, progress, styleId);
       break;
-    case 'royal-chariot':
-    case 'royal-lion-carriage':
-    case 'emerald-royal-carriage':
-    case 'eternal-sovereign':
+    case 'lion':
+    case 'gorilla':
+    case 'bear':
       _paintGoldenBackdrop(canvas, size, progress, styleId);
       break;
   }
@@ -1298,8 +1319,8 @@ void _paintNightSkyBackdrop(
     ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
   canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), sky);
   _paintStars(canvas, size, 18, 2);
-  if (styleId == 'silver-moon-coupe') {
-    // Full moon, low right — the Silver Moon Coupe's light source.
+  if (styleId == 'deer') {
+    // Full moon, low right — the Deer's moonlit-forest light source.
     canvas.drawCircle(
       Offset(size.width * 0.82, size.height * 0.20),
       size.width * 0.07,
@@ -1311,7 +1332,7 @@ void _paintNightSkyBackdrop(
       _fill(const Color(0xFFFFF3B0).withOpacity(0.18)),
     );
   }
-  if (styleId == 'neon-comet-gt') {
+  if (styleId == 'wolf') {
     // Comet streak across the top of the frame.
     canvas.drawLine(
       Offset(size.width * 0.95, size.height * 0.08),
@@ -1339,9 +1360,9 @@ void _paintGoldenBackdrop(
       colors: <Color>[Color(0xFF241A02), Color(0xFF5A3A00), Color(0xFF8A6300)],
     ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
   canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), sky);
-  // Palace columns at the edges for chariot/sovereign; garden trees
-  // (dark green circles) for the Emerald carriage.
-  if (styleId == 'emerald-royal-carriage') {
+  // Palace columns at the edges for the Lion/Bear; jungle trees
+  // (dark green circles) for the Gorilla.
+  if (styleId == 'gorilla') {
     for (int i = 0; i < 3; i++) {
       canvas.drawCircle(
         Offset(size.width * (0.08 + i * 0.42), size.height * 0.18),
@@ -1376,7 +1397,7 @@ void _paintGoldenBackdrop(
 // 6. New phoenix + lower-tier vehicle shapes
 // ---------------------------------------------------------------------------
 
-/// Phoenix GT — layered-feather phoenix, based on the reference video.
+/// Phoenix — layered-feather phoenix, based on the reference video.
 /// Wings spread wide, head front-on with glowing orange eyes, flame
 /// crest, body of layered red/gold feathers, long golden tail feathers.
 void _paintPhoenixGT(
@@ -1465,8 +1486,9 @@ void _paintPhoenixGT(
   }
 }
 
-/// Celestial Phoenix — same layered-feather structure as the Phoenix GT,
-/// in violet/cyan starlight colours instead of fire colours.
+/// Celestial phoenix shape — same layered-feather structure as the
+/// Phoenix, in violet/cyan starlight colours instead of fire colours.
+/// (Fallback silhouette for the Cobra.)
 void _paintCelestialPhoenix(
   Canvas canvas,
   double cx,

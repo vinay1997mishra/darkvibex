@@ -13,14 +13,24 @@ void main() {
     expect(source, contains('Timer(Duration(milliseconds: durationMs)'));
   });
 
-  test('custom vehicle video fills the lower 45 percent entry area', () {
+  test('arrival overlay uses the animal layout: 40% bottom for VIP5-15, full-screen for VIP16-18', () {
     final room = File('lib/screens/room_screen.dart').readAsStringSync();
     final playback =
         File('lib/widgets/custom_asset_effect_playback.dart').readAsStringSync();
 
-    expect(room, contains('bottom: 0,'));
-    expect(room, contains('height: MediaQuery.sizeOf(context).height * .45'));
+    // The overlay rect comes from entryRectForVipLevel() (VIP5-15 bottom
+    // 40%, VIP16-18 full-screen) — not a fixed 45% height for every level.
+    expect(room, contains('entryRectForVipLevel('));
+    expect(room, isNot(contains('height: MediaQuery.sizeOf(context).height * .45')));
+    // The animal video plays direct from R2, never through /api/files.
+    expect(room, contains('directVideoUrl:'));
+    expect(room, contains('_directAnimalVideoUrlForMember('));
     expect(room, contains("'active_vehicle_video_key'"));
+    final v2 = File('lib/widgets/vehicle_entry_effect_v2.dart').readAsStringSync();
+    expect(v2, contains('bottomEntryHeightFraction = 0.40'));
+    expect(v2, contains('isFullscreenVipLevel'));
+    expect(playback, contains('directVideoUrl'));
+    expect(playback, contains('prefetchDirectVideoUrl'));
     expect(playback, contains('fit: BoxFit.cover'));
   });
 }

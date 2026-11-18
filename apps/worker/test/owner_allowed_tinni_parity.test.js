@@ -151,9 +151,14 @@ test("VIP manager controls the real VIP1-VIP18 leveling rules", () => {
   assert.match(vipStore, /export async function vipRuleForDb/);
   assert.match(vipStore, /await vipRuleForDb\(db,level\+1\)/);
   assert.match(vipStore, /next\.enabled===false/);
-  for(const threshold of ["25000000","100000000","220000000","400000000","500000000000"]){
+  // Upgrade EXP is derived from the cumulative totals (/ 400), so the
+  // leveling rules pinned in the source are the totals themselves
+  // (Vinay's 2026-11-18 ladder: VIP1 $3 ... VIP18 $10,000 at $1 =
+  // 8,000,000 coins).
+  for(const threshold of ["24000000","64000000","160000000","400000000","80000000000"]){
     assert.match(vipPolicy,new RegExp(threshold));
   }
+  assert.match(vipPolicy, /\/400/);
 });
 
 test("dedicated Gifts and Assets managers feed live scheduled catalogs", () => {

@@ -398,6 +398,29 @@ export function vehicleByStyleId(styleId) {
   return VEHICLE_ENTRY_CATALOG.find((v) => v.style_id === styleId) ?? null;
 }
 
+/// Catalog item in the shape vipVisualsForLevel() returns for a vehicle:
+/// video_key is the direct R2 key (vehicles/vip<N>-<animal>.mp4). The app
+/// plays it DIRECTLY from R2 (VideoPlayerController.networkUrl) — never
+/// through the Worker /api/files, whose allowlist rejects vehicles/ keys.
+/// Used as the FALLBACK in vipVisualsForLevel() when the Owner has not
+/// configured a vehicle_entry_id for the level and the member has no
+/// equipped custom vehicle. Precedence: equipped custom vehicle > Owner
+/// vip_rule vehicle > animal vehicle.
+export function vehicleVisualForVipLevel(level) {
+  const v = vehicleForVipLevel(level);
+  if (v == null) return null;
+  return {
+    id: v.id,
+    kind: "vehicle",
+    name: v.name,
+    video_key: v.video_key,
+    glb_key: "",
+    media_type: "video",
+    animation_type: v.animation_type,
+    animation_ms: v.animation_ms,
+  };
+}
+
 export function videoFileForVipLevel(level) {
   const v = vehicleForVipLevel(level);
   return v == null ? null : v.video_file;
@@ -428,32 +451,4 @@ export function allVideoUrls() {
     video_key: v.video_key,
     video_url: videoUrlForVipLevel(v.min_vip_level),
   }));
-}
-
-// Legacy mapping — the 7 old vehicles in apps/worker/src/cosmetics.js
-// (car list, superseded by the animal list). Old id -> tier, by the
-// same tier number the old entry used, so existing equipped items
-// resolve to the animal at that tier instead of breaking.
-//   vehicle_spark            -> tier 4  (Panther, VIP8)
-//   vehicle_neon_comet       -> tier 5  (Cobra, VIP9)
-//   vehicle_royal            -> tier 6  (Lion, VIP10)
-//   vehicle_dragon_royal     -> tier 7  (Tiger, VIP11)
-//   vehicle_phoenix          -> tier 13 (Phoenix, VIP17 — note: the
-//                               old Phoenix GT was VIP12/tier 8; the
-//                               animal Phoenix is VIP17/tier 13)
-//   vehicle_celestial_phoenix -> tier 11 (Kraken, VIP15)
-//   vehicle_king             -> tier 14 (Dragon, VIP18)
-export const LEGACY_VEHICLE_MAP = Object.freeze({
-  vehicle_spark: 4,
-  vehicle_neon_comet: 5,
-  vehicle_royal: 6,
-  vehicle_dragon_royal: 7,
-  vehicle_phoenix: 13,
-  vehicle_celestial_phoenix: 11,
-  vehicle_king: 14,
-});
-
-export function vehicleForLegacyId(legacyId) {
-  const tier = LEGACY_VEHICLE_MAP[legacyId];
-  return tier == null ? null : vehicleForTier(tier);
 }

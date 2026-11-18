@@ -1,17 +1,39 @@
-// Each upgrade amount uses 5,000,000 coins/USD and 400 coins per VIP EXP.
-// Total coins are cumulative; upgrade EXP is required separately at each level.
-// Legacy maintenance targets keep their original coin cost, converted to EXP.
-export const VIP_LEVELS = Object.freeze([
-  [1,35000000,25000000,75,30],[2,135000000,100000000,75,30],
-  [3,335000000,220000000,225,30],[4,735000000,400000000,1250,30],
-  [5,1735000000,900000000,3250,30],[6,3235000000,1500000000,6500,30],
-  [7,5985000000,3000000000,11250,30],[8,9485000000,5300000000,19500,30],
-  [9,13985000000,8500000000,27500,30],[10,20235000000,17000000000,35000,30],
-  [11,27735000000,25000000000,70000,30],[12,36735000000,40000000000,207500,30],
-  [13,47235000000,90000000000,375000,30],[14,57735000000,150000000000,775000,30],
-  [15,69235000000,200000000000,1750000,30],[16,80735000000,300000000000,3500000,30],
-  [17,92235000000,300000000000,7500000,30],[18,103735000000,500000000000,10000000,45],
-].map(([level,total,upgrade,maintain,days])=>({level,total,upgrade,maintain,days})));
+// VIP pricing ladder (Vinay, 2026-11-18): $1 = 8,000,000 coins.
+// Each level's total is the CUMULATIVE coins to reach it; the $ price
+// is total / 8,000,000. VIP1-8 are Vinay's exact prices ($3, $8, $20,
+// $50, $150, $400, $900, $1,500); VIP9-14 step $600/$700; VIP15-18
+// were raised by Vinay ("vip 15 se price badha de") to $6,500 / $7,600
+// / $8,800 / $10,000, so the ladder lands on VIP18 = $10,000
+// (80,000,000,000 coins).
+// Upgrade EXP is the incremental total / 400 (400 coins = 1 VIP EXP),
+// matching the Dart client (VipPolicy.levels[].upgradeExp) — e.g. VIP1
+// needs 24,000,000 / 400 = 60,000 EXP.
+// Validity: each level lasts from the day of level-up — 30 days for
+// VIP1-15, 60 days for VIP16-18 (days column). At expiry the level is
+// re-evaluated in vip_store.js settle(): up if leftover EXP qualifies
+// for the next level, maintained if EXP covers `maintain`, else down 1.
+// Legacy maintenance targets keep their original values, already
+// converted to EXP.
+const VIP_LEVEL_ROWS = [
+  [1,24000000,75,30],[2,64000000,75,30],
+  [3,160000000,225,30],[4,400000000,1250,30],
+  [5,1200000000,3250,30],[6,3200000000,6500,30],
+  [7,7200000000,11250,30],[8,12000000000,19500,30],
+  [9,16800000000,27500,30],[10,22400000000,35000,30],
+  [11,27200000000,70000,30],[12,32800000000,207500,30],
+  [13,37600000000,375000,30],[14,43200000000,775000,30],
+  [15,52000000000,1750000,30],[16,60800000000,3500000,60],
+  [17,70400000000,7500000,60],[18,80000000000,10000000,60],
+];
+export const VIP_LEVELS = Object.freeze(
+  VIP_LEVEL_ROWS.map(([level,total,maintain,days],index,rows)=>({
+    level,
+    total,
+    upgrade:Math.floor((total-(index>0?rows[index-1][1]:0))/400),
+    maintain,
+    days,
+  })),
+);
 
 export const VIP_PREF_LEVEL = Object.freeze({
   hide_last_online:2,
@@ -50,7 +72,7 @@ export function vipCapabilities(level, active){
     show_id_style_level: !active || level < 5 ? 0 : Math.min(level,14),
     nickname_light_enabled: active && level >= 8 && level <= 17,
     entrance_vehicle_tier: active && level >= 5 ? Math.max(1,level-4) : 0,
-    validity_days: level >= 18 ? 45 : 30,
+    validity_days: level >= 16 ? 60 : 30,
   };
 }
 

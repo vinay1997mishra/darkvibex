@@ -1,3 +1,5 @@
+import { VEHICLE_ENTRY_CATALOG } from "./vehicle_entry_animals.js";
+
 const readyDatabases = new WeakSet();
 
 // Bubble and final frame artwork catalogs stay in parity with the mobile Store UI.
@@ -36,13 +38,14 @@ export const COSMETIC_CATALOG = [
   { id: "rocket_frame_golden_comet", kind: "frame", name: "Rocket Golden Comet", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 16, animation_type: "butterfly_wings_flight", animation_ms: 2000, reward_only: true },
   { id: "rocket_frame_purple_nova", kind: "frame", name: "Rocket Purple Nova", price_coins: 0, min_vip_level: 0, duration_days: 0, tier: 18, animation_type: "butterfly_wings_flight", animation_ms: 2000, reward_only: true },
 
-  { id: "vehicle_spark", kind: "vehicle", name: "Starlight Coupe", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 1, animation_type: "neon_drive", animation_ms: 4800 },
-  { id: "vehicle_royal", kind: "vehicle", name: "Royal Chariot", price_coins: 0, min_vip_level: 4, duration_days: 30, tier: 4, animation_type: "royal_arrival", animation_ms: 4800 },
-  { id: "vehicle_phoenix", kind: "vehicle", name: "Phoenix GT", price_coins: 0, min_vip_level: 8, duration_days: 30, tier: 8, animation_type: "phoenix_flare", animation_ms: 4800 },
-  { id: "vehicle_king", kind: "vehicle", name: "King of VIP", price_coins: 0, min_vip_level: 18, duration_days: 30, tier: 18, animation_type: "royal_crown", animation_ms: 4800 },
-  { id: "vehicle_neon_comet", kind: "vehicle", name: "Neon Comet GT", price_coins: 0, min_vip_level: 6, duration_days: 30, tier: 6, animation_type: "neon_speedline", animation_ms: 4800 },
-  { id: "vehicle_dragon_royal", kind: "vehicle", name: "Dragon Royal Chariot", price_coins: 0, min_vip_level: 12, duration_days: 30, tier: 12, animation_type: "dragon_flare", animation_ms: 4800 },
-  { id: "vehicle_celestial_phoenix", kind: "vehicle", name: "Celestial Phoenix", price_coins: 0, min_vip_level: 16, duration_days: 30, tier: 16, animation_type: "celestial_wings", animation_ms: 4800 },
+  // Vehicle entries are the 14 animals (VIP5-18, tier 1-14) from
+  // vehicle_entry_animals.js — the single authoritative vehicle set.
+  // The old 7-car list (Starlight Coupe, Royal Chariot, Phoenix GT,
+  // King of VIP, Neon Comet GT, Dragon Royal Chariot, Celestial
+  // Phoenix) was superseded by Vinay on 2026-11-18. Members with an
+  // old car equipped keep it as their active_vehicle_id; with no
+  // video_key it falls back to the CustomPaint effect as before.
+  ...VEHICLE_ENTRY_CATALOG,
 
   { id: "profile-card-royal-gold", kind: "profile_card", name: "Royal Gold Card", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 1 },
   { id: "profile-card-pink-heart", kind: "profile_card", name: "Pink Heart Card", price_coins: 0, min_vip_level: 0, duration_days: 30, tier: 1 },
