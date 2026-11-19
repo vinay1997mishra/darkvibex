@@ -1,3 +1,5 @@
+import { rocketMedalObjects, userRocketMedals } from "./rocket_medal_grants.js";
+
 const ts = () => Date.now();
 const uid = (prefix = "") => prefix + crypto.randomUUID();
 
@@ -501,6 +503,10 @@ export async function medalState(db, userId) {
       color: "#45AAF2",
     });
   }
+  // Earned Rocket medals (permanent, granted to Top 1/2/3 on a rocket
+  // launch): they show with the earner's name in the room profile card.
+  const rocketMedals = await userRocketMedals(db, userId);
+  medals.push(...rocketMedalObjects(rocketMedals.map((row) => row.level)));
   return medals;
 }
 
