@@ -1146,7 +1146,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 const SizedBox(height: 7),
                 Text(
                   allComplete
-                      ? '10/10 rockets complete'
+                      ? '${_rocketStageTargets.length}/${_rocketStageTargets.length} rockets complete'
                       : '${_compactRoomCoins(currentProgress)} / '
                           '${_compactRoomCoins(currentTarget)} • '
                           '${(percent * 100).floor()}%',
