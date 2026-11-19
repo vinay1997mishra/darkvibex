@@ -94,7 +94,53 @@ class BackendApi {
     }
   }
 
-  String fileUrl(String key) => '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
+  /// True when [key] is a private user-info file key
+  /// (users/<userId>/<id-number|dp|sms|misc>/<file>) — it lives in the
+  /// private bucket and must never be fetched from /api/files.
+  static bool isPrivateUserFileKey(String key) =>
+      RegExp(r'^users/[^/]+/(id-number|dp|sms|misc)/[^/]+$')
+          .hasMatch(key.trim());
+
+  /// URL for any file key. Private user-info keys (a DP in the private
+  /// bucket, an ID document, ...) go through the authenticated
+  /// /api/user-files route; everything else keeps using /api/files.
+  /// All avatar displays call this one method, so a DP that moved to
+  /// the private bucket keeps showing everywhere without touching the
+  /// 29 display sites.
+  String fileUrl(String key) => isPrivateUserFileKey(key)
+      ? userFileUrl(key)
+      : '$origin/api/files?key=${Uri.encodeQueryComponent(key)}';
+
+  /// URL of a private user-ID file (bucket "darkvibex-id-info"). The
+  /// file is served ONLY through the Worker with the user's session —
+  /// there is no public R2 URL for it. [key] must be the user's own
+  /// user-info key (users/<userId>/<id-number|dp|sms|misc>/<file>).
+  String userFileUrl(String key) => '$origin/api/user-files?key=${Uri.encodeQueryComponent(key)}';
+
+  /// Uploads one user-info file (ID number document, ID DP, SMS file,
+  /// or anything else) to the PRIVATE bucket. Mirrors [uploadImage]
+  /// but targets /api/user-files; the Worker only accepts the caller's
+  /// own users/<userId>/<category>/<file> keys. Returns the stored key
+  /// or null on failure.
+  Future<String?> uploadUserFile({required String key, required Uint8List bytes, required String contentType}) async {
+    final maxBytes = contentType == 'video/mp4' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > maxBytes) return null;
+    final client = HttpClient();
+    try {
+      final request = await client.putUrl(Uri.parse('$origin/api/user-files'));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${sessionToken!.trim()}');
+      final device = deviceKey?.trim() ?? '';
+      if (device.isNotEmpty) request.headers.set('x-device-id', device);
+      request.headers.set('x-file-key', key);
+      request.headers.contentType = ContentType.parse(contentType);
+      request.add(bytes);
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      final value = jsonDecode(text);
+      return value is Map<String, dynamic> ? value['key']?.toString() : null;
+    } catch (_) { return null; } finally { client.close(force: true); }
+  }
 
   Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
     final maxBytes = contentType == 'video/mp4' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
@@ -1310,12 +1356,26 @@ class BackendApi {
 
   Future<Map<String, dynamic>?> ludoState({
     required String roomId,
-  }) =>
-      _json(
-        'GET',
-        '/api/rooms/${Uri.encodeComponent(roomId)}/ludo',
-        returnErrorBody: true,
-      );
+    int? playerCount,
+    String? colorPair,
+  }) {
+    // First joiner sets the table mode: ?player_count=2&color_pair=
+    // red-yellow (or blue-green). 4-player sends no color_pair.
+    final query = <String, String>{};
+    if (playerCount != null) query['player_count'] = '$playerCount';
+    if (colorPair != null && colorPair.isNotEmpty) {
+      query['color_pair'] = colorPair;
+    }
+    final queryString = query.entries
+        .map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    return _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/ludo'
+          '${queryString.isEmpty ? '' : '?$queryString'}',
+      returnErrorBody: true,
+    );
+  }
 
   Future<Map<String, dynamic>?> ludoRoll({
     required String roomId,

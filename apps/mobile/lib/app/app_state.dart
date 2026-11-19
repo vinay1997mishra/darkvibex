@@ -1165,8 +1165,11 @@ class AppState extends ChangeNotifier {
       final ext = avatarExtension.toLowerCase() == 'jpeg'
           ? 'jpg'
           : avatarExtension.toLowerCase();
-      final key = await backend.uploadImage(
-        key: 'users/$userId/avatar-${DateTime.now().microsecondsSinceEpoch}.$ext',
+      // A DP goes to the PRIVATE bucket (users/<userId>/dp/...), not
+      // the public one. When the user changes their DP, the Worker
+      // deletes the old file from R2 at once (/api/users/avatar).
+      final key = await backend.uploadUserFile(
+        key: 'users/$userId/dp/${DateTime.now().microsecondsSinceEpoch}.$ext',
         bytes: avatarBytes,
         contentType: avatarContentType,
       );

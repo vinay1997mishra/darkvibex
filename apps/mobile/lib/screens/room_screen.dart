@@ -21,6 +21,7 @@ import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
 import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
+import '../widgets/seat_panda_emote.dart';
 import '../widgets/vip_entry_effect_banner.dart';
 import '../widgets/gift_ribbon_banner.dart';
 import '../ui/tinni_style.dart';
@@ -148,6 +149,14 @@ class _RoomScreenState extends State<RoomScreen> {
   final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
   final Set<String> seenSeatReactionMessageIds = <String>{};
   final Map<String, Timer> seatReactionTimers = <String, Timer>{};
+  // Panda seat emotes (userId -> emote name, e.g. "happy"). A panda
+  // emote plays its VAP video on the sender's seat, above the DP, for
+  // 5 seconds — the big animated reaction, not a text emoji. Cleared
+  // by its own timer (and by the video's onDone).
+  final Map<String, String> activeSeatPandaEmotes = <String, String>{};
+  final Map<String, String> activeSeatPandaEmoteMessageIds =
+      <String, String>{};
+  final Map<String, Timer> seatPandaEmoteTimers = <String, Timer>{};
   final ValueNotifier<Map<String, double>> _silentSpeakingLevels =
       ValueNotifier<Map<String, double>>(const <String, double>{});
   final KtvService roomMusic = KtvService();
@@ -236,6 +245,12 @@ class _RoomScreenState extends State<RoomScreen> {
       activeSeatReactions.clear();
       activeSeatReactionMessageIds.clear();
       seenSeatReactionMessageIds.clear();
+      for (final timer in seatPandaEmoteTimers.values) {
+        timer.cancel();
+      }
+      seatPandaEmoteTimers.clear();
+      activeSeatPandaEmotes.clear();
+      activeSeatPandaEmoteMessageIds.clear();
     });
     _scrollChatToLatest();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -435,16 +450,68 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
+  /// Shows a panda emote on [userId]'s seat: the full-body panda VAP
+  /// video plays above the DP for 5 seconds, then clears. A text emoji
+  /// reaction on the same seat is replaced by the panda (the panda is
+  /// the bigger reaction).
+  void _showSeatPandaEmote({
+    required String userId,
+    required String emoteName,
+    required String messageId,
+  }) {
+    if (userId.isEmpty ||
+        emoteName.isEmpty ||
+        messageId.isEmpty ||
+        !isPandaEmoteName(emoteName)) {
+      return;
+    }
+    if (activeSeatPandaEmoteMessageIds[userId] == messageId) return;
+    activeSeatPandaEmoteMessageIds[userId] = messageId;
+    activeSeatPandaEmotes[userId] = emoteName;
+    seatPandaEmoteTimers[userId]?.cancel();
+    // A panda replaces any text emoji on the same seat.
+    activeSeatReactions.remove(userId);
+    activeSeatReactionMessageIds.remove(userId);
+    seatReactionTimers[userId]?.cancel();
+    seatReactionTimers.remove(userId);
+    if (mounted) setState(() {});
+    seatPandaEmoteTimers[userId] = Timer(const Duration(seconds: 5), () {
+      if (!mounted ||
+          activeSeatPandaEmoteMessageIds[userId] != messageId) {
+        return;
+      }
+      _clearSeatPandaEmote(userId, messageId);
+    });
+  }
+
+  /// Clears the panda emote on [userId]'s seat (timer or video done).
+  void _clearSeatPandaEmote(String userId, String messageId) {
+    if (activeSeatPandaEmoteMessageIds[userId] != messageId) return;
+    seatPandaEmoteTimers[userId]?.cancel();
+    seatPandaEmoteTimers.remove(userId);
+    if (!mounted) return;
+    setState(() {
+      activeSeatPandaEmotes.remove(userId);
+      activeSeatPandaEmoteMessageIds.remove(userId);
+    });
+  }
+
   void _syncSeatReactions(List<Map<String, dynamic>> messages) {
     final latestByUser = <String, Map<String, dynamic>>{};
     for (final message in messages.reversed) {
       final userId = message['user_id']?.toString() ?? '';
       final text = message['text']?.toString().trim() ?? '';
-      if (userId.isEmpty ||
-          text.isEmpty ||
-          text.length > 12 ||
-          RegExp(r'[A-Za-z0-9]').hasMatch(text) ||
-          latestByUser.containsKey(userId)) {
+      if (userId.isEmpty || text.isEmpty || latestByUser.containsKey(userId)) {
+        continue;
+      }
+      // A panda emote marker ("[panda:happy]") is a seat reaction too —
+      // check it BEFORE the text-emoji filter (the marker has letters,
+      // so the filter below would skip it).
+      if (pandaEmoteNameFromMarker(text) != null) {
+        latestByUser[userId] = message;
+        continue;
+      }
+      if (text.length > 12 || RegExp(r'[A-Za-z0-9]').hasMatch(text)) {
         continue;
       }
       latestByUser[userId] = message;
@@ -466,9 +533,19 @@ class _RoomScreenState extends State<RoomScreen> {
           .toString();
       if (seenSeatReactionMessageIds.contains(messageId)) continue;
       seenSeatReactionMessageIds.add(messageId);
+      final String text = message['text']?.toString().trim() ?? '';
+      final String? pandaName = pandaEmoteNameFromMarker(text);
+      if (pandaName != null) {
+        _showSeatPandaEmote(
+          userId: entry.key,
+          emoteName: pandaName,
+          messageId: messageId,
+        );
+        continue;
+      }
       _showSeatReaction(
         userId: entry.key,
-        emoji: message['text']?.toString().trim() ?? '',
+        emoji: text,
         messageId: messageId,
       );
     }
@@ -2112,6 +2189,10 @@ class _RoomScreenState extends State<RoomScreen> {
       timer.cancel();
     }
     seatReactionTimers.clear();
+    for (final timer in seatPandaEmoteTimers.values) {
+      timer.cancel();
+    }
+    seatPandaEmoteTimers.clear();
     _silentSpeakingLevels.dispose();
     roomChatController.dispose();
     roomChatScrollController.dispose();
@@ -7264,41 +7345,136 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  /// Emoji panel with two tabs: "Emoji" (the unicode emojis, inserted
+  /// into the chat text field as before) and "Panda" (the 20 full-body
+  /// panda emotes). Tapping a panda emote sends it at once — the
+  /// `[panda:<name>]` marker goes out as a room message and the panda
+  /// VAP video plays on the sender's seat, above the DP. The marker
+  /// text is never shown in the chat.
   Future<void> _showEmojiPicker() async {
     const emojis = <String>[
       '😀', '😂', '😍', '🥰', '😎', '🥳', '😭', '😡',
       '❤️', '🔥', '👏', '👍', '🎉', '🎁', '⭐', '💯',
       '🌹', '💎', '👑', '🎤', '🎵', '🤝', '😘', '🙏',
     ];
-    final emoji = await showModalBottomSheet<String>(
+    final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
-          child: GridView.count(
-            shrinkWrap: true,
-            crossAxisCount: 6,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            children: [
-              for (final value in emojis)
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => Navigator.pop(sheetContext, value),
-                  child: Center(
-                    child: Text(value, style: const TextStyle(fontSize: 28)),
+        child: DefaultTabController(
+          length: 2,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const TabBar(
+                  labelColor: TinniPalette.brightGold,
+                  unselectedLabelColor: Colors.white70,
+                  indicatorColor: TinniPalette.brightGold,
+                  tabs: [
+                    Tab(text: 'Emoji'),
+                    Tab(text: '🐼 Panda'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 340,
+                  child: TabBarView(
+                    children: [
+                      // Emoji tab: unicode emojis, inserted into the
+                      // chat text field (unchanged behaviour).
+                      GridView.count(
+                        crossAxisCount: 6,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        children: [
+                          for (final value in emojis)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () =>
+                                  Navigator.pop(sheetContext, value),
+                              child: Center(
+                                child: Text(
+                                  value,
+                                  style: const TextStyle(fontSize: 28),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      // Panda tab: the 20 full-body panda emotes.
+                      // Tapping one returns its marker, which the
+                      // caller sends at once as a seat reaction.
+                      GridView.count(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 0.72,
+                        children: [
+                          for (final name in kPandaEmoteNames)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => Navigator.pop(
+                                sheetContext,
+                                pandaEmoteMarkerForName(name),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.network(
+                                        pandaEmoteThumbUrlForName(name) ?? '',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Center(
+                                          child: Text(
+                                            '🐼',
+                                            style: TextStyle(fontSize: 28),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    kPandaEmoteLabels[name] ?? name,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
-    if (emoji == null || !mounted) return;
+    if (result == null || !mounted) return;
+    // A panda marker is sent at once as a seat reaction; a unicode
+    // emoji is inserted into the chat text field as before.
+    final String? pandaName = pandaEmoteNameFromMarker(result);
+    if (pandaName != null) {
+      final String? marker = pandaEmoteMarkerForName(pandaName);
+      if (marker != null) unawaited(_sendInlineMessage(marker));
+      return;
+    }
     roomChatController
-      ..text += emoji
+      ..text += result
       ..selection = TextSelection.collapsed(
         offset: roomChatController.text.length,
       );
@@ -7762,6 +7938,9 @@ class _RoomScreenState extends State<RoomScreen> {
                       ? memberId
                       : (mine ? widget.state.userId : '');
                   final seatReaction = activeSeatReactions[seatUserId];
+                  final seatPandaEmote = activeSeatPandaEmotes[seatUserId];
+                  final seatPandaEmoteMessageId =
+                      activeSeatPandaEmoteMessageIds[seatUserId];
                   final speakingUserId = memberId.isNotEmpty
                       ? memberId
                       : (mine ? widget.state.userId : null);
@@ -7929,6 +8108,33 @@ class _RoomScreenState extends State<RoomScreen> {
                                     ),
                                   ),
                                 ),
+                              // Panda seat emote: the full-body panda
+                              // VAP video plays above the DP, bigger
+                              // than the text-emoji badge (the panda is
+                              // the big animated reaction). It plays
+                              // once and clears itself via onDone.
+                              if (seatPandaEmote != null &&
+                                  seatPandaEmoteMessageId != null)
+                                Positioned(
+                                  bottom: diameter - (compactSeats ? 6.0 : 10.0),
+                                  child: IgnorePointer(
+                                    child: SeatPandaEmote(
+                                      key: ValueKey<String>(
+                                        'panda-$seatUserId-$seatPandaEmoteMessageId',
+                                      ),
+                                      videoUrl: pandaEmoteVapUrlForName(
+                                            seatPandaEmote,
+                                          ) ??
+                                          '',
+                                      width: compactSeats ? 64 : 96,
+                                      height: compactSeats ? 114 : 170,
+                                      onDone: () => _clearSeatPandaEmote(
+                                        seatUserId,
+                                        seatPandaEmoteMessageId,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               if (speakingUserId != null)
                                 Positioned(
                                   left: -(compactSeats ? 9.0 : 12.0),
@@ -8085,7 +8291,18 @@ class _RoomScreenState extends State<RoomScreen> {
                         }
                         final message = chat[index - 1];
                         final name = message['display_name']?.toString().trim();
-                        final text = message['text']?.toString() ?? '';
+                        // A panda emote marker ("[panda:happy]") is a seat
+                        // reaction, not chat text — the marker itself is
+                        // never shown; the chat line reads as an emote
+                        // action instead, while the panda video plays on
+                        // the sender's seat.
+                        final String rawText =
+                            message['text']?.toString() ?? '';
+                        final String? pandaMarkerName =
+                            pandaEmoteNameFromMarker(rawText);
+                        final text = pandaMarkerName != null
+                            ? '🐼 sent a panda emote (${kPandaEmoteLabels[pandaMarkerName] ?? pandaMarkerName})'
+                            : rawText;
                         final imageKey = message['image_key']?.toString();
                         final senderId = message['user_id']?.toString() ?? '';
                         // The message carries the sender's active VIP level;

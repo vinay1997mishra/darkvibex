@@ -531,4 +531,84 @@ void main() {
     expect(isDirectR2AssetKey('vip-badges/vip17-phoenix-purple.mp4'),
         isTrue);
   });
+
+  test('panda emotes: exactly the 20 names, with labels', () {
+    expect(kPandaEmoteNames.length, 20);
+    expect(kPandaEmoteNames.toSet().length, 20);
+    for (final name in <String>[
+      'happy',
+      'sad',
+      'crying',
+      'angry',
+      'love',
+      'laughing',
+      'sleeping',
+      'cool',
+      'surprised',
+      'winking',
+      'kissing',
+      'blushing',
+      'hungry',
+      'dancing',
+      'waving',
+      'clapping',
+      'thinking',
+      'scared',
+      'silly',
+      'party',
+    ]) {
+      expect(kPandaEmoteNames, contains(name));
+      expect(kPandaEmoteLabels[name], isNotNull);
+    }
+  });
+
+  test('panda emotes: VAP + thumbnail URLs point at the R2 seat-emotes keys',
+      () {
+    expect(
+      pandaEmoteVapUrlForName('happy'),
+      '$kVipVisualR2PublicBaseUrl/seat-emotes/panda/vap/panda-happy.mp4',
+    );
+    expect(
+      pandaEmoteThumbUrlForName('party'),
+      '$kVipVisualR2PublicBaseUrl/seat-emotes/panda/thumbs/panda-party.png',
+    );
+    expect(pandaEmoteVapUrlForName('dragon'), isNull);
+    expect(pandaEmoteThumbUrlForName(''), isNull);
+    expect(pandaEmoteVapUrlForName(null), isNull);
+    expect(isPandaEmoteName('laughing'), isTrue);
+    expect(isPandaEmoteName('Happy'), isFalse);
+    expect(isPandaEmoteName(null), isFalse);
+  });
+
+  test('panda emotes: marker round-trips through the parser', () {
+    expect(pandaEmoteMarkerForName('happy'), '[panda:happy]');
+    expect(pandaEmoteMarkerForName('dragon'), isNull);
+    expect(pandaEmoteNameFromMarker('[panda:happy]'), 'happy');
+    expect(pandaEmoteNameFromMarker('  [panda:party]  '), 'party');
+    expect(pandaEmoteNameFromMarker('[panda:dragon]'), isNull);
+    expect(pandaEmoteNameFromMarker('😂'), isNull);
+    expect(pandaEmoteNameFromMarker('[panda:]'), isNull);
+    expect(pandaEmoteNameFromMarker('[Panda:happy]'), isNull);
+    expect(pandaEmoteNameFromMarker('hello [panda:happy]'), isNull);
+    expect(pandaEmoteNameFromMarker(null), isNull);
+  });
+
+  test('panda emotes: resolver sends seat-emotes keys direct from R2', () {
+    String fileUrl(String key) => 'https://worker.example/api/files?key=$key';
+    expect(
+      resolveVipVisualAssetUrl(
+        'seat-emotes/panda/vap/panda-happy.mp4',
+        fileUrl,
+      ),
+      '$kVipVisualR2PublicBaseUrl/seat-emotes/panda/vap/panda-happy.mp4',
+    );
+    expect(
+      isDirectR2AssetKey('seat-emotes/panda/vap/panda-party.mp4'),
+      isTrue,
+    );
+    expect(
+      isDirectR2AssetKey('seat-emotes/panda/thumbs/panda-sad.png'),
+      isTrue,
+    );
+  });
 }

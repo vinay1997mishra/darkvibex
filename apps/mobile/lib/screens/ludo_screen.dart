@@ -11,6 +11,8 @@ class LudoScreen extends StatefulWidget {
     super.key,
     required this.state,
     required this.roomId,
+    required this.playerCount,
+    this.colorPair,
     this.roomOwnerUserId,
     this.onToggleMic,
     this.micOn,
@@ -19,6 +21,11 @@ class LudoScreen extends StatefulWidget {
 
   final AppState state;
   final String roomId;
+
+  /// 2 or 4 players. In a 2-player game [colorPair] picks the cross
+  /// pair: 'red-yellow' or 'blue-green' (null for 4-player).
+  final int playerCount;
+  final String? colorPair;
   final String? roomOwnerUserId;
   final Future<void> Function()? onToggleMic;
   final bool Function()? micOn;
@@ -29,7 +36,10 @@ class LudoScreen extends StatefulWidget {
 }
 
 class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
-  final LudoGame game = LudoGame();
+  late final LudoGame game = LudoGame(
+    playerCount: widget.playerCount,
+    colorPair: widget.colorPair,
+  );
   final Map<String, Map<String, dynamic>> players =
       <String, Map<String, dynamic>>{};
 
@@ -93,7 +103,11 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
       }
       return;
     }
-    final value = await widget.state.backend.ludoState(roomId: widget.roomId);
+    final value = await widget.state.backend.ludoState(
+      roomId: widget.roomId,
+      playerCount: widget.playerCount,
+      colorPair: widget.colorPair,
+    );
     if (!mounted) return;
     if (value?['ok'] == true) {
       setState(() => _apply(Map<String, dynamic>.from(value!)));
@@ -163,6 +177,40 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
         LudoPlayer.blue => const Color(0xFF3C82F6),
       };
 
+  /// My colour from the server (player_color). Null while loading or
+  /// for spectators — they see the default layout.
+  LudoPlayer? get _myPlayer {
+    final name = myColor;
+    if (name == null) return null;
+    for (final player in LudoPlayer.values) {
+      if (player.name == name) return player;
+    }
+    return null;
+  }
+
+  /// Quarter-turns that put my home bottom-left on my screen.
+  int get _boardTurns => LudoGame.boardTurnsFor(_myPlayer);
+
+  // Board corners in clockwise order: 0 top-left, 1 top-right,
+  // 2 bottom-right, 3 bottom-left. Rotating the board by _boardTurns
+  // moves every colour's corner forward by that many steps.
+  static const Map<LudoPlayer, int> _cornerOf = {
+    LudoPlayer.red: 0,
+    LudoPlayer.green: 1,
+    LudoPlayer.yellow: 2,
+    LudoPlayer.blue: 3,
+  };
+
+  int _rotatedCorner(LudoPlayer player) =>
+      (_cornerOf[player]! + _boardTurns) % 4;
+
+  /// Colours keyed by the corner they land on after rotation, so the
+  /// player chips sit on the same corners as their homes on the board.
+  Map<int, LudoPlayer> get _corners => {
+        for (final player in LudoPlayer.values)
+          _rotatedCorner(player): player,
+      };
+
   String _name(LudoPlayer player) =>
       players[player.name]?['display_name']?.toString() ?? 'Waiting';
 
@@ -183,6 +231,27 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
   }
 
   Widget _player(LudoPlayer player) {
+    // Colours that are not playing (2-player mode) sit grey and empty,
+    // so the two active chips land on opposite corners — cross.
+    if (!game.activePlayers.contains(player)) {
+      return Expanded(
+        child: Container(
+          key: Key('ludo-player-${player.name}-empty'),
+          height: 58,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: .05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white12),
+          ),
+          alignment: Alignment.center,
+          child: const Text(
+            'Empty',
+            style: TextStyle(color: Colors.white38, fontSize: 10),
+          ),
+        ),
+      );
+    }
     final row = players[player.name];
     final userId = row?['user_id']?.toString() ?? '';
     final mine = userId.isNotEmpty && userId == widget.state.userId;
@@ -291,6 +360,9 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
     final movable = game.movableTokenIndexes();
     final owner = widget.roomOwnerUserId == widget.state.userId;
     final spectator = myColor == null;
+    // Player chips follow the rotated board corners, so "You" is
+    // always on the bottom row with your colour bottom-left.
+    final corners = _corners;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -360,6 +432,8 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
                                 game.currentPlayer == LudoPlayer.yellow
                                     ? Colors.black
                                     : Colors.white,
+                            elevation: 4,
+                            shadowColor: Colors.black54,
                           ),
                           onPressed: ready &&
                                   !busy &&
@@ -387,8 +461,8 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
                 ),
                 Row(
                   children: [
-                    _player(LudoPlayer.red),
-                    _player(LudoPlayer.green),
+                    _player(corners[0]!),
+                    _player(corners[1]!),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -403,36 +477,70 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
                           .clamp(0.0, double.infinity)
                           .toDouble();
                       return Center(
-                        child: SizedBox(
+                        // 3D slab: dark edge under the cream board plus a
+                        // drop shadow, matching the approved preview.
+                        child: Container(
                           width: side,
-                          height: side,
-                          child: CustomPaint(
-                            painter: _LudoBoardPainter(
-                              game: game,
-                              playerColor: _color,
-                            ),
-                            child: Stack(
-                              children: [
-                                for (final player in LudoPlayer.values)
-                                  for (final token in game.tokens[player]!)
-                                    _TokenButton(
-                                      token: token,
-                                      game: game,
-                                      boardSize: side,
-                                      color: _color(player),
-                                      enabled: ready &&
-                                          !busy &&
-                                          mine &&
-                                          player == game.currentPlayer &&
-                                          movable.contains(token.index),
-                                      onTap: () => _act(
-                                        () => widget.state.backend.ludoMove(
-                                          roomId: widget.roomId,
-                                          tokenIndex: token.index,
-                                        ),
-                                      ),
-                                    ),
-                              ],
+                          height: side + 6,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6B5433),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black54,
+                                blurRadius: 16,
+                                offset: Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            // Whole board rotates so my home lands
+                            // bottom-left on my screen. Geometry is
+                            // untouched — only the widget turns.
+                            child: RotatedBox(
+                              quarterTurns: _boardTurns,
+                              child: SizedBox(
+                                width: side,
+                                height: side,
+                                child: CustomPaint(
+                                  painter: _LudoBoardPainter(
+                                    game: game,
+                                    playerColor: _color,
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      for (final player in game.activePlayers)
+                                        for (final token
+                                            in game.tokens[player]!)
+                                          _TokenButton(
+                                            token: token,
+                                            game: game,
+                                            boardSize: side,
+                                            color: _color(player),
+                                            // Counter-turn keeps the
+                                            // token number upright.
+                                            uprightTurns:
+                                                (4 - _boardTurns) % 4,
+                                            enabled: ready &&
+                                                !busy &&
+                                                mine &&
+                                                player ==
+                                                    game.currentPlayer &&
+                                                movable.contains(token.index),
+                                            onTap: () => _act(
+                                              () => widget.state.backend
+                                                  .ludoMove(
+                                                roomId: widget.roomId,
+                                                tokenIndex: token.index,
+                                              ),
+                                            ),
+                                          ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -476,8 +584,8 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
                   ),
                 Row(
                   children: [
-                    _player(LudoPlayer.blue),
-                    _player(LudoPlayer.yellow),
+                    _player(corners[3]!),
+                    _player(corners[2]!),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -519,6 +627,7 @@ class _TokenButton extends StatelessWidget {
     required this.color,
     required this.enabled,
     required this.onTap,
+    this.uprightTurns = 0,
   });
 
   final LudoToken token;
@@ -527,6 +636,10 @@ class _TokenButton extends StatelessWidget {
   final Color color;
   final bool enabled;
   final VoidCallback onTap;
+
+  /// Quarter-turns that undo the board rotation, so the token number
+  /// stays upright on screen while the token sits on its rotated spot.
+  final int uprightTurns;
 
   @override
   Widget build(BuildContext context) {
@@ -537,36 +650,53 @@ class _TokenButton extends StatelessWidget {
       top: position.dy - boardSize / 30,
       child: GestureDetector(
         onTap: enabled ? onTap : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: boardSize / 15,
-          height: boardSize / 15,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-            border: Border.all(
-              color: enabled ? Colors.white : Colors.black54,
-              width: enabled ? 3 : 1.5,
+        child: RotatedBox(
+          quarterTurns: uprightTurns,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: boardSize / 15,
+            height: boardSize / 15,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // Glossy 3D token: light cap top-left, dark base bottom-right.
+              gradient: RadialGradient(
+                center: const Alignment(-0.35, -0.45),
+                radius: 0.95,
+                colors: [
+                  Color.lerp(color, Colors.white, 0.55)!,
+                  color,
+                  Color.lerp(color, Colors.black, 0.30)!,
+                ],
+                stops: const [0.0, 0.55, 1.0],
+              ),
+              border: Border.all(
+                color: enabled ? Colors.white : Colors.black54,
+                width: enabled ? 3 : 1.5,
+              ),
+              boxShadow: [
+                const BoxShadow(
+                  color: Colors.black45,
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+                if (enabled)
+                  BoxShadow(
+                    color: color.withValues(alpha: .55),
+                    blurRadius: 12,
+                    spreadRadius: 1,
+                  ),
+              ],
             ),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: .55),
-                      blurRadius: 12,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : const [],
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            '${token.index + 1}',
-            style: TextStyle(
-              color: token.player == LudoPlayer.yellow
-                  ? Colors.black
-                  : Colors.white,
-              fontSize: math.max(6.0, boardSize / 45),
-              fontWeight: FontWeight.w900,
+            alignment: Alignment.center,
+            child: Text(
+              '${token.index + 1}',
+              style: TextStyle(
+                color: token.player == LudoPlayer.yellow
+                    ? Colors.black
+                    : Colors.white,
+                fontSize: math.max(6.0, boardSize / 45),
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ),
@@ -722,10 +852,16 @@ class _LudoBoardPainter extends CustomPainter {
       LudoPlayer.blue: Rect.fromLTWH(0, 9 * cell, 6 * cell, 6 * cell),
     };
 
+    // Colours that are not playing (2-player mode) render grey and
+    // empty, like the approved preview.
     for (final entry in homeRects.entries) {
+      final active = game.activePlayers.contains(entry.key);
       canvas.drawRect(
         entry.value,
-        Paint()..color = playerColor(entry.key).withValues(alpha: .78),
+        Paint()
+          ..color = active
+              ? playerColor(entry.key).withValues(alpha: .78)
+              : const Color(0xFF9A9A9A).withValues(alpha: .78),
       );
     }
 
@@ -766,11 +902,15 @@ class _LudoBoardPainter extends CustomPainter {
     }
 
     for (final player in LudoPlayer.values) {
+      final active = game.activePlayers.contains(player);
       final start =
           _LudoGeometry.track(side)[LudoGame.startOffsets[player]!];
       canvas.drawRect(
         Rect.fromCenter(center: start, width: cell, height: cell),
-        Paint()..color = playerColor(player),
+        Paint()
+          ..color = active
+              ? playerColor(player)
+              : const Color(0xFFF4EAD2),
       );
       for (var step = 1; step <= 6; step++) {
         final point = _LudoGeometry.positionFor(
@@ -784,12 +924,17 @@ class _LudoBoardPainter extends CustomPainter {
         );
         canvas.drawRect(
           Rect.fromCenter(center: point, width: cell, height: cell),
-          Paint()..color = playerColor(player),
+          Paint()
+            ..color = active
+                ? playerColor(player)
+                : const Color(0xFFF4EAD2),
         );
-        canvas.drawRect(
-          Rect.fromCenter(center: point, width: cell, height: cell),
-          border,
-        );
+        if (active) {
+          canvas.drawRect(
+            Rect.fromCenter(center: point, width: cell, height: cell),
+            border,
+          );
+        }
       }
     }
 
@@ -815,9 +960,13 @@ class _LudoBoardPainter extends CustomPainter {
           corners[(index + 1) % 4].dy,
         )
         ..close();
+      final trianglePlayer = middleColors[index];
       canvas.drawPath(
         triangle,
-        Paint()..color = playerColor(middleColors[index]),
+        Paint()
+          ..color = game.activePlayers.contains(trianglePlayer)
+              ? playerColor(trianglePlayer)
+              : const Color(0xFF9A9A9A),
       );
     }
   }

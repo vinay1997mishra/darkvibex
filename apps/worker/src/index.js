@@ -9,6 +9,11 @@ import { scenicBannerVisualForVipLevel } from "./vip_scenic_banner_catalog.js";
 import { profileCardAnimVisualForVipLevel } from "./vip_profile_card_anim_catalog.js";
 import { vipBadgeVisualForVipLevel } from "./vip_badge_catalog.js";
 import { giftRibbonForVipLevel } from "./gift_ribbon_catalog.js";
+import {
+  isUserIdFileKey,
+  userIdFileKeyBelongsTo,
+} from "./user_id_files_catalog.js";
+import { expireOldMessages } from "./message_retention.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
@@ -2503,12 +2508,47 @@ const LUDO_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
 const LUDO_OFFSETS = Object.freeze({ red: 0, green: 13, yellow: 26, blue: 39 });
 const LUDO_SAFE_TRACK = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 
-function ludoInitialState() {
+/// Ludo player counts: 2-player is one cross/diagonal pair — red-yellow
+/// (red top-left, yellow bottom-right) or blue-green (blue bottom-left,
+/// green top-right); 4-player uses all four colors.
+export const LUDO_PLAYER_COUNTS = Object.freeze([2, 4]);
+
+const LUDO_COLOR_PAIRS = Object.freeze({
+  "red-yellow": Object.freeze(["red", "yellow"]),
+  "blue-green": Object.freeze(["blue", "green"]),
+});
+
+function ludoColorsForCount(playerCount, colorPair = null) {
+  if (Number(playerCount) === 2) {
+    return [
+      ...(LUDO_COLOR_PAIRS[colorPair] ?? LUDO_COLOR_PAIRS["red-yellow"]),
+    ];
+  }
+  return [...LUDO_COLORS];
+}
+
+/// The color order a session plays with: the 2-player pair when the
+/// state is 2P, otherwise all four colors.
+function ludoColorsForState(state) {
+  return ludoColorsForCount(state?.player_count, state?.color_pair);
+}
+
+function ludoInitialState(playerCount = 4, colorPair = null) {
+  const count = Number(playerCount) === 2 ? 2 : 4;
+  const pair =
+    count === 2
+      ? colorPair === "blue-green"
+        ? "blue-green"
+        : "red-yellow"
+      : null;
+  const colors = ludoColorsForCount(count, pair);
   return {
-    current_player: "red",
+    player_count: count,
+    color_pair: pair,
+    current_player: colors[0],
     rolled: null,
     winner: null,
-    status: "RED starts. Roll the dice.",
+    status: colors[0].toUpperCase() + " starts. Roll the dice.",
     tokens: {
       red: [-1, -1, -1, -1],
       green: [-1, -1, -1, -1],
@@ -2613,6 +2653,23 @@ async function loadLudoState(db, roomId) {
   } catch (_) {
     state = ludoInitialState();
   }
+  // Normalize the mode: states written before 2P/4P existed (or with a
+  // bad mode) default to 4P with no color pair.
+  const count = Number(state?.player_count) === 2 ? 2 : 4;
+  state.player_count = count;
+  if (count === 2) {
+    state.color_pair =
+      state?.color_pair === "blue-green" ? "blue-green" : "red-yellow";
+    const pair = ludoColorsForCount(2, state.color_pair);
+    if (!pair.includes(String(state.current_player))) {
+      state.current_player = pair[0];
+    }
+  } else {
+    state.color_pair = null;
+    if (!LUDO_COLORS.includes(String(state.current_player))) {
+      state.current_player = "red";
+    }
+  }
   for (const color of LUDO_COLORS) {
     if (!Array.isArray(state?.tokens?.[color]) || state.tokens[color].length !== 4) {
       state.tokens ??= {};
@@ -2712,7 +2769,11 @@ async function ensureLudoPlayer(db, roomId, userId) {
     "SELECT color,joined_at FROM ludo_room_players WHERE room_id=? AND user_id=? LIMIT 1"
   ).bind(roomId, userId).first();
   if (player) return String(player.color);
-  for (const color of LUDO_COLORS) {
+  // The color order comes from the session state's stored mode — the
+  // first joiner sets it, later joiners cannot change it. A 3rd player
+  // on a 2P table finds no free color and gets null (ludo_table_full).
+  const loaded = await loadLudoState(db, roomId);
+  for (const color of ludoColorsForState(loaded.state)) {
     const ts = now();
     await db.prepare(
       "INSERT OR IGNORE INTO ludo_room_players(room_id,user_id,color,joined_at) VALUES(?,?,?,?)"
@@ -2723,6 +2784,42 @@ async function ensureLudoPlayer(db, roomId, userId) {
     if (player) return String(player.color);
   }
   return null;
+}
+
+/// Applies a mode request (?player_count=2|4&?color_pair=...) from the
+/// first joiner only: when the ludo table is empty, the requested mode
+/// is written into the session state. Later joiners cannot change the
+/// mode — their params are ignored. Invalid params are ignored too.
+async function applyLudoModeRequest(db, roomId, requestedCount, requestedPair) {
+  const count =
+    requestedCount === "2" ? 2 : requestedCount === "4" ? 4 : null;
+  if (count == null) return;
+  await cleanupLudoPlayers(db, roomId);
+  const occupied = await ludoOccupiedColors(db, roomId);
+  if (occupied.size > 0) return;
+  const loaded = await loadLudoState(db, roomId);
+  const pair =
+    count === 2
+      ? requestedPair === "blue-green"
+        ? "blue-green"
+        : "red-yellow"
+      : null;
+  if (
+    loaded.state.player_count === count &&
+    loaded.state.color_pair === pair
+  ) {
+    return;
+  }
+  try {
+    await saveLudoState(
+      db,
+      roomId,
+      ludoInitialState(count, pair),
+      loaded.version,
+    );
+  } catch (_) {
+    // Lost a race with another first joiner — their mode wins.
+  }
 }
 
 async function publicLudoState(db, roomId, userId, loadedValue = null) {
@@ -5300,11 +5397,41 @@ async function handleApi(request, env, url) {
     const imageKey = String(body.avatar_key ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    if (!imageKey.startsWith(`users/${userId}/avatar-`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
+    // A DP lives in the PRIVATE bucket now (users/<userId>/dp/<file>,
+    // Vinay 2026-11-19). The old public key shape (users/<userId>/
+    // avatar-<ts>.<ext>) is still accepted so existing DPs keep
+    // working until the user changes them.
+    const isPrivateDpKey = isUserIdFileKey(imageKey) &&
+      userIdFileKeyBelongsTo(imageKey, userId) &&
+      imageKey.split("/")[2] === "dp";
+    const isPublicAvatarKey = imageKey.startsWith(`users/${userId}/avatar-`) &&
+      /\.(jpg|jpeg|png|webp)$/i.test(imageKey);
+    if ((!isPrivateDpKey && !isPublicAvatarKey) ||
+        !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
       return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
     }
+    // Read the CURRENT DP first: when the user changes their DP, the
+    // OLD file is deleted from R2 at once (Vinay, 2026-11-19: "User
+    // apni dp jaise hi change karega waise hi r2 se bhi delete ho
+    // jayegi"). The delete happens AFTER the D1 update succeeds, so a
+    // failed update never orphans the current DP, and it is
+    // best-effort — a storage error never fails the avatar change.
+    const current = await db.prepare("SELECT avatar_key FROM users WHERE id = ? LIMIT 1")
+      .bind(userId).first();
+    const oldKey = String(current?.avatar_key ?? "").trim();
     await db.prepare("UPDATE users SET avatar_key = ?, updated_at = ? WHERE id = ?")
       .bind(imageKey, now(), userId).run();
+    if (oldKey && oldKey !== imageKey) {
+      try {
+        if (isUserIdFileKey(oldKey) && userIdFileKeyBelongsTo(oldKey, userId)) {
+          if (env.ID_FILES) await env.ID_FILES.delete(oldKey);
+        } else if (oldKey.startsWith(`users/${userId}/avatar-`)) {
+          if (env.FILES) await env.FILES.delete(oldKey);
+        }
+      } catch (_) {
+        // Best-effort only: the avatar change already succeeded.
+      }
+    }
     return json({ ok: true, avatar_key: imageKey });
   }
 
@@ -8667,6 +8794,14 @@ async function handleApi(request, env, url) {
       await requireLudoRoomMember(db, roomId, userId);
 
       if (parts.length === 4 && request.method === "GET") {
+        // Mode params only matter for the first joiner (empty table);
+        // roll/move/leave never accept a mode param — the stored mode wins.
+        await applyLudoModeRequest(
+          db,
+          roomId,
+          url.searchParams.get("player_count"),
+          url.searchParams.get("color_pair"),
+        );
         const color = await ensureLudoPlayer(db, roomId, userId);
         const state = await publicLudoState(db, roomId, userId);
         if (!color) state.spectator = true;
@@ -8785,10 +8920,16 @@ async function handleApi(request, env, url) {
           return json({ ok:false,error:"room_owner_required" }, { status:403 });
         }
         const loaded = await loadLudoState(db, roomId);
-        const state = ludoInitialState();
+        // Reset keeps the table's current mode (2P pair or 4P).
+        const state = ludoInitialState(
+          loaded.state.player_count,
+          loaded.state.color_pair,
+        );
         const occupied = await ludoOccupiedColors(db, roomId);
-        if (!occupied.has("red") && occupied.size > 0) {
-          state.current_player = LUDO_COLORS.find((color) => occupied.has(color)) ?? "red";
+        const modeColors = ludoColorsForState(state);
+        if (!occupied.has(state.current_player) && occupied.size > 0) {
+          state.current_player =
+            modeColors.find((color) => occupied.has(color)) ?? modeColors[0];
           state.status = state.current_player.toUpperCase() + " starts. Roll the dice.";
         }
         const saved = await saveLudoState(db, roomId, state, loaded.version);
@@ -9060,6 +9201,105 @@ async function handleApi(request, env, url) {
     }, { status:201 });
   }
 
+  // Private user-ID files (bucket "darkvibex-id-info", binding
+  // ID_FILES). ALL user info files live here — ID number documents,
+  // ID DP, SMS files, and everything else (Vinay, 2026-11-19). The
+  // bucket has NO public access, so files are reachable ONLY through
+  // these two routes, with a session, and only by their OWNER.
+  // Nothing in this bucket ever gets a public R2 URL.
+  if (url.pathname === "/api/user-files" && request.method === "PUT") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    if (!env.ID_FILES) return json({ ok: false, error: "id_files_not_bound" }, { status: 503 });
+    let session;
+    try {
+      session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    } catch (_) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+    const actor = String(session?.sub ?? "");
+    const key = String(request.headers.get("x-file-key") ?? "").trim();
+    const type = String(request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const extensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4" };
+    const extension = key.split(".").pop()?.toLowerCase();
+    // Owner-only: the key must be the actor's own user-info file
+    // (users/<actor>/<id-number|dp|sms|misc>/<file>) with a matching
+    // content type. Anything else is rejected — no cross-user writes.
+    if (!actor || !extensions[type] || extension !== extensions[type] ||
+        !isUserIdFileKey(key) || !userIdFileKeyBelongsTo(key, actor)) {
+      return json({ ok: false, error: "invalid_user_file_upload" }, { status: 400 });
+    }
+    const maxFileBytes = type === "video/mp4" ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+    const declaredLength = Number(request.headers.get("content-length") ?? 0);
+    if (declaredLength > maxFileBytes) {
+      return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+    }
+    const reader = request.body?.getReader();
+    if (!reader) return json({ ok: false, error: "image_body_required" }, { status: 400 });
+    const chunks = [];
+    let size = 0;
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > maxFileBytes) {
+        await reader.cancel();
+        return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+      }
+      chunks.push(part.value);
+    }
+    if (!size) return json({ ok: false, error: "image_size_invalid" }, { status: 413 });
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const isPng = bytes.length >= 8 && bytes[0] === 137 && bytes[1] === 80 &&
+      bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 &&
+      bytes[6] === 26 && bytes[7] === 10;
+    const isJpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+    const isWebp = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+    const isMp4 = bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
+    if ((type === "image/jpeg" && !isJpeg) || (type === "image/png" && !isPng) ||
+        (type === "image/webp" && !isWebp) || (type === "video/mp4" && !isMp4)) {
+      return json({ ok: false, error: "image_content_type_mismatch" }, { status: 400 });
+    }
+    await env.ID_FILES.put(key, bytes, {
+      httpMetadata: { contentType: type, cacheControl: "private, no-store" },
+    });
+    return json({ ok: true, key }, { status: 201 });
+  }
+
+  if (url.pathname === "/api/user-files" && request.method === "GET") {
+    if (!env.ID_FILES) return json({ ok: false, error: "id_files_not_bound" }, { status: 503 });
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    let session;
+    try {
+      session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    } catch (_) {
+      return json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+    const actor = String(session?.sub ?? "");
+    const key = String(url.searchParams.get("key") ?? "").trim();
+    // Owner-only read: a user sees ONLY their own files. Anyone else
+    // gets file_not_found (not a 403, so the key's existence is not
+    // revealed either).
+    if (!actor || !isUserIdFileKey(key) || !userIdFileKeyBelongsTo(key, actor)) {
+      return json({ ok: false, error: "file_not_found" }, { status: 404 });
+    }
+    const object = await env.ID_FILES.get(key);
+    if (!object) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+    const headers = new Headers(corsHeaders);
+    object.writeHttpMetadata(headers);
+    headers.set("etag", object.httpEtag);
+    headers.set("cache-control", "private, no-store");
+    headers.set("x-content-type-options", "nosniff");
+    return new Response(object.body, { headers });
+  }
+
   if (url.pathname === "/api/files" && request.method === "PUT") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
@@ -9219,6 +9459,23 @@ async function handleLiveKitToken(request, env) {
 export default {
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(expireInboxEnvelopes(requireDb(env)));
+    // Message backup retention (Vinay, 2026-11-19): the server keeps a
+    // backup of chat messages for 45 days only. Once a day (03:00 UTC,
+    // first 5-minute tick) messages older than 45 days are deleted
+    // from D1 and their image files from R2. The rest lives in the app
+    // itself, so deleting the app deletes the old messages with it.
+    const nowDate = new Date();
+    if (nowDate.getUTCHours() === 3 && nowDate.getUTCMinutes() < 5) {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            await expireOldMessages(requireDb(env), env);
+          } catch (_) {
+            // Best-effort: a failed cleanup never breaks the schedule.
+          }
+        })(),
+      );
+    }
   },
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
