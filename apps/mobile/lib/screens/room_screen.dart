@@ -44,6 +44,7 @@ import '../utils/rocket_progress.dart';
 import '../utils/rocket_reward_frames.dart';
 import '../widgets/rocket_reward_frame_preview.dart';
 import 'conversation_screen.dart';
+import 'rocket_room_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -1276,6 +1277,37 @@ class _RoomScreenState extends State<RoomScreen> {
                     ),
                   ),
                 ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
+                  child: FilledButton.icon(
+                    key: const Key('room-rocket-open-full-page'),
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      unawaited(Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => RocketRoomPage(
+                            roomId: widget.room.id,
+                            roomName: roomName,
+                            roomNumber: widget.room.roomNumber,
+                            onlineCount: roomMembers.length,
+                            lifetimeTotal: roomGiftLifetimeTotal,
+                            ranking: roomGiftRanking,
+                            seatMembers: roomMembers,
+                            currentUserId: widget.state.userId,
+                            backend: widget.state.backend,
+                          ),
+                        ),
+                      ));
+                    },
+                    icon: const Icon(Icons.rocket_launch_rounded),
+                    label: const Text('Open Rocket Room'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF9D00),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
                 const Padding(
                   padding: EdgeInsets.fromLTRB(18, 8, 18, 14),
                   child: Text(
