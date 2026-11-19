@@ -2,13 +2,17 @@ import 'package:darkvibex/vip/vip_visual_assets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('frame animals cover VIP5-18 (Phoenix is VIP17, Dragon VIP18)', () {
-    expect(vipFrameAnimals.length, 14);
+  test('frame animals cover VIP1-18 (Cat 1, Swan 2, Dolphin 3, Fox 4)', () {
+    expect(vipFrameAnimals.length, 18);
+    expect(vipFrameAnimals[1], 'cat');
+    expect(vipFrameAnimals[2], 'swan');
+    expect(vipFrameAnimals[3], 'dolphin');
+    expect(vipFrameAnimals[4], 'fox');
     expect(vipFrameAnimals[5], 'deer');
     expect(vipFrameAnimals[13], 'gorilla');
     expect(vipFrameAnimals[17], 'phoenix');
     expect(vipFrameAnimals[18], 'dragon');
-    expect(vipFrameAnimals[4], isNull);
+    expect(vipFrameAnimals[0], isNull);
     expect(vipFrameAnimals[19], isNull);
   });
 
@@ -21,8 +25,16 @@ void main() {
       vipFrameStillUrlForVipLevel(7),
       '$kVipVisualR2PublicBaseUrl/frames/vip7-eagle-transparent.png',
     );
-    expect(vipFrameStillUrlForVipLevel(4), isNull);
+    expect(
+      vipFrameStillUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/frames/vip1-cat-transparent.png',
+    );
+    expect(
+      vipFrameStillUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/frames/vip4-fox-transparent.png',
+    );
     expect(vipFrameStillUrlForVipLevel(0), isNull);
+    expect(vipFrameStillUrlForVipLevel(19), isNull);
   });
 
   test('frame video URLs point at the R2 frames/ WebMs', () {
@@ -30,6 +42,8 @@ void main() {
       vipFrameVideoUrlForVipLevel(17),
       '$kVipVisualR2PublicBaseUrl/frames/vip17-phoenix-transparent.webm',
     );
+    // VIP1-4 frames are static stills: no WebM.
+    expect(vipFrameVideoUrlForVipLevel(1), isNull);
     expect(vipFrameVideoUrlForVipLevel(4), isNull);
   });
 
@@ -44,6 +58,8 @@ void main() {
       vipFrameVapUrlForVipLevel(5),
       '$kVipVisualR2PublicBaseUrl/vap/vip5-deer.mp4',
     );
+    // VIP1-4 frames are static stills: no VAP video.
+    expect(vipFrameVapUrlForVipLevel(1), isNull);
     expect(vipFrameVapUrlForVipLevel(4), isNull);
     expect(vipFrameVapUrlForVipLevel(19), isNull);
     for (var level = 5; level <= 18; level++) {
@@ -75,7 +91,8 @@ void main() {
       vipFrameVapUrlForDisplay('custom-assets/frame-123.png', 13),
       isNull,
     );
-    // VIP1-4 have no animal frame at all.
+    // VIP1-4 have no VAP video (static stills only).
+    expect(vipFrameVapUrlForDisplay('', 1), isNull);
     expect(vipFrameVapUrlForDisplay('', 4), isNull);
   });
 
@@ -84,12 +101,21 @@ void main() {
       vipEntryEffectUrlForVipLevel(10),
       '$kVipVisualR2PublicBaseUrl/entry-effects/vip10-entry.png',
     );
-    expect(vipEntryEffectUrlForVipLevel(4), isNull);
+    expect(
+      vipEntryEffectUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/entry-effects/vip1-entry.png',
+    );
+    expect(
+      vipEntryEffectUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/entry-effects/vip4-entry.png',
+    );
+    expect(vipEntryEffectUrlForVipLevel(0), isNull);
+    expect(vipEntryEffectUrlForVipLevel(19), isNull);
   });
 
   test('entry effect circle geometry is present and in range for all levels',
       () {
-    for (var level = 5; level <= 18; level++) {
+    for (var level = 1; level <= 18; level++) {
       final circle = vipEntryEffectCircles[level];
       expect(circle, isNotNull, reason: 'VIP$level circle missing');
       expect(circle!.centerX, greaterThan(0));
@@ -100,9 +126,14 @@ void main() {
       expect(circle.diameter, lessThan(1));
       final aspect = vipEntryEffectAspectRatios[level];
       expect(aspect, isNotNull, reason: 'VIP$level aspect missing');
-      expect(aspect!, greaterThan(2));
+      expect(aspect!, greaterThan(1.5));
       expect(aspect, lessThan(5));
     }
+    // VIP4 is the thin bar: aspect 1.808, circle from the thin PNG.
+    expect(vipEntryEffectAspectRatios[4], 1.808);
+    expect(vipEntryEffectCircles[4]?.centerX, 0.150);
+    expect(vipEntryEffectCircles[4]?.centerY, 0.550);
+    expect(vipEntryEffectCircles[4]?.diameter, 0.240);
   });
 
   test('tag URLs point at the R2 vip-tags/ PNGs', () {
@@ -114,7 +145,49 @@ void main() {
       vipTagUrlForVipLevel(5),
       '$kVipVisualR2PublicBaseUrl/vip-tags/vip5-tag.png',
     );
-    expect(vipTagUrlForVipLevel(4), isNull);
+    expect(
+      vipTagUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/vip-tags/vip1-tag.png',
+    );
+    expect(
+      vipTagUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/vip-tags/vip4-tag.png',
+    );
+    expect(vipTagUrlForVipLevel(0), isNull);
+    expect(vipTagUrlForVipLevel(19), isNull);
+  });
+
+  test('medal URLs point at the R2 vip-medals/ PNGs (VIP1-4 only)', () {
+    expect(
+      vipMedalUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/vip-medals/vip1-medal.png',
+    );
+    expect(
+      vipMedalUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/vip-medals/vip4-medal.png',
+    );
+    expect(vipMedalUrlForVipLevel(5), isNull);
+    expect(vipMedalUrlForVipLevel(0), isNull);
+    expect(vipMedalKeys.length, 4);
+  });
+
+  test('scenic banner URLs point at the R2 profile-banners/ PNGs (VIP1-4)',
+      () {
+    expect(
+      vipScenicBannerUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/profile-banners/vip1-banner.png',
+    );
+    expect(
+      vipScenicBannerUrlForVipLevel(2),
+      '$kVipVisualR2PublicBaseUrl/profile-banners/vip2-scenic.png',
+    );
+    expect(
+      vipScenicBannerUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/profile-banners/vip4-scenic.png',
+    );
+    expect(vipScenicBannerUrlForVipLevel(5), isNull);
+    expect(vipScenicBannerUrlForVipLevel(0), isNull);
+    expect(vipScenicBannerKeys.length, 4);
   });
 
   test('resolver sends R2 asset keys direct and other keys via fileUrl', () {
@@ -131,6 +204,14 @@ void main() {
     expect(
       resolveVipVisualAssetUrl('vip-tags/vip18-tag.png', fileUrl),
       '$kVipVisualR2PublicBaseUrl/vip-tags/vip18-tag.png',
+    );
+    expect(
+      resolveVipVisualAssetUrl('vip-medals/vip4-medal.png', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/vip-medals/vip4-medal.png',
+    );
+    expect(
+      resolveVipVisualAssetUrl('profile-banners/vip4-scenic.png', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/profile-banners/vip4-scenic.png',
     );
     expect(
       resolveVipVisualAssetUrl('vehicles/vip5-deer.mp4', fileUrl),

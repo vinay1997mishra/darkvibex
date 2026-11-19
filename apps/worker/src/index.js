@@ -4,6 +4,8 @@ import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, owned
 import { frameVisualForVipLevel } from "./vip_frame_catalog.js";
 import { entryEffectVisualForVipLevel } from "./vip_entry_effect_catalog.js";
 import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
+import { medalVisualForVipLevel } from "./vip_medal_catalog.js";
+import { scenicBannerVisualForVipLevel } from "./vip_scenic_banner_catalog.js";
 import { giftRibbonForVipLevel } from "./gift_ribbon_catalog.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
@@ -1094,9 +1096,13 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
     };
   };
   // Animal visuals are the FALLBACK when the Owner has not configured an
-  // item for the level (VIP5-18 only; null below VIP5). Precedence stays:
-  // equipped custom item > Owner vip_rule item > animal visual.
-  // The VIP tag has no Owner override — it is purely the level's badge.
+  // item for the level. Precedence stays: equipped custom item > Owner
+  // vip_rule item > animal visual. The VIP tag has no Owner override —
+  // it is purely the level's badge. The medal and scenic banner are new
+  // server-side fields (VIP1-4 only for now): the app's LevelMedal
+  // widget still shows bundled SVGs and the profile cards are still
+  // painted glow effects, so vip_medal / vip_scenic_banner are ready
+  // for the Dart display swap, which is a follow-up, not this change.
   // The vehicle entry follows the same rule: without an Owner-configured
   // vehicle, the level's animal video (direct R2 key) is returned, so
   // the room can play it without any Owner setup.
@@ -1108,6 +1114,8 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
     vehicle_entry: find(config.vehicle_entry_id, "vehicle") ?? vehicleVisualForVipLevel(vipLevel),
     mini_profile_panel: find(config.mini_profile_panel_id, "profile_card"),
     vip_tag: tagVisualForVipLevel(vipLevel),
+    vip_medal: medalVisualForVipLevel(vipLevel),
+    vip_scenic_banner: scenicBannerVisualForVipLevel(vipLevel),
   };
 }
 

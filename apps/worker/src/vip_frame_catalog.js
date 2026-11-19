@@ -1,8 +1,14 @@
-// DarkVibeX — VIP Frame Catalog (ANIMAL set, VIP5-18)
+// DarkVibeX — VIP Frame Catalog (ANIMAL set, VIP1-18)
 //
-// One transparent animated frame per VIP level 5-18. The artwork is the
-// animal frame Vinay made for that level (roaring head on the ring, the
-// level's own colour + superpower, 5 s animation, frame fixed, no zoom).
+// One transparent frame per VIP level 1-18. VIP5-18 are the ANIMATED
+// animal frames (roaring head on the ring, the level's own colour +
+// superpower, 5 s animation, frame fixed, no zoom). VIP1-4 are STATIC
+// transparent PNG stills (2026-11-19): VIP1 black cat (Vinay's upload),
+// VIP2 white swan (Vinay's upload), VIP3 dolphin (Vinay's upload),
+// VIP4 red fox (generated) — no WebM and no VAP video exist for them,
+// so frame_key/vap_key are empty and animation_ms is 0; the app shows
+// the PNG still only. Theme map (Vinay, 2026-11-19): VIP1 = black cat,
+// VIP2 = swan, VIP3 = dolphin, VIP4 = fox.
 //
 // THREE files exist per level on R2 (bucket "darkvibex-files"):
 //   - vap:   vap/vip<N>-<animal>.mp4                   (Tencent VAP v1:
@@ -58,6 +64,10 @@ import { R2_PUBLIC_BASE_URL, R2_BUCKET } from "./vehicle_entry_animals.js";
 export { R2_PUBLIC_BASE_URL, R2_BUCKET };
 
 export const VIP_FRAME_CATALOG = [
+  { id: "vip-frame-1", kind: "frame", level: 1, animal: "cat", name: "Cat Frame", min_vip_level: 1, duration_days: 30, frame_key: "", vap_key: "", still_key: "frames/vip1-cat-transparent.png", animation_ms: 0 },
+  { id: "vip-frame-2", kind: "frame", level: 2, animal: "swan", name: "Swan Frame", min_vip_level: 2, duration_days: 30, frame_key: "", vap_key: "", still_key: "frames/vip2-swan-transparent.png", animation_ms: 0 },
+  { id: "vip-frame-3", kind: "frame", level: 3, animal: "dolphin", name: "Dolphin Frame", min_vip_level: 3, duration_days: 30, frame_key: "", vap_key: "", still_key: "frames/vip3-dolphin-transparent.png", animation_ms: 0 },
+  { id: "vip-frame-4", kind: "frame", level: 4, animal: "fox", name: "Fox Frame", min_vip_level: 4, duration_days: 30, frame_key: "", vap_key: "", still_key: "frames/vip4-fox-transparent.png", animation_ms: 0 },
   { id: "vip-frame-5", kind: "frame", level: 5, animal: "deer", name: "Deer Frame", min_vip_level: 5, duration_days: 30, frame_key: "frames/vip5-deer-transparent.webm", vap_key: "vap/vip5-deer.mp4", still_key: "frames/vip5-deer-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-6", kind: "frame", level: 6, animal: "wolf", name: "Wolf Frame", min_vip_level: 6, duration_days: 30, frame_key: "frames/vip6-wolf-transparent.webm", vap_key: "vap/vip6-wolf.mp4", still_key: "frames/vip6-wolf-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-7", kind: "frame", level: 7, animal: "eagle", name: "Eagle Frame", min_vip_level: 7, duration_days: 30, frame_key: "frames/vip7-eagle-transparent.webm", vap_key: "vap/vip7-eagle.mp4", still_key: "frames/vip7-eagle-transparent.png", animation_ms: 5200 },
@@ -76,7 +86,7 @@ export const VIP_FRAME_CATALOG = [
 
 export function frameForVipLevel(level) {
   const vipLevel = Number(level) || 0;
-  if (vipLevel < 5 || vipLevel > 18) return null;
+  if (vipLevel < 1 || vipLevel > 18) return null;
   return VIP_FRAME_CATALOG.find((entry) => entry.level === vipLevel) ?? null;
 }
 
@@ -90,6 +100,9 @@ export function frameById(id) {
 /// asset_key is the transparent PNG still (fallback/poster),
 /// video_key is the transparent WebM (source only, not played),
 /// vap_key is the Tencent VAP mp4 (the animated frame the app plays).
+/// VIP1-4 have no WebM/VAP (static stills only), so video_key/vap_key
+/// are empty and animation_type is "" — the app shows the still only
+/// and must NOT try to play a VAP video for those levels.
 export function frameVisualForVipLevel(level) {
   const entry = frameForVipLevel(level);
   if (!entry) return null;
@@ -102,14 +115,14 @@ export function frameVisualForVipLevel(level) {
     vap_key: entry.vap_key,
     glb_key: "",
     media_type: "image",
-    animation_type: "frame_loop",
+    animation_type: entry.vap_key ? "frame_loop" : "",
     animation_ms: entry.animation_ms,
   };
 }
 
 export function frameVideoUrlForVipLevel(level) {
   const entry = frameForVipLevel(level);
-  if (!entry || !R2_PUBLIC_BASE_URL) return null;
+  if (!entry || !entry.frame_key || !R2_PUBLIC_BASE_URL) return null;
   return `${R2_PUBLIC_BASE_URL}/${entry.frame_key}`;
 }
 
@@ -121,16 +134,16 @@ export function frameStillUrlForVipLevel(level) {
 
 export function frameVapUrlForVipLevel(level) {
   const entry = frameForVipLevel(level);
-  if (!entry || !R2_PUBLIC_BASE_URL) return null;
+  if (!entry || !entry.vap_key || !R2_PUBLIC_BASE_URL) return null;
   return `${R2_PUBLIC_BASE_URL}/${entry.vap_key}`;
 }
 
 export function allFrameVapUrls() {
-  return VIP_FRAME_CATALOG.map((entry) => frameVapUrlForVipLevel(entry.level));
+  return VIP_FRAME_CATALOG.map((entry) => frameVapUrlForVipLevel(entry.level)).filter(Boolean);
 }
 
 export function allFrameVideoUrls() {
-  return VIP_FRAME_CATALOG.map((entry) => frameVideoUrlForVipLevel(entry.level));
+  return VIP_FRAME_CATALOG.map((entry) => frameVideoUrlForVipLevel(entry.level)).filter(Boolean);
 }
 
 export function allFrameStillUrls() {
