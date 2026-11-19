@@ -177,6 +177,26 @@ Map<int, String> get vipFrameStillKeys => <int, String>{
             'frames/vip${entry.key}-${entry.value}-transparent.png',
     };
 
+/// VIP13 SECOND frame (Vinay's own design, 2026-11-20): the gorilla
+/// second design (green energy, armored ring, VIP 13 plate). Same three
+/// R2 files as the animal frames, under second-frame keys. The level-13
+/// animal frame stays the default; this variant is selected by id
+/// (Owner vip_rule frame_id = "vip-frame-13-second").
+const String vip13SecondFrameStillKey =
+    'frames/vip13-gorilla-second-frame-transparent.png';
+const String vip13SecondFrameVapKey =
+    'vap/vip13-gorilla-second-frame.mp4';
+const String vip13SecondFrameVideoKey =
+    'frames/vip13-gorilla-second-frame-transparent.webm';
+
+/// Direct R2 URL of the VIP13 second frame's PNG still.
+String get vip13SecondFrameStillUrl =>
+    '$kVipVisualR2PublicBaseUrl/$vip13SecondFrameStillKey';
+
+/// Direct R2 URL of the VIP13 second frame's VAP mp4.
+String get vip13SecondFrameVapUrl =>
+    '$kVipVisualR2PublicBaseUrl/$vip13SecondFrameVapKey';
+
 /// Direct R2 URL of the transparent WebM frame for [level], or null
 /// for VIP1-4 (static stills only) / out of range. For a future
 /// alpha-capable player only — do NOT feed this to video_player
@@ -216,10 +236,13 @@ String? vipFrameVapUrlForVipLevel(int level) {
 /// VAP video URL for the frame actually being displayed, or null when the
 /// frame has no VAP video.
 ///
-/// A VAP video exists ONLY for the ANIMAL frame (VIP5-18). It is used
-/// when the displayed still IS the animal still: [assetKey] is the
-/// member's active_frame_asset_key — the animal still key, or empty (no
-/// frame configured, so the caller falls back to the animal still).
+/// A VAP video exists ONLY for the ANIMAL frame (VIP5-18) and for the
+/// VIP13 SECOND frame (same design family, selected by its own still
+/// key). It is used when the displayed still IS the animal still (or the
+/// second-frame still): [assetKey] is the member's
+/// active_frame_asset_key — the animal still key, the second-frame still
+/// key, or empty (no frame configured, so the caller falls back to the
+/// animal still).
 /// A custom/Owner frame has no VAP video, so this returns null and the
 /// caller shows the PNG still only. Never guess a VAP URL for a custom
 /// frame — that would play the wrong animal's animation over it.
@@ -227,6 +250,11 @@ String? vipFrameVapUrlForDisplay(String? assetKey, int level) {
   final String? stillKey = vipFrameStillKeys[level];
   if (stillKey == null) return null; // Out of range: no animal frame.
   final String key = (assetKey ?? '').trim();
+  // VIP13 second frame (Vinay's design): it has its own VAP video,
+  // played when the displayed still IS the second-frame still.
+  if (level == 13 && key == vip13SecondFrameStillKey) {
+    return vip13SecondFrameVapUrl;
+  }
   if (key.isEmpty || key == stillKey) {
     // VIP1-4 have no VAP video (static stills) — this returns null and
     // the caller shows the PNG still only.

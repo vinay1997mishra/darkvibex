@@ -96,6 +96,34 @@ void main() {
     expect(vipFrameVapUrlForDisplay('', 4), isNull);
   });
 
+  test('vipFrameVapUrlForDisplay plays the VIP13 second frame VAP for its still',
+      () {
+    // Vinay's second VIP13 frame has its own VAP video: when the
+    // displayed still IS the second-frame still, its VAP plays.
+    expect(
+      vipFrameVapUrlForDisplay(vip13SecondFrameStillKey, 13),
+      vip13SecondFrameVapUrl,
+    );
+    expect(
+      vip13SecondFrameStillUrl,
+      '$kVipVisualR2PublicBaseUrl/frames/vip13-gorilla-second-frame-transparent.png',
+    );
+    expect(
+      vip13SecondFrameVapUrl,
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla-second-frame.mp4',
+    );
+    // The original animal frame still plays its own VAP.
+    expect(
+      vipFrameVapUrlForDisplay('frames/vip13-gorilla-transparent.png', 13),
+      '$kVipVisualR2PublicBaseUrl/vap/vip13-gorilla.mp4',
+    );
+    // The second-frame still on another level is not a VAP frame.
+    expect(
+      vipFrameVapUrlForDisplay(vip13SecondFrameStillKey, 12),
+      isNull,
+    );
+  });
+
   test('entry effect URLs point at the R2 entry-effects/ PNGs', () {
     expect(
       vipEntryEffectUrlForVipLevel(10),

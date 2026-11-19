@@ -1,7 +1,7 @@
 import { normalizeRole } from "./role_policy.js";
 import { awardIdLevelDaily, awardIdLevelGift, claimIdLevelReward, getIdLevelStatus } from "./id_level.js";
 import { COSMETIC_CATALOG, ensureCosmeticsSchema, cosmeticUsesLegacyTable, ownedCosmetics } from "./cosmetics.js";
-import { frameVisualForVipLevel } from "./vip_frame_catalog.js";
+import { frameVisualForVipLevel, frameVisualById } from "./vip_frame_catalog.js";
 import { entryEffectVisualForVipLevel } from "./vip_entry_effect_catalog.js";
 import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
 import { medalVisualForVipLevel } from "./vip_medal_catalog.js";
@@ -1122,7 +1122,12 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
   // vehicle, the level's animal video (direct R2 key) is returned, so
   // the room can play it without any Owner setup.
   return {
-    frame: find(config.frame_id, "frame") ?? frameVisualForVipLevel(vipLevel),
+    // Frame for the level: an Owner-configured frame_id wins; the id is
+    // looked up in the effective cosmetic catalog first and then in the
+    // animal frame catalog, so a second frame for a level (e.g. the VIP13
+    // second frame, id "vip-frame-13-second") can be selected by the
+    // Owner's vip_rule. Otherwise the level's animal frame is the default.
+    frame: find(config.frame_id, "frame") ?? frameVisualById(config.frame_id) ?? frameVisualForVipLevel(vipLevel),
     chat_box: find(config.chat_box_id, "bubble"),
     entry_effect: find(config.entry_effect_id || config.entry_id, "entry") ?? entryEffectVisualForVipLevel(vipLevel),
     vip_banner: find(config.vip_banner_id, "banner"),
