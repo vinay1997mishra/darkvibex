@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../vip/vip_visual_assets.dart';
 
-/// Golden VIP tag image for a VIP level (VIP5-18).
+/// Golden VIP tag image for a VIP level (VIP1-18).
 ///
 /// The tag is a pure level badge — it is never equipped or bought. It sits
-/// next to the VIP level text (room chat sender name, profile VIP badge)
-/// and sizes itself from that text: height = [fontSize] x 1.5 (default
-/// fontSize 12 -> 18 px tall), width from the image's own aspect ratio.
-/// No fixed size per place — pass the neighbouring text's font size and
-/// the tag follows it. VIP1-4 (and out of range) render nothing.
+/// next to the VIP level text (room chat sender name, profile VIP badge,
+/// room profile card ID row) and sizes itself from that text: height =
+/// [fontSize] x 1.5 (default fontSize 12 -> 18 px tall), width from the
+/// image's own aspect ratio. No fixed size per place — pass the
+/// neighbouring text's font size and the tag follows it. Out of range
+/// (VIP 0) renders nothing.
 class VipTagImage extends StatelessWidget {
   const VipTagImage({
     super.key,

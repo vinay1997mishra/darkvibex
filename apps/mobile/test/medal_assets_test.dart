@@ -31,6 +31,38 @@ void main() {
     }
   });
 
+  test('VIP shield medals 1-4 resolve to direct R2 PNG URLs', () {
+    for (var level = 1; level <= 4; level++) {
+      expect(
+        vipMedalUrlForVipLevel(level),
+        '$kVipVisualR2PublicBaseUrl/vip-medals/vip$level-medal.png',
+      );
+    }
+  });
+
+  test('VIP shield medals 5-18 have no R2 PNG yet (null)', () {
+    for (var level = 5; level <= 18; level++) {
+      expect(vipMedalUrlForVipLevel(level), isNull);
+    }
+    expect(vipMedalUrlForVipLevel(0), isNull);
+    expect(vipMedalUrlForVipLevel(99), isNull);
+  });
+
+  test('all 18 VIP tags resolve to direct R2 PNG URLs', () {
+    for (var level = 1; level <= 18; level++) {
+      expect(
+        vipTagUrlForVipLevel(level),
+        '$kVipVisualR2PublicBaseUrl/vip-tags/vip$level-tag.png',
+      );
+    }
+  });
+
+  test('VIP tags out of range resolve to null', () {
+    expect(vipTagUrlForVipLevel(0), isNull);
+    expect(vipTagUrlForVipLevel(19), isNull);
+    expect(vipTagUrlForVipLevel(99), isNull);
+  });
+
   test('out of range level requests clamp to collection boundaries', () {
     expect(LevelMedal.assetPath(MedalSeries.vip, 0), 'assets/medals/vip_01.svg');
     expect(LevelMedal.assetPath(MedalSeries.vip, 99), 'assets/medals/vip_18.svg');
