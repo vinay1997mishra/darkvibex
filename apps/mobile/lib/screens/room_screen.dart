@@ -24,6 +24,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../widgets/seat_panda_emote.dart';
 import '../widgets/vip_entry_effect_banner.dart';
 import '../widgets/gift_ribbon_banner.dart';
+import '../widgets/level_medal.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -3490,19 +3491,9 @@ class _RoomScreenState extends State<RoomScreen> {
                                   itemCount: medals.length,
                                   separatorBuilder: (_, __) =>
                                       const SizedBox(width: 8),
-                                  itemBuilder: (_, index) => Tooltip(
-                                    message: medals[index]['name']
-                                            ?.toString() ??
-                                        'Medal',
-                                    child: const CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: Color(0xFF2D2341),
-                                      child: Icon(
-                                        Icons.workspace_premium_rounded,
-                                        color: Color(0xFF8B7CFF),
-                                        size: 25,
-                                      ),
-                                    ),
+                                  itemBuilder: (_, index) =>
+                                      ProfileMedalChip(
+                                    medal: medals[index],
                                   ),
                                 ),
                               ),

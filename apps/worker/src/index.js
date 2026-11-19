@@ -100,6 +100,11 @@ import {
   sampleLampMicProgress,
 } from "./aladdin_lamp.js";
 import { handleRocketRewardRoute } from "./rocket_rewards.js";
+import {
+  grantRocketMedalsOnLaunch,
+  rocketMedalObjects,
+  rocketMedalsByUser,
+} from "./rocket_medal_grants.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -168,6 +173,10 @@ async function decorateRoomChatProfileMetadata(db, messages) {
     medalRows = result.results ?? [];
   }
 
+  // Earned Rocket medals for these authors (permanent, Top 1/2/3 on a
+  // rocket launch): they show with the name in chat profile popups.
+  const rocketMedalsByAuthor = await rocketMedalsByUser(db, userIds);
+
   const tagsByUser = new Map();
   for (const tag of tagsResult.results ?? []) {
     const userId = String(tag.user_id ?? "");
@@ -200,6 +209,7 @@ async function decorateRoomChatProfileMetadata(db, messages) {
         color: "#45AAF2",
       });
     }
+    medals.push(...rocketMedalObjects(rocketMedalsByAuthor.get(String(row.user_id)) ?? []));
     medalsByUser.set(String(row.user_id), medals);
   }
 
@@ -8756,6 +8766,20 @@ async function handleApi(request, env, url) {
       progressPending = true;
       console.error("gift_post_commit_processing_failed", {
         event_id: eventId,
+        message: String(error?.message ?? error),
+      });
+    }
+
+    // Rocket medal grant (Vinay, 2026-11-20): when this gift pushes
+    // the room's lifetime total past a rocket level target, the Top
+    // 1/2/3 gifters at that moment get the permanent Rocket Lv.N
+    // medal. Best-effort and separate from progression above: a grant
+    // failure must not fail the paid send or mark progress pending.
+    try {
+      await grantRocketMedalsOnLaunch(db, String(body.room_id ?? ""), giftCreatedAt, id);
+    } catch (error) {
+      console.error("rocket_medal_grant_failed", {
+        room_id: String(body.room_id ?? ""),
         message: String(error?.message ?? error),
       });
     }

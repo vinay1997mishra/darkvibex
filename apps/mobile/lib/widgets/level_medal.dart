@@ -222,3 +222,48 @@ class _LevelMedalState extends State<LevelMedal>
     );
   }
 }
+
+/// One medal chip for the room profile card: the earned medal shown
+/// WITH the user's name (tooltip). Rocket medals (earned by Top 1/2/3
+/// on a rocket launch, /api/medals carries series "rocket" + level)
+/// render the real R2 medal image; every other medal keeps the
+/// generic premium icon, exactly as the profile card showed before.
+class ProfileMedalChip extends StatelessWidget {
+  const ProfileMedalChip({super.key, required this.medal, this.size = 40});
+
+  /// One medal object from /api/medals: { id, name, color, series?,
+  /// level? }.
+  final Map<String, dynamic> medal;
+
+  /// Diameter of the chip (the profile card row is 42 high).
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final String name = medal['name']?.toString() ?? 'Medal';
+    final int? level = int.tryParse(medal['level']?.toString() ?? '');
+    final bool isRocket = medal['series']?.toString() == 'rocket' &&
+        level != null &&
+        level >= 1 &&
+        level <= 18;
+    return Tooltip(
+      message: name,
+      child: isRocket
+          ? LevelMedal(
+              series: MedalSeries.rocket,
+              level: level,
+              size: size,
+              animated: false,
+            )
+          : CircleAvatar(
+              radius: size / 2,
+              backgroundColor: const Color(0xFF2D2341),
+              child: Icon(
+                Icons.workspace_premium_rounded,
+                color: const Color(0xFF8B7CFF),
+                size: size * .625,
+              ),
+            ),
+    );
+  }
+}
