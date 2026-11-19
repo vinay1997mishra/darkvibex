@@ -8342,12 +8342,12 @@ class _RoomScreenState extends State<RoomScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                   child: Image.network(
                                     widget.state.backend.fileUrl(imageKey),
-                                    width: 210,
+                                    width: 192,
                                     height: 160,
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) =>
                                         const SizedBox(
-                                      width: 210,
+                                      width: 192,
                                       height: 64,
                                       child: Center(
                                         child: Text('Photo unavailable'),
@@ -8381,7 +8381,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                     : null,
                                 assetImageHeaders: widget.state.backend.fileHeaders,
                                 maxWidth: 280,
-                                minWidth: 112,
+                                minWidth: 100,
                                 minHeight: 44,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 44,
