@@ -5,27 +5,27 @@ import { ensureCosmeticsSchema } from "./cosmetics.js";
 export const ROCKET_REWARD_TIERS = Object.freeze([
   Object.freeze({
     minLevel: 1, maxLevel: 3, group: "1-3", label: "Rocket Levels 1–3",
-    maxWinners: 50, frameWinners: 25, coinMin: 10_000, coinMax: 20_000, frameDays: 1,
+    maxWinners: 50, frameWinners: 0, coinMin: 10_000, coinMax: 20_000, frameDays: 0,
   }),
   Object.freeze({
     minLevel: 4, maxLevel: 6, group: "4-6", label: "Rocket Levels 4–6",
-    maxWinners: 70, frameWinners: 25, coinMin: 30_000, coinMax: 60_000, frameDays: 5,
+    maxWinners: 70, frameWinners: 0, coinMin: 30_000, coinMax: 60_000, frameDays: 0,
   }),
   Object.freeze({
     minLevel: 7, maxLevel: 9, group: "7-9", label: "Rocket Levels 7–9",
-    maxWinners: 80, frameWinners: 25, coinMin: 30_000, coinMax: 200_000, frameDays: 7,
+    maxWinners: 100, frameWinners: 0, coinMin: 30_000, coinMax: 200_000, frameDays: 0,
   }),
   Object.freeze({
     minLevel: 10, maxLevel: 12, group: "10-12", label: "Rocket Levels 10–12",
-    maxWinners: 100, frameWinners: 25, coinMin: 50_000, coinMax: 300_000, frameDays: 10,
+    maxWinners: 125, frameWinners: 0, coinMin: 50_000, coinMax: 300_000, frameDays: 0,
   }),
   Object.freeze({
     minLevel: 13, maxLevel: 15, group: "13-15", label: "Rocket Levels 13–15",
-    maxWinners: 120, frameWinners: 25, coinMin: 80_000, coinMax: 400_000, frameDays: 14,
+    maxWinners: 150, frameWinners: 0, coinMin: 80_000, coinMax: 400_000, frameDays: 0,
   }),
   Object.freeze({
     minLevel: 16, maxLevel: 18, group: "16-18", label: "Rocket Levels 16–18",
-    maxWinners: 150, frameWinners: 25, coinMin: 100_000, coinMax: 500_000, frameDays: 15,
+    maxWinners: 200, frameWinners: 0, coinMin: 100_000, coinMax: 500_000, frameDays: 0,
   }),
 ]);
 
