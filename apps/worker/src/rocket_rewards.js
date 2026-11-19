@@ -19,6 +19,14 @@ export const ROCKET_REWARD_TIERS = Object.freeze([
     minLevel: 10, maxLevel: 12, group: "10-12", label: "Rocket Levels 10–12",
     maxWinners: 100, frameWinners: 25, coinMin: 50_000, coinMax: 300_000, frameDays: 10,
   }),
+  Object.freeze({
+    minLevel: 13, maxLevel: 15, group: "13-15", label: "Rocket Levels 13–15",
+    maxWinners: 120, frameWinners: 25, coinMin: 80_000, coinMax: 400_000, frameDays: 14,
+  }),
+  Object.freeze({
+    minLevel: 16, maxLevel: 18, group: "16-18", label: "Rocket Levels 16–18",
+    maxWinners: 150, frameWinners: 25, coinMin: 100_000, coinMax: 500_000, frameDays: 15,
+  }),
 ]);
 
 export const ROCKET_FRAME_REWARDS = Object.freeze({
@@ -26,6 +34,8 @@ export const ROCKET_FRAME_REWARDS = Object.freeze({
   "4-6": Object.freeze({ id: "rocket_frame_neon_wings", name: "Rocket Neon Wings" }),
   "7-9": Object.freeze({ id: "rocket_frame_golden_comet", name: "Rocket Golden Comet" }),
   "10-12": Object.freeze({ id: "rocket_frame_purple_nova", name: "Rocket Purple Nova" }),
+  "13-15": Object.freeze({ id: "rocket_frame_crimson_star", name: "Rocket Crimson Star" }),
+  "16-18": Object.freeze({ id: "rocket_frame_golden_apex", name: "Rocket Golden Apex" }),
 });
 
 export function rocketFrameRewardForGroup(group) {
@@ -46,11 +56,17 @@ export const ROCKET_MILESTONE_TARGETS = Object.freeze([
   500_000_000,
   650_000_000,
   800_000_000,
+  1_000_000_000,
+  1_200_000_000,
+  1_400_000_000,
+  1_600_000_000,
+  1_800_000_000,
+  2_000_000_000,
 ]);
 
 export function rocketRewardConfigForLevel(level) {
   const safeLevel = Number(level);
-  if (!Number.isInteger(safeLevel) || safeLevel < 1 || safeLevel > 12) return null;
+  if (!Number.isInteger(safeLevel) || safeLevel < 1 || safeLevel > 18) return null;
   return ROCKET_REWARD_TIERS.find(
     (tier) => safeLevel >= tier.minLevel && safeLevel <= tier.maxLevel,
   ) ?? null;
@@ -90,8 +106,8 @@ async function ensureRocketRewardSchema(db) {
     db.prepare(`CREATE TABLE IF NOT EXISTS rocket_reward_claims (
       id TEXT PRIMARY KEY,
       room_id TEXT NOT NULL,
-      rocket_level INTEGER NOT NULL CHECK (rocket_level BETWEEN 1 AND 12),
-      reward_group TEXT NOT NULL CHECK (reward_group IN ('1-3','4-6','7-9','10-12')),
+      rocket_level INTEGER NOT NULL CHECK (rocket_level BETWEEN 1 AND 18),
+      reward_group TEXT NOT NULL CHECK (reward_group IN ('1-3','4-6','7-9','10-12','13-15','16-18')),
       user_id TEXT NOT NULL,
       reward_type TEXT NOT NULL CHECK (reward_type IN ('coins','frame')),
       coin_amount INTEGER NOT NULL DEFAULT 0 CHECK (coin_amount >= 0),
@@ -198,7 +214,7 @@ export async function handleRocketRewardRoute({
   const requestedLevel = isClaim
     ? Number((await request.clone().json().catch(() => ({})))?.rocket_level)
     : Number(url.searchParams.get("level"));
-  if (!Number.isInteger(requestedLevel) || requestedLevel < 1 || requestedLevel > 12) {
+  if (!Number.isInteger(requestedLevel) || requestedLevel < 1 || requestedLevel > 18) {
     return json({ ok: false, error: "invalid_rocket_level" }, { status: 400 });
   }
 
@@ -343,6 +359,8 @@ export async function handleRocketRewardRoute({
           WHEN '4-6' THEN 'rocket_frame_neon_wings'
           WHEN '7-9' THEN 'rocket_frame_golden_comet'
           WHEN '10-12' THEN 'rocket_frame_purple_nova'
+          WHEN '13-15' THEN 'rocket_frame_crimson_star'
+          WHEN '16-18' THEN 'rocket_frame_golden_apex'
         END,
         'frame',?, ?,0
       FROM rocket_reward_claims c
@@ -364,6 +382,8 @@ export async function handleRocketRewardRoute({
               WHEN '4-6' THEN 'rocket_frame_neon_wings'
               WHEN '7-9' THEN 'rocket_frame_golden_comet'
               WHEN '10-12' THEN 'rocket_frame_purple_nova'
+              WHEN '13-15' THEN 'rocket_frame_crimson_star'
+              WHEN '16-18' THEN 'rocket_frame_golden_apex'
             END
             AND uc.expires_at>?
         )`).bind(claimId, timestamp),

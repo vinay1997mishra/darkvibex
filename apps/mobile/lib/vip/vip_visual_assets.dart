@@ -75,6 +75,7 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'vap/',
   'gift-ribbons/',
   'vip-badges/',
+  'rocket-medals/',
 ];
 
 /// True when [key] is a direct-R2 asset key (never send it to /api/files).
@@ -434,6 +435,26 @@ String? vipScenicBannerUrlForVipLevel(int level) {
   if (key == null) return null;
   return '$kVipVisualR2PublicBaseUrl/$key';
 }
+
+// ---------------------------------------------------------------------------
+// Rocket medals (Rocket 1-18)
+// ---------------------------------------------------------------------------
+//
+// Premium medal badges (Vinay's 18 rockets as gold medallions, colour-
+// matched frame per rocket, gold "LV.N" ribbon). Transparent PNGs on R2
+// under rocket-medals/rocket-medal-lvNN.png (512px). The LevelMedal
+// widget shows these for the rocket series; the bundled rocket_01-12.svg
+// assets remain only as an offline fallback for levels 1-12.
+
+/// R2 key of the Rocket medal PNG per level (Rocket 1-18).
+String rocketMedalKeyForLevel(int level) {
+  final int safeLevel = level.clamp(1, 18).toInt();
+  return 'rocket-medals/rocket-medal-lv${safeLevel.toString().padLeft(2, '0')}.png';
+}
+
+/// Direct R2 URL of the Rocket medal PNG for [level] (clamped 1-18).
+String rocketMedalUrlForLevel(int level) =>
+    '$kVipVisualR2PublicBaseUrl/${rocketMedalKeyForLevel(level)}';
 
 // ---------------------------------------------------------------------------
 // Gift ribbons (VIP1-18)

@@ -20,6 +20,10 @@ test("rocket reward tiers match the configured winner and coin ranges", () => {
   assert.equal(rocketRewardConfigForLevel(9).group, "7-9");
   assert.equal(rocketRewardConfigForLevel(10).group, "10-12");
   assert.equal(rocketRewardConfigForLevel(12).group, "10-12");
+  assert.equal(rocketRewardConfigForLevel(13).group, "13-15");
+  assert.equal(rocketRewardConfigForLevel(15).group, "13-15");
+  assert.equal(rocketRewardConfigForLevel(16).group, "16-18");
+  assert.equal(rocketRewardConfigForLevel(18).group, "16-18");
   assert.deepEqual(
     ROCKET_REWARD_TIERS.map((tier) => [
       tier.minLevel, tier.maxLevel, tier.maxWinners, tier.frameWinners,
@@ -30,6 +34,8 @@ test("rocket reward tiers match the configured winner and coin ranges", () => {
       [4, 6, 70, 25, 30_000, 60_000, 5],
       [7, 9, 80, 25, 30_000, 200_000, 7],
       [10, 12, 100, 25, 50_000, 300_000, 10],
+      [13, 15, 120, 25, 80_000, 400_000, 14],
+      [16, 18, 150, 25, 100_000, 500_000, 15],
     ],
   );
 });
@@ -76,14 +82,20 @@ test("coin range and frame duration follow the level group", () => {
   assert.equal(assignRocketReward(level10, 0).frame_days, 10);
 });
 
-test("all 12 Rocket milestone thresholds are configured", () => {
+test("all 18 Rocket milestone thresholds are configured", () => {
   assert.equal(rocketRewardConfigForLevel(0), null);
-  assert.equal(rocketRewardConfigForLevel(13), null);
-  assert.equal(ROCKET_MILESTONE_TARGETS.length, 12);
+  assert.equal(rocketRewardConfigForLevel(19), null);
+  assert.equal(ROCKET_MILESTONE_TARGETS.length, 18);
   assert.equal(rocketTargetForLevel(1), 8_000_000);
   assert.equal(rocketTargetForLevel(10), 500_000_000);
   assert.equal(rocketTargetForLevel(11), 650_000_000);
   assert.equal(rocketTargetForLevel(12), 800_000_000);
+  assert.equal(rocketTargetForLevel(13), 1_000_000_000);
+  assert.equal(rocketTargetForLevel(14), 1_200_000_000);
+  assert.equal(rocketTargetForLevel(15), 1_400_000_000);
+  assert.equal(rocketTargetForLevel(16), 1_600_000_000);
+  assert.equal(rocketTargetForLevel(17), 1_800_000_000);
+  assert.equal(rocketTargetForLevel(18), 2_000_000_000);
 });
 
 test("each Rocket reward group maps to a matching circular frame asset", () => {
@@ -92,8 +104,12 @@ test("each Rocket reward group maps to a matching circular frame asset", () => {
     "4-6": { id: "rocket_frame_neon_wings", name: "Rocket Neon Wings" },
     "7-9": { id: "rocket_frame_golden_comet", name: "Rocket Golden Comet" },
     "10-12": { id: "rocket_frame_purple_nova", name: "Rocket Purple Nova" },
+    "13-15": { id: "rocket_frame_crimson_star", name: "Rocket Crimson Star" },
+    "16-18": { id: "rocket_frame_golden_apex", name: "Rocket Golden Apex" },
   });
   assert.equal(rocketFrameRewardForGroup("1-3").id, "rocket_frame_aurora");
   assert.equal(rocketFrameRewardForGroup("10-12").id, "rocket_frame_purple_nova");
+  assert.equal(rocketFrameRewardForGroup("13-15").id, "rocket_frame_crimson_star");
+  assert.equal(rocketFrameRewardForGroup("16-18").id, "rocket_frame_golden_apex");
   assert.equal(rocketFrameRewardForGroup("unknown"), null);
 });
