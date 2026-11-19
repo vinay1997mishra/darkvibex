@@ -7,10 +7,12 @@ import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
 import { medalVisualForVipLevel } from "./vip_medal_catalog.js";
 import { scenicBannerVisualForVipLevel } from "./vip_scenic_banner_catalog.js";
 import { profileCardAnimVisualForVipLevel } from "./vip_profile_card_anim_catalog.js";
+import { vipBadgeVisualForVipLevel } from "./vip_badge_catalog.js";
 import { giftRibbonForVipLevel } from "./gift_ribbon_catalog.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
+import { applyGiftDiscount, giftDiscountForVipLevel } from "./vip_policy.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
@@ -1123,6 +1125,7 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
     vip_medal: medalVisualForVipLevel(vipLevel),
     vip_scenic_banner: scenicBannerVisualForVipLevel(vipLevel),
     profile_card_anim: profileCardAnimVisualForVipLevel(vipLevel),
+    vip_badge: vipBadgeVisualForVipLevel(vipLevel),
   };
 }
 
@@ -8536,7 +8539,13 @@ async function handleApi(request, env, url) {
     // coin, so the send endpoint must debit that same authoritative amount.
     // Without this normalization, Owner-added gifts saved at the default zero
     // price appeared in the app as 1 coin but were rejected as invalid_gift_cost.
-    const cost = Math.max(1, Number(pricing.price_coins ?? gift.coin_cost ?? 0));
+    // Gift discount (Vinay, 2026-11-19): VIPs pay less — VIP8-13 10%,
+    // VIP14-17 20%, VIP18 30% off the listed price. The catalog prices
+    // themselves are unchanged; only the amount debited at send is
+    // reduced (the receiver's diamonds follow the discounted cost).
+    const listPrice = Math.max(1, Number(pricing.price_coins ?? gift.coin_cost ?? 0));
+    const giftDiscount = giftDiscountForVipLevel(vip.active ? vip.level : 0);
+    const cost = applyGiftDiscount(listPrice, vip.active ? vip.level : 0);
     if (!Number.isSafeInteger(cost) || cost <= 0) {
       return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
     }
@@ -8620,6 +8629,8 @@ async function handleApi(request, env, url) {
       ok: true,
       event_id: eventId,
       gift_cost: cost,
+      gift_list_price: listPrice,
+      gift_discount: giftDiscount,
       gift_name: String(gift.name ?? giftId),
       sender_name: String(senderRow?.display_name ?? "User"),
       receiver_name: String(receiverRow?.display_name ?? "User"),

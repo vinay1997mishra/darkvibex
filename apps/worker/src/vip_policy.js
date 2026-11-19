@@ -52,9 +52,68 @@ export function vipRule(level){
   return level >= 1 && level <= 18 ? VIP_LEVELS[level-1] : null;
 }
 
+// VIP EXP boost (Vinay, 2026-11-19): VIPs earn extra EXP on coin
+// purchases — the boost grows with the level. VIP0 (no VIP) gets no
+// boost. The base rate stays 150 EXP per $1 (see awardSellerVipExp);
+// the boost multiplies the awarded EXP only. Thresholds, the base
+// rate and the expiry/drop rules are unchanged.
+export function expBoostForLevel(level){
+  const vipLevel = Math.max(0, Math.min(18, Number(level) || 0));
+  if (vipLevel >= 16) return 1.5;
+  if (vipLevel >= 11) return 1.4;
+  if (vipLevel >= 5) return 1.2;
+  if (vipLevel >= 1) return 1.1;
+  return 1.0;
+}
+
+// Coins bonus on purchase (Vinay, 2026-11-19): VIPs get extra coins
+// credited on every coin purchase (Coin Seller transfer) — free coins
+// on top of the purchased amount. VIP0-4 get no bonus. The bonus is a
+// fraction of the PURCHASED coins only; it is not itself eligible for
+// EXP (EXP is 150 per $1 spent, bonus coins are free).
+export function coinsBonusForLevel(level){
+  const vipLevel = Math.max(0, Math.min(18, Number(level) || 0));
+  if (vipLevel >= 16) return 0.20;
+  if (vipLevel >= 11) return 0.10;
+  if (vipLevel >= 5) return 0.05;
+  return 0;
+}
+
+/// Extra coins credited on a purchase of [coinAmount] coins by a user
+/// at VIP [level]. Floored to whole coins (coins are integers).
+export function coinsBonusForPurchase(coinAmount, level){
+  const amount = Number(coinAmount ?? 0);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return 0;
+  return Math.floor(amount * coinsBonusForLevel(level));
+}
+
+// Gift discount (Vinay, 2026-11-19): VIPs pay less for every gift
+// they send — the discount applies to the gift's coin cost at send
+// time. VIP0-7 get no discount. The gift catalog prices themselves
+// are unchanged; only the amount debited at send is reduced.
+export function giftDiscountForVipLevel(level){
+  const vipLevel = Math.max(0, Math.min(18, Number(level) || 0));
+  if (vipLevel >= 18) return 0.30;
+  if (vipLevel >= 14) return 0.20;
+  if (vipLevel >= 8) return 0.10;
+  return 0;
+}
+
+/// Coin cost actually charged for a gift listed at [priceCoins] when
+/// the sender is at VIP [level]. Never below 1 coin (a gift is shown
+/// with a minimum price of one coin, and the send endpoint must debit
+/// that same authoritative amount).
+export function applyGiftDiscount(priceCoins, level){
+  const price = Number(priceCoins ?? 0);
+  if (!Number.isSafeInteger(price) || price <= 0) return 1;
+  return Math.max(1, Math.floor(price * (1 - giftDiscountForVipLevel(level))));
+}
+
 export function vipCapabilities(level, active){
   return {
-    exp_multiplier: 1,
+    exp_multiplier: active ? expBoostForLevel(level) : 1,
+    coins_bonus_pct: active ? coinsBonusForLevel(level) : 0,
+    gift_discount_pct: active ? giftDiscountForVipLevel(level) : 0,
     friend_bonus: 0,
     friend_limit: active ? null : 300,
     friends_unlimited: active,
