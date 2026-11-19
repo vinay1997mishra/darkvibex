@@ -19,12 +19,15 @@ enum MedalSeries {
 }
 
 /// Reusable, lightweight animated badge for DarkVibeX medal tiers.
-/// VIP tiers use their own transparent SVG asset; Rocket tiers use the
-/// premium medal PNGs on R2 (rocket-medals/, Rocket 1-18), with the
-/// bundled rocket_01-12.svg assets only as an offline fallback. The new
-/// medal series (Wealth / Fan Club / Achievement / Family / Charm /
-/// Noble / Room / Event) also load their PNGs directly from R2
-/// (medals/), falling back to a themed icon — never a black box.
+/// VIP tiers 1-4 use the premium shield medal PNGs on R2
+/// (vip-medals/, VIP1-4), with the bundled VIP SVG as the fallback
+/// (VIP5-18 have no R2 medal PNG yet, and offline/load errors fall
+/// back to the SVG too). Rocket tiers use the premium medal PNGs on
+/// R2 (rocket-medals/, Rocket 1-18), with the bundled rocket_01-12.svg
+/// assets only as an offline fallback. The new medal series (Wealth /
+/// Fan Club / Achievement / Family / Charm / Noble / Room / Event)
+/// also load their PNGs directly from R2 (medals/), falling back to a
+/// themed icon — never a black box.
 class LevelMedal extends StatefulWidget {
   const LevelMedal({
     super.key,
@@ -103,13 +106,7 @@ class _LevelMedalState extends State<LevelMedal>
             child: Transform.scale(
               scale: widget.animated ? pulse : 1,
               child: isVip
-                  ? SvgPicture.asset(
-                      LevelMedal.assetPath(widget.series, widget.level),
-                      width: widget.size,
-                      height: widget.size,
-                      fit: BoxFit.contain,
-                      semanticsLabel: semanticLabel,
-                    )
+                  ? _vipMedalImage(semanticLabel)
                   : isRocket
                       ? _rocketMedalImage(semanticLabel)
                       : _medalTypeImage(semanticLabel),
@@ -158,6 +155,35 @@ class _LevelMedalState extends State<LevelMedal>
         MedalSeries.room => Icons.home_rounded,
         MedalSeries.event => Icons.celebration_rounded,
       };
+
+  /// VIP shield medal PNG from R2 (vip-medals/, VIP1-4 only). Falls
+  /// back to the bundled VIP SVG for VIP5-18 (no R2 medal PNG yet)
+  /// and when the network image fails. Never a black box.
+  Widget _vipMedalImage(String semanticLabel) {
+    final int level = widget.level.clamp(1, 18).toInt();
+    final String? url = vipMedalUrlForVipLevel(level);
+    if (url == null) {
+      return _bundledVipSvg(semanticLabel);
+    }
+    return Image.network(
+      url,
+      width: widget.size,
+      height: widget.size,
+      fit: BoxFit.contain,
+      semanticLabel: semanticLabel,
+      errorBuilder: (_, __, ___) => _bundledVipSvg(semanticLabel),
+    );
+  }
+
+  Widget _bundledVipSvg(String semanticLabel) {
+    return SvgPicture.asset(
+      LevelMedal.assetPath(MedalSeries.vip, widget.level),
+      width: widget.size,
+      height: widget.size,
+      fit: BoxFit.contain,
+      semanticsLabel: semanticLabel,
+    );
+  }
 
   /// Rocket medal PNG from R2. Falls back to the bundled rocket SVG for
   /// levels 1-12 when the network image fails; levels 13-18 have no

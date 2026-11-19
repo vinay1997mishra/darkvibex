@@ -25,6 +25,7 @@ import '../widgets/seat_panda_emote.dart';
 import '../widgets/vip_entry_effect_banner.dart';
 import '../widgets/gift_ribbon_banner.dart';
 import '../widgets/level_medal.dart';
+import '../widgets/vip_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -3350,6 +3351,11 @@ class _RoomScreenState extends State<RoomScreen> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                if (activeVipLevel > 0)
+                                  VipTagImage(
+                                    vipLevel: activeVipLevel,
+                                    fontSize: 12,
+                                  ),
                                 const Text(
                                   '|',
                                   style: TextStyle(color: Colors.black26),
