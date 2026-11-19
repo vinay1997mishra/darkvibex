@@ -3,10 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../vip/vip_visual_assets.dart';
+
 enum MedalSeries { vip, rocket }
 
 /// Reusable, lightweight animated badge for DarkVibeX VIP and Rocket tiers.
-/// Each tier uses its own transparent SVG asset.
+/// VIP tiers use their own transparent SVG asset; Rocket tiers use the
+/// premium medal PNGs on R2 (rocket-medals/, Rocket 1-18), with the
+/// bundled rocket_01-12.svg assets only as an offline fallback.
 class LevelMedal extends StatefulWidget {
   const LevelMedal({
     super.key,
@@ -49,7 +53,6 @@ class _LevelMedalState extends State<LevelMedal>
   @override
   Widget build(BuildContext context) {
     final isRocket = widget.series == MedalSeries.rocket;
-    final asset = LevelMedal.assetPath(widget.series, widget.level);
     final semanticLabel = '${isRocket ? 'Rocket' : 'VIP'} medal level ${widget.level}';
 
     return AnimatedBuilder(
@@ -79,15 +82,48 @@ class _LevelMedalState extends State<LevelMedal>
             angle: rotation,
             child: Transform.scale(
               scale: widget.animated ? pulse : 1,
-              child: SvgPicture.asset(
-                asset,
-                width: widget.size,
-                height: widget.size,
-                fit: BoxFit.contain,
-                semanticsLabel: semanticLabel,
-              ),
+              child: isRocket
+                  ? _rocketMedalImage(semanticLabel)
+                  : SvgPicture.asset(
+                      LevelMedal.assetPath(widget.series, widget.level),
+                      width: widget.size,
+                      height: widget.size,
+                      fit: BoxFit.contain,
+                      semanticsLabel: semanticLabel,
+                    ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  /// Rocket medal PNG from R2. Falls back to the bundled rocket SVG for
+  /// levels 1-12 when the network image fails; levels 13-18 have no
+  /// bundled SVG, so they fall back to a rocket icon. Never a black box.
+  Widget _rocketMedalImage(String semanticLabel) {
+    final int level = widget.level.clamp(1, 18).toInt();
+    return Image.network(
+      rocketMedalUrlForLevel(level),
+      width: widget.size,
+      height: widget.size,
+      fit: BoxFit.contain,
+      semanticLabel: semanticLabel,
+      errorBuilder: (_, __, ___) {
+        if (level <= 12) {
+          return SvgPicture.asset(
+            LevelMedal.assetPath(MedalSeries.rocket, level),
+            width: widget.size,
+            height: widget.size,
+            fit: BoxFit.contain,
+            semanticsLabel: semanticLabel,
+          );
+        }
+        return Icon(
+          Icons.rocket_launch_rounded,
+          size: widget.size * .7,
+          color: const Color(0xFF78D9FF),
+          semanticLabel: semanticLabel,
         );
       },
     );

@@ -11,6 +11,12 @@ const List<int> rocketStageTargets = <int>[
   500000000,
   650000000,
   800000000,
+  1000000000,
+  1200000000,
+  1400000000,
+  1600000000,
+  1800000000,
+  2000000000,
 ];
 
 /// Calculates Rocket progress against cumulative room gift totals.

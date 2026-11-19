@@ -22,7 +22,7 @@ void main() {
       expect(levelTwo['current_target'], 30000000);
     });
 
-    test('keeps levels 11–12 progressing and marks all stages complete at level 12', () {
+    test('keeps levels 11–18 progressing and marks all stages complete at level 18', () {
       final levelTen = calculateRocketProgress(500000000);
       expect(levelTen['completed'], 10);
       expect(levelTen['current_progress'], 500000000);
@@ -34,12 +34,22 @@ void main() {
       expect(levelEleven['current_progress'], 650000000);
       expect(levelEleven['current_target'], 800000000);
 
-      final completed = calculateRocketProgress(800000000);
-      expect(completed['completed'], 12);
-      expect(completed['current_progress'], 800000000);
-      expect(completed['current_target'], 800000000);
+      final levelTwelve = calculateRocketProgress(800000000);
+      expect(levelTwelve['completed'], 12);
+      expect(levelTwelve['current_progress'], 800000000);
+      expect(levelTwelve['current_target'], 1000000000);
+
+      final levelSeventeen = calculateRocketProgress(1800000000);
+      expect(levelSeventeen['completed'], 17);
+      expect(levelSeventeen['current_progress'], 1800000000);
+      expect(levelSeventeen['current_target'], 2000000000);
+
+      final completed = calculateRocketProgress(2000000000);
+      expect(completed['completed'], 18);
+      expect(completed['current_progress'], 2000000000);
+      expect(completed['current_target'], 2000000000);
       expect(completed['percent'], 1.0);
-      expect(calculateRocketProgress(900000000)['completed'], 12);
+      expect(calculateRocketProgress(2500000000)['completed'], 18);
     });
   });
 }

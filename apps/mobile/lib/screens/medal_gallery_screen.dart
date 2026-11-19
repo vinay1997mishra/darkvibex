@@ -21,7 +21,7 @@ class MedalGalleryScreen extends StatelessWidget {
             unselectedLabelColor: Colors.white54,
             tabs: [
               Tab(icon: Icon(Icons.workspace_premium_rounded), text: 'VIP 1–18'),
-              Tab(icon: Icon(Icons.rocket_launch_rounded), text: 'Rocket 1–12'),
+              Tab(icon: Icon(Icons.rocket_launch_rounded), text: 'Rocket 1–18'),
             ],
           ),
         ),
@@ -36,7 +36,7 @@ class MedalGalleryScreen extends StatelessWidget {
           child: TabBarView(
             children: [
               _MedalGrid(series: MedalSeries.vip, count: 18),
-              _MedalGrid(series: MedalSeries.rocket, count: 12),
+              _MedalGrid(series: MedalSeries.rocket, count: 18),
             ],
           ),
         ),
@@ -195,6 +195,12 @@ class _MedalGrid extends StatelessWidget {
         9 => 'Phantom',
         10 => 'Inferno',
         11 => 'Stellar',
-        _ => 'Orbit King',
+        12 => 'Orbit King',
+        13 => 'Star Forge',
+        14 => 'Nebula',
+        15 => 'Cosmic',
+        16 => 'Galactic',
+        17 => 'Supernova',
+        _ => 'Rocket Apex',
       };
 }
