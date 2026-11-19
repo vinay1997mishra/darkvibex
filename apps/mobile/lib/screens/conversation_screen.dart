@@ -445,10 +445,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                     headers: widget.state.sessionToken == null
                                         ? const <String, String>{}
                                         : <String, String>{'Authorization': 'Bearer ${widget.state.sessionToken}'},
-                                    width: 220,
+                                    width: 204,
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) => const SizedBox(
-                                      width: 220,
+                                      width: 204,
                                       height: 120,
                                       child: Center(child: Icon(Icons.broken_image_outlined)),
                                     ),
@@ -474,7 +474,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                       : null,
                                   assetImageHeaders: widget.state.backend.fileHeaders,
                                   maxWidth: 292,
-                                  minWidth: 112,
+                                  minWidth: 100,
                                   minHeight: 44,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 44,
@@ -541,6 +541,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       controller: controller,
                       enabled: isFriend,
                       maxLength: 1000,
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.send,
                       decoration: InputDecoration(
                         counterText: '',
                         hintText: isFriend

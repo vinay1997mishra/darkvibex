@@ -442,7 +442,7 @@ class StretchableCosmeticBubble extends StatelessWidget {
     required this.styleId,
     required this.child,
     this.maxWidth = 292,
-    this.minWidth = 112,
+    this.minWidth = 100,
     this.minHeight = 44,
     this.contentPadding = const EdgeInsets.symmetric(
       horizontal: 44,
