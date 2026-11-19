@@ -13,6 +13,7 @@ import {
   allRibbonUrls,
   giftRibbonForVipLevel,
 } from "../src/gift_ribbon_catalog.js";
+import { entryEffectUrlForVipLevel } from "../src/vip_entry_effect_catalog.js";
 
 const R2_BASE = "https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev";
 
@@ -91,14 +92,41 @@ test("giftRibbonForVipLevel falls back to the basic tier for VIP0/no-VIP", () =>
   assert.equal(vip0.id, "ribbon_sleek_gold");
   assert.equal(vip0.vip_level, 0);
   assert.equal(vip0.url, `${R2_BASE}/gift-ribbons/ribbon-sleek-gold.webp`);
-  // VIP levels keep their own tier + level in the payload.
+  assert.equal(vip0.kind, "gift_ribbon");
+});
+
+test("giftRibbonForVipLevel returns the entry effect for VIP1-18", () => {
+  // Vinay (2026-11-19): "entry effect ko hi gift me bhi laga de" —
+  // the gift banner IS the sender's entry effect for VIP1-18: same
+  // entry-effects/vip<N>-entry.png the arrival overlay uses.
+  for (let level = 1; level <= 18; level++) {
+    const ribbon = giftRibbonForVipLevel(level);
+    assert.equal(ribbon.kind, "entry_effect");
+    assert.equal(ribbon.vip_level, level);
+    assert.equal(ribbon.asset_key, `entry-effects/vip${level}-entry.png`);
+    assert.equal(
+      ribbon.url,
+      `${R2_BASE}/entry-effects/vip${level}-entry.png`,
+    );
+    assert.equal(ribbon.url, entryEffectUrlForVipLevel(level));
+    assert.equal(ribbon.id, `vip-entry-${level}`);
+  }
+  // Spot checks: tier is kept for the app's per-tier panel colours.
+  const vip1 = giftRibbonForVipLevel(1);
+  assert.equal(vip1.tier, "basic");
+  assert.equal(vip1.name, "Cat Entry");
+  const vip2 = giftRibbonForVipLevel(2);
+  assert.equal(vip2.tier, "basic");
+  assert.equal(vip2.name, "Swan Entry");
+  const vip7 = giftRibbonForVipLevel(7);
+  assert.equal(vip7.tier, "premium");
+  assert.equal(vip7.name, "Eagle Entry");
   const vip13 = giftRibbonForVipLevel(13);
   assert.equal(vip13.tier, "royal");
-  assert.equal(vip13.vip_level, 13);
-  assert.equal(vip13.asset_key, "gift-ribbons/ribbon-royal-gold.webp");
+  assert.equal(vip13.name, "Gorilla Entry");
   const vip17 = giftRibbonForVipLevel(17);
   assert.equal(vip17.tier, "super_premium");
-  assert.equal(vip17.vip_level, 17);
+  assert.equal(vip17.name, "Phoenix Entry");
 });
 
 test("gift send response includes the ribbon and sender/receiver/gift names", () => {

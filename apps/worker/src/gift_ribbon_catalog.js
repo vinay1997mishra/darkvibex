@@ -2,20 +2,30 @@
 //
 // The gift ribbon is the banner shown in the room when a VIP sends a
 // gift. It was the one missing VIP cosmetic (no "ribbon" kind in
-// cosmetics.js). 4 tiers, colour and premium quality increase with the
-// VIP level:
+// cosmetics.js).
+//
+// Vinay (2026-11-19): "entry effect ko hi gift me bhi laga de" — the
+// gift banner IS the sender's VIP entry effect for VIP1-18 (the wide
+// entry-effects/vip<N>-entry.png banner: transparent DP circle on the
+// left, level animal on the right, "VIP N" label). VIP0 has no entry
+// effect, so it keeps the 4-tier ribbon below:
 //   VIP1-4   = Sleek Gold (basic, gold-dominant)
 //   VIP5-10  = Purple & Gold Ornate (premium)
 //   VIP11-15 = Royal Gold (more premium, purple-dominant, big crown)
 //   VIP16-18 = Dragon Super Premium (richest colours, purple fire)
-// Every VIP level 1-18 gets its OWN banner: the tier base design plus
-// the VIP level written BIG and bold at runtime ("VIP N" is the most
-// prominent text on the banner), plus the sender name, the gift name
-// and the receiver name (sender -> receiver, gift below). The runtime
-// overlay layout (centre panel x 0.315-0.685, y 0.40-0.72 of the
-// 2736x912 image) lives in the Dart widget
-// (apps/mobile/lib/widgets/gift_ribbon_banner.dart) and mirrors
-// ~/workspace/darkvibex-vip-section/gift-ribbons/make_previews.py.
+// The tier mapping is kept for the VIP0 fallback and for the app's
+// per-tier centre-panel colours (giftRibbonPanelColorsForVipLevel).
+// Every gift gets a banner: the entry effect for VIP1-18, the basic
+// tier ribbon for VIP0. The VIP level is written BIG and bold at
+// runtime ("VIP N" is the most prominent text on the banner), plus the
+// sender name, the gift name and the receiver name (sender ->
+// receiver, gift below). The runtime overlay layout (centre panel x
+// 0.315-0.685, y 0.40-0.72 of the 2736x912 tier image) lives in the
+// Dart widget (apps/mobile/lib/widgets/gift_ribbon_banner.dart); for
+// entry-effect banners the widget uses the real per-level entry aspect
+// ratio (vipEntryEffectAspectRatios in vip_visual_assets.dart)
+// instead of the tier 3.0, because entry banners are 2112-2736px wide
+// with per-level heights (aspect 1.783-3.989).
 //
 // R2 (bucket "darkvibex-files", direct public base, image/webp):
 //   gift-ribbons/ribbon-sleek-gold.webp   (VIP1-4)
@@ -36,6 +46,10 @@
 // public base lives in exactly one place.
 
 import { R2_PUBLIC_BASE_URL, R2_BUCKET } from "./vehicle_entry_animals.js";
+import {
+  entryEffectForVipLevel,
+  entryEffectUrlForVipLevel,
+} from "./vip_entry_effect_catalog.js";
 
 export { R2_PUBLIC_BASE_URL, R2_BUCKET };
 
@@ -144,14 +158,35 @@ export function allRibbonUrls() {
 }
 
 /// The ribbon payload the gift flow attaches to a gift event/response.
-/// { tier, id, name, asset_key, url, vip_level } — everything the app
-/// needs to show the banner, with no extra lookup. VIP0 / no-VIP
-/// falls back to the basic (Sleek Gold) tier so every gift gets a
-/// ribbon; the vip_level carried is the sender's own level (0 when
+/// { tier, id, name, asset_key, url, vip_level, kind } — everything the
+/// app needs to show the banner, with no extra lookup.
+///
+/// Vinay (2026-11-19): "entry effect ko hi gift me bhi laga de" — the
+/// gift banner IS the sender's VIP entry effect for VIP1-18 (the same
+/// wide entry-effects/vip<N>-entry.png the room-entry arrival overlay
+/// uses, same direct R2 URL, reused from vip_entry_effect_catalog.js —
+/// no duplicated URL logic). VIP0 / no-VIP has no entry effect, so it
+/// falls back to the basic tier so every gift gets a ribbon. The `tier`
+/// field is kept on the entry-effect payload too (the level's own tier),
+/// so the app's per-tier centre-panel colours keep working unchanged.
+/// `kind` is "entry_effect" for VIP1-18 and "gift_ribbon" for the tier
+/// fallback; the vip_level carried is the sender's own level (0 when
 /// they have no VIP), so the widget still writes the right "VIP N"
 /// (or the basic banner with no level) for that sender.
 export function giftRibbonForVipLevel(level) {
   const vipLevel = Math.max(0, Math.min(18, Number(level) || 0));
+  const entry = entryEffectForVipLevel(vipLevel);
+  if (entry) {
+    return {
+      tier: ribbonTierForVipLevel(vipLevel) ?? "basic",
+      id: entry.id,
+      name: entry.name,
+      asset_key: entry.asset_key,
+      url: entryEffectUrlForVipLevel(vipLevel),
+      vip_level: vipLevel,
+      kind: "entry_effect",
+    };
+  }
   const tier = ribbonForVipLevel(vipLevel) ?? GIFT_RIBBON_TIERS.basic;
   return {
     tier: ribbonTierForVipLevel(vipLevel) ?? "basic",
@@ -160,5 +195,6 @@ export function giftRibbonForVipLevel(level) {
     asset_key: tier.asset,
     url: R2_PUBLIC_BASE_URL ? `${R2_PUBLIC_BASE_URL}/${tier.asset}` : null,
     vip_level: vipLevel,
+    kind: "gift_ribbon",
   };
 }
