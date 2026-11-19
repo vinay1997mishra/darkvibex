@@ -4,14 +4,31 @@ import '../vip/vip_visual_assets.dart';
 
 /// Full-width VIP gift ribbon banner for a room gift (VIP1-18).
 ///
-/// Shows the tier base image (R2, direct) with a centre panel over the
+/// Shows the banner image (R2, direct) with a centre panel over the
 /// baked-in placeholder text, mirroring the verified previews
 /// (~/workspace/darkvibex-vip-section/gift-ribbons/make_previews.py):
 /// the VIP level written BIG and bold — the most prominent text on the
 /// banner — then sender -> receiver on one line with an arrow, then the
 /// gift name below.
 ///
-/// Panel geometry (fractions of the 2736x912 image): x 0.315-0.685,
+/// Two banner shapes (Vinay, 2026-11-19: "entry effect ko hi gift me
+/// bhi laga de"):
+/// - VIP1-18: the sender's VIP ENTRY EFFECT banner
+///   (entry-effects/vip<N>-entry.png — transparent DP circle on the
+///   left, level animal on the right, "VIP N" label). Its aspect ratio
+///   is per level (vipEntryEffectAspectRatios, 1.783-3.989), so the
+///   widget heights itself from that ratio, not the tier 3.0.
+/// - VIP0: the tier ribbon (2736x912, aspect 3.0, own black
+///   background — no transparency needed).
+/// The widget detects the entry-effect shape from the URL
+/// (entry-effects/ segment); the server payload also carries
+/// kind: "entry_effect" vs "gift_ribbon". The centre panel fractions
+/// (x 0.315-0.685, y 0.40-0.72) and per-tier panel colours are shared
+/// by both shapes: the panel is opaque, so the names stay readable
+/// over either background, and it starts right of the entry banner's
+/// DP circle (centreX 0.10-0.17).
+///
+/// Panel geometry (fractions of the 2736x912 tier image): x 0.315-0.685,
 /// y 0.40-0.72. Font sizes scale with the banner width (120pt / 72pt /
 /// 52pt at 2736px wide in the previews). Panel colours are per tier:
 /// tier 1 gold plaque + dark bronze text; tiers 2 and 4 black + gold
@@ -48,11 +65,19 @@ class GiftRibbonBanner extends StatelessWidget {
         : giftRibbonUrlForVipLevel(vipLevel);
     final GiftRibbonPanelColors colors =
         giftRibbonPanelColorsForVipLevel(vipLevel);
+    // Entry-effect banners (VIP1-18) are NOT 2736x912: each level has
+    // its own aspect ratio (vipEntryEffectAspectRatios, 1.783-3.989).
+    // Height from the real ratio so the animal / DP circle are not
+    // squashed or stretched; tier ribbons (VIP0) stay 3.0.
+    final bool isEntryEffect = url.contains('entry-effects/');
+    final double aspectRatio = isEntryEffect
+        ? (vipEntryEffectAspectRatios[vipLevel] ?? kGiftRibbonAspectRatio)
+        : kGiftRibbonAspectRatio;
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width =
             constraints.maxWidth.isFinite ? constraints.maxWidth : 360;
-        final double height = width / kGiftRibbonAspectRatio;
+        final double height = width / aspectRatio;
         // Font sizes scale with the banner width (preview: 120pt VIP /
         // 72pt names / 52pt gift at 2736px wide).
         final double vipFontSize = width * 0.044;
