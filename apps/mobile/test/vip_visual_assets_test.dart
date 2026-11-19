@@ -350,7 +350,6 @@ void main() {
     expect(giftRibbonPanelColorsForVipLevel(2).panel, 0xFFD09E48);
     expect(giftRibbonPanelColorsForVipLevel(0).panel, 0xFFD09E48);
   });
-}
 
   test('profile card animation URLs point at the R2 profile-card-anims/ mp4s (VIP4-18 only)',
       () {
@@ -449,3 +448,4 @@ void main() {
         isTrue);
     expect(isDirectR2AssetKey('profile-card-stills/vip4-fox.png'), isTrue);
   });
+}
