@@ -78,7 +78,7 @@ async function fixture(userCount = 51) {
     "INSERT INTO rooms(id,owner_user_id,name,seat_count,locked,country_code,created_at,updated_at) VALUES(?,?,?,12,0,'',?,?)",
   ).run(roomId, "rocket-user-0", "Rocket rewards test room", timestamp, timestamp);
   for (let i = 0; i < userCount; i++) {
-    insertMember.run(roomId, `rocket-user-${i}`, timestamp, timestamp);
+    insertMember.run(roomId, `rocket-user-${i}`, timestamp + i, timestamp);
   }
 
   const insertGift = sqlite.prepare(
@@ -118,7 +118,7 @@ test("Rocket group credits coins to every winner, exactly once", async () => {
   const { sqlite, roomId, request } = await fixture();
   const path = (level) => `/api/rooms/${roomId}/rocket-reward/claim`;
 
-  for (let i = 1; i <= 50; i++) {
+  for (let i = 0; i <= 49; i++) {
     const result = await request(path(1), {
       method: "POST",
       userId: `rocket-user-${i}`,
@@ -155,11 +155,52 @@ test("Rocket group credits coins to every winner, exactly once", async () => {
 
   const full = await request(path(1), {
     method: "POST",
-    userId: "rocket-user-0",
+    userId: "rocket-user-50",
     body: { rocket_level: 1 },
   });
   assert.equal(full.status, 409);
   assert.equal(full.body.error, "reward_claims_full");
+  sqlite.close();
+});
+
+test("random coins go to the earliest room entrants first", async () => {
+  const { sqlite, roomId, request } = await fixture();
+  // The pool is not full (only 10 claims), but rocket-user-50 joined last
+  // (entry rank 50, beyond the 50-winner pool), so they cannot claim.
+  for (let i = 0; i < 10; i++) {
+    const result = await request(`/api/rooms/${roomId}/rocket-reward/claim`, {
+      method: "POST",
+      userId: `rocket-user-${i}`,
+      body: { rocket_level: 1 },
+    });
+    assert.equal(result.status, 200);
+  }
+
+  const late = await request(`/api/rooms/${roomId}/rocket-reward/claim`, {
+    method: "POST",
+    userId: "rocket-user-50",
+    body: { rocket_level: 1 },
+  });
+  assert.equal(late.status, 409);
+  assert.equal(late.body.error, "rocket_entry_rank_beyond_pool");
+  assert.equal(late.body.entry_rank, 50);
+  assert.equal(late.body.max_winners, 50);
+
+  const status = await request(
+    `/api/rooms/${roomId}/rocket-reward?level=1`,
+    { userId: "rocket-user-50" },
+  );
+  assert.equal(status.status, 200);
+  assert.equal(status.body.entry_rank, 50);
+  assert.equal(status.body.can_claim, false);
+
+  const early = await request(`/api/rooms/${roomId}/rocket-reward/claim`, {
+    method: "POST",
+    userId: "rocket-user-10",
+    body: { rocket_level: 1 },
+  });
+  assert.equal(early.status, 200);
+  assert.equal(early.body.reward_type, "coins");
   sqlite.close();
 });
 
@@ -201,7 +242,7 @@ test("Rocket reward-only frames cannot be purchased from the Store", async () =>
 
 test("Rocket levels within the same reward tier share one total-winner pool", async () => {
   const { sqlite, roomId, request, insertGift, timestamp } = await fixture();
-  for (let i = 1; i <= 50; i++) {
+  for (let i = 0; i <= 49; i++) {
     const result = await request(`/api/rooms/${roomId}/rocket-reward/claim`, {
       method: "POST",
       userId: `rocket-user-${i}`,
@@ -229,7 +270,7 @@ test("Rocket levels within the same reward tier share one total-winner pool", as
 
   const full = await request(`/api/rooms/${roomId}/rocket-reward/claim`, {
     method: "POST",
-    userId: "rocket-user-0",
+    userId: "rocket-user-50",
     body: { rocket_level: 2 },
   });
   assert.equal(full.status, 409);

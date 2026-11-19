@@ -176,6 +176,22 @@ function secureRandomInt(min, max) {
   return min + (values[0] % span);
 }
 
+// Room-entry order for Rocket rewards: the user who entered the room first
+// is counted first for random coins. Returns the 0-based rank of the user
+// among the room's members by joined_at (ties broken by user_id), or null
+// when the user is not a member.
+export async function rocketEntryRank(db, roomId, userId) {
+  const memberRow = await db.prepare(
+    "SELECT joined_at FROM room_members WHERE room_id=? AND user_id=? LIMIT 1",
+  ).bind(String(roomId ?? ""), String(userId ?? "")).first();
+  if (memberRow == null) return null;
+  const joinedAt = Number(memberRow.joined_at ?? 0);
+  const rankRow = await db.prepare(
+    "SELECT COUNT(*) AS n FROM room_members WHERE room_id=? AND (joined_at < ? OR (joined_at = ? AND user_id < ?))",
+  ).bind(String(roomId ?? ""), joinedAt, joinedAt, String(userId ?? "")).first();
+  return Number(rankRow?.n ?? 0);
+}
+
 export async function handleRocketRewardRoute({
   request, env, url, parts, db, json, requireSession,
   verifySessionToken, bearerToken, now, newId, ownerSetting,
@@ -228,6 +244,7 @@ export async function handleRocketRewardRoute({
     "SELECT COUNT(*) AS claimed_count FROM rocket_reward_claims WHERE room_id=? AND reward_group=?",
   ).bind(roomId, tier.group).first();
   const claimedCount = Number(poolRow?.claimed_count ?? 0);
+  const entryRank = await rocketEntryRank(db, roomId, userId);
   let existingRow = await db.prepare(
     "SELECT id,room_id,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=? LIMIT 1",
   ).bind(roomId, tier.group, userId).first();
@@ -260,11 +277,13 @@ export async function handleRocketRewardRoute({
       reached: target != null && lifetimeTotal >= target,
       claimed_count: claimedCount,
       remaining_winners: Math.max(0, tier.maxWinners - claimedCount),
+      entry_rank: entryRank,
       claim: existingClaim,
       can_claim: target != null &&
         lifetimeTotal >= target &&
         !existingClaim &&
-        claimedCount < tier.maxWinners,
+        claimedCount < tier.maxWinners &&
+        entryRank != null && entryRank < tier.maxWinners,
     });
   }
 
@@ -295,6 +314,12 @@ export async function handleRocketRewardRoute({
   if (claimedCount >= tier.maxWinners) {
     return json({ ok: false, error: "reward_claims_full", claimed_count: claimedCount }, { status: 409 });
   }
+  if (entryRank == null || entryRank >= tier.maxWinners) {
+    return json({
+      ok: false, error: "rocket_entry_rank_beyond_pool",
+      entry_rank: entryRank, max_winners: tier.maxWinners,
+    }, { status: 409 });
+  }
 
   const claimId = newId();
   const timestamp = now();
@@ -303,7 +328,8 @@ export async function handleRocketRewardRoute({
     db.prepare(`WITH pool_state AS (
         SELECT
           (SELECT COUNT(*) FROM rocket_reward_claims WHERE room_id=? AND reward_group=?) AS claimed_count,
-          (SELECT COALESCE(SUM(coin_cost),0) FROM gift_events WHERE room_id=?) AS lifetime_total
+          (SELECT COALESCE(SUM(coin_cost),0) FROM gift_events WHERE room_id=?) AS lifetime_total,
+          (SELECT COUNT(*) FROM room_members WHERE room_id=? AND (joined_at < (SELECT joined_at FROM room_members WHERE room_id=? AND user_id=?) OR (joined_at = (SELECT joined_at FROM room_members WHERE room_id=? AND user_id=?) AND user_id < ?))) AS entry_rank
       )
       INSERT OR IGNORE INTO rocket_reward_claims
         (id,room_id,rocket_level,reward_group,user_id,reward_type,coin_amount,frame_days,frame_delivery_status,claimed_at)
@@ -315,18 +341,20 @@ export async function handleRocketRewardRoute({
         ?
       FROM pool_state
       WHERE claimed_count < ?
+        AND entry_rank < ?
         AND lifetime_total >= ?
         AND EXISTS (SELECT 1 FROM room_members WHERE room_id=? AND user_id=?)
         AND NOT EXISTS (
           SELECT 1 FROM rocket_reward_claims WHERE room_id=? AND reward_group=? AND user_id=?
         )`).bind(
       roomId, tier.group, roomId,
+      roomId, roomId, userId, roomId, userId, userId,
       claimId, roomId, requestedLevel, tier.group, userId,
       tier.frameWinners,
       tier.frameWinners, randomCoins,
       tier.frameWinners, tier.frameDays,
       tier.frameWinners, timestamp,
-      tier.maxWinners, target,
+      tier.maxWinners, tier.maxWinners, target,
       roomId, userId,
       roomId, tier.group, userId,
     ),
