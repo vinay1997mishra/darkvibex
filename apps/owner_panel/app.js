@@ -601,7 +601,7 @@ async function openUser(id){
     ["Sent gifts",num(inv.sent_gift_coins||0)+" coins · "+num(inv.sent_gift_count||0)+" gifts"],
     ["Received gifts",num(inv.received_gift_coins||0)+" coins · "+num(inv.received_gift_count||0)+" gifts"],
     ["Purchases",num(inv.purchase_coins||0)+" coins · "+num(inv.purchase_count||0)+" records"],
-    ["Wallet dollar value","$"+Number(inv.wallet_usd||0).toFixed(2)+" @ "+num(inv.coin_rate_coins_per_usd||5000000)+" coins/$"],
+    ["Wallet dollar value","$"+Number(inv.wallet_usd||0).toFixed(2)+" @ "+num(inv.coin_rate_coins_per_usd||8000000)+" coins/$"],
     ["Game bets",num(inv.game_wagered||0)+" wagered · "+num(inv.game_bet_count||0)+" bets"],
     ["Game payout",num(inv.game_payout||0)+" · house result "+num(inv.game_house_result||0)],
     ["Diamonds",num(inv.diamonds||u.diamonds||0)],
@@ -818,7 +818,7 @@ async function treasuryAction(action){
 async function loadEconomy(){
   if(!can("economy.view"))return;
   const d=await api("/api/owner/economy");
-  const rate=Number(d.coins_per_usd||5000000);
+  const rate=Number(d.coins_per_usd||8000000);
   $("#coinRateCoinsPerUsd").value=String(rate);
   renderCoinRate(rate,d.updated_at);
   $("#saveCoinRate").disabled=!can("economy.coin_rate.edit");
