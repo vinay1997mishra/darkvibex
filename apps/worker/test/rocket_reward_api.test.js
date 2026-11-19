@@ -86,7 +86,7 @@ async function fixture(userCount = 51) {
   );
   insertGift.run(
     "rocket-test-gift-1", roomId, "rocket-user-0", "rocket-user-1",
-    "rocket-test-gift", 8_000_000, timestamp,
+    "rocket-test-gift", 12_000_000, timestamp,
   );
 
   const tokenCache = new Map();
@@ -268,7 +268,7 @@ test("Rocket levels within the same reward tier share one 25-frame/total-winner 
   );
   assert.equal(status.status, 200);
   assert.equal(status.body.tier.group, "1-3");
-  assert.equal(status.body.target_coins, 15_000_000);
+  assert.equal(status.body.target_coins, 18_000_000);
   assert.equal(status.body.reached, true);
   assert.equal(status.body.claimed_count, 50);
   assert.equal(status.body.remaining_winners, 0);
