@@ -114,59 +114,11 @@ async function fixture(userCount = 51) {
   return { sqlite, roomId, request, insertGift, timestamp };
 }
 
-test("Rocket group awards 25 frame-only prizes, then credits coins exactly once", async () => {
+test("Rocket group credits coins to every winner, exactly once", async () => {
   const { sqlite, roomId, request } = await fixture();
   const path = (level) => `/api/rooms/${roomId}/rocket-reward/claim`;
-  const beforeFrameWinner = sqlite.prepare(
-    "SELECT coins FROM users WHERE id='rocket-user-1'",
-  ).get().coins;
 
-  for (let i = 1; i <= 25; i++) {
-    const result = await request(path(1), {
-      method: "POST",
-      userId: `rocket-user-${i}`,
-      body: { rocket_level: 1 },
-    });
-    assert.equal(result.status, 200);
-    assert.equal(result.body.ok, true);
-    assert.equal(result.body.reward_type, "frame");
-    assert.equal(result.body.coins, 0);
-    assert.equal(result.body.frame_days, 1);
-    assert.equal(result.body.frame_id, "rocket_frame_aurora");
-    assert.equal(result.body.frame_name, "Rocket Aurora");
-    assert.equal(result.body.frame_delivery_status, "delivered");
-  }
-
-  const earnedFrame = sqlite.prepare(
-    "SELECT item_id,expires_at,active FROM user_cosmetics WHERE user_id=? AND kind='frame'",
-  ).get("rocket-user-1");
-  assert.equal(earnedFrame.item_id, "rocket_frame_aurora");
-  assert.ok(earnedFrame.expires_at > Date.now());
-  assert.equal(earnedFrame.active, 0);
-
-  const equip = await request("/api/cosmetics/equip", {
-    method: "POST",
-    userId: "rocket-user-1",
-    body: { user_id: "rocket-user-1", item_id: "rocket_frame_aurora" },
-  });
-  assert.equal(equip.status, 200);
-  assert.equal(equip.body.ok, true);
-  assert.equal(
-    sqlite.prepare("SELECT active FROM user_cosmetics WHERE user_id=? AND item_id=?")
-      .get("rocket-user-1", "rocket_frame_aurora").active,
-    1,
-  );
-
-  assert.equal(
-    sqlite.prepare("SELECT coins FROM users WHERE id='rocket-user-1'").get().coins,
-    beforeFrameWinner,
-  );
-  assert.equal(
-    sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='rocket_reward'").get().n,
-    0,
-  );
-
-  for (let i = 26; i <= 50; i++) {
+  for (let i = 1; i <= 50; i++) {
     const result = await request(path(1), {
       method: "POST",
       userId: `rocket-user-${i}`,
@@ -176,6 +128,7 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
     assert.equal(result.body.ok, true);
     assert.equal(result.body.reward_type, "coins");
     assert.ok(result.body.coins >= 10_000 && result.body.coins <= 20_000);
+    assert.equal(result.body.frame_days, 0);
     const wallet = sqlite.prepare(
       "SELECT coins FROM users WHERE id=?",
     ).get(`rocket-user-${i}`);
@@ -185,7 +138,7 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
   const ledgerCount = sqlite.prepare(
     "SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='rocket_reward'",
   ).get().n;
-  assert.equal(ledgerCount, 25);
+  assert.equal(ledgerCount, 50);
 
   const duplicate = await request(path(1), {
     method: "POST",
@@ -197,7 +150,7 @@ test("Rocket group awards 25 frame-only prizes, then credits coins exactly once"
   assert.equal(duplicate.body.reward_type, "coins");
   assert.equal(
     sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE kind='rocket_reward'").get().n,
-    25,
+    50,
   );
 
   const full = await request(path(1), {
@@ -246,7 +199,7 @@ test("Rocket reward-only frames cannot be purchased from the Store", async () =>
   sqlite.close();
 });
 
-test("Rocket levels within the same reward tier share one 25-frame/total-winner pool", async () => {
+test("Rocket levels within the same reward tier share one total-winner pool", async () => {
   const { sqlite, roomId, request, insertGift, timestamp } = await fixture();
   for (let i = 1; i <= 50; i++) {
     const result = await request(`/api/rooms/${roomId}/rocket-reward/claim`, {
