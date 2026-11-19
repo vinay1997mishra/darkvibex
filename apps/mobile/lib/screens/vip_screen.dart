@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
+import '../vip/vip_visual_assets.dart';
 import 'vip_support_screen.dart';
 import 'medal_gallery_screen.dart';
+import '../widgets/vip_animated_frame.dart';
 import '../widgets/vip_badge_video.dart';
+import '../widgets/vip_entry_effect_banner.dart';
 
 class VipScreen extends StatelessWidget {
   const VipScreen({super.key, required this.state});
@@ -109,6 +112,16 @@ class VipScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                const SizedBox(height: 20),
+                _IdentificationSection(
+                  level: level,
+                  active: active,
+                  activeUntil: state.vipActiveUntil,
+                  avatarUrl: state.avatarKey?.isNotEmpty == true
+                      ? state.backend.fileUrl(state.avatarKey!)
+                      : null,
+                  onShowExp: () => _showExp(context),
+                ),
                 const SizedBox(height: 20),
                 const Text(
                   'VIP exclusive privileges',
@@ -589,6 +602,307 @@ class _HeroCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Identification section (Vinay, 2026-11-19): the three identity
+/// items grouped together under one heading, like other VIP pages —
+/// Membership (the VIP membership card), Customized Avatar Frame (the
+/// user's frame with their DP inside it) and Entrance Effects (the
+/// entry banner). Tapping a card shows a bigger preview.
+class _IdentificationSection extends StatelessWidget {
+  const _IdentificationSection({
+    required this.level,
+    required this.active,
+    required this.activeUntil,
+    required this.avatarUrl,
+    required this.onShowExp,
+  });
+
+  final int level;
+  final bool active;
+  final DateTime? activeUntil;
+  final String? avatarUrl;
+  final VoidCallback onShowExp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '✨ Identification',
+          style: TextStyle(
+            color: Color(0xFFD4AF37),
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _IdentificationCard(
+                title: 'Membership',
+                onTap: onShowExp,
+                child: _MembershipPreview(
+                  level: level,
+                  active: active,
+                  activeUntil: activeUntil,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _IdentificationCard(
+                title: 'Customized Avatar Frame',
+                onTap: () => _showFramePreview(context),
+                child: _FramePreview(level: level, avatarUrl: avatarUrl),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _IdentificationCard(
+                title: 'Entrance Effects',
+                onTap: () => _showEntryPreview(context),
+                child: _EntryPreview(level: level, avatarUrl: avatarUrl),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showFramePreview(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF141414),
+        title: Text('VIP $level Avatar Frame'),
+        content: Center(
+          heightFactor: 1,
+          child: _FramePreview(
+            level: level,
+            avatarUrl: avatarUrl,
+            radius: 60,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEntryPreview(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF141414),
+        title: Text(
+          level >= 5 ? 'VIP $level Entrance Effect' : 'Entrance Effects',
+        ),
+        content: level >= 5
+            ? VipEntryEffectBanner(vipLevel: level, avatarUrl: avatarUrl)
+            : const Text(
+                'Entrance effects unlock at VIP 5.',
+                style: TextStyle(color: Colors.white70),
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IdentificationCard extends StatelessWidget {
+  const _IdentificationCard({
+    required this.title,
+    required this.child,
+    required this.onTap,
+  });
+
+  final String title;
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF151515),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0x66D4AF37)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Gold VIP membership card: metallic gold "VIP N" + validity.
+class _MembershipPreview extends StatelessWidget {
+  const _MembershipPreview({
+    required this.level,
+    required this.active,
+    required this.activeUntil,
+  });
+
+  final int level;
+  final bool active;
+  final DateTime? activeUntil;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFFB8860B),
+                Color(0xFFFFD700),
+                Color(0xFFFFF3B0),
+                Color(0xFFFFC125),
+              ],
+              stops: <double>[0.0, 0.35, 0.6, 1.0],
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(
+                'VIP $level',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF3A2A00),
+                ),
+              ),
+              const Text(
+                'MEMBER',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
+                  color: Color(0xFF5A4200),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          level <= 0
+              ? 'Not a VIP member yet'
+              : active
+                  ? 'Valid until ${activeUntil == null ? '—' : VipScreen._date(activeUntil!)}'
+                  : 'Expired',
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+      ],
+    );
+  }
+}
+
+/// The user's avatar frame with their DP inside it (the DP sits
+/// BEHIND the frame, showing through the frame's transparent centre —
+/// never on top of the frame).
+class _FramePreview extends StatelessWidget {
+  const _FramePreview({
+    required this.level,
+    required this.avatarUrl,
+    this.radius = 30,
+  });
+
+  final int level;
+  final String? avatarUrl;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget avatar = CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFF29365D),
+      backgroundImage:
+          avatarUrl != null ? NetworkImage(avatarUrl!) : null,
+      child: avatarUrl == null
+          ? Icon(
+              Icons.person_rounded,
+              size: radius,
+              color: Colors.white70,
+            )
+          : null,
+    );
+    if (level <= 0) return avatar;
+    return VipAnimatedFrame.auto(
+      level: level,
+      assetUrl: vipFrameStillUrlForVipLevel(level),
+      videoUrl: vipFrameVapUrlForVipLevel(level),
+      child: avatar,
+    );
+  }
+}
+
+/// The user's entry banner (VIP5-18). Below VIP 5 there is no entry
+/// banner, so a note is shown instead of an empty box.
+class _EntryPreview extends StatelessWidget {
+  const _EntryPreview({required this.level, required this.avatarUrl});
+
+  final int level;
+  final String? avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (level < 5) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'Unlocks at VIP 5',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white54, fontSize: 11),
+        ),
+      );
+    }
+    return VipEntryEffectBanner(vipLevel: level, avatarUrl: avatarUrl);
   }
 }
 
