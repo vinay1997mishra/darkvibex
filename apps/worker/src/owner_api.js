@@ -982,8 +982,8 @@ async function getUserDetails(db, userId) {
     ).bind(userId,userId,userId).all(),
     db.prepare("SELECT value_json,updated_at FROM owner_settings WHERE key='economy.coin_rate'").first(),
   ]);
-  const coinRateConfig=safeParse(coinRateRow?.value_json,{coins_per_usd:5000000});
-  const coinsPerUsd=Math.max(1,Number(coinRateConfig?.coins_per_usd ?? 5000000)||5000000);
+  const coinRateConfig=safeParse(coinRateRow?.value_json,{coins_per_usd:8000000});
+  const coinsPerUsd=Math.max(1,Number(coinRateConfig?.coins_per_usd ?? 8000000)||8000000);
   const currentRoom=room ?? null;
   const joinedAt=Number(currentRoom?.joined_at ?? 0);
   const investigation={
@@ -1950,7 +1950,7 @@ async function handleRooms(request, db, actor, url, parts) {
 
 async function handleEconomy(request, db, actor) {
   const key = "economy.coin_rate";
-  const fallback = 5000000;
+  const fallback = 8000000;
   if (request.method === "GET") {
     requirePermission(actor, "economy.view");
     const row = await db.prepare("SELECT value_json, updated_at FROM owner_settings WHERE key = ?").bind(key).first();
