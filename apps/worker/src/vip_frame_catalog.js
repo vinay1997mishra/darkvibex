@@ -63,6 +63,15 @@ import { R2_PUBLIC_BASE_URL, R2_BUCKET } from "./vehicle_entry_animals.js";
 
 export { R2_PUBLIC_BASE_URL, R2_BUCKET };
 
+// VIP13 has a SECOND frame (Vinay's own design, 2026-11-20):
+// "vip-frame-13-second" — same gorilla, second design (green energy,
+// armored ring, VIP 13 plate). Same three R2 files under the
+// second-frame keys (frames/vip13-gorilla-second-frame-*,
+// vap/vip13-gorilla-second-frame.mp4). frameForVipLevel(13) still
+// returns the ORIGINAL frame (first match) — the second frame is
+// selected by id (frameById / frameVisualById), e.g. when the Owner
+// sets frame_id="vip-frame-13-second" in the VIP13 vip_rule.
+// Nothing else changes for level 13.
 export const VIP_FRAME_CATALOG = [
   { id: "vip-frame-1", kind: "frame", level: 1, animal: "cat", name: "Cat Frame", min_vip_level: 1, duration_days: 30, frame_key: "", vap_key: "", still_key: "frames/vip1-cat-transparent.png", animation_ms: 0 },
   { id: "vip-frame-2", kind: "frame", level: 2, animal: "swan", name: "Swan Frame", min_vip_level: 2, duration_days: 30, frame_key: "", vap_key: "", still_key: "frames/vip2-swan-transparent.png", animation_ms: 0 },
@@ -77,6 +86,7 @@ export const VIP_FRAME_CATALOG = [
   { id: "vip-frame-11", kind: "frame", level: 11, animal: "tiger", name: "Tiger Frame", min_vip_level: 11, duration_days: 30, frame_key: "frames/vip11-tiger-transparent.webm", vap_key: "vap/vip11-tiger.mp4", still_key: "frames/vip11-tiger-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-12", kind: "frame", level: 12, animal: "mammoth", name: "Mammoth Frame", min_vip_level: 12, duration_days: 30, frame_key: "frames/vip12-mammoth-transparent.webm", vap_key: "vap/vip12-mammoth.mp4", still_key: "frames/vip12-mammoth-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-13", kind: "frame", level: 13, animal: "gorilla", name: "Gorilla Frame", min_vip_level: 13, duration_days: 30, frame_key: "frames/vip13-gorilla-transparent.webm", vap_key: "vap/vip13-gorilla.mp4", still_key: "frames/vip13-gorilla-transparent.png", animation_ms: 5200 },
+  { id: "vip-frame-13-second", kind: "frame", level: 13, animal: "gorilla", name: "Gorilla Frame II", min_vip_level: 13, duration_days: 30, frame_key: "frames/vip13-gorilla-second-frame-transparent.webm", vap_key: "vap/vip13-gorilla-second-frame.mp4", still_key: "frames/vip13-gorilla-second-frame-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-14", kind: "frame", level: 14, animal: "bear", name: "Bear Frame", min_vip_level: 14, duration_days: 30, frame_key: "frames/vip14-bear-transparent.webm", vap_key: "vap/vip14-bear.mp4", still_key: "frames/vip14-bear-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-15", kind: "frame", level: 15, animal: "kraken", name: "Kraken Frame", min_vip_level: 15, duration_days: 30, frame_key: "frames/vip15-kraken-transparent.webm", vap_key: "vap/vip15-kraken.mp4", still_key: "frames/vip15-kraken-transparent.png", animation_ms: 5200 },
   { id: "vip-frame-16", kind: "frame", level: 16, animal: "leviathan", name: "Leviathan Frame", min_vip_level: 16, duration_days: 30, frame_key: "frames/vip16-leviathan-transparent.webm", vap_key: "vap/vip16-leviathan.mp4", still_key: "frames/vip16-leviathan-transparent.png", animation_ms: 5200 },
@@ -103,8 +113,7 @@ export function frameById(id) {
 /// VIP1-4 have no WebM/VAP (static stills only), so video_key/vap_key
 /// are empty and animation_type is "" — the app shows the still only
 /// and must NOT try to play a VAP video for those levels.
-export function frameVisualForVipLevel(level) {
-  const entry = frameForVipLevel(level);
+function frameVisualForEntry(entry) {
   if (!entry) return null;
   return {
     id: entry.id,
@@ -118,6 +127,18 @@ export function frameVisualForVipLevel(level) {
     animation_type: entry.vap_key ? "frame_loop" : "",
     animation_ms: entry.animation_ms,
   };
+}
+
+export function frameVisualForVipLevel(level) {
+  return frameVisualForEntry(frameForVipLevel(level));
+}
+
+/// Visual for a frame selected by id (e.g. the VIP13 second frame via
+/// the Owner's vip_rule frame_id). frameForVipLevel() only returns the
+/// first (original) frame per level, so an id lookup is the only way to
+/// reach a second frame for a level. Returns null for an unknown id.
+export function frameVisualById(id) {
+  return frameVisualForEntry(frameById(id));
 }
 
 export function frameVideoUrlForVipLevel(level) {
@@ -139,13 +160,18 @@ export function frameVapUrlForVipLevel(level) {
 }
 
 export function allFrameVapUrls() {
-  return VIP_FRAME_CATALOG.map((entry) => frameVapUrlForVipLevel(entry.level)).filter(Boolean);
+  if (!R2_PUBLIC_BASE_URL) return [];
+  return VIP_FRAME_CATALOG.filter((entry) => entry.vap_key)
+    .map((entry) => `${R2_PUBLIC_BASE_URL}/${entry.vap_key}`);
 }
 
 export function allFrameVideoUrls() {
-  return VIP_FRAME_CATALOG.map((entry) => frameVideoUrlForVipLevel(entry.level)).filter(Boolean);
+  if (!R2_PUBLIC_BASE_URL) return [];
+  return VIP_FRAME_CATALOG.filter((entry) => entry.frame_key)
+    .map((entry) => `${R2_PUBLIC_BASE_URL}/${entry.frame_key}`);
 }
 
 export function allFrameStillUrls() {
-  return VIP_FRAME_CATALOG.map((entry) => frameStillUrlForVipLevel(entry.level));
+  if (!R2_PUBLIC_BASE_URL) return [];
+  return VIP_FRAME_CATALOG.map((entry) => `${R2_PUBLIC_BASE_URL}/${entry.still_key}`);
 }

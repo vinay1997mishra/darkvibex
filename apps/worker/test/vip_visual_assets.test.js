@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   VIP_FRAME_CATALOG,
   frameForVipLevel,
+  frameById,
   frameVisualForVipLevel,
+  frameVisualById,
   frameVideoUrlForVipLevel,
   frameStillUrlForVipLevel,
   frameVapUrlForVipLevel,
@@ -49,13 +51,13 @@ import {
 
 const R2_BASE = "https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev";
 
-test("VIP frame catalog covers VIP1-18 with one animal frame per level", () => {
-  assert.equal(VIP_FRAME_CATALOG.length, 18);
+test("VIP frame catalog covers VIP1-18 with one animal frame per level plus the VIP13 second frame", () => {
+  assert.equal(VIP_FRAME_CATALOG.length, 19);
   assert.deepEqual(
     VIP_FRAME_CATALOG.map((entry) => entry.level),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 14, 15, 16, 17, 18],
   );
-  assert.equal(new Set(VIP_FRAME_CATALOG.map((entry) => entry.id)).size, 18);
+  assert.equal(new Set(VIP_FRAME_CATALOG.map((entry) => entry.id)).size, 19);
   assert.equal(frameForVipLevel(1)?.animal, "cat");
   assert.equal(frameForVipLevel(2)?.animal, "swan");
   assert.equal(frameForVipLevel(3)?.animal, "dolphin");
@@ -89,7 +91,7 @@ test("VIP1-4 frames are static PNG stills (no WebM, no VAP)", () => {
     frameStillUrlForVipLevel(4),
     `${R2_BASE}/frames/vip4-fox-transparent.png`,
   );
-  assert.equal(allFrameStillUrls().length, 18);
+  assert.equal(allFrameStillUrls().length, 19);
 });
 
 test("VIP frame URLs point at the R2 frames/ keys (WebM video + PNG still)", () => {
@@ -101,7 +103,7 @@ test("VIP frame URLs point at the R2 frames/ keys (WebM video + PNG still)", () 
     frameStillUrlForVipLevel(13),
     `${R2_BASE}/frames/vip13-gorilla-transparent.png`,
   );
-  assert.equal(allFrameVideoUrls().length, 14);
+  assert.equal(allFrameVideoUrls().length, 15);
   assert.ok(allFrameVideoUrls().every((url) => url.startsWith(`${R2_BASE}/frames/`)));
   assert.ok(allFrameStillUrls().every((url) => url.endsWith("-transparent.png")));
 });
@@ -131,11 +133,49 @@ test("VIP frame VAP URLs point at the R2 vap/ keys (Tencent VAP mp4)", () => {
   assert.equal(frameVapUrlForVipLevel(1), null);
   assert.equal(frameVapUrlForVipLevel(4), null);
   assert.equal(frameVapUrlForVipLevel(19), null);
-  assert.equal(allFrameVapUrls().length, 14);
+  assert.equal(allFrameVapUrls().length, 15);
   assert.ok(allFrameVapUrls().every((url) => url.startsWith(`${R2_BASE}/vap/`)));
   assert.ok(allFrameVapUrls().every((url) => url.endsWith(".mp4")));
   assert.equal(frameVisualForVipLevel(7).vap_key, "vap/vip7-eagle.mp4");
   assert.equal(frameVisualForVipLevel(18).vap_key, "vap/vip18-dragon.mp4");
+});
+
+test("VIP13 second frame is reachable by id and leaves the original frame the level default", () => {
+  // The level lookup still returns the ORIGINAL gorilla frame (first match).
+  assert.equal(frameForVipLevel(13)?.id, "vip-frame-13");
+  assert.equal(frameVisualForVipLevel(13)?.id, "vip-frame-13");
+  assert.equal(
+    frameStillUrlForVipLevel(13),
+    `${R2_BASE}/frames/vip13-gorilla-transparent.png`,
+  );
+  // The second frame (Vinay's own design) is selected by id only.
+  const second = frameById("vip-frame-13-second");
+  assert.equal(second?.level, 13);
+  assert.equal(second?.animal, "gorilla");
+  assert.equal(second?.name, "Gorilla Frame II");
+  assert.equal(second?.min_vip_level, 13);
+  assert.equal(second?.duration_days, 30);
+  assert.equal(second?.frame_key, "frames/vip13-gorilla-second-frame-transparent.webm");
+  assert.equal(second?.vap_key, "vap/vip13-gorilla-second-frame.mp4");
+  assert.equal(second?.still_key, "frames/vip13-gorilla-second-frame-transparent.png");
+  assert.equal(second?.animation_ms, 5200);
+  const visual = frameVisualById("vip-frame-13-second");
+  assert.equal(visual?.id, "vip-frame-13-second");
+  assert.equal(visual?.kind, "frame");
+  assert.equal(visual?.asset_key, "frames/vip13-gorilla-second-frame-transparent.png");
+  assert.equal(visual?.video_key, "frames/vip13-gorilla-second-frame-transparent.webm");
+  assert.equal(visual?.vap_key, "vap/vip13-gorilla-second-frame.mp4");
+  assert.equal(visual?.animation_type, "frame_loop");
+  assert.equal(visual?.animation_ms, 5200);
+  assert.equal(frameVisualById("vip-frame-13")?.id, "vip-frame-13");
+  assert.equal(frameVisualById("no-such-frame"), null);
+  assert.equal(frameVisualById(""), null);
+  // The per-entry URL lists include the second frame's files, no duplicates.
+  assert.ok(allFrameStillUrls().includes(`${R2_BASE}/frames/vip13-gorilla-second-frame-transparent.png`));
+  assert.ok(allFrameVideoUrls().includes(`${R2_BASE}/frames/vip13-gorilla-second-frame-transparent.webm`));
+  assert.ok(allFrameVapUrls().includes(`${R2_BASE}/vap/vip13-gorilla-second-frame.mp4`));
+  assert.equal(new Set(allFrameVapUrls()).size, allFrameVapUrls().length);
+  assert.equal(new Set(allFrameStillUrls()).size, allFrameStillUrls().length);
 });
 
 test("VIP entry-effect catalog covers VIP1-18 with R2 banner URLs", () => {
