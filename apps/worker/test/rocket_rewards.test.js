@@ -86,16 +86,16 @@ test("all 18 Rocket milestone thresholds are configured", () => {
   assert.equal(rocketRewardConfigForLevel(0), null);
   assert.equal(rocketRewardConfigForLevel(19), null);
   assert.equal(ROCKET_MILESTONE_TARGETS.length, 18);
-  assert.equal(rocketTargetForLevel(1), 8_000_000);
-  assert.equal(rocketTargetForLevel(10), 500_000_000);
-  assert.equal(rocketTargetForLevel(11), 650_000_000);
-  assert.equal(rocketTargetForLevel(12), 800_000_000);
-  assert.equal(rocketTargetForLevel(13), 1_000_000_000);
-  assert.equal(rocketTargetForLevel(14), 1_200_000_000);
-  assert.equal(rocketTargetForLevel(15), 1_400_000_000);
-  assert.equal(rocketTargetForLevel(16), 1_600_000_000);
-  assert.equal(rocketTargetForLevel(17), 1_800_000_000);
-  assert.equal(rocketTargetForLevel(18), 2_000_000_000);
+  assert.equal(rocketTargetForLevel(1), 12_000_000);
+  assert.equal(rocketTargetForLevel(10), 102_000_000);
+  assert.equal(rocketTargetForLevel(11), 117_000_000);
+  assert.equal(rocketTargetForLevel(12), 133_000_000);
+  assert.equal(rocketTargetForLevel(13), 150_000_000);
+  assert.equal(rocketTargetForLevel(14), 168_000_000);
+  assert.equal(rocketTargetForLevel(15), 187_000_000);
+  assert.equal(rocketTargetForLevel(16), 207_000_000);
+  assert.equal(rocketTargetForLevel(17), 228_000_000);
+  assert.equal(rocketTargetForLevel(18), 250_000_000);
 });
 
 test("each Rocket reward group maps to a matching circular frame asset", () => {
