@@ -351,3 +351,101 @@ void main() {
     expect(giftRibbonPanelColorsForVipLevel(0).panel, 0xFFD09E48);
   });
 }
+
+  test('profile card animation URLs point at the R2 profile-card-anims/ mp4s (VIP4-18 only)',
+      () {
+    // v4 animations run from VIP4 onwards; VIP1-3 have none.
+    expect(vipProfileCardAnimAnimals.length, 15);
+    expect(vipProfileCardAnimAnimals[4], 'fox');
+    expect(vipProfileCardAnimAnimals[5], 'deer');
+    expect(vipProfileCardAnimAnimals[10], 'lion');
+    expect(vipProfileCardAnimAnimals[16], 'leviathan');
+    expect(vipProfileCardAnimAnimals[18], 'dragon');
+    expect(vipProfileCardAnimAnimals[1], isNull);
+    expect(vipProfileCardAnimAnimals[3], isNull);
+    expect(
+      profileCardAnimVideoUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip4-fox.mp4',
+    );
+    expect(
+      profileCardAnimVideoUrlForVipLevel(5),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip5-deer.mp4',
+    );
+    expect(
+      profileCardAnimVideoUrlForVipLevel(18),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip18-dragon.mp4',
+    );
+    expect(profileCardAnimVideoUrlForVipLevel(1), isNull);
+    expect(profileCardAnimVideoUrlForVipLevel(3), isNull);
+    expect(profileCardAnimVideoUrlForVipLevel(0), isNull);
+    expect(profileCardAnimVideoUrlForVipLevel(19), isNull);
+    for (var level = 4; level <= 18; level++) {
+      expect(
+        vipProfileCardAnimVideoKeys[level],
+        'profile-card-anims/vip$level-${vipProfileCardAnimAnimals[level]}.mp4',
+      );
+      expect(
+        vipProfileCardAnimStillKeys[level],
+        'profile-card-stills/vip$level-${vipProfileCardAnimAnimals[level]}.png',
+      );
+    }
+  });
+
+  test('profile card animation still URLs point at the R2 profile-card-stills/ PNGs',
+      () {
+    expect(
+      profileCardAnimStillUrlForVipLevel(5),
+      '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip5-deer.png',
+    );
+    expect(
+      profileCardAnimStillUrlForVipLevel(18),
+      '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip18-dragon.png',
+    );
+    expect(profileCardAnimStillUrlForVipLevel(2), isNull);
+    expect(profileCardAnimStillUrlForVipLevel(3), isNull);
+    expect(profileCardAnimStillUrlForVipLevel(19), isNull);
+  });
+
+  test('profileCardAnimVideoUrlForDisplay plays only the level own animation',
+      () {
+    // The displayed card IS the level's own animation (or no key
+    // configured, so the level animation is used): the video plays.
+    expect(
+      profileCardAnimVideoUrlForDisplay(
+          'profile-card-anims/vip13-gorilla.mp4', 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip13-gorilla.mp4',
+    );
+    expect(
+      profileCardAnimVideoUrlForDisplay('', 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip13-gorilla.mp4',
+    );
+    expect(
+      profileCardAnimVideoUrlForDisplay(null, 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip13-gorilla.mp4',
+    );
+    // A custom/Owner video key has no v4 animation: still only.
+    expect(
+      profileCardAnimVideoUrlForDisplay('custom-assets/card-123.mp4', 13),
+      isNull,
+    );
+    // VIP1-3 have no animation (static cards only).
+    expect(profileCardAnimVideoUrlForDisplay('', 1), isNull);
+    expect(profileCardAnimVideoUrlForDisplay('', 3), isNull);
+  });
+
+  test('resolver sends profile-card anim/still keys direct from R2', () {
+    String fileUrl(String key) => 'https://worker.example/api/files?key=$key';
+    expect(
+      resolveVipVisualAssetUrl(
+          'profile-card-anims/vip5-deer.mp4', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip5-deer.mp4',
+    );
+    expect(
+      resolveVipVisualAssetUrl(
+          'profile-card-stills/vip5-deer.png', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip5-deer.png',
+    );
+    expect(isDirectR2AssetKey('profile-card-anims/vip18-dragon.mp4'),
+        isTrue);
+    expect(isDirectR2AssetKey('profile-card-stills/vip4-fox.png'), isTrue);
+  });
