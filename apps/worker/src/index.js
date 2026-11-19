@@ -14,6 +14,8 @@ import {
   userIdFileKeyBelongsTo,
 } from "./user_id_files_catalog.js";
 import { expireOldMessages } from "./message_retention.js";
+import { expireOldGameData } from "./game_data_retention.js";
+import { expireOldD1SpaceData } from "./d1_space_retention.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
@@ -9470,6 +9472,34 @@ export default {
         (async () => {
           try {
             await expireOldMessages(requireDb(env), env);
+          } catch (_) {
+            // Best-effort: a failed cleanup never breaks the schedule.
+          }
+        })(),
+      );
+      // Game data retention (Vinay, 2026-11-19): game data backup is
+      // 45 days too — Ludo sessions, Greedy Girl / Fruit Party bets
+      // and results, lucky pouches and lucky numbers older than 45
+      // days are deleted from D1. Separate try/catch so one cleanup
+      // failing never blocks the other.
+      ctx.waitUntil(
+        (async () => {
+          try {
+            await expireOldGameData(requireDb(env));
+          } catch (_) {
+            // Best-effort: a failed cleanup never breaks the schedule.
+          }
+        })(),
+      );
+      // D1 space retention (Vinay, 2026-11-19): delete what is not
+      // necessary from D1 so its space never fills up — expired email
+      // OTPs (1 day), old call history, visitor history and owner
+      // notifications (45 days), old game bets (30 days). Financial /
+      // legal records and gift events are never touched here.
+      ctx.waitUntil(
+        (async () => {
+          try {
+            await expireOldD1SpaceData(requireDb(env));
           } catch (_) {
             // Best-effort: a failed cleanup never breaks the schedule.
           }
