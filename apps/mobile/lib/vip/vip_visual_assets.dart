@@ -69,6 +69,8 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'vip-tags/',
   'vip-medals/',
   'profile-banners/',
+  'profile-card-anims/',
+  'profile-card-stills/',
   'vehicles/',
   'vap/',
   'gift-ribbons/',
@@ -635,4 +637,104 @@ GiftRibbonPanelColors giftRibbonPanelColorsForVipLevel(int level) {
   final GiftRibbonTier tier =
       giftRibbonTierForVipLevel(level) ?? GiftRibbonTier.basic;
   return giftRibbonPanelColorsForTier(tier);
+}
+
+// ---------------------------------------------------------------------------
+// Profile card animations (v4, VIP4-18)
+// ---------------------------------------------------------------------------
+//
+// The profile card popup plays the level's 5-second animation as its
+// BACKGROUND (video_player, direct R2 MP4, plays once, no loop) while
+// the reference layout — DP top centre (in place of the frame's blue
+// diamond), name + badges, medals, ID/Fans, bio, 4 buttons — renders
+// in the FOREGROUND over it (Vinay, 2026-11-19, approved).
+//
+//   video: profile-card-anims/vip<N>-<animal>.mp4 (5 s, 832x896 canvas,
+//          wide horizontal frame content inside; frame design stays
+//          exactly as the starting still, camera static, NO zoom, only
+//          the animal moves gently, ends calmly)
+//   still: profile-card-stills/vip<N>-<animal>.png (the v3 design,
+//          VIP4: its V1 clean frame) — poster while the video loads,
+//          and the fallback when the video cannot play or finishes.
+//
+// v4 runs from VIP4 onwards and NO design has a bottom line — every
+// frame is open at the bottom, top and sides only, and no design
+// carries any text ("VIP N" / "Profile Card" never appear; the VIP
+// tag is already in the profile). VIP1-3 have NO profile card
+// animation: every helper below returns null for them.
+//
+// The video is a full-bleed scene (opaque background), NOT a
+// transparent cutout — unlike the VAP frames, video_player CAN play
+// it (opaque texture is fine here). Never feed it a WebM.
+
+/// Animal per VIP level for PROFILE CARD animations. VIP4 = fox,
+/// VIP5 = deer ... VIP18 = dragon. VIP1-3 have no animation.
+const Map<int, String> vipProfileCardAnimAnimals = <int, String>{
+  4: 'fox',
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
+
+/// R2 key of the 5-second background animation MP4 per level (VIP4-18).
+Map<int, String> get vipProfileCardAnimVideoKeys => <int, String>{
+      for (final MapEntry<int, String> entry
+          in vipProfileCardAnimAnimals.entries)
+        entry.key:
+            'profile-card-anims/vip${entry.key}-${entry.value}.mp4',
+    };
+
+/// R2 key of the fallback still PNG per level (VIP4-18).
+Map<int, String> get vipProfileCardAnimStillKeys => <int, String>{
+      for (final MapEntry<int, String> entry
+          in vipProfileCardAnimAnimals.entries)
+        entry.key:
+            'profile-card-stills/vip${entry.key}-${entry.value}.png',
+    };
+
+/// Direct R2 URL of the background animation MP4 for [level], or null
+/// for VIP1-3 (no animation) / out of range.
+String? profileCardAnimVideoUrlForVipLevel(int level) {
+  final String? key = vipProfileCardAnimVideoKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// Direct R2 URL of the fallback still PNG for [level], or null for
+/// VIP1-3 (no animation) / out of range.
+String? profileCardAnimStillUrlForVipLevel(int level) {
+  final String? key = vipProfileCardAnimStillKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// Animation video URL for the card actually being displayed, or null
+/// when the card has no animation video.
+///
+/// The video plays ONLY for the level's own animation: [videoKey] is
+/// the member's profile_card_anim video_key from the Worker (the
+/// level's own key, or empty when no key was configured, so the level
+/// animation is used). A custom/Owner video key has no v4 animation,
+/// so this returns null and the caller shows the still only. Never
+/// guess a video URL for a custom card — that would play the wrong
+/// level's animation behind it.
+String? profileCardAnimVideoUrlForDisplay(String? videoKey, int level) {
+  final String? animKey = vipProfileCardAnimVideoKeys[level];
+  if (animKey == null) return null; // VIP1-3: no animation.
+  final String key = (videoKey ?? '').trim();
+  if (key.isEmpty || key == animKey) {
+    return profileCardAnimVideoUrlForVipLevel(level);
+  }
+  return null; // Custom/Owner video: still only, no v4 animation.
 }

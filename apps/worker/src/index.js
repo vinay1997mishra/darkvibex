@@ -6,6 +6,7 @@ import { entryEffectVisualForVipLevel } from "./vip_entry_effect_catalog.js";
 import { tagVisualForVipLevel } from "./vip_tag_catalog.js";
 import { medalVisualForVipLevel } from "./vip_medal_catalog.js";
 import { scenicBannerVisualForVipLevel } from "./vip_scenic_banner_catalog.js";
+import { profileCardAnimVisualForVipLevel } from "./vip_profile_card_anim_catalog.js";
 import { giftRibbonForVipLevel } from "./gift_ribbon_catalog.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
@@ -1103,6 +1104,11 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
   // widget still shows bundled SVGs and the profile cards are still
   // painted glow effects, so vip_medal / vip_scenic_banner are ready
   // for the Dart display swap, which is a follow-up, not this change.
+  // The profile card animation (v4, VIP4-18 only) is the background
+  // video of the profile card popup: the reference layout (DP, name,
+  // badges, medals, ID/Fans, bio, buttons) renders in the foreground
+  // over it, and the v3 still is the fallback when the video cannot
+  // play. VIP1-3 have no profile card animation.
   // The vehicle entry follows the same rule: without an Owner-configured
   // vehicle, the level's animal video (direct R2 key) is returned, so
   // the room can play it without any Owner setup.
@@ -1116,6 +1122,7 @@ async function vipVisualsForLevel(db, level, catalogSnapshot = null) {
     vip_tag: tagVisualForVipLevel(vipLevel),
     vip_medal: medalVisualForVipLevel(vipLevel),
     vip_scenic_banner: scenicBannerVisualForVipLevel(vipLevel),
+    profile_card_anim: profileCardAnimVisualForVipLevel(vipLevel),
   };
 }
 

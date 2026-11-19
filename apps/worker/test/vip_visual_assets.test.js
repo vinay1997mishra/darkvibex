@@ -37,6 +37,15 @@ import {
   scenicBannerUrlForVipLevel,
   allScenicBannerUrls,
 } from "../src/vip_scenic_banner_catalog.js";
+import {
+  VIP_PROFILE_CARD_ANIM_CATALOG,
+  profileCardAnimForVipLevel,
+  profileCardAnimVisualForVipLevel,
+  profileCardAnimUrlForVipLevel,
+  profileCardAnimStillUrlForVipLevel,
+  allProfileCardAnimUrls,
+  allProfileCardAnimStillUrls,
+} from "../src/vip_profile_card_anim_catalog.js";
 
 const R2_BASE = "https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev";
 
@@ -237,4 +246,74 @@ test("VIP scenic banner catalog covers VIP1-4 with R2 banner URLs", () => {
   assert.equal(visual.asset_key, "profile-banners/vip3-scenic.png");
   assert.equal(allScenicBannerUrls().length, 4);
   assert.ok(allScenicBannerUrls().every((url) => url.startsWith(`${R2_BASE}/profile-banners/`)));
+});
+
+test("VIP profile card animation catalog covers VIP4-18 only, no bottom line in any design", () => {
+  // v4 animations run from VIP4 onwards; VIP1-3 have no profile card
+  // animation at all. Every design is open at the bottom (no bottom
+  // line) and carries no text.
+  assert.equal(VIP_PROFILE_CARD_ANIM_CATALOG.length, 15);
+  assert.deepEqual(
+    VIP_PROFILE_CARD_ANIM_CATALOG.map((entry) => entry.level),
+    [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+  );
+  assert.equal(new Set(VIP_PROFILE_CARD_ANIM_CATALOG.map((entry) => entry.id)).size, 15);
+  assert.equal(profileCardAnimForVipLevel(4)?.animal, "fox");
+  assert.equal(profileCardAnimForVipLevel(5)?.animal, "deer");
+  assert.equal(profileCardAnimForVipLevel(10)?.animal, "lion");
+  assert.equal(profileCardAnimForVipLevel(16)?.animal, "leviathan");
+  assert.equal(profileCardAnimForVipLevel(18)?.animal, "dragon");
+  assert.equal(profileCardAnimForVipLevel(1), null);
+  assert.equal(profileCardAnimForVipLevel(2), null);
+  assert.equal(profileCardAnimForVipLevel(3), null);
+  assert.equal(profileCardAnimForVipLevel(0), null);
+  assert.equal(profileCardAnimForVipLevel(19), null);
+  assert.equal(profileCardAnimVisualForVipLevel(1), null);
+  assert.equal(profileCardAnimVisualForVipLevel(3), null);
+});
+
+test("VIP profile card animation URLs point at the R2 profile-card-anims/ keys", () => {
+  assert.equal(
+    profileCardAnimUrlForVipLevel(4),
+    `${R2_BASE}/profile-card-anims/vip4-fox.mp4`,
+  );
+  assert.equal(
+    profileCardAnimUrlForVipLevel(5),
+    `${R2_BASE}/profile-card-anims/vip5-deer.mp4`,
+  );
+  assert.equal(
+    profileCardAnimUrlForVipLevel(18),
+    `${R2_BASE}/profile-card-anims/vip18-dragon.mp4`,
+  );
+  assert.equal(profileCardAnimUrlForVipLevel(3), null);
+  assert.equal(profileCardAnimUrlForVipLevel(1), null);
+  assert.equal(allProfileCardAnimUrls().length, 15);
+  assert.ok(allProfileCardAnimUrls().every((url) => url.startsWith(`${R2_BASE}/profile-card-anims/`)));
+  assert.ok(allProfileCardAnimUrls().every((url) => url.endsWith(".mp4")));
+});
+
+test("VIP profile card animation visual plays once as background, still is the fallback", () => {
+  // The video is the card BACKGROUND (reference layout renders over
+  // it); it plays once and ends calmly. asset_key is the v3 still PNG,
+  // shown when the video cannot play.
+  const visual = profileCardAnimVisualForVipLevel(5);
+  assert.equal(visual.id, "vip-profile-card-anim-5");
+  assert.equal(visual.kind, "profile_card_anim");
+  assert.equal(visual.asset_key, "profile-card-stills/vip5-deer.png");
+  assert.equal(visual.video_key, "profile-card-anims/vip5-deer.mp4");
+  assert.equal(visual.media_type, "video");
+  assert.equal(visual.animation_type, "play_once");
+  assert.equal(visual.animation_ms, 5000);
+  assert.equal(
+    profileCardAnimStillUrlForVipLevel(5),
+    `${R2_BASE}/profile-card-stills/vip5-deer.png`,
+  );
+  assert.equal(
+    profileCardAnimStillUrlForVipLevel(18),
+    `${R2_BASE}/profile-card-stills/vip18-dragon.png`,
+  );
+  assert.equal(profileCardAnimStillUrlForVipLevel(2), null);
+  assert.equal(allProfileCardAnimStillUrls().length, 15);
+  assert.ok(allProfileCardAnimStillUrls().every((url) => url.startsWith(`${R2_BASE}/profile-card-stills/`)));
+  assert.ok(allProfileCardAnimStillUrls().every((url) => url.endsWith(".png")));
 });
