@@ -1,17 +1,26 @@
-// DarkVibeX — VIP Entry Effect Catalog (ANIMAL banners, VIP5-18)
+// DarkVibeX — VIP Entry Effect Catalog (ANIMAL banners, VIP1-18)
 //
-// One wide entry banner per VIP level 5-18. Each banner is a horizontal
+// One wide entry banner per VIP level 1-18. Each banner is a horizontal
 // strip with a transparent circular slot on the LEFT (the arriving user's
 // DP shows through it) and the level animal on the right, plus a "VIP N"
-// label. The banners are Vinay's own uploads, background made 100%
-// transparent (inner colours kept exactly as uploaded).
+// label. VIP5-18 are Vinay's own uploads, background made 100%
+// transparent (inner colours kept exactly as uploaded). VIP1 (black cat)
+// and VIP2 (swan) are Vinay's own uploads too, processed the same way.
+// VIP3 (dolphin) is a generated full-bleed scene (2026-11-19): the
+// dark scene IS the banner background by design, so only the DP circle
+// is transparent on it — the scene stays opaque. VIP4 (fox) is the
+// THIN slim gold bar (2026-11-19, "thin like the others"): a
+// transparent cutout, DP circle left, sitting fox right, NO text.
+// NOTE: the VIP3 entry banner says "VIP ENTRY", not "VIP 3" (the
+// generator wrote generic text); the level comes from the catalog.
+// Theme map (Vinay, 2026-11-19): VIP1 = black cat, VIP2 = swan,
+// VIP3 = dolphin, VIP4 = fox.
 //
 // R2 (bucket "darkvibex-files"): entry-effects/vip<N>-entry.png
-// (image/png, transparent background). The DP circle geometry was
-// measured from the PNGs (2026-11-18) and lives in the Dart catalog
-// (apps/mobile/lib/vip/vip_visual_assets.dart) as per-level fractions —
-// the circle is NOT in the same place on every banner, so do not guess
-// one position for all levels.
+// (image/png). The DP circle geometry was measured from the PNGs and
+// lives in the Dart catalog (apps/mobile/lib/vip/vip_visual_assets.dart)
+// as per-level fractions — the circle is NOT in the same place on every
+// banner, so do not guess one position for all levels.
 //
 // This catalog is deliberately NOT part of COSMETIC_CATALOG. It mirrors
 // vehicle_entry_animals.js: a separate level->asset catalog, consulted as
@@ -30,6 +39,10 @@ import { R2_PUBLIC_BASE_URL, R2_BUCKET } from "./vehicle_entry_animals.js";
 export { R2_PUBLIC_BASE_URL, R2_BUCKET };
 
 export const VIP_ENTRY_EFFECT_CATALOG = [
+  { id: "vip-entry-1", kind: "entry", level: 1, animal: "cat", name: "Cat Entry", min_vip_level: 1, duration_days: 30, asset_key: "entry-effects/vip1-entry.png", animation_ms: 0 },
+  { id: "vip-entry-2", kind: "entry", level: 2, animal: "swan", name: "Swan Entry", min_vip_level: 2, duration_days: 30, asset_key: "entry-effects/vip2-entry.png", animation_ms: 0 },
+  { id: "vip-entry-3", kind: "entry", level: 3, animal: "dolphin", name: "Dolphin Entry", min_vip_level: 3, duration_days: 30, asset_key: "entry-effects/vip3-entry.png", animation_ms: 0 },
+  { id: "vip-entry-4", kind: "entry", level: 4, animal: "fox", name: "Fox Entry", min_vip_level: 4, duration_days: 30, asset_key: "entry-effects/vip4-entry.png", animation_ms: 0 },
   { id: "vip-entry-5", kind: "entry", level: 5, animal: "deer", name: "Deer Entry", min_vip_level: 5, duration_days: 30, asset_key: "entry-effects/vip5-entry.png", animation_ms: 0 },
   { id: "vip-entry-6", kind: "entry", level: 6, animal: "wolf", name: "Wolf Entry", min_vip_level: 6, duration_days: 30, asset_key: "entry-effects/vip6-entry.png", animation_ms: 0 },
   { id: "vip-entry-7", kind: "entry", level: 7, animal: "eagle", name: "Eagle Entry", min_vip_level: 7, duration_days: 30, asset_key: "entry-effects/vip7-entry.png", animation_ms: 0 },
@@ -48,7 +61,7 @@ export const VIP_ENTRY_EFFECT_CATALOG = [
 
 export function entryEffectForVipLevel(level) {
   const vipLevel = Number(level) || 0;
-  if (vipLevel < 5 || vipLevel > 18) return null;
+  if (vipLevel < 1 || vipLevel > 18) return null;
   return VIP_ENTRY_EFFECT_CATALOG.find((entry) => entry.level === vipLevel) ?? null;
 }
 

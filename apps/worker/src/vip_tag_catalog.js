@@ -1,8 +1,12 @@
-// DarkVibeX — VIP Tag Catalog (golden animal tags, VIP5-18)
+// DarkVibeX — VIP Tag Catalog (golden animal tags, VIP1-18)
 //
-// One golden tag image per VIP level 5-18: the level animal + "VIP N" on
-// a gold ribbon, transparent background. Vinay's own uploads, split into
-// 14 separate PNGs (background made transparent, inner colours kept).
+// One golden tag image per VIP level 1-18: the level animal + "VIP N" on
+// a gold ribbon, transparent background. VIP5-18 are Vinay's own uploads,
+// split into 14 separate PNGs (background made transparent, inner colours
+// kept). VIP1-4 are generated in the same style (2026-11-19): VIP1 black
+// cat + purple gem, VIP2 white swan + teal drop, VIP3 dolphin +
+// blue gem, VIP4 red fox + orange gem. Theme map (Vinay, 2026-11-19):
+// VIP1 = black cat, VIP2 = swan, VIP3 = dolphin, VIP4 = fox.
 //
 // R2 (bucket "darkvibex-files"): vip-tags/vip<N>-tag.png (image/png).
 // The tag is a pure level badge — it is never equipped, never bought,
@@ -26,6 +30,10 @@ import { R2_PUBLIC_BASE_URL, R2_BUCKET } from "./vehicle_entry_animals.js";
 export { R2_PUBLIC_BASE_URL, R2_BUCKET };
 
 export const VIP_TAG_CATALOG = [
+  { id: "vip-tag-1", kind: "tag", level: 1, animal: "cat", name: "Cat Tag", min_vip_level: 1, asset_key: "vip-tags/vip1-tag.png" },
+  { id: "vip-tag-2", kind: "tag", level: 2, animal: "swan", name: "Swan Tag", min_vip_level: 2, asset_key: "vip-tags/vip2-tag.png" },
+  { id: "vip-tag-3", kind: "tag", level: 3, animal: "dolphin", name: "Dolphin Tag", min_vip_level: 3, asset_key: "vip-tags/vip3-tag.png" },
+  { id: "vip-tag-4", kind: "tag", level: 4, animal: "fox", name: "Fox Tag", min_vip_level: 4, asset_key: "vip-tags/vip4-tag.png" },
   { id: "vip-tag-5", kind: "tag", level: 5, animal: "deer", name: "Deer Tag", min_vip_level: 5, asset_key: "vip-tags/vip5-tag.png" },
   { id: "vip-tag-6", kind: "tag", level: 6, animal: "wolf", name: "Wolf Tag", min_vip_level: 6, asset_key: "vip-tags/vip6-tag.png" },
   { id: "vip-tag-7", kind: "tag", level: 7, animal: "eagle", name: "Eagle Tag", min_vip_level: 7, asset_key: "vip-tags/vip7-tag.png" },
@@ -44,7 +52,7 @@ export const VIP_TAG_CATALOG = [
 
 export function tagForVipLevel(level) {
   const vipLevel = Number(level) || 0;
-  if (vipLevel < 5 || vipLevel > 18) return null;
+  if (vipLevel < 1 || vipLevel > 18) return null;
   return VIP_TAG_CATALOG.find((entry) => entry.level === vipLevel) ?? null;
 }
 

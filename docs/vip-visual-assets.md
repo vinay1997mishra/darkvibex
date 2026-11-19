@@ -1,10 +1,19 @@
-# VIP Visual Assets — Frames, Entry Effects, Tags (R2 wiring)
+# VIP Visual Assets — Frames, Entry Effects, Tags, Medals, Scenic Banners (R2 wiring)
 
-All three sets are hosted on Cloudflare R2 (bucket `darkvibex-files`,
+All sets are hosted on Cloudflare R2 (bucket `darkvibex-files`,
 public base `https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev`) and
-wired into the app by level. VIP1-4 have no animal visuals.
+wired into the app by level. Every VIP level 1-18 now has animal
+visuals. Theme map (Vinay, 2026-11-19): VIP1 = black cat, VIP2 = swan,
+VIP3 = dolphin, VIP4 = fox.
 
-## Level → asset mapping (VIP5-18)
+## Level → asset mapping (VIP1-18)
+
+| Level | Animal | Frame still (PNG) | Frame WebM / VAP | Entry banner | Tag | Medal | Scenic banner |
+|---|---|---|---|---|---|---|---|
+| 1 | Cat | `frames/vip1-cat-transparent.png` | — (static only) | `entry-effects/vip1-entry.png` | `vip-tags/vip1-tag.png` | `vip-medals/vip1-medal.png` | `profile-banners/vip1-banner.png` |
+| 2 | Swan | `frames/vip2-swan-transparent.png` | — (static only) | `entry-effects/vip2-entry.png` | `vip-tags/vip2-tag.png` | `vip-medals/vip2-medal.png` | `profile-banners/vip2-scenic.png` |
+| 3 | Dolphin | `frames/vip3-dolphin-transparent.png` | — (static only) | `entry-effects/vip3-entry.png` | `vip-tags/vip3-tag.png` | `vip-medals/vip3-medal.png` | `profile-banners/vip3-scenic.png` |
+| 4 | Fox | `frames/vip4-fox-transparent.png` | — (static only) | `entry-effects/vip4-entry.png` | `vip-tags/vip4-tag.png` | `vip-medals/vip4-medal.png` | `profile-banners/vip4-scenic.png` |
 
 | Level | Animal | Frame WebM | Frame still (PNG) | Entry banner | Tag |
 |---|---|---|---|---|---|
@@ -23,10 +32,22 @@ wired into the app by level. VIP1-4 have no animal visuals.
 | 17 | Phoenix | `frames/vip17-phoenix-transparent.webm` | `frames/vip17-phoenix-transparent.png` | `entry-effects/vip17-entry.png` | `vip-tags/vip17-tag.png` |
 | 18 | Dragon | `frames/vip18-dragon-transparent.webm` | `frames/vip18-dragon-transparent.png` | `entry-effects/vip18-entry.png` | `vip-tags/vip18-tag.png` |
 
-Full URL = public base + `/` + key. The WebMs are on R2 (14 objects);
-the entry banners are on R2 (14 objects); the tags are on R2
-(14 objects); the VAP alpha-videos are on R2 (14 objects under `vap/`).
-The PNG frame stills are NOT on R2 yet (except VIP13) — see below.
+Full URL = public base + `/` + key. The WebMs are on R2 (14 objects,
+VIP5-18); the entry banners are on R2 (18 objects); the tags are on R2
+(18 objects); the VAP alpha-videos are on R2 (14 objects under `vap/`,
+VIP5-18); the medals are on R2 (4 objects under `vip-medals/`,
+VIP1-4); the scenic banners are on R2 (4 objects under
+`profile-banners/`, VIP1-4). The PNG frame stills are on R2 (18
+objects under `frames/` — 17 correct, plus 1 STALE object:
+`frames/vip4-dolphin-transparent.png` is the discarded dolphin VIP4
+frame; VIP4 is FOX (`frames/vip4-fox-transparent.png`). No code
+references the stale key; delete it from the bucket when convenient.)
+**VIP1-4 frames are STATIC PNG stills only** — no WebM, no VAP video
+exists for them, so `frameVisualForVipLevel` returns an empty
+`video_key`/`vap_key` and `animation_type: ""`, and the app shows the
+still only. **VIP3 entry is a full-bleed scene** (only the DP circle
+is transparent); **VIP4 entry is the thin slim gold bar** (no text).
+The VIP3 entry banner says "VIP ENTRY", not "VIP 3" (generator text).
 
 ## Where each set shows
 
@@ -34,12 +55,19 @@ The PNG frame stills are NOT on R2 yet (except VIP13) — see below.
   member list, own profile DP, room chat sender avatar. The frame is the
   member's equipped custom frame when one is set, else the Owner's
   `vip_rule` frame, else the level's animal frame.
-- **Entry banners** — top banner of the room arrival overlay (VIP5-18),
+- **Entry banners** — top banner of the room arrival overlay (VIP1-18),
   next to the vehicle video at the bottom. The arriving user's DP is
   composited into the banner's transparent circle (per-level measured
   geometry in `vip_visual_assets.dart`).
 - **Tags** — next to the VIP level text: room chat sender name and the
   profile VIP badge. Pure level badge, never equipped.
+- **Medals** (VIP1-4) — shield medals, wired server-side
+  (`vip_medal` in the vip visuals bundle). The app's `LevelMedal`
+  widget still shows bundled SVGs; swapping the display to these R2
+  PNGs is a follow-up (Vinay's approval).
+- **Scenic banners** (VIP1-4) — gold-framed profile/scenic pictures,
+  wired server-side (`vip_scenic_banner` in the vip visuals bundle).
+  The profile screen is not wired to show them yet (follow-up).
 
 ## Direct R2 URLs — never through the Worker
 
@@ -159,10 +187,12 @@ flow, Dart widget, room-screen wiring — lives in
 
 Worker: `apps/worker/src/vip_frame_catalog.js`,
 `apps/worker/src/vip_entry_effect_catalog.js`,
-`apps/worker/src/vip_tag_catalog.js` (new; each mirrors
-`vehicle_entry_animals.js` and is NOT part of `COSMETIC_CATALOG` —
-the cosmetics test pins frames at 29), `apps/worker/src/index.js`
-(`vipVisualsForLevel` animal fallbacks + `vip_tag`, member block copies
+`apps/worker/src/vip_tag_catalog.js`, `apps/worker/src/vip_medal_catalog.js`
+(new, VIP1-4), `apps/worker/src/vip_scenic_banner_catalog.js` (new,
+VIP1-4) — each mirrors `vehicle_entry_animals.js` and is NOT part of
+`COSMETIC_CATALOG` — the cosmetics test pins frames at 29),
+`apps/worker/src/index.js` (`vipVisualsForLevel` animal fallbacks +
+`vip_tag` + `vip_medal` + `vip_scenic_banner`, member block copies
 `active_entry_asset_key` / `active_vip_tag_id` /
 `active_vip_tag_asset_key`), `apps/worker/test/vip_visual_assets.test.js`.
 

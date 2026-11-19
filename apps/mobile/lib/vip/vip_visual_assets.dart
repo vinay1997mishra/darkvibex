@@ -14,10 +14,11 @@
 // instead, which builds the direct R2 URL for those prefixes and falls
 // back to fileUrl() for everything else (user avatars, custom uploads).
 //
-// FRAMES — one transparent animal frame per VIP level 5-18:
+// FRAMES — one transparent animal frame per VIP level 1-18:
 //   vap:   vap/vip<N>-<animal>.mp4 (Tencent VAP v1: H.264, alpha mask on
 //          the LEFT half, RGB on the RIGHT half of each frame) — the
-//          ANIMATED frame the app plays (VipFrameAlphaVideo).
+//          ANIMATED frame the app plays (VipFrameAlphaVideo). VIP5-18
+//          only; VIP1-4 frames are static PNG stills (no VAP).
 //   video: frames/vip<N>-<animal>-transparent.webm (VP9 WITH alpha) —
 //          source for the VAP conversion; NOT played in the app.
 //   still: frames/vip<N>-<animal>-transparent.png (transparent PNG) —
@@ -32,15 +33,17 @@
 // box: VipFrameAlphaVideo shows the still while the VAP loads and swaps
 // back to it if the video errors or finishes.
 //
-// ENTRY EFFECTS — one wide banner per VIP level 5-18:
+// ENTRY EFFECTS — one wide banner per VIP level 1-18:
 //   entry-effects/vip<N>-entry.png (transparent background, transparent
-//   DP circle on the left, animal on the right). The DP circle is NOT in
+//   DP circle on the left, animal on the right). The VIP3 banner is a
+//   full-bleed scene (only the DP circle is transparent); the VIP4
+//   banner is the thin slim gold bar (no text). The DP circle is NOT in
 //   the same place on every banner — its centre/diameter were measured
 //   from the PNGs (2026-11-18) and are stored per level below
 //   (EntryEffectCircle: fractions of image width/height). Do not guess
 //   one position for all levels.
 //
-// TAGS — one golden tag per VIP level 5-18:
+// TAGS — one golden tag per VIP level 1-18:
 //   vip-tags/vip<N>-tag.png (transparent background). A pure level badge:
 //   never equipped, never bought. Shown wherever the VIP level is
 //   displayed (chat sender name, seat, profile VIP badge), auto-sized
@@ -64,6 +67,8 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'frames/',
   'entry-effects/',
   'vip-tags/',
+  'vip-medals/',
+  'profile-banners/',
   'vehicles/',
   'vap/',
   'gift-ribbons/',
@@ -103,11 +108,18 @@ String resolveVipVisualAssetUrl(
 }
 
 // ---------------------------------------------------------------------------
-// Frames (VIP5-18)
+// Frames (VIP1-18)
 // ---------------------------------------------------------------------------
 
-/// Animal per VIP level (VIP1-4 have no animal frame).
+/// Animal per VIP level for FRAMES. VIP1 = black cat, VIP2 = swan,
+/// VIP3 = dolphin, VIP4 = fox (Vinay, 2026-11-19), VIP5-18 as before.
+/// VIP1-4 frames are STATIC transparent PNG stills (no WebM, no VAP) —
+/// see vipAnimatedFrameAnimals below.
 const Map<int, String> vipFrameAnimals = <int, String>{
+  1: 'cat',
+  2: 'swan',
+  3: 'dolphin',
+  4: 'fox',
   5: 'deer',
   6: 'wolf',
   7: 'eagle',
@@ -124,9 +136,28 @@ const Map<int, String> vipFrameAnimals = <int, String>{
   18: 'dragon',
 };
 
-/// R2 key of the transparent WebM per level.
+/// Animal per VIP level for ANIMATED frames (WebM + VAP video exist).
+/// VIP1-4 have no animated frame — only the static PNG still.
+const Map<int, String> vipAnimatedFrameAnimals = <int, String>{
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
+
+/// R2 key of the transparent WebM per level (animated frames only).
 Map<int, String> get vipFrameVideoKeys => <int, String>{
-      for (final MapEntry<int, String> entry in vipFrameAnimals.entries)
+      for (final MapEntry<int, String> entry in vipAnimatedFrameAnimals.entries)
         entry.key:
             'frames/vip${entry.key}-${entry.value}-transparent.webm',
     };
@@ -139,8 +170,9 @@ Map<int, String> get vipFrameStillKeys => <int, String>{
     };
 
 /// Direct R2 URL of the transparent WebM frame for [level], or null
-/// for VIP1-4 / out of range. For a future alpha-capable player only —
-/// do NOT feed this to video_player (opaque texture, black box).
+/// for VIP1-4 (static stills only) / out of range. For a future
+/// alpha-capable player only — do NOT feed this to video_player
+/// (opaque texture, black box).
 String? vipFrameVideoUrlForVipLevel(int level) {
   final String? key = vipFrameVideoKeys[level];
   if (key == null) return null;
@@ -148,7 +180,8 @@ String? vipFrameVideoUrlForVipLevel(int level) {
 }
 
 /// Direct R2 URL of the transparent PNG still for [level], or null for
-/// VIP1-4 / out of range. This is the frame image the app displays.
+/// out of range. This is the frame image the app displays. VIP1-4 show
+/// this still only (no VAP video exists for them).
 String? vipFrameStillUrlForVipLevel(int level) {
   final String? key = vipFrameStillKeys[level];
   if (key == null) return null;
@@ -156,14 +189,16 @@ String? vipFrameStillUrlForVipLevel(int level) {
 }
 
 /// R2 key of the Tencent VAP mp4 per level (the animated frame).
+/// Animated frames exist for VIP5-18 only.
 Map<int, String> get vipFrameVapKeys => <int, String>{
-      for (final MapEntry<int, String> entry in vipFrameAnimals.entries)
+      for (final MapEntry<int, String> entry in vipAnimatedFrameAnimals.entries)
         entry.key: 'vap/vip${entry.key}-${entry.value}.mp4',
     };
 
-/// Direct R2 URL of the Tencent VAP mp4 for [level], or null for VIP1-4 /
-/// out of range. Played by VipFrameAlphaVideo (flutter_vap_player,
-/// enableOldVersion: true — VAP v1, alpha on the LEFT half of the frame).
+/// Direct R2 URL of the Tencent VAP mp4 for [level], or null for VIP1-4
+/// (static stills only) / out of range. Played by VipFrameAlphaVideo
+/// (flutter_vap_player, enableOldVersion: true — VAP v1, alpha on the
+/// LEFT half of the frame).
 String? vipFrameVapUrlForVipLevel(int level) {
   final String? key = vipFrameVapKeys[level];
   if (key == null) return null;
@@ -182,25 +217,53 @@ String? vipFrameVapUrlForVipLevel(int level) {
 /// frame — that would play the wrong animal's animation over it.
 String? vipFrameVapUrlForDisplay(String? assetKey, int level) {
   final String? stillKey = vipFrameStillKeys[level];
-  if (stillKey == null) return null; // VIP1-4 / out of range: no animal frame.
+  if (stillKey == null) return null; // Out of range: no animal frame.
   final String key = (assetKey ?? '').trim();
   if (key.isEmpty || key == stillKey) {
+    // VIP1-4 have no VAP video (static stills) — this returns null and
+    // the caller shows the PNG still only.
     return vipFrameVapUrlForVipLevel(level);
   }
   return null; // Custom/Owner frame: PNG still only, no VAP video.
 }
 
 // ---------------------------------------------------------------------------
-// Entry effects (VIP5-18)
+// Entry effects (VIP1-18)
 // ---------------------------------------------------------------------------
+
+/// Animal per VIP level for ENTRY banners. VIP1 = black cat, VIP2 = swan,
+/// VIP3 = dolphin, VIP4 = fox (Vinay, 2026-11-19), VIP5-18 as before.
+/// NOTE: the VIP3 banner is a full-bleed scene (only the DP circle is
+/// transparent); VIP1/VIP2/VIP4/VIP5-18 are transparent cutouts. The
+/// VIP4 banner is the THIN slim gold bar (no text).
+const Map<int, String> vipEntryEffectAnimals = <int, String>{
+  1: 'cat',
+  2: 'swan',
+  3: 'dolphin',
+  4: 'fox',
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
 
 /// R2 key of the entry banner PNG per level.
 Map<int, String> get vipEntryEffectKeys => <int, String>{
-      for (final MapEntry<int, String> entry in vipFrameAnimals.entries)
+      for (final MapEntry<int, String> entry in vipEntryEffectAnimals.entries)
         entry.key: 'entry-effects/vip${entry.key}-entry.png',
     };
 
-/// Direct R2 URL of the entry banner for [level], or null for VIP1-4.
+/// Direct R2 URL of the entry banner for [level], or null for out of range.
 String? vipEntryEffectUrlForVipLevel(int level) {
   final String? key = vipEntryEffectKeys[level];
   if (key == null) return null;
@@ -228,7 +291,13 @@ class EntryEffectCircle {
 }
 
 /// Width / height of each banner image (measured from the PNGs).
+/// VIP1/VIP2 are 2624x1472 (1.783), VIP3 is 2736x912 (3.0, full-bleed),
+/// VIP4 is the thin 2112x1168 bar (1.808).
 const Map<int, double> vipEntryEffectAspectRatios = <int, double>{
+  1: 1.783,
+  2: 1.783,
+  3: 3.0,
+  4: 1.808,
   5: 3.989,
   6: 2.642,
   7: 2.762,
@@ -245,9 +314,15 @@ const Map<int, double> vipEntryEffectAspectRatios = <int, double>{
   18: 3.197,
 };
 
-/// DP circle geometry per level (measured from the PNGs, 2026-11-18).
+/// DP circle geometry per level (measured from the PNGs, 2026-11-18/19).
+/// VIP1/2 measured from the flood-filled disc; VIP3 from the dark-neutral
+/// disc blob; VIP4 from the thin bar's disc (centre 317,642 r=140).
 const Map<int, EntryEffectCircle> vipEntryEffectCircles =
     <int, EntryEffectCircle>{
+  1: EntryEffectCircle(centerX: 0.162, centerY: 0.514, diameter: 0.243),
+  2: EntryEffectCircle(centerX: 0.098, centerY: 0.485, diameter: 0.242),
+  3: EntryEffectCircle(centerX: 0.137, centerY: 0.498, diameter: 0.351),
+  4: EntryEffectCircle(centerX: 0.150, centerY: 0.550, diameter: 0.240),
   5: EntryEffectCircle(centerX: 0.097, centerY: 0.460, diameter: 0.638),
   6: EntryEffectCircle(centerX: 0.148, centerY: 0.474, diameter: 0.597),
   7: EntryEffectCircle(centerX: 0.160, centerY: 0.449, diameter: 0.580),
@@ -265,18 +340,94 @@ const Map<int, EntryEffectCircle> vipEntryEffectCircles =
 };
 
 // ---------------------------------------------------------------------------
-// Tags (VIP5-18)
+// Tags (VIP1-18)
 // ---------------------------------------------------------------------------
+
+/// Animal per VIP level for TAGS. VIP1 = black cat, VIP2 = swan,
+/// VIP3 = dolphin, VIP4 = fox (Vinay, 2026-11-19), VIP5-18 as before.
+const Map<int, String> vipTagAnimals = <int, String>{
+  1: 'cat',
+  2: 'swan',
+  3: 'dolphin',
+  4: 'fox',
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
 
 /// R2 key of the golden tag PNG per level.
 Map<int, String> get vipTagKeys => <int, String>{
-      for (final MapEntry<int, String> entry in vipFrameAnimals.entries)
+      for (final MapEntry<int, String> entry in vipTagAnimals.entries)
         entry.key: 'vip-tags/vip${entry.key}-tag.png',
     };
 
-/// Direct R2 URL of the golden tag for [level], or null for VIP1-4.
+/// Direct R2 URL of the golden tag for [level], or null for out of range.
 String? vipTagUrlForVipLevel(int level) {
   final String? key = vipTagKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+// ---------------------------------------------------------------------------
+// Medals + scenic banners (VIP1-4)
+// ---------------------------------------------------------------------------
+//
+// Shield medals (vip-medals/vip<N>-medal.png) and scenic/profile
+// banners (profile-banners/vip<N>-banner.png for VIP1,
+// profile-banners/vip<N>-scenic.png for VIP2-4). The Worker serves
+// these in the vip visuals bundle (vip_medal / vip_scenic_banner).
+// The LevelMedal widget still shows bundled SVGs and the profile
+// cards are still painted glow effects — the Dart display swap for
+// these two is a follow-up, so these helpers only resolve URLs for
+// now. Returns null for VIP5-18 / out of range (no medal/scenic PNGs
+// exist for those levels yet).
+
+/// Animal per VIP level for MEDALS (VIP1-4 only).
+const Map<int, String> vipMedalAnimals = <int, String>{
+  1: 'cat',
+  2: 'swan',
+  3: 'dolphin',
+  4: 'fox',
+};
+
+/// R2 key of the shield medal PNG per level (VIP1-4 only).
+Map<int, String> get vipMedalKeys => <int, String>{
+      for (final MapEntry<int, String> entry in vipMedalAnimals.entries)
+        entry.key: 'vip-medals/vip${entry.key}-medal.png',
+    };
+
+/// Direct R2 URL of the shield medal for [level], or null for VIP5-18 /
+/// out of range.
+String? vipMedalUrlForVipLevel(int level) {
+  final String? key = vipMedalKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// R2 key of the scenic/profile banner PNG per level (VIP1-4 only).
+/// VIP1 uses the "-banner" key, VIP2-4 use "-scenic".
+Map<int, String> get vipScenicBannerKeys => <int, String>{
+      1: 'profile-banners/vip1-banner.png',
+      2: 'profile-banners/vip2-scenic.png',
+      3: 'profile-banners/vip3-scenic.png',
+      4: 'profile-banners/vip4-scenic.png',
+    };
+
+/// Direct R2 URL of the scenic/profile banner for [level], or null for
+/// VIP5-18 / out of range.
+String? vipScenicBannerUrlForVipLevel(int level) {
+  final String? key = vipScenicBannerKeys[level];
   if (key == null) return null;
   return '$kVipVisualR2PublicBaseUrl/$key';
 }
