@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../app/app_state.dart';
+import '../vip/vip_visual_assets.dart';
 
 Future<void> showGreedyGirl(BuildContext context, AppState state) async {
   await showModalBottomSheet<void>(
@@ -13,7 +15,7 @@ Future<void> showGreedyGirl(BuildContext context, AppState state) async {
     barrierColor: Colors.transparent,
     builder: (_) => SizedBox(
       key: const Key('greedy-girl-room-overlay'),
-      height: MediaQuery.sizeOf(context).height * .69,
+      height: MediaQuery.sizeOf(context).height * .50,
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: GreedyGirlScreen(state: state),
@@ -68,6 +70,9 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   int localTimeAtSync = 0;
   Timer? refreshTimer;
   Timer? clockTimer;
+  VideoPlayerController? _kissController;
+  bool _kissReady = false;
+  Timer? _kissTimer;
 
   Map<String, dynamic> get round =>
       game['round'] is Map ? Map<String, dynamic>.from(game['round'] as Map) : const <String, dynamic>{};
@@ -82,6 +87,11 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     }
     return base;
   }
+
+  /// True when this user is playing this round (has a bet down, confirmed
+  /// or still queued). Spectators (no bet) never see the kiss emote.
+  bool get isPlayer =>
+      myBets.values.any((value) => (int.tryParse(value.toString()) ?? 0) > 0);
 
   List<Map<String, dynamic>> get history {
     final raw = game['history'];
@@ -133,13 +143,81 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     clockTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       if (mounted && game.isNotEmpty) setState(() {});
     });
+    unawaited(_initKissVideo());
+    _kissTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _replayKissIfPlayer(),
+    );
   }
 
   @override
   void dispose() {
     refreshTimer?.cancel();
     clockTimer?.cancel();
+    _kissTimer?.cancel();
+    _kissController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _initKissVideo() async {
+    final controller =
+        VideoPlayerController.networkUrl(Uri.parse(greedyGirlKissEmoteUrl));
+    _kissController = controller;
+    try {
+      await controller.setVolume(0);
+      await controller.setLooping(false);
+      await controller.initialize();
+    } catch (_) {
+      // Video unavailable (offline / test): keep the static background.
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _kissReady = true);
+    _replayKissIfPlayer();
+  }
+
+  /// Replays the 5 s kiss emote for players, every 5 s. Spectators keep
+  /// the static background and the video stays paused.
+  void _replayKissIfPlayer() {
+    final controller = _kissController;
+    if (!_kissReady || controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    if (!isPlayer) {
+      if (controller.value.isPlaying) unawaited(controller.pause());
+      return;
+    }
+    unawaited(controller.seekTo(Duration.zero).then((_) {
+      if (mounted) unawaited(controller.play());
+    }));
+  }
+
+  /// Board background: the kiss emote video for players, the static
+  /// picture for spectators (or while the video is still loading).
+  Widget _kissBackground() {
+    final controller = _kissController;
+    if (isPlayer &&
+        _kissReady &&
+        controller != null &&
+        controller.value.isInitialized) {
+      return FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      );
+    }
+    return Image.network(
+      greedyGirlBackgroundUrl,
+      key: const Key('greedy-girl-mascot'),
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.high,
+      // Offline: fall back to the purple gradient behind this layer.
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+    );
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -245,6 +323,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
       queuedBets[foodKey] = (queuedBets[foodKey] ?? 0) + amount;
       queuedDebit += amount;
     });
+    _replayKissIfPlayer();
     widget.state.setCoinBalance(
       math.max(0, authoritativeWallet - queuedDebit).toInt(),
     );
@@ -554,13 +633,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                       ),
                     ),
                     Positioned.fill(
-                      child: Image.asset(
-                        'assets/images/greedy_girl_mascot.webp',
-                        key: const Key('greedy-girl-mascot'),
-                        fit: BoxFit.contain,
-                        alignment: Alignment.center,
-                        filterQuality: FilterQuality.high,
-                      ),
+                      child: _kissBackground(),
                     ),
                     Positioned.fill(
                       child: IgnorePointer(
@@ -769,9 +842,15 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   ) {
     final bubble =
         (width * .165).clamp(52.0, 66.0).toDouble();
+    // On a short (half-screen) board the top/bottom foods would otherwise
+    // clip: pull their centres in just enough to keep the bubble on screen.
+    final verticalMargin = height > 0 ? bubble / 2 / height : 0.0;
+    final dy = verticalMargin > 0 && verticalMargin < .5
+        ? p.dy.clamp(verticalMargin, 1 - verticalMargin)
+        : p.dy;
     return Positioned(
       left: p.dx * width - bubble / 2,
-      top: p.dy * height - bubble / 2,
+      top: dy * height - bubble / 2,
       width: bubble,
       height: bubble,
       child: _foodBubble(food),

@@ -76,6 +76,10 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'gift-ribbons/',
   'vip-badges/',
   'rocket-medals/',
+  'medals/',
+  'seat-emotes/panda/vap/',
+  'seat-emotes/panda/thumbs/',
+  'greedy-girl/',
 ];
 
 /// True when [key] is a direct-R2 asset key (never send it to /api/files).
@@ -455,6 +459,203 @@ String rocketMedalKeyForLevel(int level) {
 /// Direct R2 URL of the Rocket medal PNG for [level] (clamped 1-18).
 String rocketMedalUrlForLevel(int level) =>
     '$kVipVisualR2PublicBaseUrl/${rocketMedalKeyForLevel(level)}';
+
+// ---------------------------------------------------------------------------
+// Medal types (Wealth / Fan Club / Achievement / Family / Charm / Noble /
+// Room / Event)
+// ---------------------------------------------------------------------------
+//
+// The new medal series Vinay approved 2026-11-19. Transparent PNGs on
+// R2 under medals/ (~512px). PK medals and Verified badges were REMOVED
+// by Vinay — they are NOT here. Achievement is 6 medals x Lv.1-10
+// (Active Star, Wealth, Live Stream, Live Star, Top Gifter, Fan Power);
+// Room is Top 1/2/3 (no levels); Event is a single base medal.
+
+/// Level counts per medal series.
+const Map<String, int> kMedalTypeLevels = <String, int>{
+  'wealth': 18,
+  'fanclub': 18,
+  'achievement': 10,
+  'family': 10,
+  'charm': 18,
+  'noble': 10,
+  'room': 3,
+  'event': 1,
+};
+
+/// Slugs of the 6 achievement medals.
+const List<String> kAchievementMedalSlugs = <String>[
+  'active',
+  'wealth',
+  'live',
+  'livestar',
+  'topgifter',
+  'fanpower',
+];
+
+/// R2 key of one medal image. [type] is wealth/fanclub/achievement/
+/// family/charm/noble/room/event; [level] is clamped to the series
+/// range. For achievement, [achievement] is the achievement slug.
+/// For room, [level] is the rank 1-3 (Top 1/2/3).
+String? medalTypeKeyForLevel(String type, int level, [String? achievement]) {
+  final String series = type.trim().toLowerCase();
+  final int? max = kMedalTypeLevels[series];
+  if (max == null) return null;
+  final int safeLevel = level.clamp(1, max).toInt();
+  if (series == 'room') return 'medals/room-top$safeLevel.png';
+  if (series == 'event') return 'medals/event-base.png';
+  if (series == 'achievement') {
+    final String slug = (achievement ?? 'active').trim().toLowerCase();
+    final String safeSlug =
+        kAchievementMedalSlugs.contains(slug) ? slug : 'active';
+    return 'medals/achievement-$safeSlug-lv${safeLevel.toString().padLeft(2, '0')}.png';
+  }
+  return 'medals/$series-lv${safeLevel.toString().padLeft(2, '0')}.png';
+}
+
+/// Direct R2 URL of one medal image, or null for an unknown series.
+String? medalTypeUrlForLevel(String type, int level, [String? achievement]) {
+  final String? key = medalTypeKeyForLevel(type, level, achievement);
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+// ---------------------------------------------------------------------------
+// Panda seat emotes (20)
+// ---------------------------------------------------------------------------
+//
+// Full-body cute panda emotes for the room emoji panel (Vinay,
+// 2026-11-19: "Panda wale me 20 emoji bana", "seat per dikhna
+// chahiye", "room me emoji wale me alag section bana ke panda ka").
+// The panel has two tabs: "Emoji" (unicode) and "Panda" (these 20).
+// Tapping one sends the marker `[panda:<name>]` as a room message;
+// the seat-reaction sync recognises the marker and plays the video on
+// the sender's seat, above the DP, for 5 seconds — like the big
+// animated emoji reactions in Bigo Live / QK Live.
+//
+// The app plays the VAP v1 MP4 (seat-emotes/panda/vap/panda-<name>.mp4
+// on R2, alpha mask LEFT, RGB RIGHT) via flutter_vap_player — Flutter
+// video_player cannot show VP9 alpha, so the transparent WebM
+// (seat-emotes/panda/panda-<name>-transparent.webm) is the source
+// asset only, not what the app plays.
+
+/// The 20 panda emotes, in panel order.
+const List<String> kPandaEmoteNames = <String>[
+  'happy',
+  'sad',
+  'crying',
+  'angry',
+  'love',
+  'laughing',
+  'sleeping',
+  'cool',
+  'surprised',
+  'winking',
+  'kissing',
+  'blushing',
+  'hungry',
+  'dancing',
+  'waving',
+  'clapping',
+  'thinking',
+  'scared',
+  'silly',
+  'party',
+];
+
+/// Display label for the panel grid.
+const Map<String, String> kPandaEmoteLabels = <String, String>{
+  'happy': 'Happy',
+  'sad': 'Sad',
+  'crying': 'Crying',
+  'angry': 'Angry',
+  'love': 'Love',
+  'laughing': 'Laughing',
+  'sleeping': 'Sleeping',
+  'cool': 'Cool',
+  'surprised': 'Surprised',
+  'winking': 'Winking',
+  'kissing': 'Kissing',
+  'blushing': 'Blushing',
+  'hungry': 'Hungry',
+  'dancing': 'Dancing',
+  'waving': 'Waving',
+  'clapping': 'Clapping',
+  'thinking': 'Thinking',
+  'scared': 'Scared',
+  'silly': 'Silly',
+  'party': 'Party',
+};
+
+/// True when [name] is one of the 20 panda emotes.
+bool isPandaEmoteName(String? name) =>
+    name != null && kPandaEmoteNames.contains(name);
+
+/// R2 key of the VAP v1 MP4 for [name] (what the app plays on the
+/// seat). Null for unknown names.
+String? pandaEmoteVapKeyForName(String? name) {
+  if (!isPandaEmoteName(name)) return null;
+  return 'seat-emotes/panda/vap/panda-$name.mp4';
+}
+
+/// Direct R2 URL of the VAP MP4 for [name], or null for unknown names.
+String? pandaEmoteVapUrlForName(String? name) {
+  final String? key = pandaEmoteVapKeyForName(name);
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// R2 key of the picker thumbnail PNG for [name] (a mid-video frame,
+/// 256x456). Null for unknown names.
+String? pandaEmoteThumbKeyForName(String? name) {
+  if (!isPandaEmoteName(name)) return null;
+  return 'seat-emotes/panda/thumbs/panda-$name.png';
+}
+
+/// Direct R2 URL of the picker thumbnail PNG for [name], or null for
+/// unknown names.
+String? pandaEmoteThumbUrlForName(String? name) {
+  final String? key = pandaEmoteThumbKeyForName(name);
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// The chat marker sent when a user taps a panda emote in the panel.
+String? pandaEmoteMarkerForName(String? name) {
+  if (!isPandaEmoteName(name)) return null;
+  return '[panda:$name]';
+}
+
+/// R2 key of the Greedy Girl kiss emote: a 5 s clip of the Greedy Girl
+/// character blowing a kiss with a red heart, played as the game
+/// background for players only (spectators see the static background).
+const String greedyGirlKissEmoteKey =
+    'greedy-girl/greedy-girl-kiss-emote.mp4';
+
+/// Direct R2 URL of the Greedy Girl kiss emote video.
+String get greedyGirlKissEmoteUrl =>
+    '$kVipVisualR2PublicBaseUrl/$greedyGirlKissEmoteKey';
+
+/// R2 key of the Greedy Girl game background picture (same girl as the
+/// old mascot, sharp 1344x1728, no food bubbles). Served from R2 because
+/// the GitHub push tool only carries UTF-8 text, never binary files.
+const String greedyGirlBackgroundKey =
+    'greedy-girl/greedy-girl-background.webp';
+
+/// Direct R2 URL of the Greedy Girl game background picture.
+String get greedyGirlBackgroundUrl =>
+    '$kVipVisualR2PublicBaseUrl/$greedyGirlBackgroundKey';
+
+/// Parses a chat message back into a panda emote name: "[panda:happy]"
+/// -> "happy". Null for anything else.
+String? pandaEmoteNameFromMarker(String? text) {
+  final String trimmed = (text ?? '').trim();
+  final RegExpMatch? match =
+      RegExp(r'^\[panda:([a-z]+)\]$').firstMatch(trimmed);
+  if (match == null) return null;
+  final String name = match.group(1) ?? '';
+  return isPandaEmoteName(name) ? name : null;
+}
 
 // ---------------------------------------------------------------------------
 // Gift ribbons (VIP1-18)

@@ -22,7 +22,7 @@ class LudoToken {
 }
 
 class LudoGame {
-  LudoGame() {
+  LudoGame({this.playerCount = 4, this.colorPair}) {
     tokens = {
       for (final player in LudoPlayer.values)
         player: List<LudoToken>.generate(
@@ -31,6 +31,23 @@ class LudoGame {
           growable: false,
         ),
     };
+  }
+
+  /// 2 or 4. In a 2-player game only one cross pair plays.
+  int playerCount;
+
+  /// 2-player cross pair: 'red-yellow' or 'blue-green'. Null for 4-player.
+  String? colorPair;
+
+  /// Colours actually playing. 2P red-yellow -> [red, yellow];
+  /// 2P blue-green -> [blue, green]; 4P -> all four.
+  List<LudoPlayer> get activePlayers {
+    if (playerCount == 2) {
+      return colorPair == 'blue-green'
+          ? const [LudoPlayer.blue, LudoPlayer.green]
+          : const [LudoPlayer.red, LudoPlayer.yellow];
+    }
+    return LudoPlayer.values;
   }
 
   late final Map<LudoPlayer, List<LudoToken>> tokens;
@@ -46,9 +63,23 @@ class LudoGame {
     LudoPlayer.blue: 39,
   };
 
+  /// Quarter-turns (clockwise) that bring [player]'s home to the
+  /// bottom-left corner of the screen — every player sees their own
+  /// colour bottom-left (Ludo King style). Blue is already bottom-left
+  /// (0), red needs 3 (90° counter-clockwise), green 2 (180°), yellow
+  /// 1 (90° clockwise). Null (spectator) keeps the default layout.
+  static int boardTurnsFor(LudoPlayer? player) => switch (player) {
+        LudoPlayer.red => 3,
+        LudoPlayer.green => 2,
+        LudoPlayer.yellow => 1,
+        LudoPlayer.blue => 0,
+        null => 0,
+      };
+
   List<int> movableTokenIndexes() {
     final dice = rolled;
     if (dice == null || winner != null) return const [];
+    if (!activePlayers.contains(currentPlayer)) return const [];
     final list = tokens[currentPlayer]!;
     final values = <int>[];
     for (var i = 0; i < list.length; i++) {
@@ -76,6 +107,22 @@ class LudoGame {
       }
       return null;
     }
+
+    // Table mode comes from the server state: player_count (2|4) and
+    // color_pair ('red-yellow' | 'blue-green', null for 4P). The first
+    // joiner sets it; invalid values keep the current mode.
+    final rawCount = data['player_count'];
+    final parsedCount = rawCount is num
+        ? rawCount.toInt()
+        : int.tryParse(rawCount?.toString() ?? '');
+    if (parsedCount != null && (parsedCount == 2 || parsedCount == 4)) {
+      playerCount = parsedCount;
+    }
+    final rawPair = data['color_pair']?.toString().toLowerCase();
+    colorPair = (rawPair == 'red-yellow' || rawPair == 'blue-green')
+        ? rawPair
+        : null;
+    if (playerCount == 4) colorPair = null;
 
     final remoteCurrent = parsePlayer(data['current_player']);
     if (remoteCurrent != null) currentPlayer = remoteCurrent;
@@ -112,6 +159,20 @@ class LudoGame {
           );
         }
         tokens[player] = List<LudoToken>.unmodifiable(next);
+      }
+    }
+
+    // Tokens of colours that are not playing stay home and are never
+    // movable, whatever the server sent for them.
+    for (final player in LudoPlayer.values) {
+      if (!activePlayers.contains(player)) {
+        tokens[player] = List<LudoToken>.unmodifiable(
+          List<LudoToken>.generate(
+            4,
+            (index) => LudoToken(player: player, index: index),
+            growable: false,
+          ),
+        );
       }
     }
   }

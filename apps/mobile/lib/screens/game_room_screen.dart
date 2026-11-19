@@ -672,6 +672,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
           builder: (_) => LudoScreen(
             state: widget.state,
             roomId: widget.roomId,
+            playerCount: 4,
             roomOwnerUserId: room['owner_user_id']?.toString(),
             onToggleMic: _toggleMic,
             micOn: () => !muted,

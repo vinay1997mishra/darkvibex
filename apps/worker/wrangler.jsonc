@@ -22,6 +22,10 @@
     {
       "binding": "FILES",
       "bucket_name": "darkvibex-files"
+    },
+    {
+      "binding": "ID_FILES",
+      "bucket_name": "darkvibex-id-info"
     }
   ],
   "vars": {

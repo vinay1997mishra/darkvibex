@@ -52,7 +52,7 @@ void main() {
 
       expect(
         tester.getSize(find.byType(GreedyGirlScreen)).height,
-        closeTo(size.height * .69, .1),
+        closeTo(size.height * .50, .1),
       );
       expect(find.text('Greedy Girl'), findsOneWidget);
       expect(find.text('21+'), findsNothing);
