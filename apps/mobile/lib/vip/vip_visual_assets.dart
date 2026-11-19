@@ -74,6 +74,7 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'vehicles/',
   'vap/',
   'gift-ribbons/',
+  'vip-badges/',
 ];
 
 /// True when [key] is a direct-R2 asset key (never send it to /api/files).
@@ -737,4 +738,111 @@ String? profileCardAnimVideoUrlForDisplay(String? videoKey, int level) {
     return profileCardAnimVideoUrlForVipLevel(level);
   }
   return null; // Custom/Owner video: still only, no v4 animation.
+}
+
+// ---------------------------------------------------------------------------
+// VIP badge videos (VIP1-18)
+// ---------------------------------------------------------------------------
+
+/// Animal per VIP level for BADGES — the same animals as the
+/// frames/vehicles. VIP1 cat, VIP2 swan, VIP3 dolphin, VIP4 fox
+/// (Vinay, 2026-11-19), VIP5 deer, VIP6 wolf, VIP7 eagle, VIP8
+/// panther, VIP9 cobra, VIP10 lion, VIP11 tiger, VIP12 mammoth,
+/// VIP13 gorilla, VIP14 bear, VIP15 kraken, VIP16 leviathan,
+/// VIP17 phoenix, VIP18 dragon.
+///
+/// The badge videos are premium 3D animated shields (animal + wings +
+/// gold "VIP N" banner on a pedestal). 11 are Vinay's own uploads
+/// (VIP5, 6, 8, 9, 10, 11, 13, 15, 16, 17 gold, 18 — portrait,
+/// 5.184 s except VIP17 gold at 10.144 s); the other 7 (VIP1, 2, 3, 4,
+/// 7, 12, 14) were made by Ghost in the same style (landscape
+/// 1280x720, 10 s). They play on the VIP page hero card, on the right
+/// side next to the "VIP N" text + EXP, and on tap in the Medal
+/// Gallery. The video plays ONCE; the VipBadgeVideo widget falls back
+/// to the LevelMedal SVG on completion/error — never a black box.
+const Map<int, String> vipBadgeAnimals = <int, String>{
+  1: 'cat',
+  2: 'swan',
+  3: 'dolphin',
+  4: 'fox',
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
+
+/// R2 key of the badge video MP4 per level (VIP1-18).
+Map<int, String> get vipBadgeVideoKeys => <int, String>{
+      for (final MapEntry<int, String> entry in vipBadgeAnimals.entries)
+        entry.key: 'vip-badges/vip${entry.key}-${entry.value}.mp4',
+    };
+
+/// Measured duration of each badge video in milliseconds. Vinay's
+/// portrait videos are 5.184 s, Ghost's landscape videos are 10 s,
+/// VIP17 gold is 10.144 s. The VipBadgeVideo widget plays the video
+/// once and falls back to the LevelMedal SVG when it ends.
+const Map<int, int> vipBadgeAnimationMs = <int, int>{
+  1: 10000,
+  2: 10000,
+  3: 10000,
+  4: 10000,
+  5: 5184,
+  6: 5184,
+  7: 10000,
+  8: 5184,
+  9: 5184,
+  10: 5184,
+  11: 5184,
+  12: 10000,
+  13: 5184,
+  14: 10000,
+  15: 5184,
+  16: 5184,
+  17: 10144,
+  18: 5184,
+};
+
+/// Direct R2 URL of the badge video for [level], or null out of range.
+String? vipBadgeVideoUrlForVipLevel(int level) {
+  final String? key = vipBadgeVideoKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// Direct R2 URL of the VIP17 purple phoenix variant, or null for any
+/// other level (only VIP17 has a variant). The gold badge stays the
+/// default for VIP17 — call this only when the purple variant is
+/// explicitly requested.
+String? vipBadgeVariantVideoUrlForVipLevel(int level) {
+  if (level != 17) return null;
+  return '$kVipVisualR2PublicBaseUrl/vip-badges/vip17-phoenix-purple.mp4';
+}
+
+/// Badge video URL for the level actually being displayed, or null when
+/// the level has no badge video.
+///
+/// The video plays ONLY for the level's own badge: [videoKey] is the
+/// member's vip_badge video_key from the Worker (the level's own key,
+/// or empty when no key was configured, so the level badge is used).
+/// A custom/Owner video key has no badge video, so this returns null
+/// and the caller shows the LevelMedal SVG only. Never guess a video
+/// URL for a custom badge — that would play the wrong level's badge.
+String? vipBadgeVideoUrlForDisplay(String? videoKey, int level) {
+  final String? badgeKey = vipBadgeVideoKeys[level];
+  if (badgeKey == null) return null;
+  final String key = (videoKey ?? '').trim();
+  if (key.isEmpty || key == badgeKey) {
+    return vipBadgeVideoUrlForVipLevel(level);
+  }
+  return null;
 }

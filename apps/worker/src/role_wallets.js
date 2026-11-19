@@ -1,3 +1,5 @@
+import { coinsBonusForPurchase } from "./vip_policy.js";
+
 const allowedRoleWallets = new Set(["coin_seller","merchant"]);
 
 export async function ensureRoleWalletSchema(db) {
@@ -107,9 +109,47 @@ export async function transferRoleCoins(db,{
   if(Number(wallet.balance_coins ?? 0)<amount) {
     throw new Error("insufficient_role_wallet_coins");
   }
+  // Coins bonus on purchase (Vinay, 2026-11-19): on a Coin Seller
+  // purchase the receiver gets extra coins on top of the purchased
+  // amount — VIP5-10 +5%, VIP11-15 +10%, VIP16-18 +20%, VIP0-4 none.
+  // The bonus is FREE coins created by the platform: the seller's role
+  // wallet is debited only the purchased amount, and the bonus is
+  // credited to the receiver in the same batch with its own ledger
+  // entry (kind vip_coins_bonus). The bonus is NOT counted in
+  // total_received_coins and earns NO EXP (EXP is 150 per $1 spent).
+  // The receiver's VIP level is read from user_vip; the bonus applies
+  // only while the VIP is active (active_until in the future) — an
+  // expired VIP whose level has not been settled yet gets no bonus.
+  let coinsBonus=0;
+  if(walletType==="coin_seller"){
+    try {
+      const vipRow=await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id=?").bind(receiverUserId).first();
+      const vipLevel=Number(vipRow?.level ?? 0);
+      const vipActive=vipLevel>0&&vipRow?.active_until!=null&&Number(vipRow.active_until)>ts;
+      coinsBonus=vipActive?coinsBonusForPurchase(amount,vipLevel):0;
+    } catch (_) {
+      coinsBonus=0;
+    }
+  }
   const reference=crypto.randomUUID();
   const after=Number(wallet.balance_coins)-amount;
-  const receiverAfter=Number(receiver.coins ?? 0)+amount;
+  const receiverAfter=Number(receiver.coins ?? 0)+amount+coinsBonus;
+  const receiverLedgerEntries=[
+    {
+      id:crypto.randomUUID(),
+      kind:walletType==="coin_seller"?"coin_seller_received":"merchant_received",
+      amount,
+      balanceAfter:Number(receiver.coins ?? 0)+amount,
+    },
+  ];
+  if(coinsBonus>0){
+    receiverLedgerEntries.push({
+      id:crypto.randomUUID(),
+      kind:"vip_coins_bonus",
+      amount:coinsBonus,
+      balanceAfter:receiverAfter,
+    });
+  }
   await db.batch([
     db.prepare(
       "UPDATE role_wallets SET balance_coins=?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
@@ -125,18 +165,17 @@ export async function transferRoleCoins(db,{
       crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,after,
       receiverUserId,reference,ts,
     ),
-    db.prepare(
+    ...receiverLedgerEntries.map((entry)=>db.prepare(
       "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
     ).bind(
-      crypto.randomUUID(),receiverUserId,
-      walletType==="coin_seller"?"coin_seller_received":"merchant_received",
-      amount,receiverAfter,reference,ts,
-    ),
+      entry.id,receiverUserId,entry.kind,entry.amount,entry.balanceAfter,reference,ts,
+    )),
   ]);
   return {
     transfer_id:reference,
     sender_role_coin_balance:after,
     receiver_coin_balance:receiverAfter,
+    coins_bonus:coinsBonus,
   };
 }
 

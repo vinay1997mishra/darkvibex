@@ -448,4 +448,87 @@ void main() {
         isTrue);
     expect(isDirectR2AssetKey('profile-card-stills/vip4-fox.png'), isTrue);
   });
+
+  test('badge video URLs point at the R2 vip-badges/ mp4s (VIP1-18)', () {
+    const animals = <int, String>{
+      1: 'cat',
+      2: 'swan',
+      3: 'dolphin',
+      4: 'fox',
+      5: 'deer',
+      6: 'wolf',
+      7: 'eagle',
+      8: 'panther',
+      9: 'cobra',
+      10: 'lion',
+      11: 'tiger',
+      12: 'mammoth',
+      13: 'gorilla',
+      14: 'bear',
+      15: 'kraken',
+      16: 'leviathan',
+      17: 'phoenix',
+      18: 'dragon',
+    };
+    expect(vipBadgeAnimals, animals);
+    for (final MapEntry<int, String> entry in animals.entries) {
+      expect(
+        vipBadgeVideoUrlForVipLevel(entry.key),
+        '$kVipVisualR2PublicBaseUrl/vip-badges/vip${entry.key}-${entry.value}.mp4',
+      );
+      expect(vipBadgeVideoKeys[entry.key],
+          'vip-badges/vip${entry.key}-${entry.value}.mp4');
+    }
+    expect(vipBadgeVideoUrlForVipLevel(0), isNull);
+    expect(vipBadgeVideoUrlForVipLevel(19), isNull);
+    // Durations: Vinay's portrait videos are 5.184 s, Ghost's
+    // landscape videos are 10 s, VIP17 gold is 10.144 s.
+    expect(vipBadgeAnimationMs[5], 5184);
+    expect(vipBadgeAnimationMs[1], 10000);
+    expect(vipBadgeAnimationMs[17], 10144);
+    expect(vipBadgeAnimationMs.length, 18);
+  });
+
+  test('badge video plays only the level own badge', () {
+    expect(
+      vipBadgeVideoUrlForDisplay(null, 6),
+      '$kVipVisualR2PublicBaseUrl/vip-badges/vip6-wolf.mp4',
+    );
+    expect(
+      vipBadgeVideoUrlForDisplay('vip-badges/vip6-wolf.mp4', 6),
+      '$kVipVisualR2PublicBaseUrl/vip-badges/vip6-wolf.mp4',
+    );
+    // A custom/Owner video key has no badge video: LevelMedal only.
+    expect(
+      vipBadgeVideoUrlForDisplay('custom-assets/badge-123.mp4', 6),
+      isNull,
+    );
+    expect(vipBadgeVideoUrlForDisplay('', 0), isNull);
+    expect(vipBadgeVideoUrlForDisplay('', 19), isNull);
+  });
+
+  test('VIP17 purple phoenix is a separate variant, gold stays default', () {
+    expect(
+      vipBadgeVariantVideoUrlForVipLevel(17),
+      '$kVipVisualR2PublicBaseUrl/vip-badges/vip17-phoenix-purple.mp4',
+    );
+    expect(vipBadgeVariantVideoUrlForVipLevel(6), isNull);
+    expect(vipBadgeVariantVideoUrlForVipLevel(18), isNull);
+    // The default VIP17 badge URL is still the gold phoenix.
+    expect(
+      vipBadgeVideoUrlForVipLevel(17),
+      '$kVipVisualR2PublicBaseUrl/vip-badges/vip17-phoenix.mp4',
+    );
+  });
+
+  test('resolver sends vip-badges/ keys direct from R2', () {
+    String fileUrl(String key) => 'https://worker.example/api/files?key=$key';
+    expect(
+      resolveVipVisualAssetUrl('vip-badges/vip6-wolf.mp4', fileUrl),
+      '$kVipVisualR2PublicBaseUrl/vip-badges/vip6-wolf.mp4',
+    );
+    expect(isDirectR2AssetKey('vip-badges/vip18-dragon.mp4'), isTrue);
+    expect(isDirectR2AssetKey('vip-badges/vip17-phoenix-purple.mp4'),
+        isTrue);
+  });
 }

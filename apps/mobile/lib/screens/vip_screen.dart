@@ -4,7 +4,7 @@ import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
 import 'vip_support_screen.dart';
 import 'medal_gallery_screen.dart';
-import '../widgets/level_medal.dart';
+import '../widgets/vip_badge_video.dart';
 
 class VipScreen extends StatelessWidget {
   const VipScreen({super.key, required this.state});
@@ -26,6 +26,11 @@ class VipScreen extends StatelessWidget {
         final progress = level >= VipPolicy.maxLevel
             ? 1.0
             : (state.vipExpBalance / target).clamp(0.0, 1.0).toDouble();
+        // VIP page rule (Vinay, 2026-11-19): show ONLY the privileges
+        // the user has at their level, cumulative (VIP1's + VIP2's +
+        // ... up to their level). Higher-level privileges must NOT
+        // appear at all — not even as locked tiles.
+        final shownPrivileges = VipPolicy.unlockedAt(level);
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -115,7 +120,7 @@ class VipScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 GridView.builder(
-                  itemCount: VipPolicy.privileges.length,
+                  itemCount: shownPrivileges.length,
                   physics: const NeverScrollableScrollPhysics(),
                   shrinkWrap: true,
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -125,7 +130,7 @@ class VipScreen extends StatelessWidget {
                     mainAxisSpacing: 12,
                   ),
                   itemBuilder: (context, index) {
-                    final privilege = VipPolicy.privileges[index];
+                    final privilege = shownPrivileges[index];
                     final unlocked = privilege.isUnlockedAt(level) && active;
                     return _PrivilegeTile(
                       privilege: privilege,
@@ -385,7 +390,6 @@ class VipScreen extends StatelessWidget {
         'chat_bubble' => Icons.chat_bubble_rounded,
         'hide_last_online' => Icons.schedule_rounded,
         'room_background' => Icons.wallpaper_rounded,
-        'friends_limit' => Icons.group_add_rounded,
         'entrance_effect' => Icons.auto_awesome_rounded,
         'fantasy_card' => Icons.badge_rounded,
         'free_say_hi' => Icons.waving_hand_rounded,
@@ -419,7 +423,22 @@ class VipScreen extends StatelessWidget {
         'mic_chair' => Icons.chair_alt_rounded,
         'anonymous_everywhere' => Icons.masks_rounded,
         'honorary_title' => Icons.military_tech_rounded,
-        'valid_45_days' => Icons.event_available_rounded,
+        'exp_boost_1_1x' => Icons.trending_up_rounded,
+        'daily_rewards' => Icons.calendar_month_rounded,
+        'exp_boost_1_2x' => Icons.trending_up_rounded,
+        'coins_bonus_5' => Icons.monetization_on_rounded,
+        'name_colour' => Icons.format_color_text_rounded,
+        'gift_discount_10' => Icons.local_offer_rounded,
+        'priority_message' => Icons.priority_high_rounded,
+        'vip_only_rooms' => Icons.meeting_room_rounded,
+        'exp_boost_1_4x' => Icons.trending_up_rounded,
+        'coins_bonus_10' => Icons.monetization_on_rounded,
+        'anti_mute' => Icons.mic_off_rounded,
+        'gift_discount_20' => Icons.local_offer_rounded,
+        'exp_boost_1_5x' => Icons.trending_up_rounded,
+        'coins_bonus_20' => Icons.monetization_on_rounded,
+        'gift_discount_30' => Icons.local_offer_rounded,
+        'valid_60_days' => Icons.event_available_rounded,
         _ => Icons.star_rounded,
       };
 
@@ -476,21 +495,46 @@ class _HeroCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                level == 0 ? 'VIP 0' : 'VIP $level',
-                style: const TextStyle(
-                  fontSize: 34,
-                  fontStyle: FontStyle.italic,
-                  fontWeight: FontWeight.w800,
+              // Metallic gold "VIP N" (Vinay, 2026-11-19): a real gold
+              // gradient (deep gold -> bright gold -> pale highlight),
+              // not flat yellow. ShaderMask srcIn paints the gradient
+              // through the white glyphs.
+              ShaderMask(
+                shaderCallback: (Rect bounds) => const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Color(0xFFB8860B),
+                    Color(0xFFFFD700),
+                    Color(0xFFFFF3B0),
+                    Color(0xFFFFC125),
+                    Color(0xFFB8860B),
+                  ],
+                  stops: <double>[0.0, 0.3, 0.5, 0.7, 1.0],
+                ).createShader(bounds),
+                blendMode: BlendMode.srcIn,
+                child: Text(
+                  level == 0 ? 'VIP 0' : 'VIP $level',
+                  style: const TextStyle(
+                    fontSize: 34,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
                 ),
               ),
               const Spacer(),
+              // VIP badge video (Vinay, 2026-11-19): the premium 3D
+              // animated badge plays on the RIGHT SIDE next to the
+              // "VIP N" text + EXP, BIG (150px, replacing the 86px
+              // LevelMedal slot). It plays once and falls back to the
+              // LevelMedal SVG on completion/error — never a black box.
               if (level > 0)
-                LevelMedal(series: MedalSeries.vip, level: level, size: 86)
+                VipBadgeVideo.forVipLevel(level: level, size: 150)
               else
                 Container(
-                  width: 86,
-                  height: 86,
+                  width: 150,
+                  height: 150,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,

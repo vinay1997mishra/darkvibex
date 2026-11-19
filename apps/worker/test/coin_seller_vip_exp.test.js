@@ -89,10 +89,12 @@ test("Coin Seller purchases earn 150 VIP EXP per $1, with no cap", async () => {
   });
 
   // $1 = 8,000,000 coins, so 8,000,000 coins = 150 EXP, 16,000,000 = 300
-  // EXP and 80,000,000 ($10) = 1,500 EXP. Cumulative 1,950 EXP reaches
-  // VIP2 (450 + 750 = 1,200) with 750 EXP left toward VIP3.
+  // EXP and 80,000,000 ($10) = 1,500 base EXP. The third purchase
+  // happens at VIP1, so the VIP1-4 EXP boost (1.1x, Vinay 2026-11-19)
+  // applies: 1,500 * 1.1 = 1,650 EXP. Cumulative 2,100 EXP reaches
+  // VIP2 (450 + 750 = 1,200) with 900 EXP left toward VIP3.
   const amounts = [8000000, 16000000, 80000000];
-  const expectedAwarded = [150, 300, 1500];
+  const expectedAwarded = [150, 300, 1650];
   const receiverCoinsBefore = sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins;
   for (let i = 0; i < amounts.length; i++) {
     const result = await transfer(amounts[i]);
@@ -110,10 +112,10 @@ test("Coin Seller purchases earn 150 VIP EXP per $1, with no cap", async () => {
   );
   assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins, receiverCoinsBefore + amounts.reduce((sum, n) => sum + n, 0));
   assert.equal(sqlite.prepare("SELECT total_received_coins FROM user_vip WHERE user_id='receiver'").get().total_received_coins, amounts.reduce((sum, n) => sum + n, 0));
-  approx(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, 1950, "total awarded EXP");
+  approx(sqlite.prepare("SELECT SUM(exp_delta) AS total FROM vip_events WHERE user_id='receiver' AND kind='coin_seller_received'").get().total, 2100, "total awarded EXP");
   const vip = sqlite.prepare("SELECT level, exp_balance FROM user_vip WHERE user_id='receiver'").get();
   assert.equal(vip.level, 2);
-  approx(vip.exp_balance, 750, "EXP balance after VIP2");
+  approx(vip.exp_balance, 900, "EXP balance after VIP2");
   sqlite.close();
 });
 

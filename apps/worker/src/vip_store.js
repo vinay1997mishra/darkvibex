@@ -1,4 +1,4 @@
-import { vipCapabilities, vipRule } from "./vip_policy.js";
+import { vipCapabilities, vipRule, expBoostForLevel } from "./vip_policy.js";
 
 const DAY_MS=86400000;
 const parsed=(value)=>{try{return JSON.parse(String(value??"{}"))||{};}catch(_){return {};}};
@@ -181,8 +181,14 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   // (e.g. 1,000,000 coins = 18.75 EXP), so no flooring — fractions
   // accumulate in exp_balance. Spending coins on gifts never calls this
   // function, so it earns no EXP.
+  // EXP BOOST (Vinay, 2026-11-19): the awarded EXP is multiplied by
+  // the user's VIP level boost at purchase time (pre-award level):
+  // VIP1-4 1.1x, VIP5-10 1.2x, VIP11-15 1.4x, VIP16-18 1.5x, VIP0 1.0x.
+  // The base rate (150 per $1), the thresholds and the expiry/drop
+  // rules are unchanged — only the awarded amount grows.
   const multiplier=3/160000;
-  const awarded=(coins*3)/160000;
+  const expBoost=expBoostForLevel(level);
+  const awarded=(coins*3)/160000*expBoost;
   const before=level;
   exp+=awarded;
   total+=coins;
@@ -204,7 +210,7 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
   ]);
   await logEvent(db,userId,"coin_seller_received",coins,awarded,before,level,ts);
   const updated=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();
-  return {vip:payload(updated,ts),awarded_exp:awarded,multiplier,level_up:changed,previous_level:before,new_level:level};
+  return {vip:payload(updated,ts),awarded_exp:awarded,multiplier,exp_boost:expBoost,level_up:changed,previous_level:before,new_level:level};
 }
 
 export async function readVipRow(db,userId,ts=Date.now()){

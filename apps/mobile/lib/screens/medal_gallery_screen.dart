@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/level_medal.dart';
+import '../widgets/vip_badge_video.dart';
 
 class MedalGalleryScreen extends StatelessWidget {
   const MedalGalleryScreen({super.key});
@@ -64,7 +65,7 @@ class _MedalGrid extends StatelessWidget {
       ),
       itemBuilder: (context, index) {
         final level = index + 1;
-        return Container(
+        final Widget tile = Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             color: const Color(0xAA11172C),
@@ -105,7 +106,59 @@ class _MedalGrid extends StatelessWidget {
             ],
           ),
         );
+        // VIP medals are tap-to-play: tapping a VIP tile opens a dialog
+        // that plays that level's badge video once. NO autoplay in the
+        // grid — 18 videos must never play at once. Rocket medals have
+        // no badge video, so they are not tappable.
+        if (!isVip) return tile;
+        return InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _showVipBadge(context, level),
+          child: tile,
+        );
       },
+    );
+  }
+
+  /// Plays one level's badge video in a dialog. The video plays once
+  /// and falls back to the LevelMedal SVG on completion/error.
+  void _showVipBadge(BuildContext context, int level) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xFF11172C),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              VipBadgeVideo.forVipLevel(level: level, size: 280),
+              const SizedBox(height: 12),
+              Text(
+                'VIP $level',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _vipTier(level),
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
