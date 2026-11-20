@@ -46,7 +46,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _dailyRewardDialogScheduled = false;
   Timer? _cpInvitePollTimer;
   bool _cpInviteChecking = false;
-  bool _cpInviteDialogOpen = false;
+  /// True while any HomeShell dialog is open (CP invite, weekly
+  /// sign-in, VIP daily reward). All three are scheduled on post-frame
+  /// / timers, so without this they stack on top of each other
+  /// (full-app audit 2026-11-20). A dialog that finds one open waits
+  /// for the next poll / retry instead of opening on top.
+  bool _anyDialogOpen = false;
   final Set<String> _cpInvitesSeen = <String>{};
 
   @override
@@ -145,8 +150,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _weeklyDialogScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      showWeeklySignInDialog(context, state: widget.state);
+      if (_anyDialogOpen) {
+        // A CP invite is up — do not stack on it. Retry shortly so
+        // the dialog still appears once the invite is answered.
+        _weeklyDialogScheduled = false;
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) _scheduleWeeklySignIn();
+        });
+        return;
+      }
+      unawaited(_showWeeklySignInDialog());
     });
+  }
+
+  Future<void> _showWeeklySignInDialog() async {
+    if (_anyDialogOpen || !mounted) return;
+    _anyDialogOpen = true;
+    try {
+      await showWeeklySignInDialog(context, state: widget.state);
+    } finally {
+      _anyDialogOpen = false;
+    }
   }
 
   // Daily reward pop-up (Vinay, 2026-11-20): when the app opens, a
@@ -164,8 +188,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _dailyRewardDialogScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      showVipDailyRewardDialog(context, state: widget.state);
+      if (_anyDialogOpen) {
+        // A CP invite is up — do not stack on it. Retry shortly so
+        // the dialog still appears once the invite is answered.
+        _dailyRewardDialogScheduled = false;
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) _scheduleVipDailyReward();
+        });
+        return;
+      }
+      unawaited(_showVipDailyRewardDialog());
     });
+  }
+
+  Future<void> _showVipDailyRewardDialog() async {
+    if (_anyDialogOpen || !mounted) return;
+    _anyDialogOpen = true;
+    try {
+      await showVipDailyRewardDialog(context, state: widget.state);
+    } finally {
+      _anyDialogOpen = false;
+    }
   }
 
   // CP invite pop-up (Vinay, 2026-11-20): when a CP invite arrives, the
@@ -177,7 +220,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Future<void> _checkCpInvite() async {
     if (!mounted ||
         _cpInviteChecking ||
-        _cpInviteDialogOpen ||
+        _anyDialogOpen ||
         !widget.state.backendConnected ||
         !widget.state.isAuthenticated) {
       return;
@@ -206,8 +249,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       final name = (partnerName == null || partnerName.isEmpty)
           ? 'Someone'
           : partnerName;
-      _cpInviteDialogOpen = true;
-      final accept = await showDialog<bool>(
+      _anyDialogOpen = true;
+      bool? accept;
+      try {
+        accept = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Row(
@@ -230,7 +275,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ],
         ),
       );
-      _cpInviteDialogOpen = false;
+      } finally {
+        _anyDialogOpen = false;
+      }
       if (!mounted || accept == null) return;
       final result = await widget.state.backend.cpRespond(
         userId: widget.state.userId,
@@ -261,7 +308,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         onSelect: _selectMainTab,
       ),
       _DiscoverHome(state: widget.state),
-      MessagesScreen(state: widget.state, refreshToken: _refreshToken),
+      MessagesScreen(
+        state: widget.state,
+        refreshToken: _refreshToken,
+        isActive: index == 2,
+      ),
       RefreshIndicator(
         onRefresh: () => _refreshMainTab(3),
         child: ProfileScreen(state: widget.state),
@@ -696,7 +747,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
 
   Future<void> _loadBanners() async {
     if (!state.backendConnected) return;
-    final rows = await state.backend.activeBanners();
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await state.backend.activeBanners();
+    } catch (_) {
+      // Transient failure: banners stay as-is; the next load retries.
+      return;
+    }
     if (!mounted) return;
     setState(() => ownerBanners = rows);
   }
@@ -888,8 +945,12 @@ class _RoomsHomeState extends State<_RoomsHome> {
         builder: (_) => RoomScreen(state: state, room: room),
       ),
     ).then((_) async {
-      await state.refreshRooms();
-      await _loadFollowedRooms();
+      try {
+        await state.refreshRooms();
+        await _loadFollowedRooms();
+      } catch (_) {
+        // Best-effort refresh after returning from a room.
+      }
     });
   }
 

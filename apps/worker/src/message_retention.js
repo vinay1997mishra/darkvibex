@@ -46,11 +46,17 @@ export async function expireOldMessages(db, env, nowMs = Date.now()) {
   // Collect the image keys of the expiring messages first — the
   // image rows are deleted with their messages, so the keys must be
   // read before the DELETEs run.
+  //
+  // CP invite DMs are exempt (Vinay, 2026-11-20): the invite DM and its
+  // Accept/Reject buttons stay permanently — the pop-up reads the CP
+  // row, but the DM record IS the invite. All cp_invite* kinds
+  // (cp_invite, cp_invite_accepted, cp_invite_rejected) survive the
+  // 45-day cleanup, and so do their image rows.
   const dmImages = await db
     .prepare(
       `SELECT image_key FROM direct_message_images
         WHERE message_id IN
-          (SELECT id FROM direct_messages WHERE created_at < ?)`,
+          (SELECT id FROM direct_messages WHERE created_at < ? AND kind NOT LIKE 'cp_invite%')`,
     )
     .bind(cutoff)
     .all();
@@ -68,7 +74,7 @@ export async function expireOldMessages(db, env, nowMs = Date.now()) {
   ].filter((key) => key.length > 0);
 
   const dm = await db
-    .prepare("DELETE FROM direct_messages WHERE created_at < ?")
+    .prepare("DELETE FROM direct_messages WHERE created_at < ? AND kind NOT LIKE 'cp_invite%'")
     .bind(cutoff)
     .run();
   counts.direct = Number(dm.meta?.changes ?? 0);

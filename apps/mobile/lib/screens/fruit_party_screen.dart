@@ -165,6 +165,10 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     Map<String, dynamic>? value;
     try {
       value = await widget.state.backend.fruitPartyState();
+    } catch (_) {
+      // Transient failure: treated like no data below; the 5s poll
+      // retries instead of an unhandled error every tick.
+      value = null;
     } finally {
       loadingState = false;
     }

@@ -37,6 +37,38 @@ class _FakeRocketBackend extends BackendApi {
   }
 }
 
+/// Same status payload, but the pool can be claimed — and the claim
+/// endpoint records its calls (full-app audit 2026-11-20: the page
+/// told eligible users "you can claim the pool" with no button).
+class _ClaimableRocketBackend extends _FakeRocketBackend {
+  int claimCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>?> roomRocketRewardStatus({
+    required String roomId,
+    required int rocketLevel,
+  }) async {
+    final status = await super.roomRocketRewardStatus(
+      roomId: roomId,
+      rocketLevel: rocketLevel,
+    );
+    return <String, dynamic>{...?status, 'can_claim': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>?> claimRoomRocketReward({
+    required String roomId,
+    required int rocketLevel,
+  }) async {
+    claimCalls += 1;
+    return <String, dynamic>{
+      'ok': true,
+      'reward_type': 'coins',
+      'coins': 45000,
+    };
+  }
+}
+
 List<Map<String, dynamic>> _ranking() => <Map<String, dynamic>>[
       <String, dynamic>{
         'user_id': 'user-1',
@@ -72,6 +104,7 @@ RocketRoomPage _page({
   List<Map<String, dynamic>>? ranking,
   List<Map<String, dynamic>>? seatMembers,
   String currentUserId = 'user-2',
+  BackendApi? backend,
 }) {
   return RocketRoomPage(
     roomId: 'room-1',
@@ -82,7 +115,7 @@ RocketRoomPage _page({
     ranking: ranking ?? _ranking(),
     seatMembers: seatMembers ?? _seats(),
     currentUserId: currentUserId,
-    backend: const _FakeRocketBackend(),
+    backend: backend ?? const _FakeRocketBackend(),
   );
 }
 
@@ -292,4 +325,30 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets(
+      'claim button appears on the User tab when the pool can be claimed and claims on tap',
+      (tester) async {
+    final backend = _ClaimableRocketBackend();
+    await tester.pumpWidget(MaterialApp(home: _page(backend: backend)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.ensureVisible(find.byKey(const Key('rocket-room-tab-user')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byKey(const Key('rocket-room-tab-user')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byKey(const Key('rocket-room-claim-pool')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('rocket-room-claim-pool')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('rocket-room-claim-pool')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(backend.claimCalls, 1);
+    expect(find.textContaining('Coins have been added'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

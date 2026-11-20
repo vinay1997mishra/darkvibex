@@ -8,6 +8,20 @@ class BackendApi {
   static String? sessionToken;
   static String? deviceKey;
 
+  /// Fired whenever the transport proves the server reachable (true) or
+  /// unreachable (false). AppState subscribes so `backendConnected`
+  /// flips the moment the network drops mid-session, instead of only
+  /// at login/sign-out. Only called when the value actually changes is
+  /// the subscriber's job; this just reports what _json observed.
+  static void Function(bool connected)? onConnectivityChanged;
+
+  /// One shared client for every request (full-app audit 2026-11-20):
+  /// a fresh HttpClient + TLS handshake per call churned a connection
+  /// on every 4s/5s/8s poll. Created lazily so tests that never hit
+  /// the network never open one.
+  static HttpClient? _sharedClient;
+  static HttpClient get _client => _sharedClient ??= HttpClient();
+
   static const List<Map<String, Object>> _featuredRoomGifts =
       <Map<String, Object>>[
     <String, Object>{'id': 'marigold-garland', 'name': 'Marigold Garland', 'emoji': '🌼', 'coin_cost': 200000, 'vip_level': 0, 'category': 'normal'},
@@ -16,7 +30,6 @@ class BackendApi {
     <String, Object>{'id': 'garba-duet', 'name': 'Garba Duet', 'emoji': '💃', 'coin_cost': 1200000, 'vip_level': 0, 'category': 'cp'},
     <String, Object>{'id': 'kebab-platter', 'name': 'Kebab Platter', 'emoji': '🍢', 'coin_cost': 500000, 'vip_level': 0, 'category': 'backpack'},
     <String, Object>{'id': 'heart-crystal', 'name': 'Heart Crystal', 'emoji': '💗', 'coin_cost': 800000, 'vip_level': 0, 'category': 'normal'},
-    <String, Object>{'id': 'dandiya-night', 'name': 'Dandiya Night', 'emoji': '🕺', 'coin_cost': 1500000, 'vip_level': 0, 'category': 'vs'},
     <String, Object>{'id': 'diya-blessing', 'name': 'Diya Blessing', 'emoji': '🪔', 'coin_cost': 250000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'royal-thali', 'name': 'Royal Thali', 'emoji': '🍽️', 'coin_cost': 900000, 'vip_level': 0, 'category': 'luxury'},
     <String, Object>{'id': 'magic-lamp', 'name': 'Magic Lamp', 'emoji': '🪔', 'coin_cost': 2000000, 'vip_level': 0, 'category': 'lucky'},
@@ -25,7 +38,6 @@ class BackendApi {
     <String, Object>{'id': 'crown-shower', 'name': 'Crown Shower', 'emoji': '👑', 'coin_cost': 2500000, 'vip_level': 0, 'category': 'luxury'},
     <String, Object>{'id': 'palace-feast', 'name': 'Palace Feast', 'emoji': '🍛', 'coin_cost': 3000000, 'vip_level': 0, 'category': 'luxury'},
     <String, Object>{'id': 'wedding-stage', 'name': 'Wedding Stage', 'emoji': '💒', 'coin_cost': 4000000, 'vip_level': 0, 'category': 'cp'},
-    <String, Object>{'id': 'peacock-dance', 'name': 'Peacock Dance', 'emoji': '🦚', 'coin_cost': 5000000, 'vip_level': 0, 'category': 'vs'},
     <String, Object>{'id': 'royal-elephant', 'name': 'Royal Elephant', 'emoji': '🐘', 'coin_cost': 6000000, 'vip_level': 0, 'category': 'country'},
     <String, Object>{'id': 'maharaja-carriage', 'name': 'Maharaja Carriage', 'emoji': '🎠', 'coin_cost': 8000000, 'vip_level': 0, 'category': 'luxury'},
     <String, Object>{'id': 'firework-celebration', 'name': 'Firework Celebration', 'emoji': '🎆', 'coin_cost': 10000000, 'vip_level': 0, 'category': 'lucky'},
@@ -58,7 +70,13 @@ class BackendApi {
     bool returnErrorBody = false,
   }) async {
     if (!configured) return null;
-    final client = HttpClient();
+    // Transport failures return null instead of throwing (full-app
+    // audit 2026-11-20): every poller and action handler calls _json,
+    // and a SocketException mid-session used to escape as an unhandled
+    // async error every tick. Callers already treat null as "no data /
+    // not ok", so this is the single-point fix. A received HTTP
+    // response (any status) proves the server is reachable.
+    final client = _client;
     try {
       final uri = Uri.parse('$origin$path');
       final request = switch (method) {
@@ -79,6 +97,7 @@ class BackendApi {
         request.write(jsonEncode(body));
       }
       final response = await request.close();
+      onConnectivityChanged?.call(true);
       final text = await response.transform(utf8.decoder).join();
       if (text.trim().isEmpty) {
         return response.statusCode >= 200 && response.statusCode < 300
@@ -89,8 +108,15 @@ class BackendApi {
       if (value is! Map<String, dynamic>) return null;
       if (response.statusCode < 200 || response.statusCode >= 300) { return returnErrorBody ? value : null; }
       return value;
-    } finally {
-      client.close(force: true);
+    } on SocketException {
+      onConnectivityChanged?.call(false);
+      return null;
+    } on HttpException {
+      onConnectivityChanged?.call(false);
+      return null;
+    } on HandshakeException {
+      onConnectivityChanged?.call(false);
+      return null;
     }
   }
 
@@ -125,7 +151,7 @@ class BackendApi {
   Future<String?> uploadUserFile({required String key, required Uint8List bytes, required String contentType}) async {
     final maxBytes = contentType == 'video/mp4' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
     if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > maxBytes) return null;
-    final client = HttpClient();
+    final client = _client;
     try {
       final request = await client.putUrl(Uri.parse('$origin/api/user-files'));
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${sessionToken!.trim()}');
@@ -139,13 +165,13 @@ class BackendApi {
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       final value = jsonDecode(text);
       return value is Map<String, dynamic> ? value['key']?.toString() : null;
-    } catch (_) { return null; } finally { client.close(force: true); }
+    } catch (_) { return null; }
   }
 
   Future<String?> uploadImage({required String key, required Uint8List bytes, required String contentType}) async {
     final maxBytes = contentType == 'video/mp4' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
     if (!configured || sessionToken == null || bytes.isEmpty || bytes.length > maxBytes) return null;
-    final client = HttpClient();
+    final client = _client;
     try {
       final request = await client.putUrl(Uri.parse('$origin/api/files'));
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${sessionToken!.trim()}');
@@ -159,7 +185,7 @@ class BackendApi {
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       final value = jsonDecode(text);
       return value is Map<String, dynamic> ? value['key']?.toString() : null;
-    } catch (_) { return null; } finally { client.close(force: true); }
+    } catch (_) { return null; }
   }
 
   Future<Map<String, dynamic>?> saveUserProfile({

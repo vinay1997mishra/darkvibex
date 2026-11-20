@@ -13,11 +13,18 @@ class MessagesScreen extends StatefulWidget {
     required this.state,
     this.standalone = false,
     this.refreshToken = 0,
+    this.isActive = true,
   });
 
   final AppState state;
   final bool standalone;
   final int refreshToken;
+
+  /// True while this tab is the one showing (HomeShell passes
+  /// `index == 2`). The inbox refresh only runs while active — the
+  /// incoming-call check is the app's only ringer, so it keeps running
+  /// on any tab while the app is in the foreground.
+  final bool isActive;
 
   @override
   State<MessagesScreen> createState() => _MessagesScreenState();
@@ -39,8 +46,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
     callPollTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) {
-        unawaited(_checkIncomingCall());
-        unawaited(_refreshInbox());
+        // The 5s poll used to run forever once this tab was visited —
+        // even on other tabs and inside rooms (full-app audit 2026-11-20).
+        // Incoming calls still ring anywhere (this is the app's only
+        // ringer), but only while the app is in the foreground; the
+        // inbox refresh only matters while this tab is showing.
+        final foreground =
+            WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+        if (foreground) unawaited(_checkIncomingCall());
+        if (foreground && widget.isActive) unawaited(_refreshInbox());
       },
     );
     unawaited(_checkIncomingCall());
@@ -70,7 +84,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   Future<void> _refreshInbox() async {
     if (!state.backendConnected || !state.isAuthenticated) return;
-    await state.refreshInbox();
+    try {
+      await state.refreshInbox();
+    } catch (_) {
+      // Transient failure: the next 5s tick retries; never an
+      // unhandled async error from the poller.
+    }
   }
 
   Future<void> _openConversation(DirectMessage item) async {
@@ -87,6 +106,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
     await _refreshInbox();
   }
 
+  Future<Map<String, dynamic>?> _incomingCallOrNull() async {
+    try {
+      return await state.backend.incomingDirectCall(userId: state.userId);
+    } catch (_) {
+      // Transient failure: the next 5s tick retries; never an
+      // unhandled async error from the poller.
+      return null;
+    }
+  }
+
   Future<void> _checkIncomingCall() async {
     if (incomingCallOpen ||
         !state.backendConnected ||
@@ -94,9 +123,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         !mounted) {
       return;
     }
-    final value = await state.backend.incomingDirectCall(
-      userId: state.userId,
-    );
+    final value = await _incomingCallOrNull();
     final raw = value?['call'];
     if (raw is! Map || !mounted) return;
     final call = Map<String, dynamic>.from(raw);

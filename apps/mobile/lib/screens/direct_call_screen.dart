@@ -51,10 +51,17 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
 
   Future<void> _refreshStatus() async {
     if (!mounted || ending) return;
-    final value = await widget.state.backend.directCallStatus(
-      userId: widget.state.userId,
-      callId: widget.callId,
-    );
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.directCallStatus(
+        userId: widget.state.userId,
+        callId: widget.callId,
+      );
+    } catch (_) {
+      // Offline / transient failure: stay on the last known state and
+      // let the next 2s tick retry instead of an unhandled error.
+      return;
+    }
     final raw = value?['call'];
     if (raw is! Map || !mounted) return;
     final next = raw['state']?.toString() ?? callState;
@@ -139,10 +146,17 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
     if (ending) return;
     setState(() => ending = true);
     pollTimer?.cancel();
-    await widget.state.backend.endDirectCall(
-      userId: widget.state.userId,
-      callId: widget.callId,
-    );
+    // The call ends locally no matter what the server says (full-app
+    // audit 2026-11-20): a failed endDirectCall used to leave the user
+    // on this screen with a disabled End button and a dead back button
+    // — only killing the app escaped. The server call is best-effort;
+    // leaving voice and popping always run.
+    try {
+      await widget.state.backend.endDirectCall(
+        userId: widget.state.userId,
+        callId: widget.callId,
+      );
+    } catch (_) {}
     await _leaveVoice();
     if (mounted) Navigator.of(context).pop();
   }

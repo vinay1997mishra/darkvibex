@@ -103,11 +103,18 @@ class _LudoScreenState extends State<LudoScreen> with WidgetsBindingObserver {
       }
       return;
     }
-    final value = await widget.state.backend.ludoState(
-      roomId: widget.roomId,
-      playerCount: widget.playerCount,
-      colorPair: widget.colorPair,
-    );
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.ludoState(
+        roomId: widget.roomId,
+        playerCount: widget.playerCount,
+        colorPair: widget.colorPair,
+      );
+    } catch (_) {
+      // Transient failure: treated like no data below; the 5s poll
+      // retries instead of an unhandled error every tick.
+      value = null;
+    }
     if (!mounted) return;
     if (value?['ok'] == true) {
       setState(() => _apply(Map<String, dynamic>.from(value!)));

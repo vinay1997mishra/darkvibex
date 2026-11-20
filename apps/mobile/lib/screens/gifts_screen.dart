@@ -227,15 +227,24 @@ class _GiftsScreenState extends State<GiftsScreen> {
     final cost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
     if (receiverId.isEmpty || giftId.isEmpty || cost <= 0) return;
     setState(() => sending = true);
-    final result = await state.backend.sendGift(
-      roomId: room.id,
-      senderUserId: state.userId,
-      receiverUserId: receiverId,
-      giftId: giftId,
-      coinCost: cost,
-    );
+    // A failed send used to leave `sending` true forever (full-app
+    // audit 2026-11-20): the reset after the await never ran, so every
+    // gift tile stayed disabled until the screen was reopened.
+    Map<String, dynamic>? result;
+    try {
+      result = await state.backend.sendGift(
+        roomId: room.id,
+        senderUserId: state.userId,
+        receiverUserId: receiverId,
+        giftId: giftId,
+        coinCost: cost,
+      );
+    } catch (_) {
+      result = null;
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
     if (!mounted) return;
-    setState(() => sending = false);
     if (result?['ok'] == true) {
       final balance =
           int.tryParse(result?['sender_coin_balance']?.toString() ?? '');

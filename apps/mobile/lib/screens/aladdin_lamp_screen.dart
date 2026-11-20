@@ -60,10 +60,17 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
       refreshingStatus = false;
       return;
     }
-    final value = await widget.state.backend.aladdinLampStatus(
-      roomId: widget.room.id,
-      userId: widget.state.userId,
-    );
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.aladdinLampStatus(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+      );
+    } catch (_) {
+      // Transient failure: treated like no data below; the 60s poll
+      // retries instead of an unhandled error every tick.
+      value = null;
+    }
     if (!mounted) return;
     if (value == null) {
       setState(() {
@@ -73,7 +80,11 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
       refreshingStatus = false;
       return;
     }
-    final raw = value['tasks'];
+    // Non-null from here: capture it in a final so the setState
+    // closure below can read it (a reassignable local is not promoted
+    // inside closures).
+    final data = value;
+    final raw = data['tasks'];
     final next = raw is List
         ? raw
             .whereType<Map>()
@@ -83,10 +94,10 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
     setState(() {
       loading = false;
       error = null;
-      isHost = value['is_host'] == true;
+      isHost = data['is_host'] == true;
       bonusPercent =
-          int.tryParse(value['bonus_percent']?.toString() ?? '') ?? 5;
-      resetAt = int.tryParse(value['reset_at']?.toString() ?? '');
+          int.tryParse(data['bonus_percent']?.toString() ?? '') ?? 5;
+      resetAt = int.tryParse(data['reset_at']?.toString() ?? '');
       tasks = next;
     });
     refreshingStatus = false;
@@ -97,11 +108,16 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
       return;
     }
     setState(() => claimingTaskId = task.id);
-    final value = await widget.state.backend.claimAladdinLampTask(
-      roomId: widget.room.id,
-      userId: widget.state.userId,
-      taskId: task.id,
-    );
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.claimAladdinLampTask(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        taskId: task.id,
+      );
+    } catch (_) {
+      value = null;
+    }
     if (!mounted) return;
     setState(() => claimingTaskId = null);
     if (value == null) {

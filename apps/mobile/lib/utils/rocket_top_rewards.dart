@@ -1,9 +1,13 @@
-/// Top 1/2/3 rewards for a Rocket launch (direct VIP + launch coins).
+/// Top 1/2/3 reward figures for a Rocket launch (display values).
 ///
 /// This is the ONLY place that knows the Top 1/2/3 VIP and coin numbers for
 /// the Rocket Room Page. The confirmed rules (Vinay, 2026-11-19) are:
 /// - NO frames for anyone — every winner gets random coins only, and
-///   Top 1/2/3 ALSO get DIRECT VIP + launch coins.
+///   Top 1/2/3 ALSO get a Rocket medal (permanent, PR #151).
+/// - The VIP and coin numbers below are DISPLAY ONLY — they are never
+///   granted (the VIP + coins grant was stopped; only the medal is
+///   granted). They stay here because the Rocket Room Page shows them
+///   as the level's reward figures.
 /// - Rocket Lv.6 = VIP 4 (Top 1 for 10 days, Top 2 for 7 days,
 ///   Top 3 for 5 days). VIP rises with Rocket level and caps at VIP 8,
 ///   never more. At Lv.18, VIP 8 is for 1 MONTH (30 days).

@@ -259,13 +259,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
     amountController.dispose();
     if (amount == null || !mounted) return;
     setState(() => sendingEnvelope = true);
-    final result = await widget.state.backend.sendInboxRedEnvelope(
-      senderUserId: widget.state.userId,
-      receiverUserId: widget.otherUserId,
-      amount: amount,
-    );
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.state.backend.sendInboxRedEnvelope(
+        senderUserId: widget.state.userId,
+        receiverUserId: widget.otherUserId,
+        amount: amount,
+      );
+    } catch (_) {
+      result = null;
+    } finally {
+      if (mounted) setState(() => sendingEnvelope = false);
+    }
     if (!mounted) return;
-    setState(() => sendingEnvelope = false);
     if (result?['ok'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Red envelope could not be sent. Check VIP6 and coin balance.')));
       return;
@@ -275,16 +281,25 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _claimEnvelope(String envelopeId) async {
-    final result = await widget.state.backend.claimInboxRedEnvelope(userId: widget.state.userId, envelopeId: envelopeId);
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.state.backend.claimInboxRedEnvelope(userId: widget.state.userId, envelopeId: envelopeId);
+    } catch (_) {
+      result = null;
+    }
     if (!mounted) return;
-    if (result?['ok'] != true) {
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not claim the envelope. Please try again.')));
+      return;
+    }
+    if (result['ok'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This envelope has expired or was already opened.')));
       return;
     }
     await widget.state.refreshWallet();
     await _load();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('You received ${result?['amount'] ?? 0} coins')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('You received ${result['amount'] ?? 0} coins')));
   }
 
   Future<void> _send() async {
@@ -297,33 +312,36 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final text = controller.text.trim();
     if (text.isEmpty) return;
 
-    if (widget.state.backendConnected) {
-      final ok = await widget.state.backend.sendDirectMessage(
+    // Offline means not sent (full-app audit 2026-11-20): the old
+    // offline branch added the message to the local list and persisted
+    // it, so it looked sent but was never delivered and never retried.
+    // The text stays in the composer so nothing is lost.
+    if (!widget.state.backendConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are offline. Connect to send messages.')),
+      );
+      return;
+    }
+    bool ok;
+    try {
+      ok = await widget.state.backend.sendDirectMessage(
         senderUserId: widget.state.userId,
         receiverUserId: widget.otherUserId,
         text: text,
       );
-      if (!ok) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message could not be sent')),
-        );
-        return;
-      }
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Message could not be sent')),
+      );
+      return;
     }
 
     controller.clear();
-    if (widget.state.backendConnected) {
-      await _load();
-    } else {
-      messages.add(<String, dynamic>{
-        'sender_user_id': widget.state.userId,
-        'receiver_user_id': widget.otherUserId,
-        'text': text,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      });
-      await _persistMessages();
-    }
+    await _load();
     await widget.state.refreshInbox();
     if (!mounted) return;
     setState(() {});

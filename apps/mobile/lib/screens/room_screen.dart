@@ -1099,16 +1099,26 @@ class _RoomScreenState extends State<RoomScreen>
                               claiming = true;
                               message = '';
                             });
-                            final result = await widget.state.backend.claimRoomRocketReward(
-                              roomId: widget.room.id,
-                              rocketLevel: level,
-                            );
-                            if (result?['ok'] == true &&
-                                result?['reward_type']?.toString() == 'coins') {
-                              await widget.state.refreshWallet();
-                            } else if (result?['ok'] == true &&
-                                result?['reward_type']?.toString() == 'frame') {
-                              await widget.state.refreshCosmetics();
+                            // A failed claim used to leave CLAIMING… stuck
+                            // (full-app audit 2026-11-20): the await threw,
+                            // so `claiming` never reset. result stays null
+                            // on failure, so the dialog shows the retry
+                            // message and the button re-enables below.
+                            Map<String, dynamic>? result;
+                            try {
+                              result = await widget.state.backend.claimRoomRocketReward(
+                                roomId: widget.room.id,
+                                rocketLevel: level,
+                              );
+                              if (result?['ok'] == true &&
+                                  result?['reward_type']?.toString() == 'coins') {
+                                await widget.state.refreshWallet();
+                              } else if (result?['ok'] == true &&
+                                  result?['reward_type']?.toString() == 'frame') {
+                                await widget.state.refreshCosmetics();
+                              }
+                            } catch (_) {
+                              result = null;
                             }
                             if (!dialogContext.mounted) return;
                             setDialogState(() {
@@ -1457,6 +1467,7 @@ class _RoomScreenState extends State<RoomScreen>
                             seatMembers: roomMembers,
                             currentUserId: widget.state.userId,
                             backend: widget.state.backend,
+                            state: widget.state,
                           ),
                         ),
                       ));

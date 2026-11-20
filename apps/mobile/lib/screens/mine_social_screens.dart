@@ -1175,6 +1175,12 @@ class _CpScreenState extends State<CpScreen> {
         _notice(result?['error']?.toString() ?? 'CP invitation failed');
       }
       await _load();
+    } catch (_) {
+      // A failed request used to throw with no feedback (full-app
+      // audit 2026-11-20): busy reset in finally, but the user saw
+      // nothing. _json already turns transport failures into null,
+      // so this only catches the rest.
+      _notice('Could not reach the server. Please try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1193,6 +1199,8 @@ class _CpScreenState extends State<CpScreen> {
         _notice(result?['error']?.toString() ?? 'CP response failed');
       }
       await _load();
+    } catch (_) {
+      _notice('Could not reach the server. Please try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1233,6 +1241,8 @@ class _CpScreenState extends State<CpScreen> {
       } else {
         _notice(result?['error']?.toString() ?? 'CP disconnect request failed');
       }
+    } catch (_) {
+      _notice('Could not reach the server. Please try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1258,6 +1268,8 @@ class _CpScreenState extends State<CpScreen> {
       } else {
         _notice(result?['error']?.toString() ?? 'CP disconnect response failed');
       }
+    } catch (_) {
+      _notice('Could not reach the server. Please try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1278,6 +1290,8 @@ class _CpScreenState extends State<CpScreen> {
       } else {
         _notice(result?['error']?.toString() ?? 'Heartbeat could not be updated');
       }
+    } catch (_) {
+      _notice('Could not reach the server. Please try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
