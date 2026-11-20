@@ -4,6 +4,28 @@ import '../app/app_state.dart';
 import '../ui/weekly_signin_panel_data.dart';
 import '../ui/weekly_reward_images_b64.dart';
 
+/// Daily light colour for the weekly sign-in panel (Vinay, 2026-11-20):
+/// the glow on top of the panel changes every day — 7 premium colours
+/// rotating by the UTC claim day, so the light is never the same two
+/// days in a row. The approved panel artwork itself is untouched; only
+/// this overlay glow changes.
+const List<Color> weeklySignInLightColors = <Color>[
+  Color(0xFFFFD88A), // gold
+  Color(0xFFB388FF), // purple
+  Color(0xFF4DC3FF), // sky blue
+  Color(0xFF00E5FF), // cyan
+  Color(0xFFFF5C8A), // rose
+  Color(0xFFFF9A3D), // orange
+  Color(0xFF7ED491), // green
+];
+
+Color weeklySignInLightColor(DateTime now) {
+  final utcDay = DateTime.utc(now.year, now.month, now.day);
+  final epochDay =
+      utcDay.millisecondsSinceEpoch ~/ const Duration(days: 1).inMilliseconds;
+  return weeklySignInLightColors[epochDay % weeklySignInLightColors.length];
+}
+
 Future<void> showWeeklySignInDialog(
   BuildContext context, {
   required AppState state,
@@ -133,6 +155,32 @@ class _WeeklySignInDialog extends StatelessWidget {
                         filterQuality: FilterQuality.high,
                         isAntiAlias: true,
                         gaplessPlayback: true,
+                      ),
+                    ),
+
+                    // Daily light (Vinay, 2026-11-20): a glow over the top
+                    // of the panel whose colour changes every day. The
+                    // artwork underneath is not touched.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      height: height * .42,
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(0, -1),
+                              radius: 1.05,
+                              colors: [
+                                weeklySignInLightColor(DateTime.now())
+                                    .withValues(alpha: .55),
+                                weeklySignInLightColor(DateTime.now())
+                                    .withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
 
