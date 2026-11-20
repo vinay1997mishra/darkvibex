@@ -75,9 +75,11 @@ void main() {
 
   test('unlockedAt is cumulative: only the level own privileges show', () {
     expect(VipPolicy.unlockedAt(1).length, 5);
-    expect(VipPolicy.unlockedAt(2).length, 8);
-    expect(VipPolicy.unlockedAt(3).length, 10);
-    expect(VipPolicy.unlockedAt(4).length, 11);
+    // Daily Rewards moved to VIP5 (Vinay, 2026-11-20): VIP2-4 no
+    // longer see it, so their counts drop by one each.
+    expect(VipPolicy.unlockedAt(2).length, 7);
+    expect(VipPolicy.unlockedAt(3).length, 9);
+    expect(VipPolicy.unlockedAt(4).length, 10);
     expect(VipPolicy.unlockedAt(5).length, 20);
     expect(VipPolicy.unlockedAt(6).length, 21);
     // 54, not 55: nickname_light is VIP8-17 only, so VIP18 does not
@@ -87,6 +89,13 @@ void main() {
     final vip6Ids = VipPolicy.unlockedAt(6).map((p) => p.id).toSet();
     expect(vip6Ids.contains('dynamic_avatar'), false);
     expect(vip6Ids.contains('gift_discount_30'), false);
+    // Daily Rewards is VIP5+ only (Vinay, 2026-11-20): VIP1-4 get
+    // no per-day coin claim; the claim starts at VIP5.
+    final dailyRewards =
+        VipPolicy.privileges.firstWhere((p) => p.id == 'daily_rewards');
+    expect(dailyRewards.isUnlockedAt(4), false);
+    expect(dailyRewards.isUnlockedAt(5), true);
+    expect(dailyRewards.isUnlockedAt(18), true);
     // Name Colour is a range: VIP5-18.
     final nameColour =
         VipPolicy.privileges.firstWhere((p) => p.id == 'name_colour');

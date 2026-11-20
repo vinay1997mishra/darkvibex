@@ -20,6 +20,10 @@ import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { applyGiftDiscount, giftDiscountForVipLevel } from "./vip_policy.js";
+import {
+  claimVipDailyReward,
+  vipDailyRewardStatus,
+} from "./vip_daily_rewards.js";
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
@@ -7748,6 +7752,28 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, receiverId);
     const usage = await consumeFreeSayHi(db, userId, receiverId, body.message);
     return json({ ok: true, usage });
+  }
+
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "daily-reward" && request.method === "GET") {
+    const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json({
+      ok: true,
+      ...(await vipDailyRewardStatus(db, userId, now())),
+    });
+  }
+
+  if (parts[0] === "api" && parts[1] === "vip" && parts.length === 4 && parts[3] === "daily-reward" && request.method === "POST") {
+    const userId = String(parts[2] ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    await ensureWalletLedgerSchema(db);
+    return json(await claimVipDailyReward(db, userId, now(), id));
   }
 
   if (url.pathname === "/api/rewards/weekly-signin" && request.method === "GET") {

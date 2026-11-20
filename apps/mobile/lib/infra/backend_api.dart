@@ -1296,6 +1296,21 @@ class BackendApi {
   }) =>
       _json('GET', '/api/vip/${Uri.encodeComponent(userId)}');
 
+  Future<Map<String, dynamic>?> vipDailyRewardStatus({
+    required String userId,
+  }) =>
+      _json('GET', '/api/vip/${Uri.encodeComponent(userId)}/daily-reward');
+
+  Future<Map<String, dynamic>?> claimVipDailyReward({
+    required String userId,
+  }) =>
+      _json(
+        'POST',
+        '/api/vip/${Uri.encodeComponent(userId)}/daily-reward',
+        body: <String, dynamic>{},
+        returnErrorBody: true,
+      );
+
   Future<Map<String, dynamic>?> updateVipPreference({
     required String userId,
     required String key,

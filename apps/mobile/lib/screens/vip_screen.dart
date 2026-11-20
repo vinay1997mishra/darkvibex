@@ -79,6 +79,8 @@ class VipScreen extends StatelessWidget {
                   activeUntil: state.vipActiveUntil,
                 ),
                 const SizedBox(height: 12),
+                _DailyRewardCard(state: state),
+                const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
@@ -610,6 +612,143 @@ class _HeroCard extends StatelessWidget {
 /// Membership (the VIP membership card), Customized Avatar Frame (the
 /// user's frame with their DP inside it) and Entrance Effects (the
 /// entry banner). Tapping a card shows a bigger preview.
+class _DailyRewardCard extends StatelessWidget {
+  const _DailyRewardCard({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final level = state.vipLevel.clamp(0, VipPolicy.maxLevel).toInt();
+    final locked = !state.vipIsActive || level < 5;
+    final claimed = state.dailyRewardClaimedToday;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF28231B), Color(0xFF0B0B0B)],
+        ),
+        border: Border.all(color: const Color(0x55FFD88A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.calendar_month_rounded,
+                color: Color(0xFFFFD88A),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Daily Rewards',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (claimed)
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: Color(0xFF7ED491),
+                      size: 18,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Claimed',
+                      style: TextStyle(
+                        color: Color(0xFF7ED491),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (locked)
+            const Text(
+              'Unlocks at VIP 5 — claim coins every day.',
+              style: TextStyle(color: Color(0xFFDAD0FF)),
+            )
+          else if (claimed)
+            Text(
+              'Claimed today: +${_formatCoins(state.dailyRewardClaimedCoins)} coins.',
+              style: const TextStyle(color: Color(0xFFDAD0FF)),
+            )
+          else
+            Text(
+              'Today: ${_formatCoins(state.dailyRewardAmount)} coins',
+              style: const TextStyle(
+                color: Color(0xFFFFD88A),
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          if (!locked && !claimed) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: state.dailyRewardLoading
+                    ? null
+                    : () async {
+                        final ok = await state.claimDailyReward();
+                        if (!ok && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                state.vipError ??
+                                    'Daily reward could not be claimed.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: Colors.black,
+                ),
+                child: state.dailyRewardLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'Claim',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _formatCoins(int value) {
+  final text = value.abs().toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    if (i > 0 && (text.length - i) % 3 == 0) {
+      buffer.write(',');
+    }
+    buffer.write(text[i]);
+  }
+  return (value < 0 ? '-' : '') + buffer.toString();
+}
+
 class _IdentificationSection extends StatelessWidget {
   const _IdentificationSection({
     required this.level,
