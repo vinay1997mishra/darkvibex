@@ -19,6 +19,7 @@ import { expireOldD1SpaceData } from "./d1_space_retention.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
 import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
+import { PLAY_PACKS, firstRechargeAvailable, handlePlayWebhook, verifyPlayPurchase } from "./play_billing.js";
 import { applyGiftDiscount, giftDiscountForVipLevel } from "./vip_policy.js";
 import {
   claimVipDailyReward,
@@ -7910,6 +7911,58 @@ async function handleApi(request, env, url) {
         role: row.role,
       })),
     });
+  }
+
+  // Google Play Billing coin purchases (Vinay, 2026-11-20). INR prices
+  // are set per product in Play Console, not in code.
+  if (url.pathname === "/api/play/packs" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const userId = String(session?.sub ?? "");
+    return json({
+      ok: true,
+      packs: PLAY_PACKS.map((pack) => ({ product_id: pack.product_id, coins: pack.coins, usd_value: pack.usd_value })),
+      first_recharge_available: await firstRechargeAvailable(db, userId),
+    });
+  }
+
+  if (url.pathname === "/api/play/verify" && request.method === "POST") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const userId = String(session?.sub ?? "");
+    const body = await bodyJson(request);
+    try {
+      const result = await verifyPlayPurchase(db, env, userId, body.productId, body.purchaseToken);
+      return json(result);
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      if (code === "play_not_configured") return json({ ok: false, error: code }, { status: 503 });
+      if (code === "purchase_token_owner_mismatch" || code === "purchase_processing") {
+        return json({ ok: false, error: code }, { status: 409 });
+      }
+      if (code.startsWith("play_oauth_")) return json({ ok: false, error: "purchase_verification_failed" }, { status: 502 });
+      if (code.startsWith("play_verification_failed")) return json({ ok: false, error: "purchase_verification_failed" }, { status: 400 });
+      if (code === "user_not_found") return json({ ok: false, error: code }, { status: 404 });
+      return json({ ok: false, error: code }, { status: 400 });
+    }
+  }
+
+  // RTDN webhook (Cloud Pub/Sub push). Public — no session; the OIDC
+  // bearer token is verified inside handlePlayWebhook. Always 2xx for a
+  // parseable message so Pub/Sub does not redeliver it.
+  if (url.pathname === "/api/webhooks/google-play" && request.method === "POST") {
+    const body = await bodyJson(request);
+    try {
+      const result = await handlePlayWebhook(db, env, request.headers.get("authorization"), body);
+      return json(result);
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      if (code === "webhook_unauthorized") return json({ ok: false, error: code }, { status: 401 });
+      console.error("DarkVibeX Play webhook failed", code);
+      return json({ ok: false, error: "webhook_failed" }, { status: 500 });
+    }
   }
 
   if (url.pathname === "/api/messages/send" && request.method === "POST") {

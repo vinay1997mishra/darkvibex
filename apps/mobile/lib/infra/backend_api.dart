@@ -938,6 +938,27 @@ class BackendApi {
         .toList(growable: false);
   }
 
+  /// Google Play Billing packs + the first-recharge flag for this
+  /// user (worker: GET /api/play/packs). Null when the server cannot
+  /// be reached; the Recharge screen then falls back to the static
+  /// pack list and hides the first-recharge badge.
+  Future<Map<String, dynamic>?> playPacks() =>
+      _json('GET', '/api/play/packs');
+
+  /// Verifies a Google Play purchase server-side and credits the
+  /// coins (worker: POST /api/play/verify). The server verifies the
+  /// purchase token with Google before crediting anything, so the
+  /// caller must only complete (consume) the purchase when this
+  /// returns ok. Null on transport failure.
+  Future<Map<String, dynamic>?> verifyPlayPurchase({
+    required String productId,
+    required String purchaseToken,
+  }) =>
+      _json('POST', '/api/play/verify', body: {
+        'productId': productId,
+        'purchaseToken': purchaseToken,
+      });
+
   Future<List<Map<String, dynamic>>> inbox({
     required String userId,
   }) async {
