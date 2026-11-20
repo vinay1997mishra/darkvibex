@@ -1596,6 +1596,30 @@ class BackendApi {
         .toList();
   }
 
+  /// Combined room state (members + messages + controls + gift events),
+  /// or null when the request failed. The worker answers 403
+  /// `room_membership_required` when the caller's own membership row
+  /// is gone (kicked), so null here is the kick signal — unlike an
+  /// empty members list, which also happens when a 200-member room cuts
+  /// the caller off (the worker caps the list at 200 rows). Mirrors
+  /// the null-on-failure contract of [roomMembersOrNull]. The room
+  /// screen polls this every 3s instead of the four separate
+  /// members/messages/controls/gift-events calls; [after]/[afterId]
+  /// are the gift-events incremental cursor, as in [roomGiftEvents].
+  Future<Map<String, dynamic>?> roomStateOrNull({
+    required String roomId,
+    int after = 0,
+    String afterId = '',
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/state'
+      '?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}',
+    );
+    if (value == null) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
   /// Whether the server recorded a kick marker for this user in this room.
   /// Returns null when the check itself fails (network/server error).
   /// (Room audit 2026-11-20 — distinguishes a real kick from a
