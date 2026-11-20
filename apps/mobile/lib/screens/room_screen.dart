@@ -26,6 +26,7 @@ import '../widgets/vip_entry_effect_banner.dart';
 import '../widgets/gift_ribbon_banner.dart';
 import '../widgets/level_medal.dart';
 import '../widgets/vip_tag_image.dart';
+import '../widgets/profile_card_anim_background.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -3097,6 +3098,15 @@ class _RoomScreenState extends State<RoomScreen> {
         : <String, dynamic>{};
     final vipMiniProfileAssetKey =
         vipMiniProfile['asset_key']?.toString().trim() ?? '';
+    final vipProfileCardAnim = vipVisuals['profile_card_anim'] is Map
+        ? Map<String, dynamic>.from(vipVisuals['profile_card_anim'] as Map)
+        : <String, dynamic>{};
+    final profileCardAnimVideoKey =
+        vipProfileCardAnim['video_key']?.toString().trim() ?? '';
+    // The level's card background (video VIP4-18, still pic VIP1-3)
+    // sits BEHIND the text — the cat stays behind the text (Vinay,
+    // 2026-11-20) — and the card covers 35% of the room screen.
+    final hasCardBackground = activeVipLevel > 0;
     const vipVisualLabels = <String, String>{
       'frame': 'Profile frame',
       'chat_box': 'VIP chat box',
@@ -3287,16 +3297,32 @@ class _RoomScreenState extends State<RoomScreen> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  if (hasCardBackground)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                        child: ProfileCardAnimBackground.forVipLevel(
+                          level: activeVipLevel,
+                          videoKey: profileCardAnimVideoKey,
+                          child: const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
                   Container(
                     key: Key('room-seat-profile-card-$userId'),
                     width: double.infinity,
                     constraints: BoxConstraints(
                       maxHeight:
-                          MediaQuery.sizeOf(sheetContext).height * .62,
+                          MediaQuery.sizeOf(sheetContext).height * .35,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      image: vipMiniProfileAssetKey.isEmpty
+                      color: hasCardBackground
+                          ? Colors.transparent
+                          : Colors.white,
+                      image: hasCardBackground ||
+                              vipMiniProfileAssetKey.isEmpty
                           ? null
                           : DecorationImage(
                               image: NetworkImage(
@@ -3320,8 +3346,10 @@ class _RoomScreenState extends State<RoomScreen> {
                               name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.black,
+                              style: TextStyle(
+                                color: hasCardBackground
+                                    ? const Color(0xFFE8C882)
+                                    : Colors.black,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -3345,8 +3373,10 @@ class _RoomScreenState extends State<RoomScreen> {
                                   ),
                                 Text(
                                   'ID $shownId',
-                                  style: const TextStyle(
-                                    color: Colors.black54,
+                                  style: TextStyle(
+                                    color: hasCardBackground
+                                        ? Colors.white70
+                                        : Colors.black54,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -3356,26 +3386,38 @@ class _RoomScreenState extends State<RoomScreen> {
                                     vipLevel: activeVipLevel,
                                     fontSize: 12,
                                   ),
-                                const Text(
+                                Text(
                                   '|',
-                                  style: TextStyle(color: Colors.black26),
+                                  style: TextStyle(
+                                    color: hasCardBackground
+                                        ? Colors.white30
+                                        : Colors.black26,
+                                  ),
                                 ),
                                 Text(
                                   '$followersCount followers',
-                                  style: const TextStyle(
-                                    color: Colors.black54,
+                                  style: TextStyle(
+                                    color: hasCardBackground
+                                        ? Colors.white70
+                                        : Colors.black54,
                                     fontSize: 12,
                                   ),
                                 ),
                                 if (country.isNotEmpty) ...[
-                                  const Text(
+                                  Text(
                                     '|',
-                                    style: TextStyle(color: Colors.black26),
+                                    style: TextStyle(
+                                      color: hasCardBackground
+                                          ? Colors.white30
+                                          : Colors.black26,
+                                    ),
                                   ),
                                   Text(
                                     flag.isEmpty ? country : '$flag $country',
-                                    style: const TextStyle(
-                                      color: Colors.black54,
+                                    style: TextStyle(
+                                      color: hasCardBackground
+                                          ? Colors.white70
+                                          : Colors.black54,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -3511,8 +3553,10 @@ class _RoomScreenState extends State<RoomScreen> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.black54,
+                                style: TextStyle(
+                                  color: hasCardBackground
+                                      ? Colors.white70
+                                      : Colors.black54,
                                   height: 1.3,
                                   fontSize: 13,
                                 ),
@@ -3543,9 +3587,13 @@ class _RoomScreenState extends State<RoomScreen> {
                                     style: OutlinedButton.styleFrom(
                                       minimumSize:
                                           const Size.fromHeight(48),
-                                      foregroundColor: Colors.black87,
-                                      side: const BorderSide(
-                                        color: Color(0xFFD7D7D7),
+                                      foregroundColor: hasCardBackground
+                                          ? Colors.white
+                                          : Colors.black87,
+                                      side: BorderSide(
+                                        color: hasCardBackground
+                                            ? Colors.white54
+                                            : const Color(0xFFD7D7D7),
                                       ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius:
@@ -3619,9 +3667,11 @@ class _RoomScreenState extends State<RoomScreen> {
                               openModeration,
                             );
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.more_horiz_rounded,
-                            color: Colors.black87,
+                            color: hasCardBackground
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                         ),
                         IconButton(
@@ -3636,9 +3686,11 @@ class _RoomScreenState extends State<RoomScreen> {
                             );
                             Navigator.pop(sheetContext);
                           },
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.alternate_email_rounded,
-                            color: Colors.black87,
+                            color: hasCardBackground
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                         ),
                       ],
@@ -3652,9 +3704,13 @@ class _RoomScreenState extends State<RoomScreen> {
                       child: OutlinedButton(
                         onPressed: toggleFollow,
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.black87,
-                          side: const BorderSide(
-                            color: Color(0xFFD6D6D6),
+                          foregroundColor: hasCardBackground
+                              ? Colors.white
+                              : Colors.black87,
+                          side: BorderSide(
+                            color: hasCardBackground
+                                ? Colors.white54
+                                : const Color(0xFFD6D6D6),
                           ),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 15,
