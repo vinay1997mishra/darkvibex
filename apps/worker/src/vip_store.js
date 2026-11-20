@@ -66,6 +66,14 @@ export async function ensureVipSchema(db){
   await db.prepare("UPDATE user_vip SET exp_balance=exp_balance*3.0/400.0, exp_rate_version=3 WHERE exp_rate_version=1").run();
   await db.prepare("UPDATE user_vip SET exp_balance=exp_balance*100.0, exp_rate_version=3 WHERE exp_rate_version=2").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS vip_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, coin_amount INTEGER NOT NULL DEFAULT 0, exp_delta REAL NOT NULL DEFAULT 0, level_before INTEGER NOT NULL DEFAULT 0, level_after INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
+  // Temporary VIP grants (Google Play first recharge, Vinay 2026-11-20):
+  // a VIP1 grant for 10 days. Grants are SEPARATE from the EXP level —
+  // they never touch user_vip.level / exp_balance / active_until (the
+  // owner manual grant resets EXP to 0, so it cannot be reused here).
+  // One grant per (user, source): the first-recharge grant is once per
+  // user ever. The effective level is max(EXP level, active grant).
+  await db.prepare("CREATE TABLE IF NOT EXISTS vip_grants (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, level INTEGER NOT NULL, granted_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, source TEXT NOT NULL, reference_id TEXT, created_at INTEGER NOT NULL, UNIQUE(user_id, source))").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_vip_grants_user ON vip_grants(user_id, expires_at)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
 }
 
@@ -161,7 +169,56 @@ function payload(row,ts=Date.now()){
 export async function getVipStatus(db,userId,ts=Date.now()){
   let row=await ensureRow(db,userId,ts);
   row=await settle(db,row,ts);
-  return payload(row,ts);
+  // Temporary grants (Google Play first recharge): the effective level is
+  // max(EXP level, active grant). The users.vip_level mirror must track
+  // the EFFECTIVE level, not just the EXP level — enforcement paths read
+  // getVipStatus, but display paths read the mirror directly. Sync it
+  // here (up on grant, back down when the grant expires) so it can never
+  // stay stale in either direction.
+  const grant=await activeVipGrant(db,userId,ts);
+  const expLevel=Math.max(0,Math.min(18,Number(row.level??0)));
+  const grantLevel=grant?Math.max(0,Math.min(18,Number(grant.level??0))):0;
+  const effectiveLevel=Math.max(expLevel,grantLevel);
+  const mirror=await db.prepare("SELECT vip_level FROM users WHERE id=?").bind(userId).first();
+  if(mirror&&Number(mirror.vip_level??0)!==effectiveLevel){
+    await db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(effectiveLevel,ts,userId).run();
+  }
+  if(!grant||grantLevel<=expLevel) return payload(row,ts);
+  return {
+    ...payload({...row,level:grantLevel,active_until:grant.expires_at},ts),
+    grant_level:grantLevel,
+    grant_expires_at:Number(grant.expires_at),
+    grant_source:String(grant.source??""),
+  };
+}
+
+// Highest active temporary VIP grant for a user, or null. Grants never
+// touch the EXP row; they only lift the effective level while unexpired.
+export async function activeVipGrant(db,userId,ts=Date.now()){
+  try{
+    return await db.prepare(
+      "SELECT * FROM vip_grants WHERE user_id=? AND expires_at>? ORDER BY level DESC, expires_at DESC LIMIT 1"
+    ).bind(userId,ts).first();
+  }catch(error){
+    if(String(error?.message ?? error).includes("no such table")) return null;
+    throw error;
+  }
+}
+
+// Create a temporary VIP grant. INSERT OR IGNORE on UNIQUE(user_id,
+// source) makes a re-grant a no-op (first recharge is once per user
+// ever). Raises the users.vip_level mirror when the grant is higher.
+export async function createVipGrant(db,userId,level,days,source,referenceId=null,ts=Date.now()){
+  await ensureVipSchema(db);
+  const grantLevel=Math.max(0,Math.min(18,Number(level??0)));
+  const expiresAt=ts+Math.max(1,Number(days??0))*DAY_MS;
+  await db.prepare(
+    "INSERT OR IGNORE INTO vip_grants (id,user_id,level,granted_at,expires_at,source,reference_id,created_at) VALUES (?,?,?,?,?,?,?,?)"
+  ).bind(crypto.randomUUID(),userId,grantLevel,ts,expiresAt,source,referenceId,ts).run();
+  await db.prepare(
+    "UPDATE users SET vip_level=?,updated_at=? WHERE id=? AND vip_level<?"
+  ).bind(grantLevel,ts,userId,grantLevel).run();
+  return {level:grantLevel,expires_at:expiresAt,source};
 }
 
 export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
@@ -203,10 +260,15 @@ export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
     until=ts+next.days*DAY_MS;
   }
   const changed=level!==before;
+  // The users.vip_level mirror tracks the EFFECTIVE level: if a temporary
+  // grant (e.g. Play first recharge VIP1) is active and higher than the
+  // EXP level, the mirror must not drop below it.
+  const grant=await activeVipGrant(db,userId,ts);
+  const mirrorLevel=Math.max(level,grant?Math.max(0,Math.min(18,Number(grant.level??0))):0);
   await db.batch([
     db.prepare("UPDATE user_vip SET level=?,exp_balance=?,total_received_coins=?,active_until=?,free_say_hi_used=CASE WHEN ? THEN 0 ELSE free_say_hi_used END,free_say_hi_cycle=CASE WHEN ? THEN ? ELSE free_say_hi_cycle END,updated_at=? WHERE user_id=?")
       .bind(level,exp,total,until,changed?1:0,changed?1:0,String(until??""),ts,userId),
-    db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(level,ts,userId),
+    db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(mirrorLevel,ts,userId),
   ]);
   await logEvent(db,userId,"coin_seller_received",coins,awarded,before,level,ts);
   const updated=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();

@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../app/app_state.dart';
+import '../infra/play_billing.dart';
 import '../ui/tinni_style.dart';
 import '../ui/currency_badge.dart';
 import '../utils/public_user_id.dart';
@@ -8,9 +12,13 @@ import 'conversation_screen.dart';
 import 'wallet_detail_screens.dart';
 
 class RechargeScreen extends StatefulWidget {
-  const RechargeScreen({super.key, required this.state});
+  const RechargeScreen({super.key, required this.state, this.playBilling});
 
   final AppState state;
+
+  /// Test seam: the widget tests inject a fake store here. Production
+  /// call sites leave it null and the real Play Billing service is used.
+  final PlayBillingService? playBilling;
 
   @override
   State<RechargeScreen> createState() => _RechargeScreenState();
@@ -20,12 +28,37 @@ class _RechargeScreenState extends State<RechargeScreen> {
   bool loading = true;
   List<Map<String, dynamic>> providers = const <Map<String, dynamic>>[];
 
+  late final PlayBillingService _billing;
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+
+  /// Product ID of the pack whose purchase is in flight, if any.
+  String? _buyingProductId;
+
+  /// Purchase tokens currently being verified with the server, so a
+  /// purchase the stream delivers twice is never verified twice.
+  final Set<String> _verifyingTokens = <String>{};
+
+  /// Purchase IDs already shown a "payment pending" notice for.
+  final Set<String> _pendingNotified = <String>{};
+
   AppState get state => widget.state;
 
   @override
   void initState() {
     super.initState();
+    _billing = widget.playBilling ?? PlayBillingService();
+    _purchaseSub = _billing.purchaseStream.listen(
+      _onPurchases,
+      onError: (_) {},
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    _purchaseSub?.cancel();
+    _billing.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -37,6 +70,16 @@ class _RechargeScreenState extends State<RechargeScreen> {
     }
     if (!mounted) return;
     setState(() => loading = false);
+    // Billing loads in the background: the packs render immediately
+    // (unavailable until the store answers) and enable themselves
+    // once availability + prices arrive. A device without Play
+    // Billing must never stare at a spinner while the store times out.
+    await _billing.init(state.backend);
+    // Replay unfinished past purchases onto the purchase stream so a
+    // purchase interrupted before verification is processed now.
+    await _billing.restore();
+    if (!mounted) return;
+    setState(() {});
   }
 
   String _roleLabel(String role) =>
@@ -69,6 +112,125 @@ class _RechargeScreenState extends State<RechargeScreen> {
       ),
     );
     await state.refreshWallet();
+  }
+
+  void _notice(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  static String _formatCoins(int value) => value.toString().replaceAllMapped(
+        RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+        (match) => '${match[1]},',
+      );
+
+  Future<void> _buyPack(PlayPack pack) async {
+    if (_buyingProductId != null) return;
+    if (!_billing.available || !_billing.prices.containsKey(pack.productId)) {
+      _notice('In-app purchases are not available on this device.');
+      return;
+    }
+    setState(() => _buyingProductId = pack.productId);
+    bool started = false;
+    try {
+      started = await _billing.buy(pack.productId);
+    } catch (_) {
+      started = false;
+    }
+    if (!mounted) return;
+    if (!started) {
+      // The store refused to start the purchase; nothing is in flight.
+      setState(() => _buyingProductId = null);
+      _notice('Could not start the purchase. Please try again.');
+    }
+    // When started, the purchase stream drives the rest: the buying
+    // state resets when the purchase completes, errors, or is canceled.
+  }
+
+  void _onPurchases(List<PurchaseDetails> purchases) {
+    for (final purchase in purchases) {
+      switch (purchase.status) {
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          unawaited(_handlePurchased(purchase));
+        case PurchaseStatus.pending:
+          final purchaseId = purchase.purchaseID ?? purchase.productID;
+          if (_pendingNotified.add(purchaseId)) {
+            _notice('Payment is pending. Your coins will arrive once it completes.');
+          }
+        case PurchaseStatus.error:
+          if (purchase.pendingCompletePurchase) {
+            unawaited(_billing.complete(purchase));
+          }
+          if (_buyingProductId == purchase.productID) {
+            setState(() => _buyingProductId = null);
+          }
+          final errorMessage = purchase.error?.message.trim() ?? '';
+          _notice(
+            errorMessage.isNotEmpty
+                ? errorMessage
+                : 'Purchase failed. Please try again.',
+          );
+        case PurchaseStatus.canceled:
+          if (purchase.pendingCompletePurchase) {
+            unawaited(_billing.complete(purchase));
+          }
+          if (_buyingProductId == purchase.productID) {
+            setState(() => _buyingProductId = null);
+          }
+          _notice('Purchase canceled.');
+      }
+    }
+  }
+
+  Future<void> _handlePurchased(PurchaseDetails purchase) async {
+    final token = purchase.verificationData.serverVerificationData;
+    if (token.isEmpty) {
+      _notice('Could not verify your purchase. Please try again.');
+      return;
+    }
+    if (!_verifyingTokens.add(token)) return;
+    try {
+      final result = await state.backend.verifyPlayPurchase(
+        productId: purchase.productID,
+        purchaseToken: token,
+      );
+      if (result == null || result['ok'] != true) {
+        // Do NOT complete the purchase: it stays unfinished and the
+        // stream re-delivers it, so the user is never charged for
+        // coins they did not receive.
+        _notice('Could not verify your purchase. Please try again.');
+        return;
+      }
+      await _billing.complete(purchase);
+      if (_billing.firstRechargeAvailable &&
+          result['first_recharge'] == true &&
+          mounted) {
+        setState(() => _billing.firstRechargeAvailable = false);
+      }
+      await state.refreshWallet();
+      if (!mounted) return;
+      final credited =
+          int.tryParse(result['coins_credited']?.toString() ?? '') ?? 0;
+      final bonus =
+          int.tryParse(result['bonus_coins']?.toString() ?? '') ?? 0;
+      final firstRecharge = result['first_recharge'] == true;
+      final message = StringBuffer('${_formatCoins(credited)} coins added to your wallet!');
+      if (bonus > 0) {
+        message.write(' Includes ${_formatCoins(bonus)} first-recharge bonus coins.');
+      }
+      if (firstRecharge) {
+        message.write(' VIP1 unlocked for 10 days!');
+      }
+      _notice(message.toString());
+    } finally {
+      _verifyingTokens.remove(token);
+      if (mounted && _buyingProductId == purchase.productID) {
+        setState(() => _buyingProductId = null);
+      }
+    }
   }
 
   @override
@@ -248,6 +410,53 @@ class _RechargeScreenState extends State<RechargeScreen> {
                     ],
                     const SizedBox(height: 16),
                     const Text(
+                      'Buy Coins',
+                      style: TextStyle(
+                        color: TinniPalette.gold,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_billing.firstRechargeAvailable)
+                      Container(
+                        key: const Key('recharge-first-recharge-badge'),
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: TinniPalette.brightGold,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Text(
+                          'First recharge: DOUBLE coins + VIP1 for 10 days',
+                          style: TextStyle(
+                            color: TinniPalette.brightGold,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    if (!_billing.available)
+                      const TinniPanel(
+                        child: Text(
+                          'In-app purchases are not available on this device.',
+                          style: TextStyle(color: TinniPalette.muted),
+                        ),
+                      ),
+                    for (final pack in PlayBillingService.packs)
+                      _PackTile(
+                        pack: pack,
+                        price: _billing.prices[pack.productId]?.price,
+                        buying: _buyingProductId == pack.productId,
+                        buyingAny: _buyingProductId != null,
+                        enabled: _billing.available,
+                        onBuy: () => _buyPack(pack),
+                      ),
+                    const SizedBox(height: 16),
+                    const Text(
                       'Coin Sellers',
                       style: TextStyle(
                         color: TinniPalette.gold,
@@ -299,6 +508,66 @@ class _RechargeScreenState extends State<RechargeScreen> {
                   ],
                 ),
               ),
+      ),
+    );
+  }
+}
+
+class _PackTile extends StatelessWidget {
+  const _PackTile({
+    required this.pack,
+    required this.price,
+    required this.buying,
+    required this.buyingAny,
+    required this.enabled,
+    required this.onBuy,
+  });
+
+  final PlayPack pack;
+
+  /// Localized Play storefront price (e.g. "₹110.00"), or null when
+  /// the store has not returned it yet. Prices are never hardcoded.
+  final String? price;
+  final bool buying;
+  final bool buyingAny;
+  final bool enabled;
+  final VoidCallback onBuy;
+
+  @override
+  Widget build(BuildContext context) {
+    final canBuy = enabled && price != null && !buyingAny;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TinniPanel(
+        child: Row(
+          children: [
+            const CurrencyBadge(
+              icon: Icons.monetization_on_rounded,
+              isDiamond: false,
+              size: 32,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${_RechargeScreenState._formatCoins(pack.coins)} coins',
+                style: const TextStyle(
+                  color: TinniPalette.cream,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            FilledButton(
+              key: Key('recharge-pack-${pack.productId}'),
+              onPressed: canBuy ? onBuy : null,
+              child: buying
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(price ?? '—'),
+            ),
+          ],
+        ),
       ),
     );
   }
