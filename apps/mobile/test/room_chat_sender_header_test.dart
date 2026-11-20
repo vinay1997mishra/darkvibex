@@ -133,6 +133,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('tapping the sender avatar fires onAvatarTap',
+      (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: RoomChatSenderHeader(
+                displayName: 'Vinay',
+                tags: const [],
+                medals: const [],
+                onAvatarTap: () => tapped = true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.person_rounded));
+    expect(tapped, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('long sender names and multiple profile badges do not overflow',
       (tester) async {
     tester.view.physicalSize = const Size(360, 720);

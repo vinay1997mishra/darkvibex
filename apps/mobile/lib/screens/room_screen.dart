@@ -3059,6 +3059,37 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  /// Room chat DP tap (Vinay, 2026-11-20): someone else's DP opens their
+  /// profile card; my own DP opens my main profile page (the card popup
+  /// never shows for myself).
+  Future<void> _openChatSenderProfile(
+    String senderId,
+    String? displayName,
+    String? avatarKey,
+  ) async {
+    if (senderId.isEmpty) return;
+    if (senderId == widget.state.userId) {
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PublicProfileScreen(
+            state: widget.state,
+            userId: senderId,
+          ),
+        ),
+      );
+      return;
+    }
+    await _showSeatMemberProfile(
+      <String, dynamic>{
+        'user_id': senderId,
+        'display_name': displayName ?? '',
+        'avatar_key': avatarKey ?? '',
+      },
+      null,
+    );
+  }
+
   Future<void> _showSeatMemberProfile(
     Map<String, dynamic> member,
     int? seat,
@@ -3407,8 +3438,22 @@ class _RoomScreenState extends State<RoomScreen> {
                         ),
                       ),
                     ),
-                  Container(
-                    key: Key('room-seat-profile-card-$userId'),
+                  GestureDetector(
+                    // Tapping the card itself opens the user's main
+                    // profile page (Vinay, 2026-11-20). The buttons
+                    // inside (Chat, Give Gifts) keep their own taps;
+                    // Follow / More / Mention and the DP above the card
+                    // are Positioned outside this container, and the DP
+                    // already opens the full profile too.
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      Future<void>.delayed(
+                        Duration.zero,
+                        () => openFullProfile(userId),
+                      );
+                    },
+                    child: Container(
+                      key: Key('room-seat-profile-card-$userId'),
                     width: double.infinity,
                     constraints: BoxConstraints(
                       maxHeight:
@@ -3747,6 +3792,7 @@ class _RoomScreenState extends State<RoomScreen> {
                           ],
                         ),
                       ),
+                    ),
                     ),
                   ),
                   Positioned(
@@ -8868,6 +8914,17 @@ class _RoomScreenState extends State<RoomScreen> {
                                     // once and then shows the still.
                                     frameAssetUrl: vipFrameStillUrlForVipLevel(senderVipLevel),
                                     frameVideoUrl: vipFrameVapUrlForVipLevel(senderVipLevel),
+                                    // Tapping the sender's DP in room chat
+                                    // opens their profile card (Vinay,
+                                    // 2026-11-20); tapping the card itself
+                                    // opens their main profile page.
+                                    onAvatarTap: senderId.isEmpty
+                                        ? null
+                                        : () => _openChatSenderProfile(
+                                              senderId,
+                                              name,
+                                              avatarKey,
+                                            ),
                                   ),
                                   const SizedBox(height: 4),
                                   messageBubble,
