@@ -449,8 +449,20 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
                               ),
                             ],
                           ),
-                          child: const CustomPaint(
-                            painter: _MagicLampPainter(),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(26),
+                            child: Image.network(
+                              widget.state.backend.fileUrl(
+                                'aladdin-lamp/lamp-3d-gold-purple.png',
+                              ),
+                              fit: BoxFit.contain,
+                              width: double.infinity,
+                              height: double.infinity,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const CustomPaint(
+                                painter: _MagicLampPainter(),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 10),
