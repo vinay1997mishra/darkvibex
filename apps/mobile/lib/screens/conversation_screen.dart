@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app/app_state.dart';
 import '../vip/vip_policy.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/vip_chat_bubble.dart';
 import 'direct_call_screen.dart';
 
 class ConversationScreen extends StatefulWidget {
@@ -467,21 +468,35 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             ],
                           );
                           final messageBubble = hasStoreBubble
-                              ? StretchableCosmeticBubble(
-                                  styleId: effectiveBubbleId,
-                                  assetImageUrl: bubbleAssetKey.isNotEmpty
-                                      ? widget.state.backend.fileUrl(bubbleAssetKey)
-                                      : null,
-                                  assetImageHeaders: widget.state.backend.fileHeaders,
-                                  maxWidth: 292,
-                                  minWidth: 100,
-                                  minHeight: 44,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 44,
-                                    vertical: 10,
-                                  ),
-                                  child: messageContent,
-                                )
+                              ? bubbleAssetKey.isNotEmpty
+                                  // Custom uploaded bubble art supplies its own
+                                  // outline: show it as before.
+                                  ? StretchableCosmeticBubble(
+                                      styleId: effectiveBubbleId,
+                                      assetImageUrl: widget.state.backend
+                                          .fileUrl(bubbleAssetKey),
+                                      assetImageHeaders:
+                                          widget.state.backend.fileHeaders,
+                                      maxWidth: 292,
+                                      minWidth: 100,
+                                      minHeight: 44,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 44,
+                                        vertical: 10,
+                                      ),
+                                      child: messageContent,
+                                    )
+                                  : VipChatBubble(
+                                      styleId: effectiveBubbleId,
+                                      maxWidth: 292,
+                                      minWidth: 100,
+                                      minHeight: 44,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 44,
+                                        vertical: 10,
+                                      ),
+                                      child: messageContent,
+                                    )
                               : Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,

@@ -30,6 +30,7 @@ import '../widgets/profile_card_anim_background.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/vip_chat_bubble.dart';
 import '../widgets/room_chat_sender_header.dart';
 import '../widgets/custom_asset_effect_playback.dart';
 import '../widgets/vehicle_entry_effect.dart';
@@ -8459,21 +8460,35 @@ class _RoomScreenState extends State<RoomScreen> {
                             : const <Map<String, dynamic>>[];
                         final avatarKey = message['avatar_key']?.toString().trim() ?? '';
                         final messageBubble = hasBubble
-                            ? StretchableCosmeticBubble(
-                                styleId: effectiveBubbleId,
-                                assetImageUrl: bubbleAssetKey.isNotEmpty
-                                    ? widget.state.backend.fileUrl(bubbleAssetKey)
-                                    : null,
-                                assetImageHeaders: widget.state.backend.fileHeaders,
-                                maxWidth: 280,
-                                minWidth: 100,
-                                minHeight: 44,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 44,
-                                  vertical: 10,
-                                ),
-                                child: messageContent,
-                              )
+                            ? bubbleAssetKey.isNotEmpty
+                                // Custom uploaded bubble art supplies its own
+                                // outline: show it as before.
+                                ? StretchableCosmeticBubble(
+                                    styleId: effectiveBubbleId,
+                                    assetImageUrl: widget.state.backend
+                                        .fileUrl(bubbleAssetKey),
+                                    assetImageHeaders:
+                                        widget.state.backend.fileHeaders,
+                                    maxWidth: 280,
+                                    minWidth: 100,
+                                    minHeight: 44,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 44,
+                                      vertical: 10,
+                                    ),
+                                    child: messageContent,
+                                  )
+                                : VipChatBubble(
+                                    styleId: effectiveBubbleId,
+                                    maxWidth: 280,
+                                    minWidth: 100,
+                                    minHeight: 44,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 44,
+                                      vertical: 10,
+                                    ),
+                                    child: messageContent,
+                                  )
                             : ConstrainedBox(
                                 constraints: const BoxConstraints(maxWidth: 280),
                                 child: messageContent,

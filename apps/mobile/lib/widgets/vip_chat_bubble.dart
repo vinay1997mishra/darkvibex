@@ -437,6 +437,9 @@ class VipChatBubble extends StatelessWidget {
         child: CustomPaint(
           painter: _VipBubblePainter(theme),
           child: Stack(
+            // The badge and motif straddle the top edge, so let them
+            // paint outside the bubble body instead of being cut off.
+            clipBehavior: Clip.none,
             children: <Widget>[
               Positioned.fill(
                 child: _VipBubbleEdgeEffect(theme: theme),
