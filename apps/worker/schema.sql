@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS direct_messages (
   id TEXT PRIMARY KEY,
   sender_user_id TEXT NOT NULL,
   receiver_user_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'text',
   text TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   read_at INTEGER,
