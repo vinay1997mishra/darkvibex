@@ -4174,7 +4174,9 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/social/followers" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env);
+    // Followers lists are private (Vinay, 2026-11-20): only the ID owner
+    // may open them. Anyone else gets 403, like the visitors endpoint.
+    const authError = await requireSession(request, env, userId || undefined);
     if (authError) return authError;
     const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
     const targetId = userId || String(session.sub);
@@ -4183,7 +4185,9 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/social/following" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env);
+    // Following lists are private (Vinay, 2026-11-20): only the ID owner
+    // may open them. Anyone else gets 403, like the visitors endpoint.
+    const authError = await requireSession(request, env, userId || undefined);
     if (authError) return authError;
     const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
     const targetId = userId || String(session.sub);
