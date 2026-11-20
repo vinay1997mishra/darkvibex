@@ -769,7 +769,7 @@ async function openRoomInvestigation(roomId){
   const room=d.room||{};
   $("#roomInvestigation").hidden=false;
   $("#roomInvestigationTitle").textContent=room.name||("Room "+roomId);
-  $("#roomInvestigationMeta").textContent=`Room ID ${roomId} · Owner ${room.owner_name||room.owner_user_id||"—"} · ${Number(room.locked)?"Locked":"Open"}${room.lock_code?" · Lock code "+room.lock_code:""}`;
+  $("#roomInvestigationMeta").textContent=`Room ID ${roomId} · Owner ${room.owner_name||room.owner_user_id||"—"} · ${Number(room.locked)?"Locked":"Open"}${room.lock_code?" · Lock code "+room.lock_code:(room.lock_code_set?" · Lock code set":"")}`;
   $("#ownerRoomDpKey").value=room.image_key||"";
   $("#ownerRoomBackgroundKey").value=room.background_key||"";
   $("#ownerRoomThemeId").value=room.theme_id||"dark";
@@ -1728,6 +1728,10 @@ async function sendOfficialMessage(allUsers=false){
   const d=await api("/api/owner/messages",{method:"POST",body:JSON.stringify({text,user_ids:ids,all_users:allUsers})});
   toast(`Official message sent to ${num(d.sent||0)} users`);
   $("#officialMessageBody").value="";
+  // The selection is cleared after sending (audit A8, 2026-11-20): a
+  // second send used to re-send to the same users.
+  state.messageSelected.clear();
+  renderSelectedMessageUsers();
 }
 async function applyOwnerTag(){
   if(!can("tags.apply"))return toast("Tags write permission required",false);
@@ -1841,7 +1845,7 @@ async function loadGames(){
   const userQuery=$("#gameInvestigationUser").value.trim();
   const d=await api("/api/owner/games"+(userQuery?"?user_id="+encodeURIComponent(userQuery):""));
   state.games=d.games||[];
-  $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No game overrides configured");
+  $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No games configured");
   $("#gameStats").innerHTML=(d.stats||[]).length?(d.stats||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · wagered ${num(x.wagered)} · payout ${num(x.payout)} · house result ${num(x.house_result)}</div></div>`).join(""):empty("No game-bet statistics yet");
   $$("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
   if(!userQuery){

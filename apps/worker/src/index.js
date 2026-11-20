@@ -863,10 +863,17 @@ async function ownerIdentityMeta(db,userId) {
 }
 
 async function ownerGameConfig(db,gameId,defaults={}) {
+  // A garbage bet limit must never pass every bet (audit A1, 2026-11-20):
+  // Number("x") is NaN, and amount < NaN || amount > NaN is always false.
+  // Any non-finite value falls back to the default instead.
+  const finiteOr = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : Number(fallback);
+  };
   const fallback={
     enabled:defaults.enabled!==false,
-    min_bet:Number(defaults.min_bet ?? 1),
-    max_bet:Number(defaults.max_bet ?? 900000000000000),
+    min_bet:finiteOr(defaults.min_bet, 1),
+    max_bet:finiteOr(defaults.max_bet, 900000000000000),
   };
   try {
     const row=await db.prepare(
@@ -877,8 +884,8 @@ async function ownerGameConfig(db,gameId,defaults={}) {
     try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
     return {
       enabled:Number(row.enabled ?? 1)!==0,
-      min_bet:Number(data.min_bet ?? fallback.min_bet),
-      max_bet:Number(data.max_bet ?? fallback.max_bet),
+      min_bet:finiteOr(data.min_bet, fallback.min_bet),
+      max_bet:finiteOr(data.max_bet, fallback.max_bet),
     };
   } catch(error) {
     if(String(error?.message ?? error).includes("no such table"))return fallback;
