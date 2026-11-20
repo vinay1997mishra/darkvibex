@@ -508,18 +508,6 @@ CREATE TABLE IF NOT EXISTS cp_memories (
   created_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS vs_relationships (
-  user_a TEXT NOT NULL,
-  user_b TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'pending',
-  rivalry INTEGER NOT NULL DEFAULT 0,
-  level INTEGER NOT NULL DEFAULT 1,
-  requested_by TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (user_a, user_b)
-);
-
 
 CREATE TABLE IF NOT EXISTS direct_calls (
   id TEXT PRIMARY KEY,

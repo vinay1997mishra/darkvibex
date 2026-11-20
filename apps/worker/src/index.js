@@ -74,15 +74,6 @@ import {
   cpMemories,
   cpRanking,
   recordCpGiftProgress,
-  vsState,
-  vsRequest,
-  vsRespond,
-  vsDisconnect,
-  vsDisconnectRequest,
-  vsDisconnectRespond,
-  vsHeartbeat,
-  vsRanking,
-  recordVsGiftProgress,
   profileTrends,
   addProfileTrend,
   officialNotices,
@@ -4482,102 +4473,6 @@ async function handleApi(request, env, url) {
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
-  }
-
-  if (url.pathname === "/api/vs/ranking" && request.method === "GET") {
-    const authError = await requireSession(request, env);
-    if (authError) return authError;
-    return json({
-      ok: true,
-      ranking: await vsRanking(db, url.searchParams.get("limit") ?? 100),
-    });
-  }
-
-  if (url.pathname === "/api/vs" && request.method === "GET") {
-    const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    // VS state is public profile info (room audit 2026-11-20): any
-    // logged-in user may read it — the full profile page fetches another
-    // user's state. Only the session is verified here, like /api/medals.
-    const authError = await requireSession(request, env);
-    if (authError) return authError;
-    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
-    const targetId = userId || String(session.sub);
-    await ensureOwnerControlSchema(db);
-    return json({ ok: true, vs: await vsState(db, targetId) });
-  }
-
-  if (url.pathname === "/api/vs/request" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    try {
-      return json(
-        { ok: true, vs: await vsRequest(db, userId, String(body.target_user_id ?? "")) },
-        { status: 201 },
-      );
-    } catch (error) {
-      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
-    }
-  }
-
-  if (url.pathname === "/api/vs/respond" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    try {
-      return json({ ok: true, vs: await vsRespond(db, userId, body.accept === true) });
-    } catch (error) {
-      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
-    }
-  }
-
-  if (url.pathname === "/api/vs/disconnect/request" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    try {
-      return json({ ok:true, vs:await vsDisconnectRequest(db,userId) });
-    } catch (error) {
-      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
-    }
-  }
-
-  if (url.pathname === "/api/vs/disconnect/respond" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    try {
-      return json({ ok:true, vs:await vsDisconnectRespond(db,userId,body.accept === true) });
-    } catch (error) {
-      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
-    }
-  }
-
-  if (url.pathname === "/api/vs/heartbeat" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    try {
-      return json({
-        ok:true,
-        vs:await vsHeartbeat(db,userId,body.action,body.choice),
-      });
-    } catch (error) {
-      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
-    }
-  }
-
-  if (url.pathname === "/api/vs/disconnect" && request.method === "POST") {
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim();
-    const authError = await requireSession(request, env, userId);
-    if (authError) return authError;
-    return json(await vsDisconnect(db, userId));
   }
 
   if (url.pathname === "/api/cp/ranking" && request.method === "GET") {
@@ -9085,14 +8980,12 @@ async function handleApi(request, env, url) {
     // Once the gift is committed, secondary progression failures must not tell
     // the client the paid send failed (which could cause a duplicate charge).
     let cpProgress = null;
-    let vsProgress = null;
     let progressPending = false;
     try {
       await awardIdLevelGift(db, sender, cost, eventId, giftCreatedAt);
       await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, giftCreatedAt);
       if (giftId !== "cp-invite") {
         cpProgress = await recordCpGiftProgress(db, sender, receiver, cost, eventId);
-        vsProgress = await recordVsGiftProgress(db, sender, receiver, cost, eventId);
       }
     } catch (error) {
       progressPending = true;
@@ -9131,8 +9024,6 @@ async function handleApi(request, env, url) {
       receiver_diamond_balance: Number(receiverWallet?.diamonds ?? 0),
       cp_progress: Number(cpProgress?.progress ?? 0),
       cp_state: cpProgress?.cp ?? null,
-      vs_progress: Number(vsProgress?.progress ?? 0),
-      vs_state: vsProgress?.vs ?? null,
       progress_pending: progressPending,
     });
   }

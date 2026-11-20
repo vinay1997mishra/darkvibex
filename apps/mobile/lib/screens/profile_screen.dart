@@ -22,10 +22,8 @@ import '../widgets/vip_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
-import '../ui/intimacy_vs_art_b64.dart';
 import '../ui/intimacy_cp_art_b64.dart';
 
-final _intimacyVsArtBytes = base64Decode(intimacyVsArtBase64);
 final _intimacyCpArtBytes = base64Decode(intimacyCpArtBase64);
 
 abstract final class _MineMenuPalette {
@@ -50,7 +48,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   AppState get state => widget.state;
   Map<String, dynamic> socialStats = const <String, dynamic>{};
-  Map<String, dynamic>? vsRelation;
 
   @override
   void initState() {
@@ -59,19 +56,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadSocialStats() async {
-    final results = await Future.wait<Map<String, dynamic>?>([
-      state.backend.socialStats(userId: state.userId),
-      state.backend.vsState(userId: state.userId),
-    ]);
-    final rawStats = results[0]?['stats'];
-    final rawVs = results[1]?['vs'];
+    final rawStats = await state.backend.socialStats(userId: state.userId);
     if (!mounted) return;
     setState(() {
-      socialStats = rawStats is Map
-          ? Map<String, dynamic>.from(rawStats)
+      socialStats = rawStats?['stats'] is Map
+          ? Map<String, dynamic>.from(rawStats!['stats'] as Map)
           : const <String, dynamic>{};
-      vsRelation =
-          rawVs is Map ? Map<String, dynamic>.from(rawVs) : null;
     });
   }
 
@@ -642,67 +632,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const Icon(
                         Icons.chevron_right_rounded,
                         color: _MineMenuPalette.muted,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => VsScreen(state: state),
-                  ),
-                ).then((_) => _loadSocialStats()),
-                child: Container(
-                  padding: const EdgeInsets.all(13),
-                  decoration: BoxDecoration(
-                    color: const Color(0xF5161738),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: const Color(0xFFFF536B).withValues(alpha: .44),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const _MineMenuIcon(
-                        icon: Icons.bolt_rounded,
-                        accent: Color(0xFFFF536B),
-                        size: 48,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'VS',
-                              style: TextStyle(
-                                color: Color(0xFFFF7B8C),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            Text(
-                              vsRelation == null
-                                  ? 'Not connected'
-                                  : 'Lv.${vsRelation?['level'] ?? 1} • ${vsRelation?['state'] ?? 'pending'}',
-                              style: const TextStyle(
-                                color: _MineMenuPalette.muted,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: Color(0xFFFF7B8C),
                       ),
                     ],
                   ),
@@ -1645,7 +1574,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Map<String, dynamic> idLevel = const <String, dynamic>{};
   List<Map<String, dynamic>> medals = const <Map<String, dynamic>>[];
   Map<String, dynamic>? cp;
-  Map<String, dynamic>? vs;
   Map<String, dynamic>? currentRoom;
   bool loading = true;
   bool isFollowing = false;
@@ -1692,7 +1620,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       widget.state.backend.idLevelStatus(userId: resolvedId),
       widget.state.backend.medals(userId: resolvedId),
       widget.state.backend.cpState(userId: resolvedId),
-      widget.state.backend.vsState(userId: resolvedId),
       if (resolvedId != widget.state.userId)
         widget.state.backend.followStatus(
           userId: widget.state.userId,
@@ -1718,10 +1645,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final rawLevel = values[1] is Map ? values[1] as Map : null;
     final rawMedals = values[2] is List ? values[2] as List : const [];
     final rawCp = values[3] is Map ? values[3] as Map : null;
-    final rawVs = values[4] is Map ? values[4] as Map : null;
-    final following = values[5] == true;
-    final friends = values[6] is List ? values[6] as List : const [];
-    final blockedRows = values[7] is List ? values[7] as List : const [];
+    final following = values[4] == true;
+    final friends = values[5] is List ? values[5] as List : const [];
+    final blockedRows = values[6] is List ? values[6] as List : const [];
 
     if (!mounted) return;
     setState(() {
@@ -1738,9 +1664,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           .toList(growable: false);
       cp = rawCp?['cp'] is Map
           ? Map<String, dynamic>.from(rawCp!['cp'] as Map)
-          : null;
-      vs = rawVs?['vs'] is Map
-          ? Map<String, dynamic>.from(rawVs!['vs'] as Map)
           : null;
       currentRoom = loadedCurrentRoom;
       isFollowing = following;
@@ -2414,13 +2337,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
-  Future<void> _openRelationManager({required bool couple}) async {
+  Future<void> _openRelationManager() async {
     if (!isSelf) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => couple
-            ? CpScreen(state: widget.state)
-            : VsScreen(state: widget.state),
+        builder: (_) => CpScreen(state: widget.state),
       ),
     );
     if (mounted) await _load();
@@ -2430,27 +2351,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => const _CpRuleScreen(),
-      ),
-    );
-  }
-
-  Future<void> _showVsInfo() async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Versus'),
-        content: const Text(
-          'VS is a rivalry relationship between two users. Only gifts sent directly '
-          'between the active VS pair count. Lv.1→2 needs 150M sent and 150M received, '
-          'Lv.2→3 needs 250M each, and every later level adds 100M. Both directions '
-          'must finish the target; after level-up both current-level counters reset to 0.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('OK'),
-          ),
-        ],
       ),
     );
   }
@@ -2673,440 +2573,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
 
     controller.dispose();
-  }
-
-  Future<void> _openVsBinding() async {
-    if (!isSelf || cpInviteBusy) return;
-    final rows = await widget.state.backend.friends(
-      userId: widget.state.userId,
-    );
-    if (!mounted) return;
-
-    final controller = TextEditingController();
-    var query = '';
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setModalState) {
-          final q = query.trim().toLowerCase();
-          final filtered = rows.where((row) {
-            if (q.isEmpty) return true;
-            final id = row['id']?.toString().toLowerCase() ?? '';
-            final publicId = formatPublicUserId(row['public_id']).toLowerCase();
-            final name = row['display_name']?.toString().toLowerCase() ?? '';
-            return id.contains(q) || publicId.contains(q) || name.contains(q);
-          }).toList(growable: false);
-
-          return FractionallySizedBox(
-            heightFactor: .76,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 18),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 18),
-                      child: Text(
-                        'Friends that can be bound to VS',
-                        style: TextStyle(
-                          color: Colors.black87,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      child: TextField(
-                        controller: controller,
-                        onChanged: (value) {
-                          setModalState(() => query = value);
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Enter ID',
-                          hintStyle: const TextStyle(
-                            color: Color(0xFFB6B8BE),
-                          ),
-                          prefixIcon: const Icon(
-                            Icons.search_rounded,
-                            color: Color(0xFFAEB2BA),
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFFF7F8FB),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: filtered.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'No more',
-                                style: TextStyle(
-                                  color: Color(0xFFC8C8CC),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                2,
-                                16,
-                                24,
-                              ),
-                              itemCount: filtered.length,
-                              itemBuilder: (itemContext, index) {
-                                final friend = filtered[index];
-                                final avatarKey =
-                                    friend['avatar_key']?.toString() ?? '';
-                                final displayId = formatPublicUserId(friend['public_id']);
-                                final name = friend['display_name']
-                                        ?.toString()
-                                        .trim() ??
-                                    '';
-                                final image = _avatar(avatarKey);
-                                return Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 7),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 27,
-                                        backgroundColor:
-                                            const Color(0xFFF0F0F2),
-                                        backgroundImage: image,
-                                        child: image == null
-                                            ? const Icon(
-                                                Icons.person_rounded,
-                                                color: Colors.black38,
-                                              )
-                                            : null,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              name.isEmpty ? 'User' : name,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                color: Colors.black87,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              'ID:' + displayId,
-                                              style: const TextStyle(
-                                                color: Color(0xFFB3B3B7),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        height: 43,
-                                        child: FilledButton(
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor:
-                                                const Color(0xFF24CCE8),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 23,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(22),
-                                            ),
-                                          ),
-                                          onPressed: () async {
-                                            Navigator.pop(sheetContext);
-                                            await Future<void>.delayed(
-                                              const Duration(milliseconds: 120),
-                                            );
-                                            if (!mounted) return;
-                                            await _confirmVsInvite(friend);
-                                          },
-                                          child: const Text(
-                                            'Protect',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-
-    controller.dispose();
-  }
-
-  Future<void> _confirmVsInvite(Map<String, dynamic> friend) async {
-    if (cpInviteBusy) return;
-    final id = friend['id']?.toString() ?? '';
-    if (id.isEmpty) return;
-
-    final name = friend['display_name']?.toString().trim() ?? '';
-    final avatarKey = friend['avatar_key']?.toString() ?? '';
-    final image = _avatar(avatarKey);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(25),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFFFFE7EF),
-                Colors.white,
-                Colors.white,
-              ],
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Form VS',
-                style: TextStyle(
-                  color: Color(0xFFE94B71),
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Are you sure you want to invite ' +
-                    (name.isEmpty ? 'this user' : name) +
-                    ' to be your VS?',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.black87,
-                  fontSize: 16,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 18),
-              CircleAvatar(
-                radius: 42,
-                backgroundColor: const Color(0xFFF1F1F3),
-                backgroundImage: image,
-                child: image == null
-                    ? const Icon(
-                        Icons.person_rounded,
-                        size: 42,
-                        color: Colors.black38,
-                      )
-                    : null,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                name.isEmpty ? 'User' : name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.black87,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                'ID:' + formatPublicUserId(friend['public_id']),
-                style: const TextStyle(
-                  color: Color(0xFFB5B5BA),
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFE8EF),
-                          foregroundColor: const Color(0xFFE84A6F),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                        ),
-                        onPressed: () =>
-                            Navigator.pop(dialogContext, false),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF587D),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                        ),
-                        onPressed: () =>
-                            Navigator.pop(dialogContext, true),
-                        child: const Text(
-                          'Invite',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    setState(() => cpInviteBusy = true);
-    try {
-      final result = await widget.state.backend.vsRequest(
-        userId: widget.state.userId,
-        targetUserId: id,
-      );
-      if (!mounted) return;
-
-      if (result?['ok'] == true) {
-        await _showVsInviteSent();
-        await _load();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result?['error']?.toString().replaceAll('_', ' ') ??
-                  'VS invitation failed',
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => cpInviteBusy = false);
-    }
-  }
-
-  Future<void> _showVsInviteSent() async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 34),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(28, 30, 28, 22),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(25),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'The invitation has been sent and\nis waiting to be received',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontSize: 20,
-                  height: 1.35,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF587D),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                  ),
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text(
-                    'Confirm',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _confirmCpInvite(Map<String, dynamic> friend) async {
@@ -3338,21 +2804,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Future<void> _respondProfileRelation({
-    required bool couple,
     required bool accept,
   }) async {
     if (!isSelf || cpInviteBusy) return;
     setState(() => cpInviteBusy = true);
     try {
-      final result = couple
-          ? await widget.state.backend.cpRespond(
-              userId: widget.state.userId,
-              accept: accept,
-            )
-          : await widget.state.backend.vsRespond(
-              userId: widget.state.userId,
-              accept: accept,
-            );
+      final result = await widget.state.backend.cpRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
       if (!mounted) return;
       if (result?['ok'] == true) {
         await _load();
@@ -3372,7 +2832,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Widget _relationRequestStatus({
-    required bool couple,
     required Map<String, dynamic>? relation,
   }) {
     final data = relation ?? const <String, dynamic>{};
@@ -3396,12 +2855,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       child: incoming
           ? Row(
               children: [
-                Expanded(
+                const Expanded(
                   child: Text(
-                    couple
-                        ? 'CP invitation received'
-                        : 'VS invitation received',
-                    style: const TextStyle(
+                    'CP invitation received',
+                    style: TextStyle(
                       color: Color(0xFF6D4A55),
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -3412,7 +2869,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   onPressed: cpInviteBusy
                       ? null
                       : () => _respondProfileRelation(
-                            couple: couple,
                             accept: false,
                           ),
                   child: const Text('Reject'),
@@ -3430,7 +2886,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   onPressed: cpInviteBusy
                       ? null
                       : () => _respondProfileRelation(
-                            couple: couple,
                             accept: true,
                           ),
                   child: const Text('Accept'),
@@ -3445,12 +2900,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   size: 20,
                 ),
                 const SizedBox(width: 8),
-                Expanded(
+                const Expanded(
                   child: Text(
-                    couple
-                        ? 'CP invitation sent — waiting to be received'
-                        : 'VS invitation sent — waiting to be received',
-                    style: const TextStyle(
+                    'CP invitation sent — waiting to be received',
+                    style: TextStyle(
                       color: Color(0xFF6D4A55),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -3651,129 +3104,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     );
   }
 
-  Widget _versusCard() {
-    final data = vs ?? const <String, dynamic>{};
-    final active = data['state']?.toString() == 'active';
-    final rivalId = active ? _partnerId(vs) : '';
-    final rivalPublicId = active ? _partnerPublicId(vs) : '';
-    final rivalAvatar = active ? _partnerAvatar(vs) : '';
-    final rivalName = active ? _partnerName(vs) : '';
-    final ownAvatar = user?['avatar_key']?.toString() ?? '';
-    final ownName = user?['display_name']?.toString().trim() ?? '';
-    final ownPublicId = user == null ? '' : _publicId(user!);
-
-    return AspectRatio(
-      aspectRatio: 867 / 282,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final w = constraints.maxWidth;
-          final h = constraints.maxHeight;
-          final relationCircleSize = w * .18;
-
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: active && isSelf
-                ? () => _openRelationManager(couple: false)
-                : null,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.memory(
-                    _intimacyVsArtBytes,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
-                  ),
-                  Positioned(
-                    left: w * .245 - relationCircleSize / 2,
-                    top: h * .49 - relationCircleSize / 2,
-                    width: relationCircleSize,
-                    height: relationCircleSize,
-                    child: _intimacyRelationCircle(
-                      size: relationCircleSize,
-                      image: _avatar(ownAvatar),
-                      empty: false,
-                      onTap: null,
-                      versus: true,
-                    ),
-                  ),
-                  Positioned(
-                    left: w * .755 - relationCircleSize / 2,
-                    top: h * .49 - relationCircleSize / 2,
-                    width: relationCircleSize,
-                    height: relationCircleSize,
-                    child: _intimacyRelationCircle(
-                      size: relationCircleSize,
-                      image: _avatar(rivalAvatar),
-                      empty: !active,
-                      onTap: active && rivalId.isNotEmpty
-                          ? () => _openPartner(vs)
-                          : isSelf
-                              ? _openVsBinding
-                              : null,
-                      versus: true,
-                    ),
-                  ),
-                  Positioned(
-                    left: w * .105,
-                    bottom: h * .035,
-                    width: w * .28,
-                    child: _intimacyIdentityLabel(
-                      name: ownName.isEmpty ? 'DarkVibeX User' : ownName,
-                      id: ownPublicId,
-                      versus: true,
-                    ),
-                  ),
-                  Positioned(
-                    right: w * .105,
-                    bottom: h * .035,
-                    width: w * .28,
-                    child: _intimacyIdentityLabel(
-                      name: active && rivalName.isNotEmpty ? rivalName : 'None',
-                      id: active ? rivalPublicId : '',
-                      versus: true,
-                    ),
-                  ),
-                  Positioned(
-                    key: const Key('profile-intimacy-vs-level-badge'),
-                    left: w * .43,
-                    top: h * .68,
-                    width: w * .14,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xE61A020A),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xCCFF4B79),
-                          width: .8,
-                        ),
-                      ),
-                      child: Text(
-                        'Lv.${data['level'] ?? 1}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _loveStoreStrip() {
     return InkWell(
       key: const Key('profile-intimacy-love-store'),
@@ -3872,7 +3202,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: active && isSelf
-                ? () => _openRelationManager(couple: true)
+                ? () => _openRelationManager()
                 : null,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -4004,14 +3334,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 110),
       children: [
-        _intimacyHeading(
-          'Versus',
-          onHelp: _showVsInfo,
-        ),
-        const SizedBox(height: 7),
-        _versusCard(),
-        _relationRequestStatus(couple: false, relation: vs),
-        const SizedBox(height: 10),
         _loveStoreStrip(),
         const SizedBox(height: 15),
         _intimacyHeading(
@@ -4020,7 +3342,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
         const SizedBox(height: 7),
         _coupleCard(),
-        _relationRequestStatus(couple: true, relation: cp),
+        _relationRequestStatus(relation: cp),
       ],
     );
   }
