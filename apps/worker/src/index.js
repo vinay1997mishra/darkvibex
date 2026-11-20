@@ -5232,6 +5232,32 @@ async function handleApi(request, env, url) {
     return json({ ok: true, token, user, provider: "guest" });
   }
 
+  // Look a user up by their public ID (Block by ID, Vinay 2026-11-20):
+  // the app types the ID shown on a profile, the worker resolves it to
+  // the internal user id. Stored public IDs are 7 or 8 digits, so both
+  // spellings match; hidden IDs (invisible_id) never resolve.
+  if (url.pathname === "/api/users/by-public-id" && request.method === "GET") {
+    const rawId = String(url.searchParams.get("public_id") ?? "").trim();
+    const digits = rawId.replace(/\D/g, "");
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    if (!digits) return json({ ok: false, error: "public_id_required" }, { status: 400 });
+    const stripped = String(Number(digits));
+    const padded = stripped.padStart(8, "0");
+    await ensureOwnerControlSchema(db);
+    const row = await db.prepare(
+      `SELECT u.id AS user_id, COALESCE(u.display_name,'User') AS display_name,
+              u.public_id, u.avatar_key
+         FROM users u
+         LEFT JOIN owner_user_overrides io ON io.user_id = u.id
+        WHERE (u.public_id = ? OR u.public_id = ?)
+          AND COALESCE(io.invisible_id, 0) = 0
+        LIMIT 1`
+    ).bind(stripped, padded).first();
+    if (!row) return json({ ok: false, error: "user_not_found" }, { status: 404 });
+    return json({ ok: true, user: row });
+  }
+
   if (url.pathname === "/api/users/upsert" && request.method === "POST") {
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
@@ -7162,9 +7188,18 @@ async function handleApi(request, env, url) {
       }
       const targetMember = await db.prepare("SELECT seat_index FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).first();
-      if (!targetMember) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
+      // Block by ID (Vinay, 2026-11-20): banning works even when the
+      // target already left the room — only the ban row is written then.
+      // Every other action still needs the target in the room.
+      const shouldBan = body.ban === true;
+      if (!targetMember && !shouldBan) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
+      if (!targetMember) {
+        const targetUser = await db.prepare("SELECT 1 AS active FROM users WHERE id = ?").bind(targetId).first();
+        if (!targetUser) return json({ ok: false, error: "user_not_found" }, { status: 404 });
+      }
 
       if (action === "set_admin" || action === "remove_admin") {
+        if (!targetMember) return json({ ok: false, error: "target_not_in_room" }, { status: 404 });
         if (!isOwner) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
         if (room.owner_user_id === targetId) return json({ ok: false, error: "owner_role_fixed" }, { status: 400 });
         if (action === "set_admin") {
@@ -7186,7 +7221,7 @@ async function handleApi(request, env, url) {
       }
 
       const targetVip = await getVipStatus(db, targetId);
-      if (!isOwner && targetMember.seat_index != null && targetVip.seat_protection_enabled) {
+      if (!isOwner && targetMember?.seat_index != null && targetVip.seat_protection_enabled) {
         return json({ ok: false, error: "vip_seat_protected" }, { status: 403 });
       }
       if (!isOwner && targetVip.kick_protection_enabled) {
@@ -7194,8 +7229,7 @@ async function handleApi(request, env, url) {
       }
 
       await ensureRoomSafetyTables(db);
-      const shouldBan = body.ban === true;
-      if (env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
+      if (targetMember && env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
         const seconds = Math.floor(Date.now() / 1000);
         const adminToken = await signJwt(
           String(env.LIVEKIT_API_SECRET),
@@ -7246,7 +7280,9 @@ async function handleApi(request, env, url) {
       }
       const result = await db.prepare("DELETE FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).run();
-      return json({ ok: Number(result.meta?.changes ?? 0) > 0 });
+      // A ban of someone already out of the room deletes no row, but the
+      // ban itself is the success.
+      return json({ ok: shouldBan || Number(result.meta?.changes ?? 0) > 0 });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }

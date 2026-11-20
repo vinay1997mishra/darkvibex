@@ -17,4 +17,11 @@ void main() {
     expect(formatPublicUserId('db-internal-user-uuid'), '—');
     expect(formatPublicUserId(null), '—');
   });
+
+  test('typed IDs for Block by ID keep digits only', () {
+    expect(normalizePublicIdInput('07654001'), '07654001');
+    expect(normalizePublicIdInput('ID 07654001'), '07654001');
+    expect(normalizePublicIdInput('0765 4001'), '07654001');
+    expect(normalizePublicIdInput(''), '');
+  });
 }

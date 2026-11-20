@@ -12,3 +12,9 @@ String formatPublicUserId(dynamic value, {String fallback = '—'}) {
   if (RegExp(r'^\d{8}$').hasMatch(raw)) return raw;
   return fallback;
 }
+
+/// The ID a user types when blocking by ID: digits only, so "ID 07654001",
+/// "0765 4001" and "7654001" all resolve to the same lookup.
+String normalizePublicIdInput(String value) {
+  return value.replaceAll(RegExp(r'\D'), '');
+}

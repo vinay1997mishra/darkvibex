@@ -4477,7 +4477,9 @@ class _RoomScreenState extends State<RoomScreen> {
     var rows =
         await widget.state.backend.roomBlacklist(roomId: widget.room.id);
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    final blockIdController = TextEditingController();
+    try {
+      await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: TinniPalette.nearBlack,
@@ -4503,6 +4505,104 @@ class _RoomScreenState extends State<RoomScreen> {
                         ),
                       ),
                       Text('${rows.length} blocked'),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: blockIdController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            hintText: 'Block user by ID',
+                            prefixIcon: Icon(Icons.block_rounded),
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () async {
+                          final typed =
+                              normalizePublicIdInput(blockIdController.text);
+                          if (typed.isEmpty) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              const SnackBar(
+                                content: Text('Enter a user ID'),
+                              ),
+                            );
+                            return;
+                          }
+                          final found = await widget.state.backend
+                              .userByPublicId(typed);
+                          if (!sheetContext.mounted) return;
+                          if (found == null) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              const SnackBar(
+                                content: Text('No user with this ID'),
+                              ),
+                            );
+                            return;
+                          }
+                          final targetId =
+                              found['user_id']?.toString() ?? '';
+                          final name =
+                              found['display_name']?.toString() ?? 'User';
+                          final confirmed = await showDialog<bool>(
+                            context: sheetContext,
+                            builder: (dialogContext) => AlertDialog(
+                              title: Text('Block $name?'),
+                              content: Text(
+                                'ID ${formatPublicUserId(found['public_id'])} will not be able to rejoin this room.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(dialogContext, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () =>
+                                      Navigator.pop(dialogContext, true),
+                                  child: const Text('Block'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true || !sheetContext.mounted) {
+                            return;
+                          }
+                          final ok = await widget.state.backend
+                              .removeRoomMember(
+                            roomId: widget.room.id,
+                            actorUserId: widget.state.userId,
+                            targetUserId: targetId,
+                            ban: true,
+                          );
+                          if (!sheetContext.mounted) return;
+                          if (!ok) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              const SnackBar(
+                                content: Text('Could not block this user'),
+                              ),
+                            );
+                            return;
+                          }
+                          blockIdController.clear();
+                          rows = await widget.state.backend.roomBlacklist(
+                            roomId: widget.room.id,
+                          );
+                          if (sheetContext.mounted) refresh(() {});
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            SnackBar(content: Text('Blocked $name')),
+                          );
+                        },
+                        child: const Text('Block'),
+                      ),
                     ],
                   ),
                 ),
@@ -4559,7 +4659,10 @@ class _RoomScreenState extends State<RoomScreen> {
           ),
         ),
       ),
-    );
+      );
+    } finally {
+      blockIdController.dispose();
+    }
   }
 
   Future<void> _openRoomMembers() async {
