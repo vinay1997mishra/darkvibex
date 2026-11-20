@@ -1453,6 +1453,7 @@ async function ensureRoomCoreSchema(db) {
       name TEXT NOT NULL,
       seat_count INTEGER NOT NULL DEFAULT 12,
       locked INTEGER NOT NULL DEFAULT 0,
+      vip_only INTEGER NOT NULL DEFAULT 0,
       country_code TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
@@ -1467,6 +1468,7 @@ async function ensureRoomCoreSchema(db) {
     ["name", "TEXT NOT NULL DEFAULT ''"],
     ["seat_count", "INTEGER NOT NULL DEFAULT 12"],
     ["locked", "INTEGER NOT NULL DEFAULT 0"],
+    ["vip_only", "INTEGER NOT NULL DEFAULT 0"],
     ["country_code", "TEXT NOT NULL DEFAULT ''"],
     ["created_at", "INTEGER NOT NULL DEFAULT 0"],
     ["updated_at", "INTEGER NOT NULL DEFAULT 0"],
@@ -1979,7 +1981,7 @@ async function listRooms(db, viewerUserId) {
   const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
   const presenceCutoff = await cleanupStaleRoomMembers(db, now());
   const result = await db.prepare(
-    `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.country_code,
+    `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.vip_only, r.country_code,
             CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
             COALESCE(io.invisible_id,0) AS owner_invisible_id,
             ri.image_key AS avatar_key,
@@ -4668,6 +4670,7 @@ async function handleApi(request, env, url) {
               r.owner_user_id,
               COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
               r.seat_count,
+              r.vip_only,
               ri.image_key AS avatar_key,
               r.country_code,
               COALESCE(s.party_mode,'Friends-making Party') AS party_mode,
@@ -5855,10 +5858,14 @@ async function handleApi(request, env, url) {
            LEFT JOIN users u ON u.id=i.invited_by
           WHERE i.room_id=? AND i.target_user_id=?`
       ).bind(roomId, actorId).first();
+      const roomVipOnly = await db.prepare(
+        "SELECT vip_only FROM rooms WHERE id=?"
+      ).bind(roomId).first();
       return json({
         ok: true,
         mic_mode: settings?.mic_mode ?? "free",
         public_screen_enabled: Number(settings?.public_screen_enabled ?? 1) === 1,
+        vip_only: Number(roomVipOnly?.vip_only ?? 0),
         seat_controls: seatControls.results ?? [],
         seat_requests: requests.results ?? [],
         chat_banned: Boolean(chatBan),
@@ -5886,6 +5893,28 @@ async function handleApi(request, env, url) {
           "UPDATE room_settings SET public_screen_enabled=?,updated_at=? WHERE room_id=?"
         ).bind(enabled, now(), roomId).run();
         return json({ ok: true, public_screen_enabled: Boolean(enabled) });
+      }
+      if (action === "vip_only") {
+        if (!mod.isOwner) return json({ ok: false, error: "room_owner_required" }, { status: 403 });
+        // Entry threshold: 0 = open, 1 = VIP1+, 5 = VIP5+. `enabled`
+        // false disables; `enabled` true without a level means VIP1+.
+        const provided = body.vip_only === 1 || body.vip_only === 5 || body.vip_only === 0;
+        if (body.vip_only !== undefined && !provided && body.vip_only !== true && body.vip_only !== false) {
+          return json({ ok: false, error: "invalid_vip_only" }, { status: 400 });
+        }
+        const level = body.vip_only === 5 ? 5
+          : body.vip_only === 1 || body.vip_only === true || body.enabled === true ? 1
+          : 0;
+        if (level > 0) {
+          const ownerVip = await getVipStatus(db, actorId);
+          if (!ownerVip.active || ownerVip.level < 10) {
+            return json({ ok: false, error: "vip_only_requires_vip10" }, { status: 403 });
+          }
+        }
+        await db.prepare(
+          "UPDATE rooms SET vip_only=?,updated_at=? WHERE id=?"
+        ).bind(level, now(), roomId).run();
+        return json({ ok: true, vip_only: level });
       }
       if (action === "seat_lock" || action === "seat_mute" || action === "seat_down") {
         if (!mod.isOwner && !mod.isAdmin) {
@@ -5933,6 +5962,14 @@ async function handleApi(request, env, url) {
         }
 
         const muted = body.muted === true ? 1 : 0;
+        if (occupant && String(occupant.user_id) !== String(actorId)) {
+          // Anti-Mute (Vinay, 2026-11-20): an active VIP13+ member cannot
+          // be muted by anyone else. Muting your own seat is unaffected.
+          const targetVip = await getVipStatus(db, String(occupant.user_id));
+          if (targetVip.active && targetVip.level >= 13) {
+            return json({ ok: false, error: "vip_anti_mute" }, { status: 403 });
+          }
+        }
         await db.batch([
           db.prepare(
             "INSERT INTO room_seat_controls(room_id,seat_index,locked,room_muted,updated_at) VALUES(?,?,0,?,?) ON CONFLICT(room_id,seat_index) DO UPDATE SET room_muted=excluded.room_muted,updated_at=excluded.updated_at"
@@ -6451,9 +6488,26 @@ async function handleApi(request, env, url) {
     if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
       return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
     }
+    // VIP-only rooms (Vinay, 2026-11-20): only VIP10+ members can enter
+    // them, so only a VIP10+ owner can mark a room VIP-only. The level
+    // is the entry threshold: 0 = open, 1 = VIP1+ (any VIP), 5 = VIP5+.
+    const vipOnlyProvided =
+      body.vip_only === 0 || body.vip_only === 1 || body.vip_only === 5 ||
+      body.vip_only === true || body.vip_only === false;
+    if (body.vip_only !== undefined && !vipOnlyProvided) {
+      return json({ ok: false, error: "invalid_vip_only" }, { status: 400 });
+    }
+    const vipOnlyLevel =
+      body.vip_only === 5 ? 5 : body.vip_only === 1 || body.vip_only === true ? 1 : 0;
 
     await ensureUser(db, ownerId, String(body.owner_name ?? "DarkVibeX User"));
     await ensureUserAllowed(db, ownerId);
+    if (vipOnlyLevel > 0) {
+      const ownerVip = await getVipStatus(db, ownerId);
+      if (!ownerVip.active || ownerVip.level < 10) {
+        return json({ ok: false, error: "vip_only_requires_vip10" }, { status: 403 });
+      }
+    }
     await ensureRoomSettingsTable(db);
     const ownerProfile = await db.prepare(
       "SELECT country_code,public_id FROM users WHERE id=? LIMIT 1"
@@ -6481,6 +6535,10 @@ async function handleApi(request, env, url) {
       if (String(existingRoomId.owner_user_id ?? "") !== ownerId) {
         return json({ ok: false, error: "room_id_taken" }, { status: 409 });
       }
+      // Re-creating an owned room can also flip its VIP-only flag.
+      if (vipOnlyProvided) {
+        await db.prepare("UPDATE rooms SET vip_only=?,updated_at=? WHERE id=?").bind(vipOnlyLevel, now(), roomId).run();
+      }
       // Room IDs are the owner's permanent 7-digit profile ID. Re-creating
       // an already-owned room is therefore an idempotent "open my room".
       return json({
@@ -6492,6 +6550,7 @@ async function handleApi(request, env, url) {
         seat_count: Number(existingRoomId.seat_count ?? seatCount),
         party_mode: String(existingRoomId.party_mode ?? partyMode),
         room_mode: String(existingRoomId.room_mode ?? roomMode),
+        vip_only: vipOnlyLevel,
         online: 0,
       });
     }
@@ -6504,8 +6563,8 @@ async function handleApi(request, env, url) {
           "DELETE FROM room_members WHERE user_id=?"
         ).bind(ownerId),
         db.prepare(
-          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, country_code, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)"
-        ).bind(roomId, ownerId, name, seatCount, ownerCountry, ts, ts),
+          "INSERT INTO rooms (id, owner_user_id, name, seat_count, locked, vip_only, country_code, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)"
+        ).bind(roomId, ownerId, name, seatCount, vipOnlyLevel, ownerCountry, ts, ts),
         db.prepare(
           "INSERT INTO room_settings (room_id, announcement, theme_id, group_pk_enabled, welcome_image_key, party_mode, room_mode, seat_theme_id, lock_password_hash, updated_at) VALUES (?, '', 'dark', 0, '', ?, ?, 'royal-gold', '', ?) ON CONFLICT(room_id) DO UPDATE SET party_mode = excluded.party_mode, room_mode = excluded.room_mode, updated_at = excluded.updated_at"
         ).bind(roomId, partyMode, roomMode, ts),
@@ -6523,7 +6582,7 @@ async function handleApi(request, env, url) {
       });
       return json({ ok: false, error: "room_create_storage_failed" }, { status: 503 });
     }
-    return json({ ok: true, room_id: roomId, display_id: ownerPublicId, party_mode: partyMode, room_mode: roomMode }, { status: 201 });
+    return json({ ok: true, room_id: roomId, display_id: ownerPublicId, party_mode: partyMode, room_mode: roomMode, vip_only: vipOnlyLevel }, { status: 201 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "delete" && request.method === "POST") {
@@ -6557,7 +6616,7 @@ async function handleApi(request, env, url) {
     await ensureOwnerControlSchema(db);
     await ensureRoomSettingsTable(db);
     const roomAccess = await db.prepare(
-      `SELECT r.owner_user_id,r.locked,r.country_code,
+      `SELECT r.owner_user_id,r.locked,r.vip_only,r.country_code,
               COALESCE(rc.banned,0) AS owner_room_banned,
               COALESCE(s.lock_password_hash,'') AS lock_password_hash
          FROM rooms r
@@ -6583,6 +6642,16 @@ async function handleApi(request, env, url) {
     ).bind(roomId, userId).first();
     if (roomBan && roomAccess.owner_user_id !== userId) {
       return json({ ok: false, error: "room_blocked" }, { status: 403 });
+    }
+    // VIP-only rooms (Vinay, 2026-11-20): only members at or above the
+    // room's entry threshold can enter (1 = VIP1+, 5 = VIP5+); the owner
+    // always can.
+    const vipOnlyRequired = Number(roomAccess.vip_only ?? 0);
+    if (vipOnlyRequired > 0 && roomAccess.owner_user_id !== userId) {
+      const joinerVip = await getVipStatus(db, userId);
+      if (!joinerVip.active || joinerVip.level < vipOnlyRequired) {
+        return json({ ok: false, error: "room_vip_only" }, { status: 403 });
+      }
     }
     let ownerLockedBypass=false;
     try {

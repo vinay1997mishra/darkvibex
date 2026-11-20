@@ -27,7 +27,10 @@ test("room sender header stays above the bubble and message content excludes sen
   assert.match(room, /tags: profileTags/);
   assert.match(room, /medals: profileMedals/);
   assert.doesNotMatch(room, /\$\{name == null \|\| name\.isEmpty \? 'User' : name\}: \$text/);
-  assert.match(header, /key: const Key\('room-chat-sender-name'\)/);
+  // The sender-name Text keeps its stable test key — since PR #161 it
+  // goes through VipNameText's textKey (the name colour widget), which
+  // passes it to the inner Text's key.
+  assert.match(header, /(textKey|key): const Key\('room-chat-sender-name'\)/);
   assert.match(header, /Image\.network\(/);
   assert.match(header, /_tagChip/);
   assert.match(header, /_medalChip/);

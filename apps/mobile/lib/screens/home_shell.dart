@@ -571,6 +571,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           partyMode:
               row['party_mode']?.toString() ?? 'Friends-making Party',
           roomMode: row['room_mode']?.toString() ?? 'voice',
+          vipOnlyLevel: int.tryParse(row['vip_only']?.toString() ?? '') ?? 0,
         );
       }).where((room) => room.id.isNotEmpty).toList(growable: false);
       if (!mounted) return;
@@ -693,7 +694,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
       isScrollControlled: true,
       backgroundColor: TinniPalette.nearBlack,
       showDragHandle: true,
-      builder: (_) => _CreateRoomSheet(maxSeats: VipPolicy.maxRoomSeats(state.vipLevel)),
+      builder: (_) => _CreateRoomSheet(
+        maxSeats: VipPolicy.maxRoomSeats(state.vipLevel),
+        canMakeVipOnly: state.vipIsActive && state.vipLevel >= 10,
+      ),
     );
     if (draft == null || !context.mounted) return;
 
@@ -703,6 +707,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
         seatCount: draft.seatCount,
         partyMode: draft.partyMode,
         roomMode: draft.roomMode,
+        vipOnly: draft.vipOnlyLevel,
       );
 
       RoomSummary room = created;
@@ -2444,6 +2449,30 @@ class _RoomCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (room.vipOnlyLevel > 0)
+                    Positioned(
+                      top: 9,
+                      left: 9,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xD9162440),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: TinniPalette.gold),
+                        ),
+                        child: Text(
+                          'VIP ${room.vipOnlyLevel}+',
+                          style: const TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -2490,6 +2519,7 @@ class _CreateRoomDraft {
     this.avatarBytes,
     this.avatarExtension = 'jpg',
     this.avatarContentType = 'image/jpeg',
+    this.vipOnlyLevel = 0,
   });
 
   final String title;
@@ -2499,11 +2529,17 @@ class _CreateRoomDraft {
   final Uint8List? avatarBytes;
   final String avatarExtension;
   final String avatarContentType;
+
+  /// VIP-only entry threshold: 0 = everyone, 1 = VIP1+, 5 = VIP5+.
+  final int vipOnlyLevel;
 }
 
 class _CreateRoomSheet extends StatefulWidget {
-  const _CreateRoomSheet({required this.maxSeats});
+  const _CreateRoomSheet({required this.maxSeats, required this.canMakeVipOnly});
   final int maxSeats;
+
+  /// Only a VIP10+ member can mark a room VIP-only.
+  final bool canMakeVipOnly;
 
   @override
   State<_CreateRoomSheet> createState() => _CreateRoomSheetState();
@@ -2515,6 +2551,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
   int _seatCount = 12;
   String _partyMode = 'Friends-making Party';
   String _roomMode = 'voice';
+  int _vipOnlyLevel = 0;
   Uint8List? _avatarBytes;
   String _avatarExtension = 'jpg';
   String _avatarContentType = 'image/jpeg';
@@ -2605,6 +2642,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
         avatarBytes: _avatarBytes,
         avatarExtension: _avatarExtension,
         avatarContentType: _avatarContentType,
+        vipOnlyLevel: _vipOnlyLevel,
       ),
     );
   }
@@ -2771,6 +2809,33 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                   ),
               ],
             ),
+            if (widget.canMakeVipOnly) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'VIP-only room',
+                style: TextStyle(
+                  color: TinniPalette.cream,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (level, label) in const [
+                    (0, 'Everyone'),
+                    (1, 'VIP 1+'),
+                    (5, 'VIP 5+'),
+                  ])
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: _vipOnlyLevel == level,
+                      onSelected: (_) => setState(() => _vipOnlyLevel = level),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,

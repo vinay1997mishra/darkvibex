@@ -19,6 +19,7 @@ import '../infra/agora_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import '../room/ktv_service.dart';
+import '../vip/vip_policy.dart';
 import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../widgets/seat_panda_emote.dart';
@@ -142,6 +143,7 @@ class _RoomScreenState extends State<RoomScreen> {
   String roomMicMode = 'free';
   bool publicScreenEnabled = true;
   bool chatBanned = false;
+  int roomVipOnly = 0;
   final Set<int> lockedSeats = <int>{};
   final Set<int> roomMutedSeats = <int>{};
   List<Map<String, dynamic>> seatRequests = <Map<String, dynamic>>[];
@@ -350,6 +352,21 @@ class _RoomScreenState extends State<RoomScreen> {
         amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
+    // Moderator mute must silence the voice, not just the icon: if the
+    // server says my seat is muted but my mic is still live, mute it now.
+    // (Audit fix, Vinay 2026-11-20 — the mic-off icon flipped but the
+    // voice kept transmitting.)
+    final ownRow = rows.where(
+      (member) => member['user_id']?.toString() == widget.state.userId,
+    );
+    final ownMuted = ownRow.isNotEmpty &&
+        (ownRow.first['mic_muted'] == 1 ||
+            ownRow.first['mic_muted']?.toString() == '1');
+    if (ownMuted && mySeat != null && !muted) {
+      await rtc?.setMicPublished(false);
+      if (!mounted) return;
+      setState(() => muted = true);
+    }
     // Prefetch animal vehicle videos on room join / member refresh so
     // the first frames are buffered before an entry plays.
     _prefetchArrivalVehicleVideos(rows);
@@ -1497,6 +1514,7 @@ class _RoomScreenState extends State<RoomScreen> {
     setState(() {
       roomMicMode = value?['mic_mode']?.toString() == 'apply' ? 'apply' : 'free';
       publicScreenEnabled = value?['public_screen_enabled'] != false;
+      roomVipOnly = int.tryParse(value?['vip_only']?.toString() ?? '') ?? 0;
       chatBanned = value?['chat_banned'] == true;
       lockedSeats
         ..clear()
@@ -2034,7 +2052,11 @@ class _RoomScreenState extends State<RoomScreen> {
                   ? 'Only rooms from your selected country are available'
                   : error == 'room_locked'
                       ? 'This locked room has no usable password yet'
-                      : 'This room is unavailable';
+                      : error == 'room_vip_only'
+                          ? widget.room.vipOnlyLevel > 0
+                              ? 'This room is for VIP${widget.room.vipOnlyLevel}+ members'
+                              : 'This room is for VIP members'
+                          : 'This room is unavailable';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(message)),
           );
@@ -3198,24 +3220,52 @@ class _RoomScreenState extends State<RoomScreen> {
                 ),
               if (canModerate && seat != null)
                 ListTile(
+                  enabled: !VipPolicy.hasAntiMute(
+                    activeVipLevel,
+                    active: activeVipLevel > 0,
+                  ),
                   leading: Icon(
                     roomMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
                   ),
                   title: Text(roomMuted ? 'Unmute' : 'Mute'),
-                  onTap: () async {
-                    Navigator.pop(actionContext);
-                    final result = await widget.state.backend.setRoomControl(
-                      roomId: widget.room.id,
-                      userId: widget.state.userId,
-                      action: 'seat_mute',
-                      seatIndex: seat,
-                      muted: !roomMuted,
-                    );
-                    if (result?['ok'] == true) {
-                      await _loadRoomMembers();
-                      await _loadRoomControls();
-                    }
-                  },
+                  subtitle: VipPolicy.hasAntiMute(
+                    activeVipLevel,
+                    active: activeVipLevel > 0,
+                  )
+                      ? const Text(
+                          'VIP13 Anti-Mute — this member cannot be muted',
+                        )
+                      : null,
+                  onTap: VipPolicy.hasAntiMute(
+                    activeVipLevel,
+                    active: activeVipLevel > 0,
+                  )
+                      ? null
+                      : () async {
+                          Navigator.pop(actionContext);
+                          final result =
+                              await widget.state.backend.setRoomControl(
+                            roomId: widget.room.id,
+                            userId: widget.state.userId,
+                            action: 'seat_mute',
+                            seatIndex: seat,
+                            muted: !roomMuted,
+                          );
+                          if (result?['ok'] == true) {
+                            await _loadRoomMembers();
+                            await _loadRoomControls();
+                          } else if (result?['error'] == 'vip_anti_mute') {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'This member has Anti-Mute (VIP13+)',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
                 ),
               if (canModerate && seat != null)
                 ListTile(
@@ -3984,15 +4034,31 @@ class _RoomScreenState extends State<RoomScreen> {
       }
     }
     try {
-      await rtc?.setMicPublished(enable);
+      // Ask the server first: a moderator mute overrides a local unmute
+      // request, and the server answers with the effective mic state.
+      // (Audit fix, Vinay 2026-11-20 — tapping unmute inside the 20s
+      // controls refresh used to re-open the voice even on a muted seat.)
+      Map<String, dynamic>? seatResult;
       if (widget.state.backendConnected && mySeat != null) {
-        await widget.state.backend.setSeat(
+        seatResult = await widget.state.backend.setSeatResult(
           roomId: widget.room.id,
           userId: widget.state.userId,
           seatIndex: mySeat,
           micMuted: !enable,
         );
       }
+      if (enable && seatResult?['mic_muted'] == true) {
+        await rtc?.setMicPublished(false);
+        if (!mounted) return;
+        setState(() => muted = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This mic is muted by room owner/admin'),
+          ),
+        );
+        return;
+      }
+      await rtc?.setMicPublished(enable);
       if (!mounted) return;
       setState(() => muted = !enable);
     } catch (error) {
@@ -5286,6 +5352,92 @@ class _RoomScreenState extends State<RoomScreen> {
       ),
     );
     if (selected != null) await _setMicMode(selected);
+  }
+
+  Future<void> _showVipOnlyRoom() async {
+    if (!isRoomHost) return;
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: TinniPalette.nearBlack,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'VIP-only Room',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              subtitle: Text('Choose who can enter this room.'),
+            ),
+            RadioListTile<int>(
+              value: 0,
+              groupValue: roomVipOnly,
+              title: const Text('Everyone'),
+              subtitle: const Text('Any member can enter.'),
+              onChanged: (value) => Navigator.pop(sheetContext, value),
+            ),
+            RadioListTile<int>(
+              value: 1,
+              groupValue: roomVipOnly,
+              title: const Text('VIP 1+'),
+              subtitle: const Text('VIP 1 to VIP 18 members can enter.'),
+              onChanged: (value) => Navigator.pop(sheetContext, value),
+            ),
+            RadioListTile<int>(
+              value: 5,
+              groupValue: roomVipOnly,
+              title: const Text('VIP 5+'),
+              subtitle: const Text('Only VIP 5 and above can enter.'),
+              onChanged: (value) => Navigator.pop(sheetContext, value),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    if (selected > 0 &&
+        !VipPolicy.canEnterVipOnlyRoom(
+          widget.state.vipLevel,
+          active: widget.state.vipIsActive,
+          requiredLevel: 10,
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('VIP10 is required to make a VIP-only room'),
+        ),
+      );
+      return;
+    }
+    final result = await widget.state.backend.setRoomControl(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+      action: 'vip_only',
+      vipOnly: selected,
+    );
+    if (!mounted) return;
+    if (result?['ok'] == true) {
+      setState(() => roomVipOnly = selected);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            selected == 0
+                ? 'Room is open to everyone now'
+                : 'Room is VIP $selected+ only now',
+          ),
+        ),
+      );
+    } else if (result?['error'] == 'vip_only_requires_vip10') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('VIP10 is required to make a VIP-only room'),
+        ),
+      );
+    }
   }
 
   Future<void> _showMicRequests() async {
@@ -6785,6 +6937,12 @@ class _RoomScreenState extends State<RoomScreen> {
         isRoomAdmin,
       ),
       (
+        'VIP-only Room',
+        Icons.workspace_premium_rounded,
+        _showVipOnlyRoom,
+        isRoomHost,
+      ),
+      (
         'Report',
         Icons.report_rounded,
         _reportRoom,
@@ -6795,6 +6953,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final visible = tools.where((tool) {
       if (tool.$1 == 'Room Type' || tool.$1 == 'Music') return isRoomAdmin;
       if (tool.$1 == 'Public Screen') return isRoomAdmin;
+      if (tool.$1 == 'VIP-only Room') return isRoomHost;
       return true;
     }).toList(growable: false);
 

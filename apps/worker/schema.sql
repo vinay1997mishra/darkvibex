@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   name TEXT NOT NULL,
   seat_count INTEGER NOT NULL DEFAULT 12 CHECK (seat_count BETWEEN 8 AND 42),
   locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0,1)),
+  vip_only INTEGER NOT NULL DEFAULT 0 CHECK (vip_only IN (0,1,5)),
   country_code TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,

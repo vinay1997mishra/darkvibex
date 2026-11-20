@@ -234,6 +234,20 @@ class VipPolicy {
     return const <Color>[Color(0xFFFFD700), Color(0xFFFF2E4D)];
   }
 
+  // Anti-Mute (Vinay, 2026-11-20): an active VIP13+ member cannot be
+  // muted by anyone else. Muting your own seat is unaffected.
+  static bool hasAntiMute(int level, {required bool active}) =>
+      active && level >= 13;
+
+  // VIP-only room entry (Vinay, 2026-11-20): a room with entry
+  // threshold 1 admits any active VIP, threshold 5 admits VIP5+.
+  static bool canEnterVipOnlyRoom(
+    int level, {
+    required bool active,
+    required int requiredLevel,
+  }) =>
+      active && level >= requiredLevel;
+
   static int validityDays(int level) => level >= 16 ? 60 : 30;
 }
 

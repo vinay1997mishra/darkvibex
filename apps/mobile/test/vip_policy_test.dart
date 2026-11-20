@@ -192,4 +192,50 @@ void main() {
     expect(ids.contains('hide_host_sign'), false);
     expect(ids.contains('exclusive_mic_emoticon'), true);
   });
+
+  test('Anti-Mute applies only to active VIP13+ members', () {
+    expect(VipPolicy.hasAntiMute(13, active: true), true);
+    expect(VipPolicy.hasAntiMute(18, active: true), true);
+    expect(VipPolicy.hasAntiMute(12, active: true), false);
+    expect(VipPolicy.hasAntiMute(13, active: false), false);
+    expect(VipPolicy.hasAntiMute(0, active: false), false);
+  });
+
+  test('VIP-only room entry follows the room threshold', () {
+    // VIP 1+ rooms admit any active VIP.
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(1, active: true, requiredLevel: 1),
+      true,
+    );
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(18, active: true, requiredLevel: 1),
+      true,
+    );
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(0, active: false, requiredLevel: 1),
+      false,
+    );
+    // VIP 5+ rooms admit VIP5 and above only.
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(5, active: true, requiredLevel: 5),
+      true,
+    );
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(4, active: true, requiredLevel: 5),
+      false,
+    );
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(5, active: false, requiredLevel: 5),
+      false,
+    );
+    // Making a VIP-only room needs VIP10.
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(10, active: true, requiredLevel: 10),
+      true,
+    );
+    expect(
+      VipPolicy.canEnterVipOnlyRoom(9, active: true, requiredLevel: 10),
+      false,
+    );
+  });
 }
