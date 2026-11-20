@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
+import 'legal_policy_screen.dart';
 import 'reset_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String _avatarContentType = 'image/jpeg';
   bool _savingProfile = false;
   bool _emailSignupDraft = false;
+  bool _agreedToTerms = false;
   String _pendingSignupEmail = '';
 
   AppState get state => widget.state;
@@ -701,12 +703,39 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => const LegalPolicyScreen(),
+                                    ),
+                                  ),
+                          child: const Text('Read Terms & Privacy'),
+                        ),
+                      ),
+                      CheckboxListTile(
+                        key: const Key('create-id-agree-terms'),
+                        contentPadding: EdgeInsets.zero,
+                        value: _agreedToTerms,
+                        onChanged: busy
+                            ? null
+                            : (value) => setState(
+                                  () => _agreedToTerms = value ?? false,
+                                ),
+                        title: const Text(
+                          'I have read and agree to the Terms and Privacy notice, including the Refunds policy.',
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       SizedBox(
                         width: double.infinity,
                         height: 54,
                         child: FilledButton.icon(
                           key: const Key('complete-profile-button'),
-                          onPressed: busy
+                          onPressed: busy || !_agreedToTerms
                               ? null
                               : _emailSignupDraft
                                   ? () => _createEmailAccount(
