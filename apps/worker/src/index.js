@@ -1745,6 +1745,23 @@ async function ensureRoomSafetyTables(db) {
   ).run();
 }
 
+// Kick markers (room audit 2026-11-20): a plain kick records one row so
+// the app can tell a real kick apart from a presence-timeout prune when
+// it resumes — backgrounding the app for >30s prunes the member row,
+// which looks identical to a kick otherwise. The marker is cleared on
+// re-join, so it never outlives the next entry.
+async function ensureRoomKickEventsTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_kick_events (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      kicked_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+    )`
+  ).run();
+}
+
 async function ensureRoomControlTables(db, roomId = null) {
   await ensureRoomSettingsTable(db);
   try {
@@ -2610,8 +2627,7 @@ async function ensureLudoSchema(db) {
       room_id TEXT PRIMARY KEY,
       state_json TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+      updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS ludo_room_players (
       room_id TEXT NOT NULL,
@@ -2620,10 +2636,56 @@ async function ensureLudoSchema(db) {
       joined_at INTEGER NOT NULL,
       PRIMARY KEY (room_id, user_id),
       UNIQUE (room_id, color),
-      FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`),
   ]);
+  await migrateLudoRoomFk(db);
+}
+
+// The Ludo tables used to FK room_id -> rooms(id), which rejects game-room
+// ids (room audit 2026-11-20: game-room Ludo could never write a row —
+// the FK failed before the player cleanup even ran). A Ludo room_id is a
+// voice-room id OR a game-room id, so the FK to rooms is wrong. Rebuild
+// each table once without it, preserving its rows. New databases get the
+// FK-free shape from CREATE TABLE IF NOT EXISTS above, so the migration
+// is a no-op there.
+async function migrateLudoRoomFk(db) {
+  const rebuilds = [
+    {
+      table: "ludo_room_sessions",
+      create: `CREATE TABLE ludo_room_sessions_new (
+        room_id TEXT PRIMARY KEY,
+        state_json TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      )`,
+      columns: "room_id,state_json,version,updated_at",
+    },
+    {
+      table: "ludo_room_players",
+      create: `CREATE TABLE ludo_room_players_new (
+        room_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        color TEXT NOT NULL,
+        joined_at INTEGER NOT NULL,
+        PRIMARY KEY (room_id, user_id),
+        UNIQUE (room_id, color),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+      columns: "room_id,user_id,color,joined_at",
+    },
+  ];
+  for (const { table, create, columns } of rebuilds) {
+    const fks = await db.prepare(`PRAGMA foreign_key_list(${table})`).all();
+    const hasRoomFk = (fks.results ?? []).some((row) => String(row.table ?? "") === "rooms");
+    if (!hasRoomFk) continue;
+    await db.batch([
+      db.prepare(create),
+      db.prepare(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`),
+      db.prepare(`DROP TABLE ${table}`),
+      db.prepare(`ALTER TABLE ${table}_new RENAME TO ${table}`),
+    ]);
+  }
 }
 
 async function requireLudoRoomMember(db, roomId, userId) {
@@ -2746,16 +2808,22 @@ async function ludoAdvancePlayer(db, roomId, state, keepTurn = false) {
 }
 
 async function cleanupLudoPlayers(db, roomId) {
+  // A Ludo player is stale only when they are in NEITHER a voice room NOR
+  // a game room (room audit 2026-11-20: game-room players were all treated
+  // as stale, so game-room Ludo could never hold 2+ players).
   const stale = await db.prepare(
     `SELECT p.user_id,p.color
        FROM ludo_room_players p
        LEFT JOIN room_members m
          ON m.room_id=p.room_id AND m.user_id=p.user_id
-      WHERE p.room_id=? AND m.user_id IS NULL`
+       LEFT JOIN game_room_members g
+         ON g.room_id=p.room_id AND g.user_id=p.user_id
+      WHERE p.room_id=? AND m.user_id IS NULL AND g.user_id IS NULL`
   ).bind(roomId).all();
   if (!(stale.results ?? []).length) return;
   const loaded = await loadLudoState(db, roomId);
   let changed = false;
+  let winnerRemoved = false;
   for (const row of stale.results ?? []) {
     const color = String(row.color);
     await db.prepare(
@@ -2765,6 +2833,7 @@ async function cleanupLudoPlayers(db, roomId) {
       loaded.state.tokens[color] = [-1, -1, -1, -1];
       changed = true;
     }
+    if (loaded.state.winner === color) winnerRemoved = true;
     if (loaded.state.current_player === color) {
       loaded.state.rolled = null;
       await ludoAdvancePlayer(db, roomId, loaded.state, false);
@@ -2776,6 +2845,12 @@ async function cleanupLudoPlayers(db, roomId) {
   ).bind(roomId).first();
   if (!remaining) {
     loaded.state = ludoInitialState();
+    changed = true;
+  } else if (winnerRemoved) {
+    // The winner went stale while others remain: clear the win so the
+    // remaining players can keep rolling (room audit 2026-11-20).
+    loaded.state.winner = null;
+    loaded.state.rolled = null;
     changed = true;
   }
   if (changed) {
@@ -4420,9 +4495,15 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/vs" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    // VS state is public profile info (room audit 2026-11-20): any
+    // logged-in user may read it — the full profile page fetches another
+    // user's state. Only the session is verified here, like /api/medals.
+    const authError = await requireSession(request, env);
     if (authError) return authError;
-    return json({ ok: true, vs: await vsState(db, userId) });
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const targetId = userId || String(session.sub);
+    await ensureOwnerControlSchema(db);
+    return json({ ok: true, vs: await vsState(db, targetId) });
   }
 
   if (url.pathname === "/api/vs/request" && request.method === "POST") {
@@ -4510,9 +4591,15 @@ async function handleApi(request, env, url) {
 
   if (url.pathname === "/api/cp" && request.method === "GET") {
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
-    const authError = await requireSession(request, env, userId);
+    // CP state is public profile info (room audit 2026-11-20): any
+    // logged-in user may read it — the room profile card fetches another
+    // user's state. Only the session is verified here, like /api/medals.
+    const authError = await requireSession(request, env);
     if (authError) return authError;
-    return json({ ok: true, cp: await cpStateWithRing(db, userId) });
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const targetId = userId || String(session.sub);
+    await ensureOwnerControlSchema(db);
+    return json({ ok: true, cp: await cpStateWithRing(db, targetId) });
   }
 
   if (url.pathname === "/api/cp/request" && request.method === "POST") {
@@ -4666,13 +4753,17 @@ async function handleApi(request, env, url) {
     ).bind(userId).first();
     const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
     if (!viewerCountry) return json({ ok:true,rooms:[] });
+    // Count only members fresh within the presence TTL, like listRooms
+    // (room audit 2026-11-20: followed rooms showed phantom online counts
+    // from stale members).
+    const presenceCutoff = await cleanupStaleRoomMembers(db, now());
     const rows = await db.prepare(
       `SELECT r.id,r.name,
               CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
               COALESCE(io.invisible_id,0) AS owner_invisible_id,
               COALESCE(u.display_name,'Owner') AS owner_name,
               r.owner_user_id,
-              COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
+              COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id AND m.updated_at >= ?),0) AS online,
               r.seat_count,
               r.vip_only,
               ri.image_key AS avatar_key,
@@ -4693,9 +4784,10 @@ async function handleApi(request, env, url) {
           AND EXISTS (
             SELECT 1 FROM room_members visible_member
              WHERE visible_member.room_id = r.id
+               AND visible_member.updated_at >= ?
           )
         ORDER BY rf.updated_at DESC LIMIT 100`
-    ).bind(userId,viewerCountry).all();
+    ).bind(presenceCutoff,userId,viewerCountry,presenceCutoff).all();
     const followedRooms = rows.results ?? [];
     for (const room of followedRooms) {
       const currentDisplayId = String(room.display_id ?? "").trim();
@@ -6135,6 +6227,14 @@ async function handleApi(request, env, url) {
     const requestRow = await db.prepare("SELECT seat_index FROM room_seat_requests WHERE room_id=? AND user_id=?").bind(roomId,targetId).first();
     if (!requestRow) return json({ ok:false,error:"request_not_found" }, { status:404 });
     if (body.approved === true) {
+      // The target may have left the room while the request was pending
+      // (room audit 2026-11-20): approving them then returns ok:true
+      // while seating nobody. Drop the stale request and say so.
+      const targetMember = await db.prepare("SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?").bind(roomId,targetId).first();
+      if (!targetMember) {
+        await db.prepare("DELETE FROM room_seat_requests WHERE room_id=? AND user_id=?").bind(roomId,targetId).run();
+        return json({ ok:false,error:"target_not_in_room" }, { status:404 });
+      }
       const seatIndex = Number(requestRow.seat_index);
       const locked = await db.prepare("SELECT locked FROM room_seat_controls WHERE room_id=? AND seat_index=?").bind(roomId,seatIndex).first();
       const occupied = await db.prepare("SELECT 1 AS occupied FROM room_members WHERE room_id=? AND seat_index=?").bind(roomId,seatIndex).first();
@@ -6298,6 +6398,7 @@ async function handleApi(request, env, url) {
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
     await ensureRoomSettingsTable(db);
+    await ensureImageTables(db);
     await ensureRoomCustomThemeTable(db);
     await expireRoomCustomThemes(db, roomId, now());
     await ensureVipSchema(db);
@@ -6310,11 +6411,13 @@ async function handleApi(request, env, url) {
               COALESCE(ct.asset_key, '') AS theme_asset_key,
               COALESCE(s.lock_password_code, '') AS lock_password_code,
               CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
-              CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key
+              CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key,
+              COALESCE(ri.image_key, '') AS avatar_key
          FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
          LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
          LEFT JOIN room_custom_themes ct ON ct.id = s.theme_id
           AND ct.room_id = r.id AND (ct.expires_at IS NULL OR ct.expires_at > ?)
+         LEFT JOIN room_images ri ON ri.room_id = r.id
         WHERE r.id = ?`
     ).bind(now(), now(), roomId).first();
     if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
@@ -6492,9 +6595,24 @@ async function handleApi(request, env, url) {
       return json({ ok: false, error: "invalid_avatar_key" }, { status: 400 });
     }
     await ensureImageTables(db);
+    // Read the CURRENT room DP first: when the room DP changes, the OLD
+    // file is deleted from R2 at once (Vinay, 2026-11-19 — same rule as
+    // user DP; room audit 2026-11-20: the old file was never deleted).
+    // The delete happens AFTER the D1 update succeeds, so a failed update
+    // never orphans the current DP, and it is best-effort — a storage
+    // error never fails the avatar change.
+    const current = await db.prepare(
+      "SELECT image_key FROM room_images WHERE room_id = ? LIMIT 1"
+    ).bind(roomId).first();
+    const oldKey = String(current?.image_key ?? "").trim();
     await db.prepare(
       "INSERT INTO room_images (room_id, image_key, updated_at) VALUES (?, ?, ?) ON CONFLICT(room_id) DO UPDATE SET image_key = excluded.image_key, updated_at = excluded.updated_at"
     ).bind(roomId, imageKey, now()).run();
+    if (oldKey && oldKey !== imageKey) {
+      try {
+        if (env.FILES) await env.FILES.delete(oldKey);
+      } catch (_) {}
+    }
     return json({ ok: true, avatar_key: imageKey });
   }
 
@@ -6554,7 +6672,7 @@ async function handleApi(request, env, url) {
     const roomId = ownerPublicId;
     await ensureOwnerControlSchema(db);
     const existingRoomId = await db.prepare(
-      `SELECT r.owner_user_id,r.name,r.seat_count,
+      `SELECT r.owner_user_id,r.name,r.seat_count,r.vip_only,
               COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
               COALESCE(rs.room_mode,'voice') AS room_mode
          FROM rooms r
@@ -6580,7 +6698,10 @@ async function handleApi(request, env, url) {
         seat_count: Number(existingRoomId.seat_count ?? seatCount),
         party_mode: String(existingRoomId.party_mode ?? partyMode),
         room_mode: String(existingRoomId.room_mode ?? roomMode),
-        vip_only: vipOnlyLevel,
+        // When vip_only was not supplied, report the STORED value, not
+        // the requested default 0 (room audit 2026-11-20: a VIP-only room
+        // was reported as open on re-create).
+        vip_only: vipOnlyProvided ? vipOnlyLevel : Number(existingRoomId.vip_only ?? 0),
         online: 0,
       });
     }
@@ -6626,11 +6747,24 @@ async function handleApi(request, env, url) {
     if (String(room.owner_user_id) !== userId) {
       return json({ ok: false, error: "room_owner_required" }, { status: 403 });
     }
+    // Delete the room's image + follower rows too (room audit 2026-11-20:
+    // they have no foreign key, so the old delete orphaned them), and
+    // delete the R2 avatar file best-effort.
+    await ensureImageTables(db);
+    const avatarRow = await db.prepare("SELECT image_key FROM room_images WHERE room_id = ? LIMIT 1").bind(roomId).first();
+    const avatarKey = String(avatarRow?.image_key ?? "").trim();
     await db.batch([
       db.prepare("DELETE FROM room_members WHERE room_id = ?").bind(roomId),
       db.prepare("DELETE FROM room_settings WHERE room_id = ?").bind(roomId),
+      db.prepare("DELETE FROM room_images WHERE room_id = ?").bind(roomId),
+      db.prepare("DELETE FROM room_followers WHERE room_id = ?").bind(roomId),
       db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId),
     ]);
+    if (avatarKey) {
+      try {
+        if (env.FILES) await env.FILES.delete(avatarKey);
+      } catch (_) {}
+    }
     return json({ ok: true });
   }
 
@@ -6663,7 +6797,12 @@ async function handleApi(request, env, url) {
     ).bind(userId).first();
     const userCountry = String(userCountryRow?.country_code ?? "").trim().toUpperCase();
     const roomCountry = String(roomAccess.country_code ?? "").trim().toUpperCase();
-    if (!userCountry || !roomCountry || userCountry !== roomCountry) {
+    // The owner always re-enters their own room (room audit 2026-11-20:
+    // every other join gate exempts the owner, but the country check did
+    // not — an owner who changed country was locked out of their own
+    // permanent room).
+    if (roomAccess.owner_user_id !== userId &&
+        (!userCountry || !roomCountry || userCountry !== roomCountry)) {
       return json({ ok:false,error:"room_country_mismatch" }, { status:403 });
     }
     await ensureRoomSafetyTables(db);
@@ -6712,6 +6851,10 @@ async function handleApi(request, env, url) {
         "INSERT INTO room_members (room_id, user_id, seat_index, mic_muted, joined_at, updated_at) VALUES (?, ?, NULL, 1, ?, ?) ON CONFLICT(room_id,user_id) DO UPDATE SET updated_at = excluded.updated_at"
       ).bind(roomId, userId, ts, ts),
     ]);
+    // Re-joining clears a previous kick marker for this room (room audit
+    // 2026-11-20: the marker only distinguishes a kick from a prune).
+    await ensureRoomKickEventsTable(db);
+    await db.prepare("DELETE FROM room_kick_events WHERE room_id=? AND user_id=?").bind(roomId, userId).run();
     await recordLampRoomEntry(db, roomId, userId, ts);
     const idLevelDailyExp = await awardIdLevelDaily(db, userId, "room_entry", ts);
     return json({ ok: true, id_level_daily_exp: idLevelDailyExp });
@@ -6821,7 +6964,7 @@ async function handleApi(request, env, url) {
          LEFT JOIN users u ON u.id=g.sender_user_id
         WHERE g.room_id=?
         GROUP BY g.sender_user_id,u.display_name,u.avatar_key
-        ORDER BY sent_coins DESC,gift_count DESC
+        ORDER BY sent_coins DESC,gift_count DESC,g.sender_user_id ASC
         LIMIT 20`
     ).bind(roomId).all();
     return json({
@@ -7284,11 +7427,36 @@ async function handleApi(request, env, url) {
       }
       const result = await db.prepare("DELETE FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).run();
+      // A plain kick (not a ban) records a kick marker so the app can
+      // tell a real kick apart from a presence-timeout prune on resume
+      // (room audit 2026-11-20). A ban needs no marker: the banned user
+      // cannot re-join, so the re-join attempt fails with room_blocked.
+      if (!shouldBan && Number(result.meta?.changes ?? 0) > 0) {
+        await ensureRoomKickEventsTable(db);
+        await db.prepare(
+          "INSERT INTO room_kick_events (room_id, user_id, kicked_at) VALUES (?, ?, ?) ON CONFLICT(room_id, user_id) DO UPDATE SET kicked_at = excluded.kicked_at"
+        ).bind(roomId, targetId, now()).run();
+      }
       // A ban of someone already out of the room deletes no row, but the
       // ban itself is the success.
       return json({ ok: shouldBan || Number(result.meta?.changes ?? 0) > 0 });
     }
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
+  }
+
+  // Was I kicked from this room? (room audit 2026-11-20) — the app asks
+  // this on resume when its member row is gone, to tell a real kick
+  // apart from a presence-timeout prune (background >30s). A prune leaves
+  // no marker, so the app silently re-joins instead of showing the
+  // "removed" dialog.
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "kick-status" && request.method === "GET") {
+    const roomId = parts[2];
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureRoomKickEventsTable(db);
+    const row = await db.prepare("SELECT 1 AS kicked FROM room_kick_events WHERE room_id=? AND user_id=? LIMIT 1").bind(roomId, userId).first();
+    return json({ ok: true, kicked: row != null });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "blacklist") {
@@ -8833,6 +9001,35 @@ async function handleApi(request, env, url) {
     await ensureUserAllowed(db, sender);
     await ensureWalletAllowed(db, sender);
     await ensureUserAllowed(db, receiver);
+    // Room audit 2026-11-20: a blocked user must not be able to gift the
+    // person who blocked them (DM/follow/call/friend-add all enforce
+    // blocked_user already).
+    if (await usersBlockedEitherWay(db, sender, receiver)) {
+      return json({ ok:false,error:"blocked_user" }, { status:403 });
+    }
+    // NOTE: self-gifting stays ALLOWED on purpose — see
+    // test/self_gift_policy.test.js (the game-room sheet even offers
+    // "Send to yourself"). It costs real coins, so it is not an exploit.
+    // A gift recorded against a room must come from inside that room —
+    // otherwise any authenticated user could inflate any room's rocket
+    // total and gift ranking from outside. Game rooms count too (their
+    // members live in game_room_members, not room_members).
+    const giftRoomId = String(body.room_id ?? "").trim();
+    if (giftRoomId) {
+      const memberInRoom = async (uid) => {
+        const voice = await db.prepare(
+          "SELECT 1 AS yes FROM room_members WHERE room_id=? AND user_id=? LIMIT 1"
+        ).bind(giftRoomId, uid).first();
+        if (voice) return true;
+        const game = await db.prepare(
+          "SELECT 1 AS yes FROM game_room_members WHERE room_id=? AND user_id=? LIMIT 1"
+        ).bind(giftRoomId, uid).first();
+        return game != null;
+      };
+      if (!(await memberInRoom(sender)) || !(await memberInRoom(receiver))) {
+        return json({ ok:false,error:"gift_not_in_room" }, { status:403 });
+      }
+    }
     const eventId = id();
     const giftCreatedAt = now();
 
@@ -9073,7 +9270,14 @@ async function handleApi(request, env, url) {
         const any = await db.prepare(
           "SELECT 1 AS yes FROM ludo_room_players WHERE room_id=? LIMIT 1"
         ).bind(roomId).first();
-        if (!any) loaded.state = ludoInitialState();
+        if (!any) {
+          loaded.state = ludoInitialState();
+        } else if (loaded.state.winner === color) {
+          // The winner left while others remain: clear the win so the
+          // remaining players can keep rolling (room audit 2026-11-20).
+          loaded.state.winner = null;
+          loaded.state.rolled = null;
+        }
         try {
           await saveLudoState(db, roomId, loaded.state, loaded.version);
         } catch (_) {}
@@ -9158,17 +9362,20 @@ async function handleApi(request, env, url) {
     const ts = now();
     await syncFruitParty(db, ts);
     const roundId = fruitPartyRoundId(ts);
+    const betId = `fruit-party:${userId}:${requestId}`;
+    // A retry of an already-accepted bet returns the accepted bet even
+    // after the round closed (room audit 2026-11-20) — the duplicate check
+    // runs before the betting_locked check.
+    const prior = await db.prepare(
+      "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
+    ).bind(userId, requestId).first();
+    if (prior) return json(await fruitPartyState(db, userId, ts));
     if (ts >= fruitPartyBetEnd(roundId)) {
       return json(
         { ok:false,error:"betting_locked",state:await fruitPartyState(db,userId,ts) },
         { status:409 },
       );
     }
-    const betId = `fruit-party:${userId}:${requestId}`;
-    const prior = await db.prepare(
-      "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
-    ).bind(userId, requestId).first();
-    if (prior) return json(await fruitPartyState(db, userId, ts));
 
     try {
       await db.batch([
@@ -9242,6 +9449,10 @@ async function handleApi(request, env, url) {
     const foodKey = String(body.food_key ?? "").trim();
     const amount = Number(body.amount ?? 0);
     const requestId = String(body.request_id ?? "").trim();
+    // Compact response is opt-in so older APKs keep the full Greedy Girl state contract.
+    // (Room audit 2026-11-20: this was missing here — the handler read the
+    // fruit-party handler's block-scoped const and threw on every bet.)
+    const compactResponse = body.compact_response === true;
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     if (!GREEDY_GIRL_BY_KEY.has(foodKey) ||
@@ -9264,13 +9475,9 @@ async function handleApi(request, env, url) {
     if (roundId > 0) {
       await settleGreedyGirlRound(db, roundId - 1);
     }
-    if (ts >= greedyGirlBetEnd(roundId)) {
-      return json(
-        { ok:false,error:"betting_locked",state:await greedyGirlState(db,userId,ts) },
-        { status:409 },
-      );
-    }
-
+    // A retry of an already-accepted bet returns the accepted bet even
+    // after the round closed (room audit 2026-11-20) — the duplicate check
+    // runs before the betting_locked check.
     const prior = await db.prepare(
       "SELECT round_id,food_key,amount FROM greedy_girl_bets WHERE user_id=? AND request_id=? LIMIT 1"
     ).bind(userId, requestId).first();
@@ -9291,6 +9498,12 @@ async function handleApi(request, env, url) {
           amount:Number(prior.amount ?? 0),
         },
       });
+    }
+    if (ts >= greedyGirlBetEnd(roundId)) {
+      return json(
+        { ok:false,error:"betting_locked",state:await greedyGirlState(db,userId,ts) },
+        { status:409 },
+      );
     }
 
     const betId = `greedy-girl:${userId}:${requestId}`;
