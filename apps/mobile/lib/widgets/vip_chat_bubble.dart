@@ -13,19 +13,22 @@ import 'package:flutter/material.dart';
 /// What this file does:
 /// - Restyles each of the 8 existing bubbles by VIP tier, keeping its name,
 ///   motif, minimum VIP level and duration. Nothing here re-gates a bubble.
-/// - The restyle applies to the painted fallback and the animated edge effect.
-///   It does NOT replace the PNG artwork in
+/// - The restyle applies to the painted fallback, the animated edge effect
+///   and the new VIP badge. It does NOT replace the PNG artwork in
 ///   `bubble_artwork_data.dart`; when built-in artwork is present the app
 ///   still shows it, exactly as `StretchableCosmeticBubble` does today.
 /// - The bubble shows the message text ONLY. The sender's name, medals and
-///   VIP tag stay OUTSIDE the bubble (in the sender header above it) — no
-///   badge or tag is drawn on the bubble itself.
+///   VIP tag stay OUTSIDE the bubble (in the sender header above it). The
+///   VIP badge pill on the bubble's top edge is part of the VIP bubble
+///   design and stays.
 ///
 /// Tier rule (follows the catalogue `tier` field):
-/// - Basic (tier 1-4): thinner 2px border, soft glow, slow 2.4s sweep.
-/// - Premium (tier 5-6): 2.8px border, stronger glow, 1.8s sweep.
+/// - Basic (tier 1-4): thinner 2px border, soft glow, slow 2.4s sweep,
+///   small dark VIP badge.
+/// - Premium (tier 5-6): 2.8px border, stronger glow, 1.8s sweep,
+///   gold-outlined VIP badge.
 /// - More premium (tier 8-10): 3.5px border + inner gold hairline,
-///   strong glow, fast 1.2s sweep.
+///   strong glow, fast 1.2s sweep, filled gold VIP badge.
 /// - Super premium (tier 16-18): no bubble reaches it yet. The enum value
 ///   exists so a future VIP 16+ bubble (e.g. a King variant) can use it;
 ///   `bubbleStyleForVipTier(VipBubbleTier.superPremium)` returns null today.
@@ -76,6 +79,8 @@ class VipBubbleTheme {
     required this.glowOpacity,
     required this.edgeDurationMs,
     required this.edgeDotCount,
+    required this.badgeLabel,
+    required this.badgeIsFilledGold,
     required this.isPermanent,
   });
 
@@ -90,6 +95,8 @@ class VipBubbleTheme {
   final double glowOpacity;
   final int edgeDurationMs;
   final int edgeDotCount;
+  final String badgeLabel;
+  final bool badgeIsFilledGold;
   final bool isPermanent;
 
   VipBubbleTier get tier => vipBubbleTierForCatalogueTier(catalogueTier);
@@ -117,6 +124,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.18,
         edgeDurationMs: 2400,
         edgeDotCount: 3,
+        badgeLabel: 'VIP 2',
+        badgeIsFilledGold: false,
         isPermanent: false,
       );
     case 'bubble-dream':
@@ -136,6 +145,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.18,
         edgeDurationMs: 2400,
         edgeDotCount: 3,
+        badgeLabel: 'VIP 0',
+        badgeIsFilledGold: false,
         isPermanent: false,
       );
     case 'bubble-nature':
@@ -155,6 +166,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.30,
         edgeDurationMs: 1800,
         edgeDotCount: 5,
+        badgeLabel: 'VIP 0 \u00B7 PERMANENT',
+        badgeIsFilledGold: false,
         isPermanent: true,
       );
     case 'bubble-ice':
@@ -174,6 +187,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.30,
         edgeDurationMs: 1800,
         edgeDotCount: 5,
+        badgeLabel: 'VIP 0',
+        badgeIsFilledGold: false,
         isPermanent: false,
       );
     case 'bubble-dragon':
@@ -193,6 +208,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.45,
         edgeDurationMs: 1200,
         edgeDotCount: 7,
+        badgeLabel: 'VIP 8',
+        badgeIsFilledGold: true,
         isPermanent: false,
       );
     case 'bubble-sakura':
@@ -212,6 +229,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.30,
         edgeDurationMs: 1800,
         edgeDotCount: 5,
+        badgeLabel: 'VIP 5',
+        badgeIsFilledGold: false,
         isPermanent: false,
       );
     case 'bubble-king':
@@ -231,6 +250,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.45,
         edgeDurationMs: 1200,
         edgeDotCount: 7,
+        badgeLabel: 'VIP 10 \u00B7 KING',
+        badgeIsFilledGold: true,
         isPermanent: false,
       );
     case 'bubble-gold':
@@ -251,6 +272,8 @@ VipBubbleTheme restyledBubbleTheme(String styleId) {
         glowOpacity: 0.18,
         edgeDurationMs: 2400,
         edgeDotCount: 3,
+        badgeLabel: 'VIP 0',
+        badgeIsFilledGold: false,
         isPermanent: false,
       );
   }
@@ -283,6 +306,60 @@ List<String> bubbleStylesForVipTier(VipBubbleTier tier) {
   return restyledBubbleStyleIds
       .where((String id) => restyledBubbleTheme(id).tier == tier)
       .toList(growable: false);
+}
+
+/// VIP badge shown on a restyled bubble. Basic: dark pill. Premium:
+/// gold-outlined pill. More premium: filled gold gradient pill.
+class VipBubbleBadge extends StatelessWidget {
+  const VipBubbleBadge({super.key, required this.theme});
+
+  final VipBubbleTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool filled = theme.badgeIsFilledGold;
+    final bool premium = theme.tier == VipBubbleTier.premium;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        gradient: filled
+            ? const LinearGradient(
+                colors: <Color>[Color(0xFFFFD36A), Color(0xFFFF9D00)],
+              )
+            : null,
+        color: filled
+            ? null
+            : premium
+                ? const Color(0xFF3A2A00)
+                : const Color(0xFF2B2340),
+        border: Border.all(
+          color: filled
+              ? const Color(0xFFFFF2A6)
+              : premium
+                  ? const Color(0xFFFFD36A)
+                  : Colors.white.withValues(alpha: 0.35),
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: filled
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: const Color(0xFFFFB11B).withValues(alpha: 0.55),
+                  blurRadius: 10,
+                ),
+              ]
+            : null,
+      ),
+      child: Text(
+        theme.badgeLabel,
+        style: TextStyle(
+          color: filled ? const Color(0xFF1A0B00) : const Color(0xFFFFE9A8),
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
 }
 
 /// Text style for bubble messages. Identical to `BubbleChatText` in
@@ -334,6 +411,7 @@ class VipChatBubble extends StatelessWidget {
       horizontal: 44,
       vertical: 10,
     ),
+    this.showBadge = true,
     this.showMotif = true,
   });
 
@@ -343,6 +421,7 @@ class VipChatBubble extends StatelessWidget {
   final double minWidth;
   final double minHeight;
   final EdgeInsetsGeometry contentPadding;
+  final bool showBadge;
   final bool showMotif;
 
   @override
@@ -370,6 +449,12 @@ class VipChatBubble extends StatelessWidget {
                     theme.motifGlyph,
                     style: const TextStyle(fontSize: 24),
                   ),
+                ),
+              if (showBadge)
+                Positioned(
+                  left: 14,
+                  top: -11,
+                  child: VipBubbleBadge(theme: theme),
                 ),
               Padding(
                 padding: contentPadding,
