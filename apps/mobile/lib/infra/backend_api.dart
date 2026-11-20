@@ -435,6 +435,7 @@ class BackendApi {
     bool? banned,
     bool? accepted,
     String? micMode,
+    int? vipOnly,
   }) =>
       _json(
         'POST',
@@ -451,6 +452,7 @@ class BackendApi {
           if (banned != null) 'banned': banned,
           if (accepted != null) 'accepted': accepted,
           if (micMode != null) 'mic_mode': micMode,
+          if (vipOnly != null) 'vip_only': vipOnly,
         },
       );
 
@@ -588,6 +590,7 @@ class BackendApi {
     required int seatCount,
     String partyMode = 'Friends-making Party',
     String roomMode = 'voice',
+    int vipOnly = 0,
   }) =>
       _json(
         'POST',
@@ -600,6 +603,7 @@ class BackendApi {
           'seat_count': seatCount,
           'party_mode': partyMode,
           'room_mode': roomMode,
+          'vip_only': vipOnly,
         },
       );
 
@@ -654,20 +658,34 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> setSeatResult({
+    required String roomId,
+    required String userId,
+    required int? seatIndex,
+    required bool micMuted,
+  }) =>
+      _json(
+        'POST',
+        '/api/rooms/$roomId/seat',
+        returnErrorBody: true,
+        body: <String, dynamic>{
+          'user_id': userId,
+          'seat_index': seatIndex,
+          'mic_muted': micMuted,
+        },
+      );
+
   Future<bool> setSeat({
     required String roomId,
     required String userId,
     required int? seatIndex,
     required bool micMuted,
   }) async {
-    final value = await _json(
-      'POST',
-      '/api/rooms/$roomId/seat',
-      body: <String, dynamic>{
-        'user_id': userId,
-        'seat_index': seatIndex,
-        'mic_muted': micMuted,
-      },
+    final value = await setSeatResult(
+      roomId: roomId,
+      userId: userId,
+      seatIndex: seatIndex,
+      micMuted: micMuted,
     );
     return value?['ok'] == true;
   }

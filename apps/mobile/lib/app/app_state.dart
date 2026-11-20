@@ -23,6 +23,7 @@ class RoomSummary {
     this.avatarKey,
     this.partyMode = 'Friends-making Party',
     this.roomMode = 'voice',
+    this.vipOnlyLevel = 0,
   });
 
   final String id;
@@ -37,6 +38,10 @@ class RoomSummary {
   final String? avatarKey;
   final String partyMode;
   final String roomMode;
+
+  /// VIP-only entry threshold: 0 = open to everyone, 1 = VIP1+,
+  /// 5 = VIP5+ (Vinay, 2026-11-20).
+  final int vipOnlyLevel;
 }
 
 class DirectMessage {
@@ -1327,7 +1332,7 @@ class AppState extends ChangeNotifier {
       name: room.name, ownerName: room.ownerName,
       ownerUserId: room.ownerUserId, online: room.online,
       seatCount: room.seatCount, avatarKey: key, partyMode: room.partyMode,
-      roomMode: room.roomMode,
+      roomMode: room.roomMode, vipOnlyLevel: room.vipOnlyLevel,
     );
     notifyListeners();
   }
@@ -1355,6 +1360,7 @@ class AppState extends ChangeNotifier {
         avatarKey: decoded['avatarKey']?.toString(),
         partyMode: decoded['partyMode']?.toString() ?? 'Friends-making Party',
         roomMode: decoded['roomMode']?.toString() ?? 'voice',
+        vipOnlyLevel: int.tryParse(decoded['vipOnlyLevel']?.toString() ?? '') ?? 0,
       );
     } catch (_) {
       await preferences.remove(_ownedRoomCacheKey);
@@ -1378,6 +1384,7 @@ class AppState extends ChangeNotifier {
         'avatarKey': room.avatarKey,
         'partyMode': room.partyMode,
         'roomMode': room.roomMode,
+        'vipOnlyLevel': room.vipOnlyLevel,
       }),
     );
   }
@@ -1397,6 +1404,7 @@ class AppState extends ChangeNotifier {
         avatarKey: row['avatar_key']?.toString(),
         partyMode: row['party_mode']?.toString() ?? 'Friends-making Party',
         roomMode: row['room_mode']?.toString() ?? 'voice',
+        vipOnlyLevel: int.tryParse(row['vip_only']?.toString() ?? '') ?? 0,
       );
       if (room.id.isEmpty ||
           (room.online <= 0 && room.ownerUserId != userId)) {
@@ -1424,6 +1432,7 @@ class AppState extends ChangeNotifier {
     int seatCount = 12,
     String partyMode = 'Friends-making Party',
     String roomMode = 'voice',
+    int vipOnly = 0,
   }) async {
     final cleanName = name.trim().isEmpty ? 'New Room' : name.trim();
     final allowedSeats =
@@ -1438,6 +1447,7 @@ class AppState extends ChangeNotifier {
       seatCount: allowedSeats,
       partyMode: partyMode,
       roomMode: roomMode,
+      vipOnly: vipOnly,
     );
     final roomId = result?['room_id']?.toString() ?? '';
     if (roomId.isEmpty) {
@@ -1457,6 +1467,10 @@ class AppState extends ChangeNotifier {
           'Select your country before creating a room.',
         'room_create_storage_failed' =>
           'Room storage could not save the room. The server is being repaired.',
+        'vip_only_requires_vip10' =>
+          'VIP10 is required to make a VIP-only room.',
+        'invalid_vip_only' =>
+          'Choose Everyone, VIP 1+ or VIP 5+ for this room.',
         'room_id_taken' || 'room_id_unavailable' =>
           'A room ID could not be allocated. Please try again.',
         'user_banned' || 'user_suspended' =>
@@ -1483,6 +1497,8 @@ class AppState extends ChangeNotifier {
       seatCount: resolvedSeatCount ?? allowedSeats,
       partyMode: result?['party_mode']?.toString() ?? partyMode,
       roomMode: result?['room_mode']?.toString() ?? roomMode,
+      vipOnlyLevel:
+          int.tryParse(result?['vip_only']?.toString() ?? '') ?? vipOnly,
     );
     final existingIndex = rooms.indexWhere(
       (existing) => existing.id == room.id || existing.ownerUserId == userId,
