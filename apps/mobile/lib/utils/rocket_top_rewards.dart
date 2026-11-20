@@ -11,8 +11,8 @@
 ///   Lv.10 Top 1 = 14L, Top 2 = 10L, Top 3 = 8L. Top 2 caps at 10L,
 ///   Top 3 caps at 8L.
 ///
-/// UNCONFIRMED — Vinay has NOT confirmed these steps, so they are guesses
-/// that must be changeable in this one file:
+/// CONFIRMED — Vinay confirmed the full Lv.1-18 list on 2026-11-20
+/// ("Thik hai ye bhi"), so the steps below are the rules now:
 /// - VIP level = Rocket level - 2, floored at VIP 1, capped at VIP 8.
 /// - Launch coins = base + 1L per level above Lv.1 for all three ranks
 ///   (so Top 1 reaches 22L at Lv.18).
@@ -56,9 +56,9 @@ const List<int> _maxLaunchCoinsLakh = <int>[22, 10, 8];
 
 RocketTopReward? _rewardForRank(int level, int rank) {
   final index = rank - 1;
-  // UNCONFIRMED: VIP = Rocket level - 2, floor VIP 1, cap VIP 8.
+  // VIP = Rocket level - 2, floor VIP 1, cap VIP 8.
   final vipLevel = (level - 2).clamp(1, 8);
-  // UNCONFIRMED: days = base + 2 per level above Lv.6 (capped), or
+  // Days = base + 2 per level above Lv.6 (capped), or
   // base - 2 per level below Lv.6 (floored at 1 day).
   final int vipDays;
   if (level >= 6) {
@@ -67,7 +67,7 @@ RocketTopReward? _rewardForRank(int level, int rank) {
   } else {
     vipDays = (_baseVipDays[index] - 2 * (6 - level)).clamp(1, 30);
   }
-  // UNCONFIRMED: coins = base + 1L per level above Lv.1 (capped).
+  // Coins = base + 1L per level above Lv.1 (capped).
   final launchCoinsLakh =
       (_baseLaunchCoinsLakh[index] + (level - 1)).clamp(0, _maxLaunchCoinsLakh[index]);
   return RocketTopReward(
