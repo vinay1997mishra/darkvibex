@@ -2,6 +2,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
+  public_id TEXT,
   display_name TEXT NOT NULL DEFAULT '',
   avatar_key TEXT,
   date_of_birth TEXT,

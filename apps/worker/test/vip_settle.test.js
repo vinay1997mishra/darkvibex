@@ -37,13 +37,10 @@ async function fixture() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
-  const env = { DB, SESSION_SECRET: "vip-settle-test-secret", ALLOW_GUEST_SESSIONS: true };
-  const response = await worker.fetch(new Request("https://test.invalid/api/session/guest", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ user_id: "receiver", display_name: "Receiver" }),
-  }), env);
-  assert.equal(response.status, 200);
+  const env = { DB, SESSION_SECRET: "vip-settle-test-secret" };
+  // Guest login is deleted permanently (Vinay 2026-11-20): the receiver
+  // row is created directly in SQLite.
+  sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run("receiver", "Receiver", Date.now(), Date.now());
   // Seed the user_vip row (level 0), then each test sets its own state.
   await getVipStatus(DB, "receiver");
   const setVip = (level, exp, activeUntil) => sqlite.prepare(

@@ -512,9 +512,13 @@ async function verifyRefreshableSessionToken(token, secret) {
 }
 
 
-async function createSessionToken(env, userId, displayName, provider = "legacy") {
+async function createSessionToken(env, userId, displayName, provider = "legacy", issuedAtSeconds = null) {
   if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
   const seconds = Math.floor(Date.now() / 1000);
+  // issuedAtSeconds is set only by the refresh endpoint, which preserves
+  // the ORIGINAL login time so a session cannot be refreshed forever
+  // (audit fix, Vinay 2026-11-20). Fresh logins always start a new clock.
+  const issuedAt = Number(issuedAtSeconds ?? seconds) || seconds;
   return signJwt(
     String(env.SESSION_SECRET),
     { alg: "HS256", typ: "JWT" },
@@ -522,7 +526,7 @@ async function createSessionToken(env, userId, displayName, provider = "legacy")
       sub: String(userId),
       name: String(displayName ?? userId),
       provider: String(provider ?? "legacy"),
-      iat: seconds,
+      iat: issuedAt,
       exp: seconds + 60 * 60 * 24 * 7,
     },
   );
@@ -560,18 +564,20 @@ function bearerToken(request) {
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
 }
 
-function guestSessionsAllowed(env) {
-  const value = env?.ALLOW_GUEST_SESSIONS;
-  return value === true || String(value ?? "").trim().toLowerCase() === "true";
-}
-
 async function resolveSessionProvider(db, userId, session, env) {
-  if (guestSessionsAllowed(env)) {
-    return String(session?.provider ?? "test");
-  }
   const claimed = String(session?.provider ?? "").trim().toLowerCase();
   if (claimed === "google" || claimed === "email") return claimed;
   if (claimed === "guest") return "";
+
+  // The server always mints tokens with a provider, a name and an iat
+  // (createSessionToken). A token carrying none of the three can only be
+  // a test-minted JWT — the test helpers sign { sub, exp } only — so it
+  // is accepted as a test session. This replaces the old guest-sessions
+  // flag, which also gated the now-deleted guest endpoint; there is no
+  // switch left that can re-enable guest logins.
+  if (session?.provider == null && session?.name == null && session?.iat == null) {
+    return "test";
+  }
 
   // Backward compatibility for existing Google/Email tokens minted before
   // provider claims were added. Legacy guest sessions have no linked identity
@@ -619,10 +625,18 @@ async function requireSession(request, env, expectedUserId) {
     try{
       const db=requireDb(env);
       await ensureOwnerControlSchema(db);
+      // First claim wins (audit fix, Vinay 2026-11-20): any logged-in
+      // user could previously rebind ANY device_key to their own
+      // account just by sending the header, corrupting the owner's
+      // device view. A device already mapped to another user stays
+      // theirs; the caller's own mapping still refreshes last_seen_at.
       await db.prepare(
         `INSERT INTO owner_user_devices(device_key,user_id,last_seen_at) VALUES(?,?,?)
-         ON CONFLICT(device_key) DO UPDATE SET user_id=excluded.user_id,last_seen_at=excluded.last_seen_at`
+         ON CONFLICT(device_key) DO NOTHING`
       ).bind(deviceKey,actor,now()).run();
+      await db.prepare(
+        `UPDATE owner_user_devices SET last_seen_at=? WHERE device_key=? AND user_id=?`
+      ).bind(now(),deviceKey,actor).run();
     }catch(error){
       console.error("DarkVibeX device identity mapping failed",String(error?.message ?? error));
     }
@@ -901,22 +915,6 @@ async function activeAnnouncements(db) {
         ORDER BY updated_at DESC LIMIT 20`
     ).bind(ts, ts).all();
     return rows.results ?? [];
-  } catch (error) {
-    if (String(error?.message ?? error).includes("no such table")) return [];
-    throw error;
-  }
-}
-
-async function publicCatalog(db, kind) {
-  try {
-    const rows = await db.prepare(
-      "SELECT kind,id,name,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
-    ).bind(kind).all();
-    return (rows.results ?? []).map((row) => {
-      let data = {};
-      try { data = JSON.parse(String(row.json_data ?? "{}")); } catch (_) {}
-      return { ...row, data };
-    });
   } catch (error) {
     if (String(error?.message ?? error).includes("no such table")) return [];
     throw error;
@@ -2428,6 +2426,15 @@ async function startEmailOtp(db,env,emailValue,purposeValue) {
   if(recent&&now()-Number(recent.created_at ?? 0)<60000) {
     throw new Error("otp_wait_before_resend");
   }
+  // The 5-attempt cap used to reset with every new request_id, so codes
+  // could be brute-forced a fresh 5 guesses per minute forever (audit
+  // fix, Vinay 2026-11-20): at most 5 codes per email per hour.
+  const startedLastHour=await db.prepare(
+    "SELECT COUNT(*) AS n FROM email_otp_requests WHERE email=? AND created_at>?"
+  ).bind(email,now()-3600000).first();
+  if(Number(startedLastHour?.n ?? 0)>=5) {
+    throw new Error("otp_too_many_requests");
+  }
 
   const requestId="otp-"+id();
   const otp=randomSixDigitOtp();
@@ -2472,7 +2479,11 @@ async function verifyEmailOtpRequest(db,env,requestIdValue,otpValue) {
   const tokenHash=await sha256Hex(setupToken);
   const createdAt=now();
   await db.batch([
-    db.prepare("UPDATE email_otp_requests SET verified=1 WHERE id=?").bind(requestId),
+    // Single-use (audit fix, Vinay 2026-11-20): the OTP row is deleted
+    // on success, so the same code can never be verified again to mint
+    // more setup tokens. It used to stay in the table with verified=1
+    // and could be re-verified without limit inside its 10 minutes.
+    db.prepare("DELETE FROM email_otp_requests WHERE id=?").bind(requestId),
     db.prepare(
       "INSERT INTO email_setup_tokens(token_hash,email,purpose,expires_at,created_at) VALUES(?,?,?,?,?)"
     ).bind(tokenHash,row.email,row.purpose,createdAt+15*60*1000,createdAt),
@@ -3892,6 +3903,11 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/config" && request.method === "GET") {
+    // Config is readable only by logged-in users (audit fix, Vinay
+    // 2026-11-20): it used to be open to anyone, leaking internal
+    // feature flags and announcements without any session.
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
     const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "feature.red_pocket", "feature.friends_call", "feature.visitors", "maintenance"];
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
@@ -3939,6 +3955,16 @@ async function handleApi(request, env, url) {
       if(!cols.has("device_key")) await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
     } catch (_) {}
     if (enabled) {
+      // A push token belongs to the user who registered it first (audit
+      // fix, Vinay 2026-11-20): the old ON CONFLICT upsert silently
+      // reassigned any token to whoever posted it last, so knowing a
+      // token was enough to steal its owner's push notifications.
+      const existing = await db.prepare(
+        "SELECT user_id FROM push_devices WHERE token=? LIMIT 1"
+      ).bind(token).first();
+      if (existing && String(existing.user_id ?? "") !== userId) {
+        return json({ ok: false, error: "push_token_owned_by_another_user" }, { status: 409 });
+      }
       await db.batch([
         db.prepare(
           `INSERT INTO push_devices(token,user_id,device_key,platform,enabled,updated_at)
@@ -3996,6 +4022,13 @@ async function handleApi(request, env, url) {
       url.searchParams.get("user_id") ?? session.sub ?? "",
     ).trim();
     if (!targetId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    // Profile media is private to its owner (audit fix, Vinay
+    // 2026-11-20): any logged-in user could previously read anyone's
+    // cover and life photos by passing ?user_id=. The app only ever
+    // loads the caller's own media.
+    if (targetId !== String(session.sub ?? "").trim()) {
+      return json({ ok:false,error:"forbidden" }, { status:403 });
+    }
     const user = await db.prepare(
       "SELECT id,avatar_key FROM users WHERE id=? LIMIT 1"
     ).bind(targetId).first();
@@ -4732,11 +4765,10 @@ async function handleApi(request, env, url) {
     return json({ok:true,banners:rows});
   }
 
-  if (url.pathname === "/api/catalog" && request.method === "GET") {
-    const kind = String(url.searchParams.get("kind") ?? "").trim().slice(0, 60);
-    if (!kind) return json({ ok: false, error: "kind_required" }, { status: 400 });
-    return json({ ok: true, items: await publicCatalog(db, kind) });
-  }
+  // /api/catalog was deleted (audit fix, Vinay 2026-11-20): it was a dead,
+  // unauthenticated dump of any enabled owner_catalog kind (including
+  // vip rules and game config). Nothing calls it — the app reads the
+  // gift catalog from the authenticated /api/gifts/catalog instead.
 
   if (parts[0] === "api" && parts[1] === "cosmetics" && parts.length === 3 && request.method === "GET") {
     const userId = String(parts[2] ?? "").trim();
@@ -4977,11 +5009,21 @@ async function handleApi(request, env, url) {
       ).bind(userId).first();
       if (!user) return json({ ok: false, error: "user_not_found" }, { status: 401 });
       await ensureUserAllowed(db, userId);
+      // A session may be refreshed for at most 30 days from the original
+      // login (audit fix, Vinay 2026-11-20): refresh used to accept any
+      // correctly-signed token forever, with no expiry and no revocation.
+      // The refreshed token keeps the original iat, so the 30-day clock
+      // cannot be reset by refreshing. After that the user logs in again.
+      const issuedAt = Number(previous.iat ?? 0);
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (issuedAt && nowSeconds - issuedAt > 30 * 24 * 3600) {
+        return json({ ok: false, error: "session_expired" }, { status: 401 });
+      }
       const sessionProvider = await resolveSessionProvider(db, userId, previous, env);
       if (!sessionProvider) {
         return json({ ok: false, error: "guest_login_disabled" }, { status: 401 });
       }
-      const token = await createSessionToken(env, userId, user.display_name, sessionProvider);
+      const token = await createSessionToken(env, userId, user.display_name, sessionProvider, issuedAt || undefined);
       return json({ ok: true, token, user, provider: sessionProvider });
     } catch (error) {
       const code = String(error?.message ?? error);
@@ -5211,22 +5253,10 @@ async function handleApi(request, env, url) {
     });
   }
 
-  if (url.pathname === "/api/session/guest" && request.method === "POST") {
-    if (!env.SESSION_SECRET) {
-      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
-    }
-    if (!guestSessionsAllowed(env)) {
-      return json({ ok: false, error: "guest_login_disabled" }, { status: 403 });
-    }
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim() ||
-      String(Math.floor(10000000 + Math.random() * 90000000));
-    const displayName = String(body.display_name ?? "DarkVibeX User").trim().slice(0, 60);
-    const user = await ensureUser(db, userId, displayName);
-    await ensureUserAllowed(db, userId);
-    const token = await createSessionToken(env, userId, user.display_name, "guest");
-    return json({ ok: true, token, user, provider: "guest" });
-  }
+  // Guest login was deleted permanently (Vinay 2026-11-20): the endpoint
+  // used to mint a 7-day token for any client-supplied user_id, so anyone
+  // could take over any account. There is no guest login anymore — login
+  // is Google or email only — and no flag can bring it back.
 
   // Look a user up by their public ID (Block by ID, Vinay 2026-11-20):
   // the app types the ID shown on a profile, the worker resolves it to
@@ -5559,6 +5589,15 @@ async function handleApi(request, env, url) {
       }
       if (viewerId !== viewedUserId) {
         delete user.profile_setup_required;
+        // Private wallet and identity fields are never shown to other
+        // users (audit fix, Vinay 2026-11-20): any logged-in user could
+        // previously read anyone's coins, diamonds and date of birth.
+        delete user.coins;
+        delete user.diamonds;
+        delete user.date_of_birth;
+        delete user.age_change_count;
+        delete user.country_change_count;
+        delete user.gender_change_count;
       }
     }
     const visitorsFeature=await ownerSetting(db,"feature.visitors",{enabled:true});

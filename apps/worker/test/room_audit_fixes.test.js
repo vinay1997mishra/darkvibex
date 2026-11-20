@@ -55,7 +55,7 @@ async function fixture() {
     async put() { return { ok: true }; },
     async get() { return null; },
   };
-  const env = { DB, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true, FILES: files };
+  const env = { DB, SESSION_SECRET: secret, FILES: files };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -69,8 +69,9 @@ async function fixture() {
 let publicIdCounter = 7660000;
 async function makeUser(fx, userId, { coins = 100000, vipLevel = 0, country = "IN" } = {}) {
   const { sqlite, request } = fx;
-  const created = await request("/api/session/guest", { method: "POST", body: { user_id: userId, display_name: userId } });
-  assert.equal(created.status, 200, JSON.stringify(created.body));
+  // Guest login is deleted permanently (Vinay 2026-11-20): test users are
+  // created directly in SQLite instead of through the removed endpoint.
+  sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run(userId, userId, Date.now(), Date.now());
   publicIdCounter += 1;
   sqlite.prepare("UPDATE users SET vip_level=?, coins=?, country_code=?, public_id=? WHERE id=?").run(vipLevel, coins, country, String(publicIdCounter), userId);
   return { userId, publicId: String(publicIdCounter) };
