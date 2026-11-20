@@ -55,6 +55,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('sender name shows the VIP level colour (VIP5 gold)',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: RoomChatSenderHeader(
+                displayName: 'Vinay',
+                tags: [],
+                medals: [],
+                vipLevel: 5,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final text =
+        tester.widget<Text>(find.byKey(const Key('room-chat-sender-name')));
+    expect(text.style?.color, const Color(0xFFFFD700));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sender name uses the gold-red gradient at VIP18',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: RoomChatSenderHeader(
+                displayName: 'Vinay',
+                tags: [],
+                medals: [],
+                vipLevel: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(ShaderMask), findsOneWidget);
+    final text =
+        tester.widget<Text>(find.byKey(const Key('room-chat-sender-name')));
+    expect(text.style?.color, Colors.white);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sender name stays white below VIP5', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: RoomChatSenderHeader(
+                displayName: 'Vinay',
+                tags: [],
+                medals: [],
+                vipLevel: 4,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final text =
+        tester.widget<Text>(find.byKey(const Key('room-chat-sender-name')));
+    expect(text.style?.color, Colors.white);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('long sender names and multiple profile badges do not overflow',
       (tester) async {
     tester.view.physicalSize = const Size(360, 720);

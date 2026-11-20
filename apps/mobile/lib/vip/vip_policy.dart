@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 class VipLevelRule {
   const VipLevelRule({
     required this.level,
@@ -196,6 +198,40 @@ class VipPolicy {
     if (level >= 14) return 0.20;
     if (level >= 8) return 0.10;
     return 0;
+  }
+
+  // Name colours (Vinay, 2026-11-20): a VIP-active user's name shows
+  // in their level colour in room chat and on profiles, VIP5-18 only.
+  // One distinct colour per level, gold at the bottom rising to a
+  // gold-to-red gradient at VIP18. Levels below 5 have no colour.
+  static const Map<int, Color> nameColours = <int, Color>{
+    5: Color(0xFFFFD700), // Gold
+    6: Color(0xFFFFB11B), // Amber
+    7: Color(0xFFFF8C00), // Orange
+    8: Color(0xFFC07DFF), // Light Violet
+    9: Color(0xFF9B32FF), // Purple
+    10: Color(0xFFA64DFF), // Bright Purple
+    11: Color(0xFF4DC3FF), // Sky Blue
+    12: Color(0xFF00E5FF), // Cyan
+    13: Color(0xFF3D7BFF), // Royal Blue
+    14: Color(0xFFFF5C8A), // Rose
+    15: Color(0xFFFF2E4D), // Crimson
+    16: Color(0xFFFF2EA6), // Magenta
+    17: Color(0xFFFF4D00), // Phoenix Fire
+  };
+
+  /// Solid name colour for an active VIP [level], or null when the
+  /// level has no colour (below VIP5, or VIP18 which is a gradient).
+  static Color? nameColourForLevel(int level) {
+    if (level < 5 || level > 18) return null;
+    return nameColours[level];
+  }
+
+  /// Gradient name colours for an active VIP [level], or null when the
+  /// level uses a solid colour. Only VIP18 is a gradient (gold to red).
+  static List<Color>? nameGradientForLevel(int level) {
+    if (level != 18) return null;
+    return const <Color>[Color(0xFFFFD700), Color(0xFFFF2E4D)];
   }
 
   static int validityDays(int level) => level >= 16 ? 60 : 30;

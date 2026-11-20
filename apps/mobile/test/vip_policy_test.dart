@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/vip/vip_policy.dart';
@@ -108,6 +110,37 @@ void main() {
       vip1Ids,
       {'vip_logo', 'headframe', 'display_front', 'view_visitors', 'exp_boost_1_1x'},
     );
+  });
+
+  test('name colours are one distinct colour per VIP level (VIP5-18)', () {
+    // Approved list (Vinay, 2026-11-20): gold at the bottom, rising
+    // to a gold-to-red gradient at VIP18. Below VIP5 there is no colour.
+    expect(VipPolicy.nameColours.length, 13);
+    expect(VipPolicy.nameColours.values.toSet().length, 13);
+    expect(VipPolicy.nameColourForLevel(0), isNull);
+    expect(VipPolicy.nameColourForLevel(4), isNull);
+    expect(VipPolicy.nameColourForLevel(5), const Color(0xFFFFD700));
+    expect(VipPolicy.nameColourForLevel(6), const Color(0xFFFFB11B));
+    expect(VipPolicy.nameColourForLevel(7), const Color(0xFFFF8C00));
+    expect(VipPolicy.nameColourForLevel(8), const Color(0xFFC07DFF));
+    expect(VipPolicy.nameColourForLevel(9), const Color(0xFF9B32FF));
+    expect(VipPolicy.nameColourForLevel(10), const Color(0xFFA64DFF));
+    expect(VipPolicy.nameColourForLevel(11), const Color(0xFF4DC3FF));
+    expect(VipPolicy.nameColourForLevel(12), const Color(0xFF00E5FF));
+    expect(VipPolicy.nameColourForLevel(13), const Color(0xFF3D7BFF));
+    expect(VipPolicy.nameColourForLevel(14), const Color(0xFFFF5C8A));
+    expect(VipPolicy.nameColourForLevel(15), const Color(0xFFFF2E4D));
+    expect(VipPolicy.nameColourForLevel(16), const Color(0xFFFF2EA6));
+    expect(VipPolicy.nameColourForLevel(17), const Color(0xFFFF4D00));
+    // VIP18 has no single colour — it is the gold-to-red gradient.
+    expect(VipPolicy.nameColourForLevel(18), isNull);
+    expect(VipPolicy.nameColourForLevel(19), isNull);
+    expect(
+      VipPolicy.nameGradientForLevel(18),
+      const <Color>[Color(0xFFFFD700), Color(0xFFFF2E4D)],
+    );
+    expect(VipPolicy.nameGradientForLevel(17), isNull);
+    expect(VipPolicy.nameGradientForLevel(5), isNull);
   });
 
   test('nickname light is only VIP8 through VIP17', () {

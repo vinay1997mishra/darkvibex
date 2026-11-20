@@ -17,6 +17,7 @@ import 'personal_profile_screen.dart';
 import 'room_screen.dart';
 import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
+import '../widgets/vip_name_text.dart';
 import '../widgets/vip_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
@@ -364,12 +365,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          state.vipAnonymousEverywhere
+                        VipNameText(
+                          name: state.vipAnonymousEverywhere
                               ? 'Anonymous'
                               : state.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          vipLevel: state.vipAnonymousEverywhere ||
+                                  !state.vipIsActive
+                              ? 0
+                              : state.vipLevel,
                           style: const TextStyle(
                             color: TinniPalette.gold,
                             fontSize: 18,
