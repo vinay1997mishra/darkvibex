@@ -3328,6 +3328,16 @@ class _RoomScreenState extends State<RoomScreen> {
                     await _removeRoomMember(userId);
                   },
                 ),
+              if (canModerate)
+                ListTile(
+                  leading: const Icon(Icons.block_rounded),
+                  title: const Text('Block'),
+                  subtitle: const Text('Remove and block from this room'),
+                  onTap: () async {
+                    Navigator.pop(actionContext);
+                    await _removeRoomMember(userId, ban: true);
+                  },
+                ),
               if (!isRoomHost && !canModerate)
                 const ListTile(
                   leading: Icon(Icons.more_horiz_rounded),
