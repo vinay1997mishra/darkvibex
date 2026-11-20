@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:darkvibex/widgets/cosmetic_store_previews.dart';
 import 'package:darkvibex/widgets/transparent_artwork_image.dart';
+import 'package:darkvibex/widgets/vip_chat_bubble.dart';
 
 void main() {
   test('custom transparent bubble artwork gets an adaptive nine-slice', () {
@@ -69,6 +70,48 @@ void main() {
     final text = tester.widget<Text>(find.text(message));
     expect(text.style?.color, Colors.white);
     expect(text.style?.shadows, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('VIP bubble shows text plus its badge, no overflow',
+      (tester) async {
+    const message =
+        'DarkVibeX User: this is a longer owner-added bubble message with multiple words and emoji ✨💗';
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: VipChatBubble(
+                styleId: 'bubble-dragon',
+                child: BubbleChatText(text: message),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final text = tester.widget<Text>(find.text(message));
+    expect(text.style?.color, Colors.white);
+    expect(text.style?.shadows, isNotEmpty);
+    // The VIP badge pill sits on the bubble's top edge.
+    expect(find.text('VIP 8'), findsOneWidget);
+    // The badge straddles the top edge, so the Stack must not clip it.
+    final stack = tester.widget<Stack>(
+      find.descendant(
+        of: find.byType(VipChatBubble),
+        matching: find.byType(Stack),
+      ),
+    );
+    expect(stack.clipBehavior, Clip.none);
     expect(tester.takeException(), isNull);
   });
 }
