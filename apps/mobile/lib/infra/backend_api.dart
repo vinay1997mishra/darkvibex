@@ -1536,6 +1536,31 @@ class BackendApi {
         .toList();
   }
 
+  /// Whether the server recorded a kick marker for this user in this room.
+  /// Returns null when the check itself fails (network/server error).
+  /// (Room audit 2026-11-20 — distinguishes a real kick from a
+  /// presence-timeout prune after the app was backgrounded >30s.)
+  Future<bool?> roomKickStatus({
+    required String roomId,
+    required String userId,
+  }) async {
+    try {
+      final value = await _json(
+        'GET',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/kick-status'
+        '?user_id=${Uri.encodeQueryComponent(userId)}',
+      );
+      if (value == null) return null;
+      final kicked = value['kicked'];
+      if (kicked is bool) return kicked;
+      return kicked?.toString() == '1';
+    } catch (_) {
+      // A network drop is not a kick — the caller keeps the existing
+      // poll behaviour instead of acting on an unknown state.
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> followedRooms({
     required String userId,
   }) async {

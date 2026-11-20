@@ -717,12 +717,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
           bytes: draft.avatarBytes!,
           contentType: draft.avatarContentType,
         );
-        if (key != null &&
+        final avatarSaved = key != null &&
             await state.backend.setRoomAvatar(
               roomId: created.id,
               userId: state.userId,
               avatarKey: key,
-            )) {
+            );
+        if (avatarSaved) {
           state.setRoomAvatarKey(created.id, key);
           room = RoomSummary(
             id: created.id,
@@ -735,6 +736,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
             avatarKey: key,
             partyMode: created.partyMode,
             roomMode: created.roomMode,
+            vipOnlyLevel: created.vipOnlyLevel,
+          );
+        } else if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Room created, but the room photo could not be saved.'),
+            ),
           );
         }
       }

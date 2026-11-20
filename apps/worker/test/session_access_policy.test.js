@@ -136,13 +136,16 @@ test("user-scoped room, relationship and ID-level routes cannot be used for anot
   const token = await sessionToken("actor-user", secret);
 
   const getPaths = [
-    "/api/vs?user_id=target-user",
-    "/api/cp?user_id=target-user",
     "/api/id-level?user_id=target-user",
     "/api/rooms/test-room/follow?user_id=target-user",
     "/api/rooms/test-room/lamp?user_id=target-user",
     "/api/rooms/following?user_id=target-user",
   ];
+  // NOTE (room audit 2026-11-20): /api/vs and /api/cp are NOT in this
+  // list on purpose — CP/VS state is public profile info, readable by any
+  // logged-in user (the room profile card and full profile page fetch
+  // another user's state), like /api/medals. They are covered by the
+  // room-audit CP/VS tests instead.
   for (const path of getPaths) {
     const result = await request(path, { token });
     assert.equal(result.status, 403, `unexpected access to ${path}`);

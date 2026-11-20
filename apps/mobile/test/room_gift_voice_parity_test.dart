@@ -30,7 +30,12 @@ void main() {
     expect(picker, contains('for (final person in recipients)'));
     expect(picker, contains("Key('room-gift-total-coins')"));
     expect(picker, contains("Key('room-gift-send-button')"));
-    expect(picker, contains("final fetchedMembers = widget.state.backendConnected"));
+    expect(picker, contains("fetchedMembers = widget.state.backendConnected"));
+    expect(
+      picker,
+      contains("await widget.state.backend.roomMembers(roomId: widget.room.id)"),
+      reason: 'Gift Box must fetch the live member list from the server',
+    );
     expect(picker, contains("'avatar_key': widget.state.avatarKey"));
     expect(
       picker,

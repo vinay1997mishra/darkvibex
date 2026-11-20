@@ -68,7 +68,8 @@ class RoomScreen extends StatefulWidget {
   State<RoomScreen> createState() => _RoomScreenState();
 }
 
-class _RoomScreenState extends State<RoomScreen> {
+class _RoomScreenState extends State<RoomScreen>
+    with WidgetsBindingObserver {
   static final Set<String> _acceptedLegalInSession = <String>{};
   static const List<int> _rocketStageTargets = rocketStageTargets;
   int? mySeat;
@@ -293,6 +294,7 @@ class _RoomScreenState extends State<RoomScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     roomAvatarKey = widget.room.avatarKey;
     roomName = widget.room.name;
     roomSeatCount = widget.room.seatCount;
@@ -358,6 +360,12 @@ class _RoomScreenState extends State<RoomScreen> {
       if (seat != null) next[seat] = member;
     }
     if (!mounted) return;
+    // Whether I was on a seat BEFORE the setState below: the server may
+    // have seat-downed me (mySeat becomes null), and the mute sync after
+    // it must still fire on that transition — otherwise a seat-downed
+    // user's live mic can never be stopped (the mic toggle is disabled
+    // off-seat and _toggleMic early-returns when mySeat is null).
+    final wasOnSeat = mySeat != null;
     setState(() {
       roomMembers = rows
           .map((row) => Map<String, dynamic>.from(row))
@@ -381,8 +389,13 @@ class _RoomScreenState extends State<RoomScreen> {
     final ownMuted = ownRow.isNotEmpty &&
         (ownRow.first['mic_muted'] == 1 ||
             ownRow.first['mic_muted']?.toString() == '1');
-    if (ownMuted && mySeat != null && !muted) {
-      await rtc?.setMicPublished(false);
+    if (ownMuted && (mySeat != null || wasOnSeat) && !muted) {
+      try {
+        await rtc?.setMicPublished(false);
+      } catch (_) {
+        // The mic adapter throws when not joined (StateError); a failed
+        // mute must not break the member refresh.
+      }
       if (!mounted) return;
       setState(() => muted = true);
     }
@@ -405,6 +418,79 @@ class _RoomScreenState extends State<RoomScreen> {
       _prefetchArrivalVehicleVideos([member]);
       _showArrivalEffect(member);
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // The 4s member poll is gated on the app being active, so a
+      // background gap longer than the 30s presence TTL prunes my
+      // membership row server-side. Reconcile once on return instead of
+      // letting the poll count it as a kick.
+      unawaited(_reconcileMembershipAfterResume());
+    }
+  }
+
+  /// After a background gap, tell a real kick apart from a
+  /// presence-timeout prune. The server records a kick marker only for
+  /// an actual kick (worker part of this audit fix); a prune leaves
+  /// none. Kicked -> the normal "Removed from room" flow. Pruned ->
+  /// silently re-join and reset the kick tracker so the next poll does
+  /// not show that dialog for a room I was never kicked from.
+  Future<void> _reconcileMembershipAfterResume() async {
+    if (_leavingRoom || !mounted || !widget.state.backendConnected) return;
+    List<Map<String, dynamic>>? rows;
+    try {
+      rows = await widget.state.backend.roomMembersOrNull(
+        roomId: widget.room.id,
+      );
+    } catch (_) {
+      return;
+    }
+    if (rows != null) {
+      _kickTracker.noteFetch(ok: true);
+      return;
+    }
+    final kicked = await widget.state.backend.roomKickStatus(
+      roomId: widget.room.id,
+      userId: widget.state.userId,
+    );
+    if (kicked == null) return;
+    if (kicked) {
+      await _handleKickedFromRoom();
+      return;
+    }
+    try {
+      Map<String, dynamic>? joined = await widget.state.backend.joinRoomResult(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+        displayName: widget.state.displayName,
+      );
+      var invalidPassword = false;
+      while (mounted &&
+          joined?['ok'] != true &&
+          (joined?['error'] == 'room_password_required' ||
+              joined?['error'] == 'room_password_invalid')) {
+        final password =
+            await _promptRoomPassword(invalid: invalidPassword);
+        if (password == null || !mounted) return;
+        joined = await widget.state.backend.joinRoomResult(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+          displayName: widget.state.displayName,
+          password: password,
+        );
+        invalidPassword = joined?['error'] == 'room_password_invalid';
+      }
+      if (joined?['ok'] != true) return;
+    } catch (_) {
+      // A network drop on resume is not a kick — leave the tracker
+      // alone; the normal poll will retry and only act on consecutive
+      // failures.
+      return;
+    }
+    _kickTracker.noteFetch(ok: true);
+    await _loadRoomMembers();
   }
 
   /// Direct R2 URL for a member's animal vehicle video, or null when the
@@ -576,12 +662,13 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     for (final entry in latestByUser.entries) {
       final message = entry.value;
-      final createdAt = DateTime.tryParse(
-        message['created_at']?.toString() ?? '',
-      );
-      if (createdAt != null &&
-          DateTime.now().difference(createdAt.toLocal()) >
-              const Duration(seconds: 4)) {
+      // The server stores created_at as epoch milliseconds, so
+      // DateTime.tryParse never parses it and the 4s freshness guard
+      // was dead (stale panda emotes replayed on every poll).
+      final createdAtMs = _roomMessageTimestampMs(message['created_at']);
+      if (createdAtMs != null &&
+          DateTime.now().millisecondsSinceEpoch - createdAtMs >
+              const Duration(seconds: 4).inMilliseconds) {
         continue;
       }
       final messageId = (message['id'] ??
@@ -841,6 +928,11 @@ class _RoomScreenState extends State<RoomScreen> {
       if (rawTier is! Map) return;
       final tier = Map<String, dynamic>.from(rawTier);
       final rewardFrame = rocketRewardFrameForGroup(tier['group']?.toString());
+      // The reward pool pays random Coins only — no frames (Vinay,
+      // 2026-11-19). When a tier awards no frames, the frame preview
+      // and "First 0 successful claims ... 0 day(s)" line must not render.
+      final frameWinners =
+          int.tryParse(tier['frame_winners']?.toString() ?? '') ?? 0;
       final rawClaim = status['claim'];
       Map<String, dynamic>? claim = rawClaim is Map
           ? Map<String, dynamic>.from(rawClaim)
@@ -925,31 +1017,44 @@ class _RoomScreenState extends State<RoomScreen> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 10),
-                RocketRewardFramePreview(
-                  rewardGroup: tier['group']?.toString(),
-                  size: 58,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  rewardFrame['name'] ?? 'Rocket Animated Frame',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF50D8FF),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                if (frameWinners > 0) ...<Widget>[
+                  const SizedBox(height: 10),
+                  RocketRewardFramePreview(
+                    rewardGroup: tier['group']?.toString(),
+                    size: 58,
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'First ${tier['frame_winners']} successful claims receive this animated frame for ${tier['frame_days']} day(s), with no Coins deducted. Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFFBFCDF3),
-                    fontSize: 12,
-                    height: 1.45,
+                  const SizedBox(height: 4),
+                  Text(
+                    rewardFrame['name'] ?? 'Rocket Animated Frame',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF50D8FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'First ${tier['frame_winners']} successful claims receive this animated frame for ${tier['frame_days']} day(s), with no Coins deducted. Other winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFBFCDF3),
+                      fontSize: 12,
+                      height: 1.45,
+                    ),
+                  ),
+                ] else ...<Widget>[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Winners receive ${_formatRocketRewardCoins(int.tryParse(tier['coin_min']?.toString() ?? '') ?? 0)}–${_formatRocketRewardCoins(int.tryParse(tier['coin_max']?.toString() ?? '') ?? 0)} Coins.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFBFCDF3),
+                      fontSize: 12,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
                 if (message.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 12),
                   Text(
@@ -1597,6 +1702,10 @@ class _RoomScreenState extends State<RoomScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Joined Seat ${seat + 1}')),
         );
+      } else if (accepted == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not join Seat ${seat + 1}')),
+        );
       }
     }
     seatInviteDialogVisible = false;
@@ -1621,6 +1730,8 @@ class _RoomScreenState extends State<RoomScreen> {
       roomSeatThemeId = settings['seat_theme_id']?.toString() ?? roomSeatThemeId;
       roomPartyMode = settings['party_mode']?.toString() ?? roomPartyMode;
       roomMode = settings['room_mode']?.toString() ?? roomMode;
+      final avatarKey = settings['avatar_key']?.toString().trim() ?? '';
+      if (avatarKey.isNotEmpty) roomAvatarKey = avatarKey;
       groupPkEnabled = settings['group_pk_enabled'] == true || settings['group_pk_enabled']?.toString() == '1';
       final text = settings['announcement']?.toString().trim() ?? '';
       roomAnnouncement = text.isEmpty ? null : text;
@@ -2266,6 +2377,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     final rocketOverlay = _rocketLaunchOverlay;
     _rocketLaunchOverlay = null;
     if (rocketOverlay != null) {
@@ -2346,7 +2458,13 @@ class _RoomScreenState extends State<RoomScreen> {
 
     await roomMusic.stopForSeatDown(widget.state.userId);
     if (!muted) {
-      await rtc?.setMicPublished(false);
+      try {
+        await rtc?.setMicPublished(false);
+      } catch (_) {
+        // The mic adapter throws when not joined (StateError); a throw
+        // here must not abort the seat-down flow (it also backs the
+        // admin "Take Seat" path via _takeSeatDirect).
+      }
     }
     if (cameraPublished && rtc is AgoraRtcAdapter) {
       await (rtc as AgoraRtcAdapter).setCameraPublished(false);
@@ -2419,13 +2537,25 @@ class _RoomScreenState extends State<RoomScreen> {
         // unreachable; the last known balance remains visible.
       }
     }
-    final catalog = widget.state.backendConnected
-        ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
-        : <Map<String, dynamic>>[];
+    List<Map<String, dynamic>> catalog;
+    try {
+      catalog = widget.state.backendConnected
+          ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
+          : <Map<String, dynamic>>[];
+    } catch (_) {
+      // A network drop must not kill the Gift Box — it opens with an
+      // empty catalog and the last known balance.
+      catalog = <Map<String, dynamic>>[];
+    }
     if (!mounted) return;
-    final fetchedMembers = widget.state.backendConnected
-        ? await widget.state.backend.roomMembers(roomId: widget.room.id)
-        : roomMembers;
+    List<Map<String, dynamic>> fetchedMembers;
+    try {
+      fetchedMembers = widget.state.backendConnected
+          ? await widget.state.backend.roomMembers(roomId: widget.room.id)
+          : roomMembers;
+    } catch (_) {
+      fetchedMembers = roomMembers;
+    }
     if (!mounted) return;
     final availableMembers =
         fetchedMembers.isEmpty ? roomMembers : fetchedMembers;
@@ -4000,16 +4130,25 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<bool> _takeSeatDirect(int seat) async {
     if (widget.state.backendConnected) {
-      final ok = await widget.state.backend.setSeat(
+      final result = await widget.state.backend.setSeatResult(
         roomId: widget.room.id,
         userId: widget.state.userId,
         seatIndex: seat,
         micMuted: true,
       );
-      if (!ok) {
+      if (result?['ok'] != true) {
         if (mounted) {
+          final error = result?['error']?.toString() ?? '';
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Seat is not available')),
+            SnackBar(
+              content: Text(
+                error == 'seat_request_required'
+                    ? 'This seat needs the owner’s approval — send a seat request from the seat menu.'
+                    : error == 'seat_locked'
+                        ? 'This seat is locked.'
+                        : 'Seat is not available',
+              ),
+            ),
           );
         }
         return false;
@@ -4097,12 +4236,6 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _toggleMic() async {
     if (mySeat == null) return;
-    if (roomMutedSeats.contains(mySeat)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This mic is muted by room owner/admin')),
-      );
-      return;
-    }
     final enable = muted;
     if (enable) {
       final permission = await _ensureRoomVoicePermission(request: true);
@@ -4129,6 +4262,15 @@ class _RoomScreenState extends State<RoomScreen> {
           seatIndex: mySeat,
           micMuted: !enable,
         );
+      }
+      // The local roomMutedSeats set refreshes only every 20s, so it can
+      // still list a seat the moderator already unmuted. It is only a
+      // fallback when the server gave no answer.
+      if (seatResult == null && roomMutedSeats.contains(mySeat)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This mic is muted by room owner/admin')),
+        );
+        return;
       }
       if (enable && seatResult?['mic_muted'] == true) {
         await rtc?.setMicPublished(false);
@@ -6389,7 +6531,7 @@ class _RoomScreenState extends State<RoomScreen> {
         _ => TinniPalette.brightGold,
       };
 
-  Future<bool> _saveRoomConfiguration({
+  Future<Map<String, dynamic>?> _saveRoomConfigurationResult({
     int? seatCount,
     String? themeId,
     String? seatThemeId,
@@ -6413,7 +6555,7 @@ class _RoomScreenState extends State<RoomScreen> {
       seatThemeId: seatThemeId ?? roomSeatThemeId,
     );
     final ok = result?['ok'] == true;
-    if (!mounted) return ok;
+    if (!mounted) return result;
     if (ok) {
       final settings = result?['settings'];
       final generatedCode =
@@ -6430,7 +6572,7 @@ class _RoomScreenState extends State<RoomScreen> {
           }
         } catch (_) {}
       }
-      if (!mounted) return ok;
+      if (!mounted) return result;
       setState(() {
         if (seatCount != null) roomSeatCount = seatCount;
         if (themeId != null) roomThemeId = themeId;
@@ -6453,7 +6595,28 @@ class _RoomScreenState extends State<RoomScreen> {
         await _loadRoomSettings();
       }
     }
-    return ok;
+    return result;
+  }
+
+  Future<bool> _saveRoomConfiguration({
+    int? seatCount,
+    String? themeId,
+    String? seatThemeId,
+    bool? groupPk,
+    bool? locked,
+    String? partyMode,
+    String? nextRoomMode,
+  }) async {
+    final result = await _saveRoomConfigurationResult(
+      seatCount: seatCount,
+      themeId: themeId,
+      seatThemeId: seatThemeId,
+      groupPk: groupPk,
+      locked: locked,
+      partyMode: partyMode,
+      nextRoomMode: nextRoomMode,
+    );
+    return result?['ok'] == true;
   }
 
   Future<void> _showSeatCountSelector() async {
@@ -6743,10 +6906,20 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     if (selected == roomThemeId) return;
-    final ok = await _saveRoomConfiguration(themeId: selected);
-    if (!mounted || ok) return;
+    final result = await _saveRoomConfigurationResult(themeId: selected);
+    if (!mounted || result?['ok'] == true) return;
+    // The server gates room background on VIP3; surface that instead of
+    // the generic error (the settings dialog hides the dropdown without
+    // the privilege, but this selector offers every theme to any host).
+    final error = result?['error']?.toString() ?? '';
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Room theme could not be changed')),
+      SnackBar(
+        content: Text(
+          error == 'vip3_required_for_room_background'
+              ? 'Room background unlocks at VIP3.'
+              : 'Room theme could not be changed',
+        ),
+      ),
     );
   }
 
@@ -7172,6 +7345,7 @@ class _RoomScreenState extends State<RoomScreen> {
       if (tool.$1 == 'Room Type' || tool.$1 == 'Music') return isRoomAdmin;
       if (tool.$1 == 'Public Screen') return isRoomAdmin;
       if (tool.$1 == 'VIP-only Room') return isRoomHost;
+      if (tool.$1 == 'Report') return !isRoomHost;
       return true;
     }).toList(growable: false);
 
@@ -7623,13 +7797,25 @@ class _RoomScreenState extends State<RoomScreen> {
     final giftId = gift['id']?.toString() ?? '';
     final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
     if (giftId.isEmpty || giftCost <= 0 || receiverId.isEmpty) return;
-    final result = await widget.state.backend.sendGift(
-      roomId: widget.room.id,
-      senderUserId: widget.state.userId,
-      receiverUserId: receiverId,
-      giftId: giftId,
-      coinCost: giftCost,
-    );
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.state.backend.sendGift(
+        roomId: widget.room.id,
+        senderUserId: widget.state.userId,
+        receiverUserId: receiverId,
+        giftId: giftId,
+        coinCost: giftCost,
+      );
+    } catch (_) {
+      // _json throws on a network drop; a failed send must show a
+      // snackbar instead of crashing the gift flow.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gift could not be sent. Check your connection and try again.')),
+        );
+      }
+      return;
+    }
     final remoteBalance =
         int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
     final receiverDiamondBalance = int.tryParse(
@@ -7976,6 +8162,21 @@ class _RoomScreenState extends State<RoomScreen> {
     if (!widget.state.hasVipPrivilege('send_pictures')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Room photo messages unlock at VIP10.')),
+      );
+      return;
+    }
+    // Same gates as text messages: a chat-banned user must not reach the
+    // picker at all — the old code uploaded the image to R2 first and
+    // only failed at send time, leaving an orphaned file behind.
+    if (chatBanned) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room owner/admin has chat banned this ID')),
+      );
+      return;
+    }
+    if (!publicScreenEnabled && !isRoomAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Public Screen is owner/admin only')),
       );
       return;
     }

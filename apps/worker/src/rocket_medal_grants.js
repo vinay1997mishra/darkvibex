@@ -120,7 +120,7 @@ export async function topRocketGifters(db, roomId, limit = 3) {
        LEFT JOIN users u ON u.id=g.sender_user_id
       WHERE g.room_id=?
       GROUP BY g.sender_user_id,u.display_name
-      ORDER BY sent_coins DESC,gift_count DESC
+      ORDER BY sent_coins DESC,gift_count DESC,g.sender_user_id ASC
       LIMIT ?`,
   ).bind(room, safeLimit).all();
   return (rows.results ?? []).map((row) => ({
