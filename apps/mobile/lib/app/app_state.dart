@@ -130,6 +130,7 @@ class AppState extends ChangeNotifier {
   int dailyRewardAmount = 0;
   bool dailyRewardClaimedToday = false;
   bool dailyRewardEligible = false;
+  bool dailyRewardReady = false;
   int dailyRewardClaimedCoins = 0;
   bool dailyRewardLoading = false;
   DateTime? vipActiveUntil;
@@ -809,6 +810,7 @@ class AppState extends ChangeNotifier {
     dailyRewardAmount = 0;
     dailyRewardClaimedToday = false;
     dailyRewardEligible = false;
+    dailyRewardReady = false;
     dailyRewardClaimedCoins = 0;
     dailyRewardLoading = false;
     vipActiveUntil = null;
@@ -1001,6 +1003,7 @@ class AppState extends ChangeNotifier {
     dailyRewardClaimedToday = value['claimed_today'] == true;
     dailyRewardClaimedCoins =
         int.tryParse(value['claimed_coins']?.toString() ?? '') ?? 0;
+    dailyRewardReady = true;
   }
 
   Future<void> refreshDailyReward({bool notify = true}) async {
@@ -1008,6 +1011,7 @@ class AppState extends ChangeNotifier {
       dailyRewardEligible = false;
       dailyRewardAmount = 0;
       dailyRewardClaimedToday = false;
+      dailyRewardReady = false;
       dailyRewardClaimedCoins = 0;
       if (notify) notifyListeners();
       return;
