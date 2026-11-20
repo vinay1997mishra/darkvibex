@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart' as gift_video;
 
 import '../utils/public_user_id.dart';
+import '../utils/room_kick_tracker.dart';
 import '../app/app_state.dart';
 import '../background/room_foreground_service.dart';
 import '../background/room_permission_bridge.dart';
@@ -117,6 +118,13 @@ class _RoomScreenState extends State<RoomScreen> {
   bool _rocketRewardDialogShowing = false;
   final Set<String> knownRoomMembers = <String>{};
   bool memberListInitialized = false;
+  // Self-kick detection (Vinay, 2026-11-20): the worker 403s the member
+  // list when my own membership row is gone (kicked), so consecutive
+  // failed fetches mean I was removed — mic off, leave the channel,
+  // exit the room. Set when I leave on purpose so a voluntary exit is
+  // never mistaken for a kick.
+  final RoomKickTracker _kickTracker = RoomKickTracker();
+  bool _leavingRoom = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
   // for all four resources multiplied Worker requests for every connected user.
   Timer? memberRefreshTimer;
@@ -325,7 +333,18 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _loadRoomMembers() async {
     if (!widget.state.backendConnected) return;
-    final rows = await widget.state.backend.roomMembers(roomId: widget.room.id);
+    final rows = await widget.state.backend.roomMembersOrNull(roomId: widget.room.id);
+    if (rows == null) {
+      // The members list failed — the worker 403s it when my own
+      // membership row is gone (kicked). One failure is transient; two
+      // in a row means I was removed.
+      if (_leavingRoom) return;
+      if (_kickTracker.noteFetch(ok: false)) {
+        await _handleKickedFromRoom();
+      }
+      return;
+    }
+    _kickTracker.noteFetch(ok: true);
     final next = <int, Map<String, dynamic>>{};
     final presentIds = rows.map((member) => member['user_id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
     final arrivals = memberListInitialized
@@ -4788,7 +4807,39 @@ class _RoomScreenState extends State<RoomScreen> {
     roomForegroundServiceStarted = false;
   }
 
+  /// I was kicked out of the room: my membership row is gone, so the
+  /// member list keeps failing. Stop my voice and leave the channel
+  /// first (same teardown as leaving on purpose — the worker's LiveKit
+  /// remove call cannot do this: voice is Agora), then tell the user
+  /// and exit. Any dismissal of the dialog exits the room.
+  Future<void> _handleKickedFromRoom() async {
+    if (_leavingRoom) return;
+    _leavingRoom = true;
+    widget.state.clearMinimizedRoom(roomId: widget.room.id);
+    await _disconnectRoomRuntime();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Removed from room'),
+        content: const Text(
+          'You were removed from this room by the room owner or an admin.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   Future<void> _leaveServerMembership() async {
+    _leavingRoom = true;
     if (!widget.state.backendConnected) return;
     for (var attempt = 0; attempt < 3; attempt += 1) {
       try {

@@ -1514,6 +1514,28 @@ class BackendApi {
         .toList();
   }
 
+  /// Members list, or null when the request failed. The worker answers
+  /// 403 `room_membership_required` when the caller's own membership row
+  /// is gone (kicked), so null here is the kick signal — unlike an empty
+  /// list, which also happens when a 200-member room cuts the caller off
+  /// (the worker caps the list at 200 rows). Used only by the room
+  /// screen's self-kick detection; other callers keep [roomMembers].
+  Future<List<Map<String, dynamic>>?> roomMembersOrNull({
+    required String roomId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/members',
+    );
+    if (value == null) return null;
+    final rows = value['members'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
   Future<List<Map<String, dynamic>>> followedRooms({
     required String userId,
   }) async {
