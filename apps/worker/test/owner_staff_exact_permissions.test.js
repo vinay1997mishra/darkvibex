@@ -60,7 +60,7 @@ test("user Full ID actions have separate backend permissions", () => {
 
 test("room and content child actions are independently permissioned", () => {
   for (const permission of [
-    "rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme",
+    "rooms.view","rooms.edit","rooms.lock","rooms.ban","rooms.live","rooms.media","rooms.theme",
     "themes.global.view","themes.global.save","themes.global.remove",
     "roles.view","roles.save","roles.delete","banners.view","banners.save","banners.delete",
     "games.view","games.configure","policies.view","policies.save","policies.delete",

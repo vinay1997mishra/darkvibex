@@ -203,7 +203,7 @@ const STAFF_ASSIGNABLE_PERMISSIONS = new Set([
   "economy.view","economy.coin_rate.edit",
   "messaging.view","messaging.send.selected","messaging.send.all",
   "tags.view","tags.apply","tags.remove",
-  "rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme",
+  "rooms.view","rooms.edit","rooms.lock","rooms.ban","rooms.live","rooms.media","rooms.theme",
   "themes.global.view","themes.global.save","themes.global.remove",
   "roles.view","roles.save","roles.delete",
   "banners.view","banners.save","banners.delete",
@@ -254,7 +254,6 @@ const PERMISSION_ALIASES = {
   "rooms.view":["rooms.read"],
   "rooms.edit":["rooms.write"],
   "rooms.lock":["rooms.write"],
-  "rooms.delete":["rooms.write"],
   "rooms.ban":["rooms.write"],
   "rooms.live":["rooms.live"],
   "rooms.media":["rooms.media"],
@@ -1857,7 +1856,10 @@ async function handleRooms(request, db, actor, url, parts, env) {
   }
 
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "rooms.delete");
+    // Only the platform owner deletes rooms (Vinay, 2026-11-20): panel
+    // staff cannot, and there is no rooms.delete permission to grant
+    // anymore — the permission was removed with this check.
+    if (actor.type !== "owner") return json({ ok:false,error:"owner_only" }, { status:403 });
     // Full room teardown (audit 2026-11-20): the old delete removed only
     // the controls row and the room row, orphaning every room-scoped row
     // (admins, bans, messages, themes, pouches, lamp state) and the R2

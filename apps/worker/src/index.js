@@ -6767,28 +6767,16 @@ async function handleApi(request, env, url) {
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "delete" && request.method === "POST") {
-    const roomId = parts[2];
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
-    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
-    if (String(room.owner_user_id) !== userId) {
-      return json({ ok: false, error: "room_owner_required" }, { status: 403 });
-    }
-    // Delete the room's image + follower rows too (room audit 2026-11-20:
-    // they have no foreign key, so the old delete orphaned them), and
-    // delete the R2 avatar file best-effort. All other room-scoped rows
-    // (admins, bans, messages, themes, pouches, lamp state) go with the
-    // room via the shared teardown in room_cleanup.js.
-    const { avatarKey } = await deleteRoomRows(db, roomId, env.FILES ?? null);
-    if (avatarKey) {
-      try {
-        if (env.FILES) await env.FILES.delete(avatarKey);
-      } catch (_) {}
-    }
-    return json({ ok: true });
+    // Room delete is owner-panel only (Vinay, 2026-11-20): a user cannot
+    // delete their room from the app — only the platform owner deletes
+    // rooms, from the owner panel (not even panel staff). The teardown
+    // lives in room_cleanup.js and is used by the owner-panel delete.
+    // The route stays so callers get this answer instead of a bare 404.
+    return json({ ok:false,error:"room_delete_owner_panel_only" }, { status:403 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "join" && request.method === "POST") {

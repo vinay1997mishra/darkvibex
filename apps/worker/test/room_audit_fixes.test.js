@@ -55,7 +55,7 @@ async function fixture() {
     async put() { return { ok: true }; },
     async get() { return null; },
   };
-  const env = { DB, SESSION_SECRET: secret, FILES: files };
+  const env = { DB, SESSION_SECRET: secret, FILES: files, OWNER_ADMIN_TOKEN: "owner-test-token" };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -63,7 +63,14 @@ async function fixture() {
     const response = await worker.fetch(new Request(`https://test.invalid${path}`, { method, headers, body: body == null ? undefined : JSON.stringify(body) }), env);
     return { status: response.status, body: await response.json() };
   };
-  return { sqlite, DB, request, files };
+  const requestRaw = async (path, { method = "GET", body, token } = {}) => {
+    const headers = new Headers();
+    if (body != null) headers.set("content-type", "application/json");
+    if (token) headers.set("authorization", `Bearer ${token}`);
+    const response = await worker.fetch(new Request(`https://test.invalid${path}`, { method, headers, body: body == null ? undefined : JSON.stringify(body) }), env);
+    return { status: response.status, body: await response.json() };
+  };
+  return { sqlite, DB, request, requestRaw, files };
 }
 
 let publicIdCounter = 7660000;
@@ -414,8 +421,17 @@ test("deleting a room removes its image, follower rows and the R2 avatar", async
   await fx.request(`/api/rooms/${roomId}/follow`, {
     method: "POST", userId: "delete-fan", body: { user_id: "delete-fan", follow: true },
   });
-  const deleted = await fx.request(`/api/rooms/${roomId}/delete`, {
+  // Room delete is owner-panel only (Vinay, 2026-11-20): the app user
+  // cannot delete their room — only the platform owner, from the panel.
+  const denied = await fx.request(`/api/rooms/${roomId}/delete`, {
     method: "POST", userId: "delete-owner", body: { user_id: "delete-owner" },
+  });
+  assert.equal(denied.status, 403, JSON.stringify(denied.body));
+  assert.equal(denied.body.error, "room_delete_owner_panel_only");
+  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_images WHERE room_id=?").get(roomId).n, 1);
+  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_followers WHERE room_id=?").get(roomId).n, 1);
+  const deleted = await fx.requestRaw(`/api/owner/rooms/${roomId}`, {
+    method: "DELETE", token: "owner-test-token",
   });
   assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
   assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_images WHERE room_id=?").get(roomId).n, 0);

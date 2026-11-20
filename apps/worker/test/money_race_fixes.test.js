@@ -55,7 +55,7 @@ async function fixture() {
     async put() { return { ok: true }; },
     async get() { return null; },
   };
-  const env = { DB, SESSION_SECRET: secret, FILES: files };
+  const env = { DB, SESSION_SECRET: secret, FILES: files, OWNER_ADMIN_TOKEN: "owner-test-token" };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -63,7 +63,21 @@ async function fixture() {
     const response = await worker.fetch(new Request(`https://test.invalid${path}`, { method, headers, body: body == null ? undefined : JSON.stringify(body) }), env);
     return { status: response.status, body: await response.json() };
   };
-  return { sqlite, DB, request, files };
+  // Raw bearer calls (owner-panel auth: the main-owner token, or a staff
+  // session token) — the user JWT helper above cannot make these.
+  const requestRaw = async (path, { method = "GET", body, token } = {}) => {
+    const headers = new Headers();
+    if (body != null) headers.set("content-type", "application/json");
+    if (token) headers.set("authorization", `Bearer ${token}`);
+    const response = await worker.fetch(new Request(`https://test.invalid${path}`, { method, headers, body: body == null ? undefined : JSON.stringify(body) }), env);
+    return { status: response.status, body: await response.json() };
+  };
+  return { sqlite, DB, request, requestRaw, files };
+}
+
+async function sha256Hex(text) {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 let publicIdCounter = 7660000;
@@ -217,10 +231,7 @@ test("a platform-banned room cannot be re-created", async () => {
   assert.equal(fx.sqlite.prepare("SELECT banned FROM owner_room_controls WHERE room_id=?").get(roomId).banned, 1);
 });
 
-test("deleting a room removes its admins, bans, messages, themes, kick markers and R2 images", async () => {
-  const fx = await fixture();
-  const owner = await makeUser(fx, "del-owner", { coins: 100000 });
-  const member = await makeUser(fx, "del-member", { coins: 100000 });
+async function seedRoomForDelete(fx, owner, member) {
   const roomId = await makeRoom(fx, owner.userId);
   const now = Date.now();
   // Tables the worker creates on demand (same DDL as src).
@@ -249,20 +260,100 @@ test("deleting a room removes its admins, bans, messages, themes, kick markers a
     .run("msg-1", roomId, member.userId, "hi", now);
   fx.sqlite.prepare("INSERT INTO room_message_images(message_id,image_key,created_at) VALUES(?,?,?)")
     .run("msg-1", "rooms/msg-1.png", now);
-  const deleted = await fx.request(`/api/rooms/${roomId}/delete`, {
+  return roomId;
+}
+
+function roomRowCounts(fx, roomId) {
+  const count = (table) => fx.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE room_id=?`).get(roomId).n;
+  return {
+    room: fx.sqlite.prepare("SELECT COUNT(*) AS n FROM rooms WHERE id=?").get(roomId).n,
+    admins: count("room_admins"),
+    bans: count("room_bans"),
+    kickEvents: count("room_kick_events"),
+    themes: count("room_custom_themes"),
+    messages: count("room_messages"),
+    messageImages: fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_message_images").get().n,
+  };
+}
+
+// Room delete is owner-panel only (Vinay, 2026-11-20): the app user
+// cannot delete their room, and neither can panel staff — only the
+// platform owner deletes rooms, from the owner panel.
+test("a user cannot delete their room from the app", async () => {
+  const fx = await fixture();
+  const owner = await makeUser(fx, "del-owner", { coins: 100000 });
+  const member = await makeUser(fx, "del-member", { coins: 100000 });
+  const roomId = await seedRoomForDelete(fx, owner, member);
+  const result = await fx.request(`/api/rooms/${roomId}/delete`, {
     method: "POST", userId: owner.userId, body: { user_id: owner.userId },
   });
+  assert.equal(result.status, 403, JSON.stringify(result.body));
+  assert.equal(result.body.error, "room_delete_owner_panel_only");
+  // Nothing was deleted.
+  assert.deepEqual(roomRowCounts(fx, roomId), {
+    room: 1, admins: 1, bans: 1, kickEvents: 1, themes: 1, messages: 1, messageImages: 1,
+  });
+});
+
+test("the platform owner deletes a room from the owner panel, with full teardown", async () => {
+  const fx = await fixture();
+  const owner = await makeUser(fx, "del-owner", { coins: 100000 });
+  const member = await makeUser(fx, "del-member", { coins: 100000 });
+  const roomId = await seedRoomForDelete(fx, owner, member);
+  const deleted = await fx.requestRaw(`/api/owner/rooms/${roomId}`, {
+    method: "DELETE", token: "owner-test-token",
+  });
   assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
-  const count = (table) => fx.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE room_id=?`).get(roomId).n;
-  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM rooms WHERE id=?").get(roomId).n, 0);
-  assert.equal(count("room_admins"), 0);
-  assert.equal(count("room_bans"), 0);
-  assert.equal(count("room_kick_events"), 0);
-  assert.equal(count("room_custom_themes"), 0);
-  assert.equal(count("room_messages"), 0);
-  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_message_images").get().n, 0);
+  assert.deepEqual(roomRowCounts(fx, roomId), {
+    room: 0, admins: 0, bans: 0, kickEvents: 0, themes: 0, messages: 0, messageImages: 0,
+  });
   // The message image file was removed from R2 best-effort.
   assert.ok(fx.files.deleted.includes("rooms/msg-1.png"), JSON.stringify(fx.files.deleted));
+});
+
+test("panel staff cannot delete a room, even with every permission", async () => {
+  const fx = await fixture();
+  const owner = await makeUser(fx, "del-owner", { coins: 100000 });
+  const member = await makeUser(fx, "del-member", { coins: 100000 });
+  const roomId = await seedRoomForDelete(fx, owner, member);
+  // Bootstrap the owner schema, then give a staff member a session with
+  // the "*" permission (the strongest staff grant there is).
+  const session = await fx.requestRaw("/api/owner/session", { token: "owner-test-token" });
+  assert.equal(session.status, 200, JSON.stringify(session.body));
+  const now = Date.now();
+  const staffToken = "staff-test-token";
+  const staffHash = await sha256Hex(staffToken);
+  // The worker skips its owner-schema ensure on a second DB binding in
+  // the same process (module-level schema-ready flag), so this test's
+  // fresh DB needs the sessions table created explicitly.
+  fx.sqlite.exec(`CREATE TABLE IF NOT EXISTS owner_staff_sessions (
+    token_hash TEXT PRIMARY KEY,
+    staff_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_used_at INTEGER NOT NULL,
+    FOREIGN KEY (staff_id) REFERENCES owner_staff(id) ON DELETE CASCADE
+  )`);
+  fx.sqlite.exec(`CREATE TABLE IF NOT EXISTS owner_login_sessions (
+    token_hash TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_used_at INTEGER NOT NULL
+  )`);
+  fx.sqlite.prepare(
+    "INSERT INTO owner_staff(id,display_name,role,token_hash,permissions_json,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)"
+  ).run("staff-1", "Staff One", "admin", staffHash, JSON.stringify(["*"]), 1, now, now);
+  fx.sqlite.prepare(
+    "INSERT INTO owner_staff_sessions(token_hash,staff_id,created_at,expires_at,last_used_at) VALUES(?,?,?,?,?)"
+  ).run(staffHash, "staff-1", now, now + 3600000, now);
+  const result = await fx.requestRaw(`/api/owner/rooms/${roomId}`, {
+    method: "DELETE", token: staffToken,
+  });
+  assert.equal(result.status, 403, JSON.stringify(result.body));
+  assert.equal(result.body.error, "owner_only");
+  assert.deepEqual(roomRowCounts(fx, roomId), {
+    room: 1, admins: 1, bans: 1, kickEvents: 1, themes: 1, messages: 1, messageImages: 1,
+  });
 });
 
 test("race guards are wired in source", async () => {
@@ -296,4 +387,21 @@ test("race guards are wired in source", async () => {
   assert.ok(roomCleanup.includes("room_kick_events"), "room cleanup table list missing");
   // Invite rewards use the canonical $1 = 8,000,000 coins rate.
   assert.ok(inviteRewards.includes("COINS_PER_USD = 8_000_000"), "invite rate is not 8,000,000");
+});
+
+test("room delete is owner-panel only: no user endpoint, no staff permission", async () => {
+  const index = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const ownerApi = readFileSync(new URL("../src/owner_api.js", import.meta.url), "utf8");
+  const panelApp = readFileSync(new URL("../../owner_panel/app.js", import.meta.url), "utf8");
+  // The app user endpoint answers 403, it never deletes.
+  assert.ok(index.includes("room_delete_owner_panel_only"), "user delete must answer room_delete_owner_panel_only");
+  assert.ok(!index.includes("deleteRoomRows(db, roomId, env.FILES"), "user delete must not call the teardown");
+  // The owner-panel delete is gated on the main owner, not a permission.
+  assert.ok(!ownerApi.includes('requirePermission(actor, "rooms.delete")'), "rooms.delete permission must be gone");
+  assert.ok(ownerApi.includes("deleteRoomRows"), "owner delete must use the shared teardown");
+  // The panel no longer offers rooms.delete to staff, and hides the
+  // Remove button from everyone except the main owner.
+  assert.ok(!panelApp.includes('["rooms.delete","Rooms · remove room"]'), "panel must not offer rooms.delete to staff");
+  assert.ok(!panelApp.includes('["[data-room-delete]",["rooms.delete"]]'), "Remove button must not be permission-gated");
+  assert.ok(panelApp.includes('$$("[data-room-delete]").forEach(b=>{b.hidden=state.actor?.type!=="owner";})'), "Remove button must be owner-only");
 });

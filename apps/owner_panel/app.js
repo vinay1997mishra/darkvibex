@@ -108,7 +108,6 @@ const staffPermissionOptions = [
   ["rooms.view","Rooms · search/list"],
   ["rooms.edit","Rooms · edit name/seats"],
   ["rooms.lock","Rooms · lock/unlock"],
-  ["rooms.delete","Rooms · remove room"],
   ["rooms.ban","Rooms · ban/unban room"],
   ["rooms.live","Rooms · live users/seats investigation"],
   ["rooms.media","Rooms · DP/background override"],
@@ -191,7 +190,7 @@ const frontendPermissionAliases = {
   "economy.view":["economy.read"],"economy.coin_rate.edit":["economy.write"],
   "messaging.view":["messaging.read"],"messaging.send.selected":["messaging.write"],"messaging.send.all":["messaging.write"],
   "tags.view":["messaging.read"],"tags.apply":["tags.write"],"tags.remove":["tags.write"],
-  "rooms.view":["rooms.read"],"rooms.edit":["rooms.write"],"rooms.lock":["rooms.write"],"rooms.delete":["rooms.write"],"rooms.ban":["rooms.write"],
+  "rooms.view":["rooms.read"],"rooms.edit":["rooms.write"],"rooms.lock":["rooms.write"],"rooms.ban":["rooms.write"],
   "rooms.live":["rooms.live"],"rooms.media":["rooms.media"],"rooms.theme":["rooms.theme"],
   "themes.global.view":["catalog.read"],"themes.global.save":["catalog.write"],"themes.global.remove":["catalog.write"],
   "roles.view":["roles.read"],"roles.save":["roles.write"],"roles.delete":["roles.write"],
@@ -220,7 +219,7 @@ const viewPermissionMap = {
   users:["users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change","users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban","users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban"],
   notifications:[],
   messaging:["messaging.view","messaging.send.selected","messaging.send.all","tags.view","tags.apply","tags.remove"],
-  rooms:["rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme","themes.global.view","themes.global.save","themes.global.remove"],
+  rooms:["rooms.view","rooms.edit","rooms.lock","rooms.ban","rooms.live","rooms.media","rooms.theme","themes.global.view","themes.global.save","themes.global.remove"],
   roles:["roles.view","roles.save","roles.delete"],
   banners:["banners.view","banners.save","banners.delete"],
   games:["games.view","games.configure"],
@@ -325,7 +324,7 @@ const selectorPermissionRules = [
 const dynamicPermissionRules = [
   ["[data-user-open]",["users.detail"]],
   ["[data-device-key]",["users.device.ban"]],
-  ["[data-room-live]",["rooms.live"]],["[data-room-ban]",["rooms.ban"]],["[data-room-lock]",["rooms.lock"]],["[data-room-edit]",["rooms.edit"]],["[data-room-delete]",["rooms.delete"]],
+  ["[data-room-live]",["rooms.live"]],["[data-room-ban]",["rooms.ban"]],["[data-room-lock]",["rooms.lock"]],["[data-room-edit]",["rooms.edit"]],
   ["[data-global-theme-edit]",["themes.global.save"]],["[data-global-theme-remove]",["themes.global.remove"]],
   ["[data-tag-user]",["tags.remove"]],
   ["[data-role-post-edit]",["roles.save"]],["[data-role-post-delete]",["roles.delete"]],
@@ -440,6 +439,9 @@ function applyActionPermissions(){
   });
   if($("#clearAudit"))$("#clearAudit").hidden=state.actor?.type!=="owner";
   if($("#ownerPrivateMessages"))$("#ownerPrivateMessages").hidden=state.actor?.type!=="owner";
+  // Room delete is main-Owner-only (Vinay, 2026-11-20): panel staff never
+  // see the Remove button, and there is no rooms.delete permission left.
+  $$("[data-room-delete]").forEach(b=>{b.hidden=state.actor?.type!=="owner";});
   const ownerCredentials=state.actor?.type==="owner";
   if($("#staffEmailLabel"))$("#staffEmailLabel").hidden=!ownerCredentials;
   if($("#staffPasswordLabel"))$("#staffPasswordLabel").hidden=!ownerCredentials;
