@@ -911,8 +911,10 @@ GiftRibbonPanelColors giftRibbonPanelColorsForVipLevel(int level) {
 // v4 runs from VIP4 onwards and NO design has a bottom line — every
 // frame is open at the bottom, top and sides only, and no design
 // carries any text ("VIP N" / "Profile Card" never appear; the VIP
-// tag is already in the profile). VIP1-3 have NO profile card
-// animation: every helper below returns null for them.
+// tag is already in the profile). VIP1-3 have NO video animation,
+// only a normal still pic (Vinay, 2026-11-20, "normal pic lagegi
+// 1 se 3 tak"): the still helpers below return the pic for VIP1-18,
+// the video helpers return null for VIP1-3.
 //
 // The video is a full-bleed scene (opaque background), NOT a
 // transparent cutout — unlike the VAP frames, video_player CAN play
@@ -938,6 +940,31 @@ const Map<int, String> vipProfileCardAnimAnimals = <int, String>{
   18: 'dragon',
 };
 
+/// Animal per VIP level for PROFILE CARD stills. VIP1 = cat,
+/// VIP2 = swan, VIP3 = dolphin, VIP4 = fox ... VIP18 = dragon.
+/// Every level 1-18 has a still pic; only VIP4-18 have a video
+/// animation (see [vipProfileCardAnimAnimals]).
+const Map<int, String> vipProfileCardStillAnimals = <int, String>{
+  1: 'cat',
+  2: 'swan',
+  3: 'dolphin',
+  4: 'fox',
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
+
 /// R2 key of the 5-second background animation MP4 per level (VIP4-18).
 Map<int, String> get vipProfileCardAnimVideoKeys => <int, String>{
       for (final MapEntry<int, String> entry
@@ -946,10 +973,10 @@ Map<int, String> get vipProfileCardAnimVideoKeys => <int, String>{
             'profile-card-anims/vip${entry.key}-${entry.value}.mp4',
     };
 
-/// R2 key of the fallback still PNG per level (VIP4-18).
+/// R2 key of the fallback still PNG per level (VIP1-18).
 Map<int, String> get vipProfileCardAnimStillKeys => <int, String>{
       for (final MapEntry<int, String> entry
-          in vipProfileCardAnimAnimals.entries)
+          in vipProfileCardStillAnimals.entries)
         entry.key:
             'profile-card-stills/vip${entry.key}-${entry.value}.png',
     };
@@ -962,8 +989,8 @@ String? profileCardAnimVideoUrlForVipLevel(int level) {
   return '$kVipVisualR2PublicBaseUrl/$key';
 }
 
-/// Direct R2 URL of the fallback still PNG for [level], or null for
-/// VIP1-3 (no animation) / out of range.
+/// Direct R2 URL of the fallback still PNG for [level], or null out
+/// of range. VIP1-3 have a still pic, no video.
 String? profileCardAnimStillUrlForVipLevel(int level) {
   final String? key = vipProfileCardAnimStillKeys[level];
   if (key == null) return null;
