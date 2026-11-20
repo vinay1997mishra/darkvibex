@@ -1853,6 +1853,247 @@ async function roomModeratorState(db, roomId, userId) {
   };
 }
 
+// Combined room-state (Vinay, 2026-11-20): ONE worker call every 3s
+// carrying members + messages + controls + gift events, so the room stays
+// instant while the Workers free-tier request count drops. These loaders
+// hold the exact GET logic of the four standalone room endpoints — the
+// routes call them, and GET /api/rooms/:id/state calls all four at once.
+// Success returns the standalone endpoint's response body verbatim;
+// failure returns { ok: false, error, status }.
+async function checkRoomMemberPresence(db, env, roomId, actorId) {
+  const heartbeatTs = now();
+  await db.prepare(
+    "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
+  ).bind(heartbeatTs, roomId, actorId).run();
+  const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs, env);
+  const member = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? AND updated_at >= ?"
+  ).bind(roomId, actorId, presenceCutoff).first();
+  if (!member) return { ok: false, error: "room_membership_required", status: 403 };
+  return { ok: true, presenceCutoff };
+}
+
+async function loadRoomMemberRows(db, roomId, presenceCutoff) {
+  const rows = await db.prepare(
+    `SELECT m.user_id,
+            CASE WHEN v.level >= 18 AND v.active_until > ?
+                       AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                 THEN 'Anonymous' ELSE u.display_name END AS display_name,
+            u.avatar_key,
+            CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
+            CASE WHEN v.level >= 14 AND v.active_until > ?
+                       AND json_extract(v.preferences_json, '$.invisible_entry') = 1
+                 THEN 1 ELSE 0 END AS invisible_entry,
+            CASE WHEN COALESCE(io.invisible_id,0)=1
+                 THEN 'Hidden'
+                 ELSE COALESCE(NULLIF(u.public_id,''), '')
+            END AS public_id,
+            COALESCE(io.invisible_id,0) AS owner_invisible_id,
+            (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
+            (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
+              WHERE oc.kind='frame' AND oc.id=(SELECT c.item_id FROM user_cosmetics c
+                WHERE c.user_id=m.user_id AND c.kind='frame' AND c.active=1 AND c.expires_at>? LIMIT 1)
+              LIMIT 1) AS active_frame_asset_key,
+            (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
+            (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
+            (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'bubble' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_bubble_id,
+            (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'profile_card' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_profile_card_id,
+            (SELECT json_extract(oc.json_data,'$.video_key') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_video_key,
+            (SELECT json_extract(oc.json_data,'$.glb_key') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_glb_key,
+            (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_animation_ms,
+            (SELECT json_extract(oc.json_data,'$.video_key') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_video_key,
+            (SELECT json_extract(oc.json_data,'$.glb_key') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_glb_key,
+            (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_animation_ms,
+            m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
+            CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
+            CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin,
+            CASE WHEN cb.user_id IS NULL THEN 0 ELSE 1 END AS chat_banned
+       FROM room_members m
+       LEFT JOIN users u ON u.id = m.user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
+       LEFT JOIN user_vip v ON v.user_id = m.user_id
+       LEFT JOIN rooms r ON r.id = m.room_id
+       LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
+       LEFT JOIN room_chat_bans cb ON cb.room_id = m.room_id AND cb.user_id = m.user_id
+      WHERE m.room_id = ?
+        AND m.updated_at >= ?
+      ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
+               active_vip_level DESC,
+               CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
+      LIMIT 200`
+  ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
+  const members = rows.results ?? [];
+  const activeVipMembers = members.filter((member) => Number(member.active_vip_level ?? 0) > 0);
+  if (activeVipMembers.length) {
+    const vipCatalog = await effectiveCosmeticCatalog(db);
+    const visualCache = new Map();
+    for (const member of activeVipMembers) {
+      const level = Number(member.active_vip_level ?? 0);
+      if (!visualCache.has(level)) {
+        visualCache.set(level, await vipVisualsForLevel(db, level, vipCatalog));
+      }
+      const visuals = visualCache.get(level) ?? {};
+      member.vip_visuals = visuals;
+      const frame = visuals.frame;
+      if (!member.active_frame_id && frame?.id) {
+        member.active_frame_id = frame.id;
+        member.active_frame_asset_key = frame.asset_key ?? "";
+        // VAP alpha-video key for the animal frame (Tencent VAP mp4,
+        // played by VipFrameAlphaVideo; empty for custom frames, which
+        // have no VAP video and show the PNG still only).
+        member.active_frame_vap_key = frame.vap_key ?? "";
+      }
+      const chatBox = visuals.chat_box;
+      if (!member.active_bubble_id && chatBox?.id) member.active_bubble_id = chatBox.id;
+      const entry = visuals.entry_effect;
+      if (!member.active_entry_id && entry?.id) {
+        member.active_entry_id = entry.id;
+        member.active_entry_asset_key = entry.asset_key ?? "";
+        member.active_entry_video_key = entry.video_key ?? "";
+        member.active_entry_glb_key = entry.glb_key ?? "";
+        member.active_entry_animation_ms = entry.animation_ms ?? 0;
+      }
+      const tag = visuals.vip_tag;
+      if (tag?.id) {
+        member.active_vip_tag_id = tag.id;
+        member.active_vip_tag_asset_key = tag.asset_key ?? "";
+      }
+      const vehicle = visuals.vehicle_entry;
+      if (!member.active_vehicle_id && vehicle?.id) {
+        member.active_vehicle_id = vehicle.id;
+        member.active_vehicle_video_key = vehicle.video_key ?? "";
+        member.active_vehicle_glb_key = vehicle.glb_key ?? "";
+        member.active_vehicle_animation_ms = vehicle.animation_ms ?? 0;
+      }
+      const banner = visuals.vip_banner;
+      if (banner?.id) member.active_vip_banner_id = banner.id;
+      const miniProfile = visuals.mini_profile_panel;
+      if (!member.active_profile_card_id && miniProfile?.id) {
+        member.active_profile_card_id = miniProfile.id;
+      }
+    }
+  }
+  return { ok: true, members };
+}
+
+async function loadRoomMessagesState(db, roomId, viewerId) {
+  await ensureOwnerControlSchema(db);
+  await ensureRoomAdminTable(db);
+  await ensureVipSchema(db);
+  await ensureImageTables(db);
+  await ensureCosmeticsSchema(db);
+  const member = await db.prepare(
+    "SELECT joined_at FROM room_members WHERE room_id = ? AND user_id = ?"
+  ).bind(roomId, viewerId).first();
+  if (!member) return { ok: false, error: "room_membership_required", status: 403 };
+  // Room chat is ephemeral (Vinay, 2026-11-20): a member only ever
+  // sees messages sent after they entered the room, and a clear
+  // hides everything before it — an owner clear for everyone, an
+  // admin clear for everyone except the owner.
+  await ensureRoomChatClearTable(db);
+  const room = await db.prepare(
+    "SELECT owner_user_id FROM rooms WHERE id = ?"
+  ).bind(roomId).first();
+  const clear = await db.prepare(
+    "SELECT owner_cleared_at, admin_cleared_at FROM room_chat_clears WHERE room_id = ?"
+  ).bind(roomId).first();
+  const isOwner = String(room?.owner_user_id ?? "") === viewerId;
+  const joinedAt = Number(member.joined_at ?? 0);
+  const ownerClearedAt = Number(clear?.owner_cleared_at ?? 0);
+  const adminClearedAt = Number(clear?.admin_cleared_at ?? 0);
+  const cutoff = isOwner
+    ? Math.max(joinedAt, ownerClearedAt)
+    : Math.max(joinedAt, ownerClearedAt, adminClearedAt);
+  const rows = await db.prepare(
+    `SELECT m.id, m.user_id,
+            CASE WHEN v.level >= 18 AND v.active_until > ?
+                       AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                 THEN 'Anonymous' ELSE u.display_name END AS display_name,
+            u.avatar_key,
+            CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
+            CASE WHEN v.level >= 18 AND v.active_until > ?
+                       AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
+                 THEN 1 ELSE 0 END AS is_anonymous,
+            CASE WHEN EXISTS(
+              SELECT 1 FROM rooms r WHERE r.id=m.room_id AND r.owner_user_id=m.user_id
+            ) THEN 1 ELSE 0 END AS is_room_owner,
+            CASE WHEN EXISTS(
+              SELECT 1 FROM room_admins ra WHERE ra.room_id=m.room_id AND ra.user_id=m.user_id
+            ) THEN 1 ELSE 0 END AS is_room_admin,
+            m.text, m.created_at, mi.image_key,
+            (SELECT p.item_id FROM user_props p
+              WHERE p.user_id=m.user_id AND p.kind='bubble'
+                AND p.active=1 AND p.expires_at>?
+              LIMIT 1) AS active_bubble_id,
+            (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
+              WHERE oc.kind='bubble' AND oc.id=(SELECT p.item_id FROM user_props p
+                WHERE p.user_id=m.user_id AND p.kind='bubble' AND p.active=1 AND p.expires_at>? LIMIT 1)
+              LIMIT 1) AS active_bubble_asset_key
+       FROM room_messages m
+       LEFT JOIN users u ON u.id = m.user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
+       LEFT JOIN user_vip v ON v.user_id = m.user_id
+       LEFT JOIN room_message_images mi ON mi.message_id = m.id
+      WHERE m.room_id = ? AND m.created_at > ?
+      ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
+  ).bind(now(), now(), now(), now(), now(), roomId, cutoff).all();
+  const messagesWithProfiles = await decorateRoomChatProfileMetadata(
+    db,
+    (rows.results ?? []).reverse(),
+  );
+  const messages = await decorateMessagesWithVipChatBox(db, messagesWithProfiles);
+  return { ok: true, messages };
+}
+
+async function loadRoomControlsState(db, roomId, actorId) {
+  await ensureRoomControlTables(db, roomId);
+  const membership = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+  ).bind(roomId, actorId).first();
+  if (!membership) return { ok: false, error: "room_membership_required", status: 403 };
+  const mod = await roomModeratorState(db, roomId, actorId);
+  if (!mod.room) return { ok: false, error: "room_not_found", status: 404 };
+  const settings = await db.prepare(
+    "SELECT COALESCE(mic_mode,'free') AS mic_mode, COALESCE(public_screen_enabled,1) AS public_screen_enabled FROM room_settings WHERE room_id = ?"
+  ).bind(roomId).first();
+  const seatControls = await db.prepare(
+    "SELECT seat_index,locked,room_muted FROM room_seat_controls WHERE room_id = ? ORDER BY seat_index"
+  ).bind(roomId).all();
+  const requests = (mod.isOwner || mod.isAdmin)
+    ? await db.prepare(
+        `SELECT q.user_id,q.seat_index,q.created_at,u.display_name,u.avatar_key
+           FROM room_seat_requests q
+           LEFT JOIN users u ON u.id=q.user_id
+          WHERE q.room_id=?
+          ORDER BY q.created_at ASC`
+      ).bind(roomId).all()
+    : { results: [] };
+  const chatBan = await db.prepare(
+    "SELECT 1 AS banned FROM room_chat_bans WHERE room_id = ? AND user_id = ?"
+  ).bind(roomId, actorId).first();
+  const invite = await db.prepare(
+    `SELECT i.seat_index,i.invited_by,i.created_at,
+            COALESCE(u.display_name,'Room moderator') AS invited_by_name
+       FROM room_seat_invites i
+       LEFT JOIN users u ON u.id=i.invited_by
+      WHERE i.room_id=? AND i.target_user_id=?`
+  ).bind(roomId, actorId).first();
+  const roomVipOnly = await db.prepare(
+    "SELECT vip_only FROM rooms WHERE id=?"
+  ).bind(roomId).first();
+  return {
+    ok: true,
+    mic_mode: settings?.mic_mode ?? "free",
+    public_screen_enabled: Number(settings?.public_screen_enabled ?? 1) === 1,
+    vip_only: Number(roomVipOnly?.vip_only ?? 0),
+    seat_controls: seatControls.results ?? [],
+    seat_requests: requests.results ?? [],
+    chat_banned: Boolean(chatBan),
+    seat_invite: invite ?? null,
+    is_owner: mod.isOwner,
+    is_admin: mod.isAdmin,
+  };
+}
 async function ensureLegalConsentTable(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS legal_consents (
@@ -6043,46 +6284,9 @@ async function handleApi(request, env, url) {
     if (!mod.room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
 
     if (request.method === "GET") {
-      const settings = await db.prepare(
-        "SELECT COALESCE(mic_mode,'free') AS mic_mode, COALESCE(public_screen_enabled,1) AS public_screen_enabled FROM room_settings WHERE room_id = ?"
-      ).bind(roomId).first();
-      const seatControls = await db.prepare(
-        "SELECT seat_index,locked,room_muted FROM room_seat_controls WHERE room_id = ? ORDER BY seat_index"
-      ).bind(roomId).all();
-      const requests = (mod.isOwner || mod.isAdmin)
-        ? await db.prepare(
-            `SELECT q.user_id,q.seat_index,q.created_at,u.display_name,u.avatar_key
-               FROM room_seat_requests q
-               LEFT JOIN users u ON u.id=q.user_id
-              WHERE q.room_id=?
-              ORDER BY q.created_at ASC`
-          ).bind(roomId).all()
-        : { results: [] };
-      const chatBan = await db.prepare(
-        "SELECT 1 AS banned FROM room_chat_bans WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, actorId).first();
-      const invite = await db.prepare(
-        `SELECT i.seat_index,i.invited_by,i.created_at,
-                COALESCE(u.display_name,'Room moderator') AS invited_by_name
-           FROM room_seat_invites i
-           LEFT JOIN users u ON u.id=i.invited_by
-          WHERE i.room_id=? AND i.target_user_id=?`
-      ).bind(roomId, actorId).first();
-      const roomVipOnly = await db.prepare(
-        "SELECT vip_only FROM rooms WHERE id=?"
-      ).bind(roomId).first();
-      return json({
-        ok: true,
-        mic_mode: settings?.mic_mode ?? "free",
-        public_screen_enabled: Number(settings?.public_screen_enabled ?? 1) === 1,
-        vip_only: Number(roomVipOnly?.vip_only ?? 0),
-        seat_controls: seatControls.results ?? [],
-        seat_requests: requests.results ?? [],
-        chat_banned: Boolean(chatBan),
-        seat_invite: invite ?? null,
-        is_owner: mod.isOwner,
-        is_admin: mod.isAdmin,
-      });
+      const loaded = await loadRoomControlsState(db, roomId, actorId);
+      if (!loaded.ok) return json({ ok: false, error: loaded.error }, { status: loaded.status });
+      return json(loaded);
     }
 
     if (request.method === "POST") {
@@ -7063,128 +7267,71 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
     const viewerId = String(session.sub);
-    const member = await db.prepare(
-      "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?"
-    ).bind(roomId, viewerId).first();
-    if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
-
     const after = Math.max(0, Number(url.searchParams.get("after") ?? 0) || 0);
     const afterId = String(url.searchParams.get("after_id") ?? "").slice(0,100);
     const eventId = String(url.searchParams.get("event_id") ?? "").slice(0,100);
-    const rows = await db.prepare(
-      `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.created_at,
-              s.display_name AS sender_name,r.display_name AS receiver_name,
-              COALESCE(s.vip_level,0) AS sender_vip_level
-         FROM gift_events g
-         LEFT JOIN users s ON s.id=g.sender_user_id
-         LEFT JOIN users r ON r.id=g.receiver_user_id
-        WHERE g.room_id=?
-          AND ((?<>'' AND g.id=?) OR (?='' AND (g.created_at>? OR (g.created_at=? AND g.id>?))))
-        ORDER BY g.created_at ASC,g.id ASC LIMIT 20`
-    ).bind(roomId,eventId,eventId,eventId,after,after,afterId).all();
-    const catalog = await effectiveGiftCatalog(db);
-    const catalogById = new Map(catalog.map((gift) => [String(gift.id), gift]));
-    const events = (rows.results ?? []).map((row) => {
-      const gift = catalogById.get(String(row.gift_id)) ?? {};
-      return {
-        id:String(row.id),
-        sender_user_id:String(row.sender_user_id),
-        receiver_user_id:String(row.receiver_user_id),
-        sender_name:String(row.sender_name ?? "User"),
-        receiver_name:String(row.receiver_name ?? "User"),
-        gift_id:String(row.gift_id),
-        gift_name:String(gift.name ?? "Gift"),
-        emoji:String(gift.emoji ?? "🎁"),
-        coin_cost:Number(row.coin_cost ?? 0),
-        sender_vip_level:Number(row.sender_vip_level ?? 0),
-        // Gift ribbon: the banner for the SENDER's VIP level (basic
-        // Sleek Gold tier for VIP0/no-VIP), so the room shows the
-        // sender -> receiver banner with no extra lookup.
-        gift_ribbon:giftRibbonForVipLevel(Number(row.sender_vip_level ?? 0)),
-        video_key:String(gift.video_key ?? gift.videoKey ?? ""),
-        glb_key:String(gift.glb_key ?? gift.glbKey ?? ""),
-        asset_key:String(gift.asset_key ?? gift.asset ?? ""),
-        created_at:Number(row.created_at ?? 0),
-      };
-    });
-    return json({ok:true,events});
+    const loaded = await loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eventId);
+    if (!loaded.ok) return json({ ok: false, error: loaded.error }, { status: loaded.status });
+    return json(loaded);
   }
-
+// Gift-events loader kept beside its route: the gift-events
+// source-assertion tests slice the region between this route and the
+// messages route, so the loader must live here for those tests to see it.
+async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eventId) {
+  const member = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?"
+  ).bind(roomId, viewerId).first();
+  if (!member) return { ok: false, error: "room_membership_required", status: 403 };
+  const rows = await db.prepare(
+    `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.created_at,
+            s.display_name AS sender_name,r.display_name AS receiver_name,
+            COALESCE(s.vip_level,0) AS sender_vip_level
+       FROM gift_events g
+       LEFT JOIN users s ON s.id=g.sender_user_id
+       LEFT JOIN users r ON r.id=g.receiver_user_id
+      WHERE g.room_id=?
+        AND ((?<>'' AND g.id=?) OR (?='' AND (g.created_at>? OR (g.created_at=? AND g.id>?))))
+      ORDER BY g.created_at ASC,g.id ASC LIMIT 20`
+  ).bind(roomId,eventId,eventId,eventId,after,after,afterId).all();
+  const catalog = await effectiveGiftCatalog(db);
+  const catalogById = new Map(catalog.map((gift) => [String(gift.id), gift]));
+  const events = (rows.results ?? []).map((row) => {
+    const gift = catalogById.get(String(row.gift_id)) ?? {};
+    return {
+      id:String(row.id),
+      sender_user_id:String(row.sender_user_id),
+      receiver_user_id:String(row.receiver_user_id),
+      sender_name:String(row.sender_name ?? "User"),
+      receiver_name:String(row.receiver_name ?? "User"),
+      gift_id:String(row.gift_id),
+      gift_name:String(gift.name ?? "Gift"),
+      emoji:String(gift.emoji ?? "🎁"),
+      coin_cost:Number(row.coin_cost ?? 0),
+      sender_vip_level:Number(row.sender_vip_level ?? 0),
+      // Gift ribbon: the banner for the SENDER's VIP level (basic
+      // Sleek Gold tier for VIP0/no-VIP), so the room shows the
+      // sender -> receiver banner with no extra lookup.
+      gift_ribbon:giftRibbonForVipLevel(Number(row.sender_vip_level ?? 0)),
+      video_key:String(gift.video_key ?? gift.videoKey ?? ""),
+      glb_key:String(gift.glb_key ?? gift.glbKey ?? ""),
+      asset_key:String(gift.asset_key ?? gift.asset ?? ""),
+      created_at:Number(row.created_at ?? 0),
+    };
+  });
+  return { ok: true, events };
+}
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "messages") {
     const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
     if (messagesFeature.enabled === false) return json({ ok: false, error: "messages_disabled" }, { status: 403 });
     const roomId = parts[2];
     if (request.method === "GET") {
-      await ensureOwnerControlSchema(db);
-      await ensureRoomAdminTable(db);
-      await ensureVipSchema(db);
-      await ensureImageTables(db);
-      await ensureCosmeticsSchema(db);
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
       const viewerId = String(session.sub);
-      const member = await db.prepare(
-        "SELECT joined_at FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, viewerId).first();
-      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
-      // Room chat is ephemeral (Vinay, 2026-11-20): a member only ever
-      // sees messages sent after they entered the room, and a clear
-      // hides everything before it — an owner clear for everyone, an
-      // admin clear for everyone except the owner.
-      await ensureRoomChatClearTable(db);
-      const room = await db.prepare(
-        "SELECT owner_user_id FROM rooms WHERE id = ?"
-      ).bind(roomId).first();
-      const clear = await db.prepare(
-        "SELECT owner_cleared_at, admin_cleared_at FROM room_chat_clears WHERE room_id = ?"
-      ).bind(roomId).first();
-      const isOwner = String(room?.owner_user_id ?? "") === viewerId;
-      const joinedAt = Number(member.joined_at ?? 0);
-      const ownerClearedAt = Number(clear?.owner_cleared_at ?? 0);
-      const adminClearedAt = Number(clear?.admin_cleared_at ?? 0);
-      const cutoff = isOwner
-        ? Math.max(joinedAt, ownerClearedAt)
-        : Math.max(joinedAt, ownerClearedAt, adminClearedAt);
-      const rows = await db.prepare(
-        `SELECT m.id, m.user_id,
-                CASE WHEN v.level >= 18 AND v.active_until > ?
-                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
-                     THEN 'Anonymous' ELSE u.display_name END AS display_name,
-                u.avatar_key,
-                CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
-                CASE WHEN v.level >= 18 AND v.active_until > ?
-                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
-                     THEN 1 ELSE 0 END AS is_anonymous,
-                CASE WHEN EXISTS(
-                  SELECT 1 FROM rooms r WHERE r.id=m.room_id AND r.owner_user_id=m.user_id
-                ) THEN 1 ELSE 0 END AS is_room_owner,
-                CASE WHEN EXISTS(
-                  SELECT 1 FROM room_admins ra WHERE ra.room_id=m.room_id AND ra.user_id=m.user_id
-                ) THEN 1 ELSE 0 END AS is_room_admin,
-                m.text, m.created_at, mi.image_key,
-                (SELECT p.item_id FROM user_props p
-                  WHERE p.user_id=m.user_id AND p.kind='bubble'
-                    AND p.active=1 AND p.expires_at>?
-                  LIMIT 1) AS active_bubble_id,
-                (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
-                  WHERE oc.kind='bubble' AND oc.id=(SELECT p.item_id FROM user_props p
-                    WHERE p.user_id=m.user_id AND p.kind='bubble' AND p.active=1 AND p.expires_at>? LIMIT 1)
-                  LIMIT 1) AS active_bubble_asset_key
-           FROM room_messages m
-           LEFT JOIN users u ON u.id = m.user_id
-           LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
-           LEFT JOIN user_vip v ON v.user_id = m.user_id
-           LEFT JOIN room_message_images mi ON mi.message_id = m.id
-          WHERE m.room_id = ? AND m.created_at > ?
-          ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
-      ).bind(now(), now(), now(), now(), now(), roomId, cutoff).all();
-      const messagesWithProfiles = await decorateRoomChatProfileMetadata(
-        db,
-        (rows.results ?? []).reverse(),
-      );
-      const messages = await decorateMessagesWithVipChatBox(db, messagesWithProfiles);
-      return json({ ok: true, messages });
+      const loaded = await loadRoomMessagesState(db, roomId, viewerId);
+      if (!loaded.ok) return json({ ok: false, error: loaded.error }, { status: loaded.status });
+      return json(loaded);
     }
     if (request.method === "POST") {
       await ensureOwnerControlSchema(db);
@@ -7340,121 +7487,16 @@ async function handleApi(request, env, url) {
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
       const actorId = String(session.sub);
-      const heartbeatTs = now();
-      await db.prepare(
-        "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
-      ).bind(heartbeatTs, roomId, actorId).run();
-      const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs, env);
-      const member = await db.prepare(
-        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? AND updated_at >= ?"
-      ).bind(roomId, actorId, presenceCutoff).first();
-      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      const presence = await checkRoomMemberPresence(db, env, roomId, actorId);
+      if (!presence.ok) return json({ ok: false, error: presence.error }, { status: presence.status });
       const lampOwner = await db.prepare(
         "SELECT owner_user_id FROM rooms WHERE id = ? LIMIT 1"
       ).bind(roomId).first();
       if (String(lampOwner?.owner_user_id ?? "") === actorId) {
         await sampleLampMicProgress(db, roomId, now());
       }
-      const rows = await db.prepare(
-        `SELECT m.user_id,
-                CASE WHEN v.level >= 18 AND v.active_until > ?
-                           AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
-                     THEN 'Anonymous' ELSE u.display_name END AS display_name,
-                u.avatar_key,
-                CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
-                CASE WHEN v.level >= 14 AND v.active_until > ?
-                           AND json_extract(v.preferences_json, '$.invisible_entry') = 1
-                     THEN 1 ELSE 0 END AS invisible_entry,
-                CASE WHEN COALESCE(io.invisible_id,0)=1
-                     THEN 'Hidden'
-                     ELSE COALESCE(NULLIF(u.public_id,''), '')
-                END AS public_id,
-                COALESCE(io.invisible_id,0) AS owner_invisible_id,
-                (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'frame' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_frame_id,
-                (SELECT json_extract(oc.json_data,'$.asset_key') FROM owner_catalog oc
-                  WHERE oc.kind='frame' AND oc.id=(SELECT c.item_id FROM user_cosmetics c
-                    WHERE c.user_id=m.user_id AND c.kind='frame' AND c.active=1 AND c.expires_at>? LIMIT 1)
-                  LIMIT 1) AS active_frame_asset_key,
-                (SELECT c.item_id FROM user_cosmetics c WHERE c.user_id = m.user_id AND c.kind = 'vehicle' AND c.active = 1 AND c.expires_at > ? LIMIT 1) AS active_vehicle_id,
-                (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'entry' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_entry_id,
-                (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'bubble' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_bubble_id,
-                (SELECT p.item_id FROM user_props p WHERE p.user_id = m.user_id AND p.kind = 'profile_card' AND p.active = 1 AND p.expires_at > ? LIMIT 1) AS active_profile_card_id,
-                (SELECT json_extract(oc.json_data,'$.video_key') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_video_key,
-                (SELECT json_extract(oc.json_data,'$.glb_key') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_glb_key,
-                (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc WHERE oc.kind='vehicle' AND oc.id=(SELECT c.item_id FROM user_cosmetics c WHERE c.user_id=m.user_id AND c.kind='vehicle' AND c.active=1 AND c.expires_at>? LIMIT 1) LIMIT 1) AS active_vehicle_animation_ms,
-                (SELECT json_extract(oc.json_data,'$.video_key') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_video_key,
-                (SELECT json_extract(oc.json_data,'$.glb_key') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_glb_key,
-                (SELECT json_extract(oc.json_data,'$.animation_ms') FROM owner_catalog oc WHERE oc.kind='entry' AND oc.id=(SELECT p.item_id FROM user_props p WHERE p.user_id=m.user_id AND p.kind='entry' AND p.active=1 AND p.expires_at>? LIMIT 1) LIMIT 1) AS active_entry_animation_ms,
-                m.seat_index, m.mic_muted, m.joined_at, m.updated_at,
-                CASE WHEN r.owner_user_id = m.user_id THEN 1 ELSE 0 END AS is_owner,
-                CASE WHEN ra.user_id IS NULL THEN 0 ELSE 1 END AS is_admin,
-                CASE WHEN cb.user_id IS NULL THEN 0 ELSE 1 END AS chat_banned
-           FROM room_members m
-           LEFT JOIN users u ON u.id = m.user_id
-           LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
-           LEFT JOIN user_vip v ON v.user_id = m.user_id
-           LEFT JOIN rooms r ON r.id = m.room_id
-           LEFT JOIN room_admins ra ON ra.room_id = m.room_id AND ra.user_id = m.user_id
-           LEFT JOIN room_chat_bans cb ON cb.room_id = m.room_id AND cb.user_id = m.user_id
-          WHERE m.room_id = ?
-            AND m.updated_at >= ?
-          ORDER BY CASE WHEN r.owner_user_id = m.user_id THEN 0 WHEN ra.user_id IS NOT NULL THEN 1 ELSE 2 END,
-                   active_vip_level DESC,
-                   CASE WHEN m.seat_index IS NULL THEN 1 ELSE 0 END, m.seat_index ASC, m.joined_at ASC
-          LIMIT 200`
-      ).bind(now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), now(), roomId, presenceCutoff).all();
-      const members = rows.results ?? [];
-      const activeVipMembers = members.filter((member) => Number(member.active_vip_level ?? 0) > 0);
-      if (activeVipMembers.length) {
-        const vipCatalog = await effectiveCosmeticCatalog(db);
-        const visualCache = new Map();
-        for (const member of activeVipMembers) {
-          const level = Number(member.active_vip_level ?? 0);
-          if (!visualCache.has(level)) {
-            visualCache.set(level, await vipVisualsForLevel(db, level, vipCatalog));
-          }
-          const visuals = visualCache.get(level) ?? {};
-          member.vip_visuals = visuals;
-          const frame = visuals.frame;
-          if (!member.active_frame_id && frame?.id) {
-            member.active_frame_id = frame.id;
-            member.active_frame_asset_key = frame.asset_key ?? "";
-            // VAP alpha-video key for the animal frame (Tencent VAP mp4,
-            // played by VipFrameAlphaVideo; empty for custom frames, which
-            // have no VAP video and show the PNG still only).
-            member.active_frame_vap_key = frame.vap_key ?? "";
-          }
-          const chatBox = visuals.chat_box;
-          if (!member.active_bubble_id && chatBox?.id) member.active_bubble_id = chatBox.id;
-          const entry = visuals.entry_effect;
-          if (!member.active_entry_id && entry?.id) {
-            member.active_entry_id = entry.id;
-            member.active_entry_asset_key = entry.asset_key ?? "";
-            member.active_entry_video_key = entry.video_key ?? "";
-            member.active_entry_glb_key = entry.glb_key ?? "";
-            member.active_entry_animation_ms = entry.animation_ms ?? 0;
-          }
-          const tag = visuals.vip_tag;
-          if (tag?.id) {
-            member.active_vip_tag_id = tag.id;
-            member.active_vip_tag_asset_key = tag.asset_key ?? "";
-          }
-          const vehicle = visuals.vehicle_entry;
-          if (!member.active_vehicle_id && vehicle?.id) {
-            member.active_vehicle_id = vehicle.id;
-            member.active_vehicle_video_key = vehicle.video_key ?? "";
-            member.active_vehicle_glb_key = vehicle.glb_key ?? "";
-            member.active_vehicle_animation_ms = vehicle.animation_ms ?? 0;
-          }
-          const banner = visuals.vip_banner;
-          if (banner?.id) member.active_vip_banner_id = banner.id;
-          const miniProfile = visuals.mini_profile_panel;
-          if (!member.active_profile_card_id && miniProfile?.id) {
-            member.active_profile_card_id = miniProfile.id;
-          }
-        }
-      }
-      return json({ ok: true, members });
+      const loaded = await loadRoomMemberRows(db, roomId, presence.presenceCutoff);
+      return json({ ok: true, members: loaded.members });
     }
     if (request.method === "POST") {
       const body = await bodyJson(request);
@@ -7585,6 +7627,56 @@ async function handleApi(request, env, url) {
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
+  // Combined room-state (Vinay, 2026-11-20): ONE call every 3s carrying
+  // members + messages + controls + gift events, so the room stays
+  // instant (messages/members today refresh at 8s/4s) while the Workers
+  // free-tier request count drops. Members load first: the heartbeat +
+  // presence rule is the kick signal, so a missing/stale membership row
+  // 403s exactly like the standalone members endpoint. A disabled
+  // messages feature is an owner setting, not a kick — the room still
+  // polls everything else and just sees no chat.
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "state" && request.method === "GET") {
+    const roomId = parts[2];
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const actorId = String(session.sub);
+    // Same schema preamble as the standalone members GET: the member
+    // rows join user_vip / cosmetics / admin tables, which may not exist
+    // yet on a fresh DB if no message was ever sent.
+    await ensureVipSchema(db);
+    await ensureCosmeticsSchema(db);
+    await ensureOwnerControlSchema(db);
+    await ensureRoomControlTables(db, roomId);
+    await ensureRoomAdminTable(db);
+    const presence = await checkRoomMemberPresence(db, env, roomId, actorId);
+    if (!presence.ok) return json({ ok: false, error: presence.error }, { status: presence.status });
+    const lampOwner = await db.prepare(
+      "SELECT owner_user_id FROM rooms WHERE id = ? LIMIT 1"
+    ).bind(roomId).first();
+    if (String(lampOwner?.owner_user_id ?? "") === actorId) {
+      await sampleLampMicProgress(db, roomId, now());
+    }
+    const membersLoaded = await loadRoomMemberRows(db, roomId, presence.presenceCutoff);
+    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+    const messagesLoaded = messagesFeature.enabled === false
+      ? { ok: true, messages: [] }
+      : await loadRoomMessagesState(db, roomId, actorId);
+    if (!messagesLoaded.ok) return json({ ok: false, error: messagesLoaded.error }, { status: messagesLoaded.status });
+    const controlsLoaded = await loadRoomControlsState(db, roomId, actorId);
+    if (!controlsLoaded.ok) return json({ ok: false, error: controlsLoaded.error }, { status: controlsLoaded.status });
+    const after = Math.max(0, Number(url.searchParams.get("after") ?? 0) || 0);
+    const afterId = String(url.searchParams.get("after_id") ?? "").slice(0, 100);
+    const eventsLoaded = await loadRoomGiftEventsState(db, roomId, actorId, after, afterId, "");
+    if (!eventsLoaded.ok) return json({ ok: false, error: eventsLoaded.error }, { status: eventsLoaded.status });
+    return json({
+      ok: true,
+      members: membersLoaded.members,
+      messages: messagesLoaded.messages,
+      controls: controlsLoaded,
+      events: eventsLoaded.events,
+    });
+  }
   // Was I kicked from this room? (room audit 2026-11-20) — the app asks
   // this on resume when its member row is gone, to tell a real kick
   // apart from a presence-timeout prune (background >30s). A prune leaves

@@ -126,10 +126,8 @@ class _RoomScreenState extends State<RoomScreen>
   bool _leavingRoom = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
   // for all four resources multiplied Worker requests for every connected user.
-  Timer? memberRefreshTimer;
-  Timer? messageRefreshTimer;
+  Timer? roomStateTimer;
   Timer? settingsRefreshTimer;
-  Timer? controlsRefreshTimer;
   Timer? arrivalEffectTimer;
   Map<String, dynamic>? arrivalEffectMember;
   String? roomAvatarKey;
@@ -304,22 +302,17 @@ class _RoomScreenState extends State<RoomScreen>
     unawaited(_loadRoomMessages());
     unawaited(_loadRoomGiftEvents());
 
-    // Keep responsive fallback polling, but avoid refetching every resource
-    // every 4 seconds. User actions still refresh data immediately.
+    // One 3s poll for members + messages + controls + gift events
+    // (combined room-state endpoint) instead of four separate timers.
+    // Speed does not drop — members were 4s, messages 8s, controls
+    // 20s; now all refresh every 3s — while the Workers free-tier
+    // request count drops. User actions still refresh data immediately
+    // through the old loaders. Settings change rarely, so they keep
+    // their own 60s timer.
     bool appIsActive() =>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-    // Detect room arrivals promptly instead of waiting up to 12 seconds.
-    memberRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (appIsActive()) {
-        unawaited(_loadRoomMembers());
-        unawaited(_loadRoomGiftEvents());
-      }
-    });
-    messageRefreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-      if (appIsActive()) unawaited(_loadRoomMessages());
-    });
-    controlsRefreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (appIsActive()) unawaited(_loadRoomControls());
+    roomStateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (appIsActive()) unawaited(_loadRoomState());
     });
     settingsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (appIsActive()) unawaited(_loadRoomSettings());
@@ -340,6 +333,15 @@ class _RoomScreenState extends State<RoomScreen>
       return;
     }
     _kickTracker.noteFetch(ok: true);
+    await _applyRoomMembers(rows);
+  }
+
+  /// Applies a members list to the same state fields [_loadRoomMembers]
+  /// sets (seat map, my seat/admin, mic-mute sync, arrival effects).
+  /// Shared by the old members loader and the combined state loader so
+  /// both paths render identically. Does NOT touch the kick tracker —
+  /// the caller records the fetch outcome.
+  Future<void> _applyRoomMembers(List<Map<String, dynamic>> rows) async {
     final next = <int, Map<String, dynamic>>{};
     final presentIds = rows.map((member) => member['user_id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
     final arrivals = memberListInitialized
@@ -413,10 +415,68 @@ class _RoomScreenState extends State<RoomScreen>
     }
   }
 
+  /// One combined poll for members + messages + controls + gift events,
+  /// replacing the four separate timers. The payload embeds each
+  /// section in the same shape as its old endpoint, so it is applied
+  /// through the same helpers the old loaders use. Kick detection is
+  /// unchanged: a failed call (worker 403 `room_membership_required`
+  /// when my own membership row is gone) is null, one failure is
+  /// transient, two in a row means I was removed. An empty members
+  /// list is NOT a kick — it is a valid payload and is applied as-is.
+  Future<void> _loadRoomState() async {
+    if (!widget.state.backendConnected) return;
+    final state = await widget.state.backend.roomStateOrNull(
+      roomId: widget.room.id,
+      after: _giftEventCursorMs,
+      afterId: _giftEventCursorId,
+    );
+    if (state == null) {
+      if (_leavingRoom) return;
+      if (_kickTracker.noteFetch(ok: false)) {
+        await _handleKickedFromRoom();
+      }
+      return;
+    }
+    _kickTracker.noteFetch(ok: true);
+    final members = state['members'];
+    if (members is List) {
+      unawaited(
+        _applyRoomMembers(
+          members
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(),
+        ),
+      );
+    }
+    final messages = state['messages'];
+    if (messages is List) {
+      _applyRoomMessages(
+        messages
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(),
+      );
+    }
+    final controls = state['controls'];
+    if (controls is Map) {
+      _applyRoomControls(Map<String, dynamic>.from(controls));
+    }
+    final events = state['events'];
+    if (events is List) {
+      _applyRoomGiftEvents(
+        events
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(),
+      );
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // The 4s member poll is gated on the app being active, so a
+      // The 3s state poll is gated on the app being active, so a
       // background gap longer than the 30s presence TTL prunes my
       // membership row server-side. Reconcile once on return instead of
       // letting the poll count it as a kick.
@@ -708,8 +768,14 @@ class _RoomScreenState extends State<RoomScreen>
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
-    if (!mounted) return;
+    _applyRoomMessages(rows);
+  }
 
+  /// Applies a messages list to the same state fields [_loadRoomMessages]
+  /// sets. Shared by the old messages loader and the combined state
+  /// loader; the loader keeps the fetch, this keeps the rendering.
+  void _applyRoomMessages(List<Map<String, dynamic>> rows) {
+    if (!mounted) return;
     if (rows.isEmpty &&
         chat.length == 1 &&
         chat.first['text'] == 'Welcome to the room 👋') {
@@ -744,6 +810,13 @@ class _RoomScreenState extends State<RoomScreen>
       after: _giftEventCursorMs,
       afterId: _giftEventCursorId,
     );
+    _applyRoomGiftEvents(events);
+  }
+
+  /// Applies gift events (cursor advance, dedup, playback queue) exactly
+  /// as [_loadRoomGiftEvents] did. Shared by the old gift-events loader
+  /// and the combined state loader.
+  void _applyRoomGiftEvents(List<Map<String, dynamic>> events) {
     if (!mounted || events.isEmpty) return;
 
     for (final event in events) {
@@ -1607,8 +1680,18 @@ class _RoomScreenState extends State<RoomScreen>
   Future<void> _loadRoomControls() async {
     if (!widget.state.backendConnected) return;
     final value = await widget.state.backend.roomControls(roomId: widget.room.id);
-    if (!mounted || value?['ok'] != true) return;
-    final rawSeatControls = value?['seat_controls'];
+    if (value == null) return;
+    _applyRoomControls(value);
+  }
+
+  /// Applies a controls payload to the same state fields
+  /// [_loadRoomControls] sets. Shared by the old controls loader and
+  /// the combined state loader. The payload must be the controls
+  /// endpoint's response shape (with its `ok` field) — the combined
+  /// state endpoint embeds it unchanged under `controls`.
+  void _applyRoomControls(Map<String, dynamic> value) {
+    if (!mounted || value['ok'] != true) return;
+    final rawSeatControls = value['seat_controls'];
     final nextLocked = <int>{};
     final nextMuted = <int>{};
     if (rawSeatControls is List) {
@@ -1624,16 +1707,16 @@ class _RoomScreenState extends State<RoomScreen>
         }
       }
     }
-    final rawRequests = value?['seat_requests'];
-    final rawInvite = value?['seat_invite'];
+    final rawRequests = value['seat_requests'];
+    final rawInvite = value['seat_invite'];
     final nextInvite = rawInvite is Map
         ? Map<String, dynamic>.from(rawInvite)
         : null;
     setState(() {
-      roomMicMode = value?['mic_mode']?.toString() == 'apply' ? 'apply' : 'free';
-      publicScreenEnabled = value?['public_screen_enabled'] != false;
-      roomVipOnly = int.tryParse(value?['vip_only']?.toString() ?? '') ?? 0;
-      chatBanned = value?['chat_banned'] == true;
+      roomMicMode = value['mic_mode']?.toString() == 'apply' ? 'apply' : 'free';
+      publicScreenEnabled = value['public_screen_enabled'] != false;
+      roomVipOnly = int.tryParse(value['vip_only']?.toString() ?? '') ?? 0;
+      chatBanned = value['chat_banned'] == true;
       lockedSeats
         ..clear()
         ..addAll(nextLocked);
@@ -2378,10 +2461,8 @@ class _RoomScreenState extends State<RoomScreen>
       rocketOverlay.remove();
       rocketOverlay.dispose();
     }
-    memberRefreshTimer?.cancel();
-    messageRefreshTimer?.cancel();
+    roomStateTimer?.cancel();
     settingsRefreshTimer?.cancel();
-    controlsRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
     giftRibbonTimer?.cancel();
