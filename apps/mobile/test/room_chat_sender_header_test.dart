@@ -133,9 +133,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tapping the sender avatar fires onAvatarTap',
+  testWidgets('tapping the sender avatar or name fires onAvatarTap',
       (tester) async {
-    var tapped = false;
+    var taps = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -146,7 +146,7 @@ void main() {
                 displayName: 'Vinay',
                 tags: const [],
                 medals: const [],
-                onAvatarTap: () => tapped = true,
+                onAvatarTap: () => taps += 1,
               ),
             ),
           ),
@@ -155,7 +155,9 @@ void main() {
     );
 
     await tester.tap(find.byIcon(Icons.person_rounded));
-    expect(tapped, isTrue);
+    expect(taps, 1);
+    await tester.tap(find.text('Vinay'));
+    expect(taps, 2);
     expect(tester.takeException(), isNull);
   });
 

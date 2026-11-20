@@ -100,7 +100,7 @@ class RoomChatSenderHeader extends StatelessWidget {
     // The frame auto-sizes to the 28px chat avatar (VipAnimatedFrame.auto
     // measures the avatar at runtime). No frame when frameAssetUrl is empty.
     final String frameUrl = frameAssetUrl?.trim() ?? '';
-    final Widget shown = frameUrl.isEmpty
+    return frameUrl.isEmpty
         ? avatar
         : VipAnimatedFrame.auto(
             enabled: true,
@@ -109,11 +109,6 @@ class RoomChatSenderHeader extends StatelessWidget {
             videoUrl: frameVideoUrl,
             child: avatar,
           );
-    if (onAvatarTap == null) return shown;
-    return GestureDetector(
-      onTap: onAvatarTap,
-      child: shown,
-    );
   }
 
   Widget _tagChip(Map<String, dynamic> tag) {
@@ -213,32 +208,37 @@ class RoomChatSenderHeader extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            _avatar(),
-            const SizedBox(width: 6),
-            Expanded(
-              child: VipNameText(
-                name: name,
-                vipLevel: vipLevel,
-                textKey: const Key('room-chat-sender-name'),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  shadows: <Shadow>[
-                    Shadow(color: Colors.black87, blurRadius: 4),
-                  ],
+        // Like other live apps, the whole sender line (DP + name) opens
+        // the profile card; the tag/medal chips below stay untappable.
+        GestureDetector(
+          onTap: onAvatarTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              _avatar(),
+              const SizedBox(width: 6),
+              Expanded(
+                child: VipNameText(
+                  name: name,
+                  vipLevel: vipLevel,
+                  textKey: const Key('room-chat-sender-name'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    shadows: <Shadow>[
+                      Shadow(color: Colors.black87, blurRadius: 4),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            // Golden VIP tag (VIP5-18), sized from the 11pt name text.
-            if (vipLevel >= 5) ...<Widget>[
-              const SizedBox(width: 4),
-              VipTagImage(vipLevel: vipLevel, fontSize: 11),
+              // Golden VIP tag (VIP5-18), sized from the 11pt name text.
+              if (vipLevel >= 5) ...<Widget>[
+                const SizedBox(width: 4),
+                VipTagImage(vipLevel: vipLevel, fontSize: 11),
+              ],
             ],
-          ],
+          ),
         ),
         if (visibleTags.isNotEmpty || visibleMedals.isNotEmpty)
           Padding(
