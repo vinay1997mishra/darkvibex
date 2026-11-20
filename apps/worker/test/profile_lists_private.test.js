@@ -48,7 +48,7 @@ async function fixture() {
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
   const secret = "profile-lists-private-test-secret";
-  const env = { DB, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
+  const env = { DB, SESSION_SECRET: secret };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -60,8 +60,9 @@ async function fixture() {
 }
 
 async function makeUser(fx, userId) {
-  const created = await fx.request("/api/session/guest", { method: "POST", body: { user_id: userId, display_name: userId } });
-  assert.equal(created.status, 200, JSON.stringify(created.body));
+  // Guest login is deleted permanently (Vinay 2026-11-20): test users are
+  // created directly in SQLite instead of through the removed endpoint.
+  fx.sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run(userId, userId, Date.now(), Date.now());
   return userId;
 }
 

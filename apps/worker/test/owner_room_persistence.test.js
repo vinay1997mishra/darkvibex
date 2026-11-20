@@ -20,7 +20,7 @@ test("permanent room creation returns the existing owner's room", () => {
 });
 
 test("the permanent owner room remains visible without online users", () => {
-  const start = workerSource.indexOf("async function listRooms(db, viewerUserId)");
+  const start = workerSource.indexOf("async function listRooms(db, viewerUserId, env = null)");
   const end = workerSource.indexOf("\nasync function ", start + 12);
   assert.ok(start >= 0 && end > start, "room list function must remain present");
   const route = workerSource.slice(start, end);

@@ -44,7 +44,7 @@ async function fixture() {
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
   const secret = "red-envelope-test-secret";
-  const env = { DB, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
+  const env = { DB, SESSION_SECRET: secret };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -53,9 +53,13 @@ async function fixture() {
     return { status: response.status, body: await response.json() };
   };
   for (const [id, name] of [["sender", "Sender"], ["receiver", "Receiver"], ["intruder", "Intruder"]]) {
-    const response = await request("/api/session/guest", { method: "POST", body: { user_id: id, display_name: name } });
-    assert.equal(response.status, 200);
+    // Guest login is deleted permanently (Vinay 2026-11-20): test users are
+    // created directly in SQLite instead of through the removed endpoint.
+    sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run(id, name, Date.now(), Date.now());
   }
+  // Guest-created accounts start at 0 coins (audit fix #1); fund the test
+  // users explicitly so the envelope amounts below stay as written.
+  sqlite.prepare("UPDATE users SET coins=500000, diamonds=120 WHERE id IN ('sender','receiver','intruder')").run();
   sqlite.prepare("UPDATE users SET vip_level=6 WHERE id='sender'").run();
   await request("/api/vip/sender", { userId: "sender" });
   return { sqlite, DB, env, request };

@@ -271,7 +271,7 @@ test("/api/medals lists earned Rocket medals with series and level", async () =>
   addGift("g3", "room-a", "u3", 1_000_000);
 
   const secret = "rocket-medal-test-secret";
-  const env = { DB: db, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
+  const env = { DB: db, SESSION_SECRET: secret };
   const request = async (path, userId) => {
     const token = await sessionToken(userId, secret);
     const response = await worker.fetch(

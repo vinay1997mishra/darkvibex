@@ -54,7 +54,7 @@ async function fixture() {
       };
     },
   };
-  const env = { DB, FILES, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
+  const env = { DB, FILES, SESSION_SECRET: secret };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -62,8 +62,9 @@ async function fixture() {
     return worker.fetch(new Request(`https://test.invalid${path}`, { method, headers, body: body == null ? undefined : JSON.stringify(body) }), env);
   };
   for (const id of ["target", "visitor"]) {
-    const response = await request("/api/session/guest", { method: "POST", body: { user_id: id, display_name: id } });
-    assert.equal(response.status, 200);
+    // Guest login is deleted permanently (Vinay 2026-11-20): test users are
+    // created directly in SQLite instead of through the removed endpoint.
+    sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run(id, id, Date.now(), Date.now());
   }
   sqlite.prepare("UPDATE users SET vip_level=15,avatar_key='users/target/avatar-test.png' WHERE id='target'").run();
   await request("/api/vip/target", { userId: "target" });

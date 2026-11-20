@@ -44,7 +44,7 @@ test("Unique ID is locked until active VIP15", async () => {
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
   const secret = "vip-unique-id-test-secret";
-  const env = { DB, SESSION_SECRET: secret, ALLOW_GUEST_SESSIONS: true };
+  const env = { DB, SESSION_SECRET: secret };
   const request = async (path, { method = "GET", body, userId } = {}) => {
     const headers = new Headers();
     if (body != null) headers.set("content-type", "application/json");
@@ -52,8 +52,9 @@ test("Unique ID is locked until active VIP15", async () => {
     return worker.fetch(new Request(`https://test.invalid${path}`, { method, headers, body: body == null ? undefined : JSON.stringify(body) }), env);
   };
 
-  const created = await request("/api/session/guest", { method: "POST", body: { user_id: "member", display_name: "Member" } });
-  assert.equal(created.status, 200);
+  // Guest login is deleted permanently (Vinay 2026-11-20): test users are
+  // created directly in SQLite instead of through the removed endpoint.
+  sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run("member", "Member", Date.now(), Date.now());
   await request("/api/vip/member", { userId: "member" });
   const activeUntil = Date.now() + 86400000;
   sqlite.prepare("UPDATE user_vip SET level=14,active_until=? WHERE user_id='member'").run(activeUntil);

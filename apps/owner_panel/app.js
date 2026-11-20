@@ -108,7 +108,6 @@ const staffPermissionOptions = [
   ["rooms.view","Rooms · search/list"],
   ["rooms.edit","Rooms · edit name/seats"],
   ["rooms.lock","Rooms · lock/unlock"],
-  ["rooms.delete","Rooms · remove room"],
   ["rooms.ban","Rooms · ban/unban room"],
   ["rooms.live","Rooms · live users/seats investigation"],
   ["rooms.media","Rooms · DP/background override"],
@@ -191,7 +190,7 @@ const frontendPermissionAliases = {
   "economy.view":["economy.read"],"economy.coin_rate.edit":["economy.write"],
   "messaging.view":["messaging.read"],"messaging.send.selected":["messaging.write"],"messaging.send.all":["messaging.write"],
   "tags.view":["messaging.read"],"tags.apply":["tags.write"],"tags.remove":["tags.write"],
-  "rooms.view":["rooms.read"],"rooms.edit":["rooms.write"],"rooms.lock":["rooms.write"],"rooms.delete":["rooms.write"],"rooms.ban":["rooms.write"],
+  "rooms.view":["rooms.read"],"rooms.edit":["rooms.write"],"rooms.lock":["rooms.write"],"rooms.ban":["rooms.write"],
   "rooms.live":["rooms.live"],"rooms.media":["rooms.media"],"rooms.theme":["rooms.theme"],
   "themes.global.view":["catalog.read"],"themes.global.save":["catalog.write"],"themes.global.remove":["catalog.write"],
   "roles.view":["roles.read"],"roles.save":["roles.write"],"roles.delete":["roles.write"],
@@ -220,7 +219,7 @@ const viewPermissionMap = {
   users:["users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change","users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban","users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban"],
   notifications:[],
   messaging:["messaging.view","messaging.send.selected","messaging.send.all","tags.view","tags.apply","tags.remove"],
-  rooms:["rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme","themes.global.view","themes.global.save","themes.global.remove"],
+  rooms:["rooms.view","rooms.edit","rooms.lock","rooms.ban","rooms.live","rooms.media","rooms.theme","themes.global.view","themes.global.save","themes.global.remove"],
   roles:["roles.view","roles.save","roles.delete"],
   banners:["banners.view","banners.save","banners.delete"],
   games:["games.view","games.configure"],
@@ -325,7 +324,7 @@ const selectorPermissionRules = [
 const dynamicPermissionRules = [
   ["[data-user-open]",["users.detail"]],
   ["[data-device-key]",["users.device.ban"]],
-  ["[data-room-live]",["rooms.live"]],["[data-room-ban]",["rooms.ban"]],["[data-room-lock]",["rooms.lock"]],["[data-room-edit]",["rooms.edit"]],["[data-room-delete]",["rooms.delete"]],
+  ["[data-room-live]",["rooms.live"]],["[data-room-ban]",["rooms.ban"]],["[data-room-lock]",["rooms.lock"]],["[data-room-edit]",["rooms.edit"]],
   ["[data-global-theme-edit]",["themes.global.save"]],["[data-global-theme-remove]",["themes.global.remove"]],
   ["[data-tag-user]",["tags.remove"]],
   ["[data-role-post-edit]",["roles.save"]],["[data-role-post-delete]",["roles.delete"]],
@@ -440,6 +439,9 @@ function applyActionPermissions(){
   });
   if($("#clearAudit"))$("#clearAudit").hidden=state.actor?.type!=="owner";
   if($("#ownerPrivateMessages"))$("#ownerPrivateMessages").hidden=state.actor?.type!=="owner";
+  // Room delete is main-Owner-only (Vinay, 2026-11-20): panel staff never
+  // see the Remove button, and there is no rooms.delete permission left.
+  $$("[data-room-delete]").forEach(b=>{b.hidden=state.actor?.type!=="owner";});
   const ownerCredentials=state.actor?.type==="owner";
   if($("#staffEmailLabel"))$("#staffEmailLabel").hidden=!ownerCredentials;
   if($("#staffPasswordLabel"))$("#staffPasswordLabel").hidden=!ownerCredentials;
@@ -767,7 +769,7 @@ async function openRoomInvestigation(roomId){
   const room=d.room||{};
   $("#roomInvestigation").hidden=false;
   $("#roomInvestigationTitle").textContent=room.name||("Room "+roomId);
-  $("#roomInvestigationMeta").textContent=`Room ID ${roomId} · Owner ${room.owner_name||room.owner_user_id||"—"} · ${Number(room.locked)?"Locked":"Open"}${room.lock_code?" · Lock code "+room.lock_code:""}`;
+  $("#roomInvestigationMeta").textContent=`Room ID ${roomId} · Owner ${room.owner_name||room.owner_user_id||"—"} · ${Number(room.locked)?"Locked":"Open"}${room.lock_code?" · Lock code "+room.lock_code:(room.lock_code_set?" · Lock code set":"")}`;
   $("#ownerRoomDpKey").value=room.image_key||"";
   $("#ownerRoomBackgroundKey").value=room.background_key||"";
   $("#ownerRoomThemeId").value=room.theme_id||"dark";
@@ -1726,6 +1728,10 @@ async function sendOfficialMessage(allUsers=false){
   const d=await api("/api/owner/messages",{method:"POST",body:JSON.stringify({text,user_ids:ids,all_users:allUsers})});
   toast(`Official message sent to ${num(d.sent||0)} users`);
   $("#officialMessageBody").value="";
+  // The selection is cleared after sending (audit A8, 2026-11-20): a
+  // second send used to re-send to the same users.
+  state.messageSelected.clear();
+  renderSelectedMessageUsers();
 }
 async function applyOwnerTag(){
   if(!can("tags.apply"))return toast("Tags write permission required",false);
@@ -1839,7 +1845,7 @@ async function loadGames(){
   const userQuery=$("#gameInvestigationUser").value.trim();
   const d=await api("/api/owner/games"+(userQuery?"?user_id="+encodeURIComponent(userQuery):""));
   state.games=d.games||[];
-  $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No game overrides configured");
+  $("#gameList").innerHTML=state.games.length?state.games.map(item=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name)} <span class="pill ${Number(item.enabled)?"active":"banned"}">${Number(item.enabled)?"Enabled":"Disabled"}</span></div><div class="item-meta">${esc(item.id)} · bet ${num(item.data?.min_bet||1)}–${num(item.data?.max_bet||0)}</div></div><button class="secondary mini" data-game-edit="${esc(item.id)}">Edit</button></div></div>`).join(""):empty("No games configured");
   $("#gameStats").innerHTML=(d.stats||[]).length?(d.stats||[]).map(x=>`<div class="item-card"><div class="item-title">${esc(x.game_id)}</div><div class="item-meta">${num(x.bets)} bets · wagered ${num(x.wagered)} · payout ${num(x.payout)} · house result ${num(x.house_result)}</div></div>`).join(""):empty("No game-bet statistics yet");
   $$("[data-game-edit]").forEach(b=>b.onclick=()=>{const x=state.games.find(i=>i.id===b.dataset.gameEdit);if(!x)return;$("#gameConfigId").value=x.id;$("#gameConfigName").value=x.name||"";$("#gameMinBet").value=Number(x.data?.min_bet||1);$("#gameMaxBet").value=Number(x.data?.max_bet||1000000);$("#gameEnabled").checked=Number(x.enabled)!==0;});
   if(!userQuery){

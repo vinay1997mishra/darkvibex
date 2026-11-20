@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/ui/tinni_style.dart';
 import 'package:darkvibex/utils/rocket_progress.dart';
@@ -19,10 +20,12 @@ import 'package:flutter/material.dart';
 /// User) with reward cards, and a Record button.
 ///
 /// Rewards follow Vinay's CURRENT rules, not the preview's ring/star cards:
-/// NO frames for anyone — Top 1/2/3 get DIRECT VIP + launch coins (see
-/// rocket_top_rewards.dart), and everyone in the entry-order pool gets
-/// random coins only. The pool range comes from the live rocket-reward
-/// status endpoint, so it is never hard-coded here.
+/// NO frames for anyone — Top 1/2/3 get a Rocket medal (permanent, PR #151),
+/// and everyone in the entry-order pool gets random coins only. The VIP and
+/// coin figures on the reward cards are the confirmed DISPLAY values for the
+/// level (rocket_top_rewards.dart) — they are NOT granted (the VIP + coins
+/// grant was stopped; only the medal is granted). The pool range comes from
+/// the live rocket-reward status endpoint, so it is never hard-coded here.
 ///
 /// STUBBED: the countdown has no backend deadline — it counts down to the
 /// next UTC midnight (daily cycle). The mic seats row shows the first 8
@@ -39,6 +42,7 @@ class RocketRoomPage extends StatefulWidget {
     required this.seatMembers,
     required this.currentUserId,
     this.backend = const BackendApi(),
+    this.state,
   });
 
   final String roomId;
@@ -58,6 +62,11 @@ class RocketRoomPage extends StatefulWidget {
 
   final String currentUserId;
   final BackendApi backend;
+
+  /// Optional: when provided, a successful pool claim refreshes the
+  /// wallet/cosmetics through it (the room screen passes its state;
+  /// tests build the page without it).
+  final AppState? state;
 
   @override
   State<RocketRoomPage> createState() => _RocketRoomPageState();
@@ -90,6 +99,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
   int _selectedTab = 0;
   Map<String, dynamic>? _rewardStatus;
   bool _rewardStatusFailed = false;
+  bool _claiming = false;
   Duration _countdown = Duration.zero;
   Timer? _countdownTimer;
   final ScrollController _ladderController = ScrollController();
@@ -169,6 +179,55 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
     }
   }
 
+  /// Claims the pool from this page (full-app audit 2026-11-20): the
+  /// page used to tell eligible users "you can claim the pool" with no
+  /// way to act on it — the only claim button lived in the room
+  /// screen's chest dialog. Same endpoint, same result handling.
+  Future<void> _claimPool() async {
+    if (_claiming || !mounted) return;
+    setState(() => _claiming = true);
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.backend.claimRoomRocketReward(
+        roomId: widget.roomId,
+        rocketLevel: _currentLevel,
+      );
+    } catch (_) {
+      result = null;
+    } finally {
+      if (mounted) setState(() => _claiming = false);
+    }
+    if (!mounted) return;
+    if (result?['ok'] == true) {
+      if (result?['reward_type']?.toString() == 'coins') {
+        await widget.state?.refreshWallet();
+      } else if (result?['reward_type']?.toString() == 'frame') {
+        await widget.state?.refreshCosmetics();
+      }
+      if (!mounted) return;
+      final amount = int.tryParse(result?['coins']?.toString() ?? '') ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result?['already_claimed'] == true
+                ? 'This reward was already claimed. Your wallet has been refreshed.'
+                : 'Congratulations! $amount Coins have been added to your wallet.',
+          ),
+        ),
+      );
+      unawaited(_loadRewardStatus());
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (result?['error']?.toString() ?? 'The reward could not be claimed. Please try again.')
+                .replaceAll('_', ' '),
+          ),
+        ),
+      );
+    }
+  }
+
   void _showHelp() {
     showDialog<void>(
       context: context,
@@ -182,9 +241,8 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
         content: Text(
           'Room gifts add up to the Rocket target. When a level is reached, '
           'the rocket launches.\n\n'
-          'Top 1, Top 2 and Top 3 gifters get DIRECT VIP for a few days plus '
-          'launch coins — VIP rises with the Rocket level and never goes '
-          'above VIP 8.\n\n'
+          'Top 1, Top 2 and Top 3 gifters get a Rocket medal — it stays '
+          'permanently.\n\n'
           'Everyone else in the room who entered early enough gets random '
           'coins only. No frames are given to anyone.\n\n'
           'Entry order counts: the earliest room entrants claim first.',
@@ -932,6 +990,21 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
           ),
         ),
         const SizedBox(height: 10),
+        if (canClaim)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: FilledButton.icon(
+              key: const Key('rocket-room-claim-pool'),
+              onPressed: _claiming ? null : _claimPool,
+              icon: const Icon(Icons.redeem_rounded),
+              label: Text(_claiming ? 'CLAIMING…' : 'Claim pool'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFF9D00),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
         if (reward != null)
           _rewardCards(reward: reward, showPool: true)
         else

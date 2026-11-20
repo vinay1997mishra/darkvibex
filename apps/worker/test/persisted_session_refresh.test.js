@@ -19,7 +19,12 @@ const apiSource = readFileSync(
 test("expired persisted access tokens can refresh without changing account ID", () => {
   assert.ok(workerSource.includes('url.pathname === "/api/session/refresh"'));
   assert.ok(workerSource.includes("verifyRefreshableSessionToken"));
-  assert.ok(workerSource.includes("createSessionToken(env, userId, user.display_name, sessionProvider)"));
+  assert.ok(workerSource.includes("createSessionToken(env, userId, user.display_name, sessionProvider, issuedAt || undefined)"));
+  // Refresh keeps the original login time and stops after 30 days
+  // (audit fix, Vinay 2026-11-20): a stolen token can no longer be
+  // refreshed forever.
+  assert.ok(workerSource.includes("30 * 24 * 3600"));
+  assert.ok(workerSource.includes('error: "session_expired"'));
   assert.ok(workerSource.includes('error: "guest_login_disabled"'));
   assert.ok(stateSource.includes("'guest_login_disabled'"));
   assert.ok(!stateSource.includes("continueAsGuest"));

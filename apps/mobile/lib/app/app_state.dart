@@ -63,7 +63,27 @@ class DirectMessage {
 }
 
 class AppState extends ChangeNotifier {
-  AppState();
+  AppState() {
+    // Mid-session connectivity (full-app audit 2026-11-20): BackendApi
+    // reports every transport failure/success, so backendConnected
+    // flips the moment the network drops instead of only at login.
+    // Guards flip only on change, so a healthy session never spams
+    // listeners. _disposed keeps a late report from notifying a dead
+    // state (tests create throwaway AppStates).
+    BackendApi.onConnectivityChanged = (connected) {
+      if (_disposed || backendConnected == connected) return;
+      backendConnected = connected;
+      notifyListeners();
+    };
+  }
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   // Persist the signed-in account so normal app restarts do not return to Login.
   static const String _sessionTokenKey = 'darkvibex.session_token';
@@ -788,6 +808,7 @@ class AppState extends ChangeNotifier {
     genderChangeCount = 0;
     languagePreference.value = 'English';
     messages.clear();
+    rooms.clear();
     minimizedRoom = null;
     minimizedRoomResume = null;
     minimizedRoomClose = null;

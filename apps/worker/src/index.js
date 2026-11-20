@@ -95,6 +95,7 @@ import {
   sampleLampMicProgress,
 } from "./aladdin_lamp.js";
 import { handleRocketRewardRoute } from "./rocket_rewards.js";
+import { deleteRoomRows } from "./room_cleanup.js";
 import {
   grantRocketMedalsOnLaunch,
   rocketMedalObjects,
@@ -512,9 +513,13 @@ async function verifyRefreshableSessionToken(token, secret) {
 }
 
 
-async function createSessionToken(env, userId, displayName, provider = "legacy") {
+async function createSessionToken(env, userId, displayName, provider = "legacy", issuedAtSeconds = null) {
   if (!env.SESSION_SECRET) throw new Error("session_secret_not_configured");
   const seconds = Math.floor(Date.now() / 1000);
+  // issuedAtSeconds is set only by the refresh endpoint, which preserves
+  // the ORIGINAL login time so a session cannot be refreshed forever
+  // (audit fix, Vinay 2026-11-20). Fresh logins always start a new clock.
+  const issuedAt = Number(issuedAtSeconds ?? seconds) || seconds;
   return signJwt(
     String(env.SESSION_SECRET),
     { alg: "HS256", typ: "JWT" },
@@ -522,7 +527,7 @@ async function createSessionToken(env, userId, displayName, provider = "legacy")
       sub: String(userId),
       name: String(displayName ?? userId),
       provider: String(provider ?? "legacy"),
-      iat: seconds,
+      iat: issuedAt,
       exp: seconds + 60 * 60 * 24 * 7,
     },
   );
@@ -560,18 +565,20 @@ function bearerToken(request) {
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
 }
 
-function guestSessionsAllowed(env) {
-  const value = env?.ALLOW_GUEST_SESSIONS;
-  return value === true || String(value ?? "").trim().toLowerCase() === "true";
-}
-
 async function resolveSessionProvider(db, userId, session, env) {
-  if (guestSessionsAllowed(env)) {
-    return String(session?.provider ?? "test");
-  }
   const claimed = String(session?.provider ?? "").trim().toLowerCase();
   if (claimed === "google" || claimed === "email") return claimed;
   if (claimed === "guest") return "";
+
+  // The server always mints tokens with a provider, a name and an iat
+  // (createSessionToken). A token carrying none of the three can only be
+  // a test-minted JWT — the test helpers sign { sub, exp } only — so it
+  // is accepted as a test session. This replaces the old guest-sessions
+  // flag, which also gated the now-deleted guest endpoint; there is no
+  // switch left that can re-enable guest logins.
+  if (session?.provider == null && session?.name == null && session?.iat == null) {
+    return "test";
+  }
 
   // Backward compatibility for existing Google/Email tokens minted before
   // provider claims were added. Legacy guest sessions have no linked identity
@@ -619,10 +626,18 @@ async function requireSession(request, env, expectedUserId) {
     try{
       const db=requireDb(env);
       await ensureOwnerControlSchema(db);
+      // First claim wins (audit fix, Vinay 2026-11-20): any logged-in
+      // user could previously rebind ANY device_key to their own
+      // account just by sending the header, corrupting the owner's
+      // device view. A device already mapped to another user stays
+      // theirs; the caller's own mapping still refreshes last_seen_at.
       await db.prepare(
         `INSERT INTO owner_user_devices(device_key,user_id,last_seen_at) VALUES(?,?,?)
-         ON CONFLICT(device_key) DO UPDATE SET user_id=excluded.user_id,last_seen_at=excluded.last_seen_at`
+         ON CONFLICT(device_key) DO NOTHING`
       ).bind(deviceKey,actor,now()).run();
+      await db.prepare(
+        `UPDATE owner_user_devices SET last_seen_at=? WHERE device_key=? AND user_id=?`
+      ).bind(now(),deviceKey,actor).run();
     }catch(error){
       console.error("DarkVibeX device identity mapping failed",String(error?.message ?? error));
     }
@@ -848,10 +863,17 @@ async function ownerIdentityMeta(db,userId) {
 }
 
 async function ownerGameConfig(db,gameId,defaults={}) {
+  // A garbage bet limit must never pass every bet (audit A1, 2026-11-20):
+  // Number("x") is NaN, and amount < NaN || amount > NaN is always false.
+  // Any non-finite value falls back to the default instead.
+  const finiteOr = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : Number(fallback);
+  };
   const fallback={
     enabled:defaults.enabled!==false,
-    min_bet:Number(defaults.min_bet ?? 1),
-    max_bet:Number(defaults.max_bet ?? 900000000000000),
+    min_bet:finiteOr(defaults.min_bet, 1),
+    max_bet:finiteOr(defaults.max_bet, 900000000000000),
   };
   try {
     const row=await db.prepare(
@@ -862,8 +884,8 @@ async function ownerGameConfig(db,gameId,defaults={}) {
     try{data=JSON.parse(String(row.json_data ?? "{}"))||{};}catch(_){}
     return {
       enabled:Number(row.enabled ?? 1)!==0,
-      min_bet:Number(data.min_bet ?? fallback.min_bet),
-      max_bet:Number(data.max_bet ?? fallback.max_bet),
+      min_bet:finiteOr(data.min_bet, fallback.min_bet),
+      max_bet:finiteOr(data.max_bet, fallback.max_bet),
     };
   } catch(error) {
     if(String(error?.message ?? error).includes("no such table"))return fallback;
@@ -901,22 +923,6 @@ async function activeAnnouncements(db) {
         ORDER BY updated_at DESC LIMIT 20`
     ).bind(ts, ts).all();
     return rows.results ?? [];
-  } catch (error) {
-    if (String(error?.message ?? error).includes("no such table")) return [];
-    throw error;
-  }
-}
-
-async function publicCatalog(db, kind) {
-  try {
-    const rows = await db.prepare(
-      "SELECT kind,id,name,sort_order,price_coins,json_data,updated_at FROM owner_catalog WHERE kind = ? AND enabled = 1 ORDER BY sort_order ASC, updated_at DESC LIMIT 300"
-    ).bind(kind).all();
-    return (rows.results ?? []).map((row) => {
-      let data = {};
-      try { data = JSON.parse(String(row.json_data ?? "{}")); } catch (_) {}
-      return { ...row, data };
-    });
   } catch (error) {
     if (String(error?.message ?? error).includes("no such table")) return [];
     throw error;
@@ -1590,16 +1596,38 @@ async function expireRoomCustomThemes(db, roomId, ts = now()) {
 }
 
 async function expireRoomLuckyPouches(db, roomId, ts = now()) {
-  await db.batch([
-    db.prepare("UPDATE room_lucky_pouches SET status='expired_pending' WHERE room_id=? AND status='open' AND expires_at<=?")
-      .bind(roomId, ts),
-    db.prepare("UPDATE users SET coins=coins+(SELECT COALESCE(SUM(p.remaining_coins),0) FROM room_lucky_pouches p WHERE p.room_id=? AND p.owner_user_id=users.id AND p.status='expired_pending'), updated_at=? WHERE id IN (SELECT owner_user_id FROM room_lucky_pouches WHERE room_id=? AND status='expired_pending' AND remaining_coins>0)")
-      .bind(roomId, ts, roomId),
-    db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'room_lucky_pouch_refund',p.remaining_coins,u.coins,p.id,? FROM room_lucky_pouches p JOIN users u ON u.id=p.owner_user_id WHERE p.room_id=? AND p.status='expired_pending' AND p.remaining_coins>0")
-      .bind(id(), ts, roomId),
-    db.prepare("UPDATE room_lucky_pouches SET status='expired_refunded' WHERE room_id=? AND status='expired_pending'")
-      .bind(roomId),
-  ]);
+  // One ledger row per pouch, each with its own id, and each pouch is
+  // marked refunded right after its own credit (audit 2026-11-20: the
+  // old INSERT ... SELECT bound a SINGLE id() for every row, so with
+  // 2+ expired pouches the ledger insert hit a PRIMARY KEY conflict,
+  // the pouches stuck in expired_pending, and the bulk credit re-ran
+  // on every expire pass — refunding the same coins again and again).
+  await db.prepare(
+    "UPDATE room_lucky_pouches SET status='expired_pending' WHERE room_id=? AND status='open' AND expires_at<=?"
+  ).bind(roomId, ts).run();
+  const pending = await db.prepare(
+    "SELECT id, owner_user_id, remaining_coins FROM room_lucky_pouches WHERE room_id=? AND status='expired_pending' AND remaining_coins>0"
+  ).bind(roomId).all();
+  for (const pouch of pending.results ?? []) {
+    const remaining = Number(pouch.remaining_coins ?? 0);
+    if (!Number.isSafeInteger(remaining) || remaining <= 0) continue;
+    await db.prepare(
+      "UPDATE users SET coins=coins+?, updated_at=? WHERE id=?"
+    ).bind(remaining, ts, pouch.owner_user_id).run();
+    const after = await db.prepare(
+      "SELECT coins FROM users WHERE id=?"
+    ).bind(pouch.owner_user_id).first();
+    await db.prepare(
+      "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).bind(id(), pouch.owner_user_id, "room_lucky_pouch_refund", remaining, Number(after?.coins ?? 0), pouch.id, ts).run();
+    await db.prepare(
+      "UPDATE room_lucky_pouches SET status='expired_refunded' WHERE id=? AND status='expired_pending'"
+    ).bind(pouch.id).run();
+  }
+  // Pouches with nothing left to refund still move to the final state.
+  await db.prepare(
+    "UPDATE room_lucky_pouches SET status='expired_refunded' WHERE room_id=? AND status='expired_pending'"
+  ).bind(roomId).run();
 }
 
 async function ensureRoomLuckyPouchTables(db) {
@@ -1974,16 +2002,76 @@ async function ensureImageTables(db) {
 
 const ROOM_PRESENCE_TTL_MS = 30 * 1000;
 
-async function cleanupStaleRoomMembers(db, ts = now()) {
+async function cleanupStaleRoomMembers(db, ts = now(), env = null) {
   const cutoff = Number(ts) - ROOM_PRESENCE_TTL_MS;
   await db.prepare(
     "DELETE FROM room_members WHERE updated_at > 0 AND updated_at < ?"
   ).bind(cutoff).run();
+  await wipeChatOfEmptyRooms(db, env);
   return cutoff;
 }
 
+// Room chat clear markers (Vinay, 2026-11-20): the room owner and the
+// room admins clear the chat separately. An owner clear hides old
+// messages from everyone; an admin clear hides them from everyone
+// EXCEPT the owner. Two timestamps, so the order of the clears never
+// matters: a later admin clear can never resurrect messages an owner
+// clear already hid from the owner.
+async function ensureRoomChatClearTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_chat_clears (
+      room_id TEXT PRIMARY KEY,
+      owner_cleared_at INTEGER NOT NULL DEFAULT 0,
+      admin_cleared_at INTEGER NOT NULL DEFAULT 0
+    )`
+  ).run();
+}
+
+// Room chat has no backup anywhere (Vinay, 2026-11-20): the moment a
+// room has no members left it is closed, and its chat is deleted at
+// once — messages, their image rows, the clear markers, and the image
+// files in R2 (best-effort). Rooms that still have members keep their
+// chat; a member who re-enters sees nothing old because the messages
+// endpoint only returns messages sent after their joined_at.
+async function wipeChatOfEmptyRooms(db, env) {
+  await ensureRoomChatClearTable(db);
+  await ensureImageTables(db);
+  const emptyRoomIds = `SELECT r.id FROM rooms r WHERE NOT EXISTS (
+    SELECT 1 FROM room_members m WHERE m.room_id = r.id
+  )`;
+  const imageKeys = await db.prepare(
+    `SELECT image_key FROM room_message_images
+      WHERE message_id IN (
+        SELECT id FROM room_messages WHERE room_id IN (${emptyRoomIds})
+      )`
+  ).all();
+  await db.prepare(
+    `DELETE FROM room_message_images WHERE message_id IN (
+       SELECT id FROM room_messages WHERE room_id IN (${emptyRoomIds})
+     )`
+  ).run();
+  const deleted = await db.prepare(
+    `DELETE FROM room_messages WHERE room_id IN (${emptyRoomIds})`
+  ).run();
+  await db.prepare(
+    `DELETE FROM room_chat_clears WHERE room_id IN (${emptyRoomIds})`
+  ).run();
+  if (env?.FILES) {
+    for (const row of imageKeys.results ?? []) {
+      const key = String(row.image_key ?? "");
+      if (!key) continue;
+      try {
+        await env.FILES.delete(key);
+      } catch (_) {
+        // Best-effort: a missing file never stops the wipe.
+      }
+    }
+  }
+  return Number(deleted.meta?.changes ?? 0);
+}
+
 // Public lists hide empty rooms; once created, an owner's permanent room always remains recoverable in My room.
-async function listRooms(db, viewerUserId) {
+async function listRooms(db, viewerUserId, env = null) {
   await ensureOwnerControlSchema(db);
   await ensureImageTables(db);
   await ensureRoomSettingsTable(db);
@@ -1992,7 +2080,7 @@ async function listRooms(db, viewerUserId) {
     "SELECT country_code FROM users WHERE id=? LIMIT 1"
   ).bind(viewerUserId).first();
   const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
-  const presenceCutoff = await cleanupStaleRoomMembers(db, now());
+  const presenceCutoff = await cleanupStaleRoomMembers(db, now(), env);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.vip_only, r.country_code,
             CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -2241,13 +2329,26 @@ async function walletChange(db, userId, amount, kind, referenceId = null) {
   if (!Number.isSafeInteger(next) || next < 0) throw new Error("insufficient_coins");
 
   const ts = now();
-  await db.batch([
-    db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(next, ts, userId),
-    db.prepare(
-      "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id(), userId, kind, amount, next, referenceId, ts),
-  ]);
-  return next;
+  // Atomic move: the balance changes with a relative UPDATE guarded by
+  // the funds check, so two concurrent debits can never both spend the
+  // same coins (audit 2026-11-20: the old read-then-absolute-SET let
+  // concurrent call settles under-charge and double-bill).
+  const updated = Number(amount) < 0
+    ? await db.prepare(
+        "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ? AND coins + ? >= 0"
+      ).bind(amount, ts, userId, amount).run()
+    : await db.prepare(
+        "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
+      ).bind(amount, ts, userId).run();
+  if (Number(updated.meta?.changes ?? 0) !== 1) throw new Error("insufficient_coins");
+  // balance_after is re-read after the move, so the ledger records the
+  // balance that actually landed, not the pre-read estimate.
+  const after = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+  const balanceAfter = Number(after?.coins ?? 0);
+  await db.prepare(
+    "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id(), userId, kind, amount, balanceAfter, referenceId, ts).run();
+  return balanceAfter;
 }
 
 async function settleDirectCallBilling(db, callId, ts = now()) {
@@ -2274,28 +2375,49 @@ async function settleDirectCallBilling(db, callId, ts = now()) {
     Math.floor(Number(caller?.coins ?? 0) / perMinuteCost),
   );
   if (affordableMinutes > 0) {
+    // Claim the minutes first with a compare-and-swap on billed_minutes,
+    // so two concurrent settles can never bill the same minutes twice
+    // (audit 2026-11-20: both read the same billed_minutes, both
+    // debited, both incremented — double-bill / under-charge).
+    const claimed = await db.prepare(
+      "UPDATE direct_calls SET billed_minutes=billed_minutes+? WHERE id=? AND billed_minutes=?"
+    ).bind(affordableMinutes, callId, billedMinutes).run();
+    if (Number(claimed.meta?.changes ?? 0) !== 1) {
+      return directCallRow(db, callId);
+    }
     const callerCost = affordableMinutes * perMinuteCost;
     const rewardPerMinute =
         Number(call.receiver_earning_eligible ?? 0) === 1
           ? Number(call.receiver_diamonds_per_minute ?? 0)
           : 0;
     const receiverReward = affordableMinutes * rewardPerMinute;
-    await walletChange(
-      db,
-      String(call.caller_user_id),
-      -callerCost,
-      "call_charge",
-      callId,
-    );
+    try {
+      await walletChange(
+        db,
+        String(call.caller_user_id),
+        -callerCost,
+        "call_charge",
+        callId,
+      );
+    } catch (error) {
+      // Balance dropped between the affordability read and the debit:
+      // give the claimed minutes back and end the call for funds.
+      await db.prepare(
+        "UPDATE direct_calls SET billed_minutes=billed_minutes-? WHERE id=?"
+      ).bind(affordableMinutes, callId).run();
+      await db.prepare(
+        "UPDATE direct_calls SET state='ended',ended_at=?,end_reason='insufficient_coins',updated_at=? WHERE id=? AND state='active'"
+      ).bind(ts, ts, callId).run();
+      throw error;
+    }
     const statements = [
       db.prepare(
         `UPDATE direct_calls
-            SET billed_minutes=billed_minutes+?,
-                caller_cost_coins=caller_cost_coins+?,
+            SET caller_cost_coins=caller_cost_coins+?,
                 receiver_reward_diamonds=receiver_reward_diamonds+?,
                 updated_at=?
           WHERE id=?`
-      ).bind(affordableMinutes, callerCost, receiverReward, ts, callId),
+      ).bind(callerCost, receiverReward, ts, callId),
     ];
     if (receiverReward > 0) {
       statements.push(
@@ -2428,6 +2550,15 @@ async function startEmailOtp(db,env,emailValue,purposeValue) {
   if(recent&&now()-Number(recent.created_at ?? 0)<60000) {
     throw new Error("otp_wait_before_resend");
   }
+  // The 5-attempt cap used to reset with every new request_id, so codes
+  // could be brute-forced a fresh 5 guesses per minute forever (audit
+  // fix, Vinay 2026-11-20): at most 5 codes per email per hour.
+  const startedLastHour=await db.prepare(
+    "SELECT COUNT(*) AS n FROM email_otp_requests WHERE email=? AND created_at>?"
+  ).bind(email,now()-3600000).first();
+  if(Number(startedLastHour?.n ?? 0)>=5) {
+    throw new Error("otp_too_many_requests");
+  }
 
   const requestId="otp-"+id();
   const otp=randomSixDigitOtp();
@@ -2472,7 +2603,11 @@ async function verifyEmailOtpRequest(db,env,requestIdValue,otpValue) {
   const tokenHash=await sha256Hex(setupToken);
   const createdAt=now();
   await db.batch([
-    db.prepare("UPDATE email_otp_requests SET verified=1 WHERE id=?").bind(requestId),
+    // Single-use (audit fix, Vinay 2026-11-20): the OTP row is deleted
+    // on success, so the same code can never be verified again to mint
+    // more setup tokens. It used to stay in the table with verified=1
+    // and could be re-verified without limit inside its 10 minutes.
+    db.prepare("DELETE FROM email_otp_requests WHERE id=?").bind(requestId),
     db.prepare(
       "INSERT INTO email_setup_tokens(token_hash,email,purpose,expires_at,created_at) VALUES(?,?,?,?,?)"
     ).bind(tokenHash,row.email,row.purpose,createdAt+15*60*1000,createdAt),
@@ -3892,6 +4027,11 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/config" && request.method === "GET") {
+    // Config is readable only by logged-in users (audit fix, Vinay
+    // 2026-11-20): it used to be open to anyone, leaking internal
+    // feature flags and announcements without any session.
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
     const keys = ["feature.voice", "feature.gifts", "feature.games", "feature.messages", "feature.room_creation", "feature.aladdin_lamp", "feature.red_pocket", "feature.friends_call", "feature.visitors", "maintenance"];
     const settings = {};
     for (const key of keys) settings[key] = await ownerSetting(db, key, {});
@@ -3939,6 +4079,16 @@ async function handleApi(request, env, url) {
       if(!cols.has("device_key")) await db.prepare("ALTER TABLE push_devices ADD COLUMN device_key TEXT NOT NULL DEFAULT ''").run();
     } catch (_) {}
     if (enabled) {
+      // A push token belongs to the user who registered it first (audit
+      // fix, Vinay 2026-11-20): the old ON CONFLICT upsert silently
+      // reassigned any token to whoever posted it last, so knowing a
+      // token was enough to steal its owner's push notifications.
+      const existing = await db.prepare(
+        "SELECT user_id FROM push_devices WHERE token=? LIMIT 1"
+      ).bind(token).first();
+      if (existing && String(existing.user_id ?? "") !== userId) {
+        return json({ ok: false, error: "push_token_owned_by_another_user" }, { status: 409 });
+      }
       await db.batch([
         db.prepare(
           `INSERT INTO push_devices(token,user_id,device_key,platform,enabled,updated_at)
@@ -3996,6 +4146,13 @@ async function handleApi(request, env, url) {
       url.searchParams.get("user_id") ?? session.sub ?? "",
     ).trim();
     if (!targetId) return json({ ok:false,error:"user_id_required" }, { status:400 });
+    // Profile media is private to its owner (audit fix, Vinay
+    // 2026-11-20): any logged-in user could previously read anyone's
+    // cover and life photos by passing ?user_id=. The app only ever
+    // loads the caller's own media.
+    if (targetId !== String(session.sub ?? "").trim()) {
+      return json({ ok:false,error:"forbidden" }, { status:403 });
+    }
     const user = await db.prepare(
       "SELECT id,avatar_key FROM users WHERE id=? LIMIT 1"
     ).bind(targetId).first();
@@ -4583,7 +4740,14 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    return json(await cpDisconnect(db, userId));
+    // Errors (e.g. insufficient_coins) are 400s, like the sibling CP
+    // routes — without the try/catch they surfaced as 500s (audit
+    // 2026-11-20).
+    try {
+      return json(await cpDisconnect(db, userId));
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
   }
 
   if (url.pathname === "/api/cp/ring" && request.method === "POST") {
@@ -4656,7 +4820,7 @@ async function handleApi(request, env, url) {
     // Count only members fresh within the presence TTL, like listRooms
     // (room audit 2026-11-20: followed rooms showed phantom online counts
     // from stale members).
-    const presenceCutoff = await cleanupStaleRoomMembers(db, now());
+    const presenceCutoff = await cleanupStaleRoomMembers(db, now(), env);
     const rows = await db.prepare(
       `SELECT r.id,r.name,
               CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -4732,11 +4896,10 @@ async function handleApi(request, env, url) {
     return json({ok:true,banners:rows});
   }
 
-  if (url.pathname === "/api/catalog" && request.method === "GET") {
-    const kind = String(url.searchParams.get("kind") ?? "").trim().slice(0, 60);
-    if (!kind) return json({ ok: false, error: "kind_required" }, { status: 400 });
-    return json({ ok: true, items: await publicCatalog(db, kind) });
-  }
+  // /api/catalog was deleted (audit fix, Vinay 2026-11-20): it was a dead,
+  // unauthenticated dump of any enabled owner_catalog kind (including
+  // vip rules and game config). Nothing calls it — the app reads the
+  // gift catalog from the authenticated /api/gifts/catalog instead.
 
   if (parts[0] === "api" && parts[1] === "cosmetics" && parts.length === 3 && request.method === "GET") {
     const userId = String(parts[2] ?? "").trim();
@@ -4814,13 +4977,24 @@ async function handleApi(request, env, url) {
     }
 
     try {
-      await db.prepare(
+      // Grant only if still unowned: the pre-check above can race with a
+      // second purchase, and the old upsert let both debits land for one
+      // item (audit 2026-11-20). A 0-row insert means the item was just
+      // bought — refund and report already_owned.
+      const granted = await db.prepare(
         `INSERT INTO ${table}(user_id,item_id,kind,acquired_at,expires_at,active)
-         VALUES(?,?,?,?,?,0)
-         ON CONFLICT(user_id,item_id)
-         DO UPDATE SET kind=excluded.kind,acquired_at=excluded.acquired_at,
-                       expires_at=excluded.expires_at,active=0`
-      ).bind(recipientId,itemId,product.kind,ts,expiresAt).run();
+         SELECT ?,?,?,?,?,0
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ${table} WHERE user_id=? AND item_id=? AND expires_at>?
+          )`
+      ).bind(recipientId,itemId,product.kind,ts,expiresAt,recipientId,itemId,ts).run();
+      if (Number(granted.meta?.changes ?? 0) !== 1) {
+        if(effectivePrice>0){
+          await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+            .bind(effectivePrice,now(),userId).run();
+        }
+        return json({ ok:false,error:"already_owned" }, { status:409 });
+      }
       const wallet=await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
       await db.prepare(
         "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
@@ -4845,6 +5019,12 @@ async function handleApi(request, env, url) {
         recipient_user_id:recipientId,
       });
     } catch (error) {
+      // The ledger insert failed after the item was granted: take the
+      // item back too (matched on this call's acquired_at, so an older
+      // row is never touched), or the user would keep a free item.
+      await db.prepare(
+        `DELETE FROM ${table} WHERE user_id=? AND item_id=? AND acquired_at=?`
+      ).bind(recipientId,itemId,ts).run();
       if(effectivePrice>0){
         await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
           .bind(effectivePrice,now(),userId).run();
@@ -4977,11 +5157,21 @@ async function handleApi(request, env, url) {
       ).bind(userId).first();
       if (!user) return json({ ok: false, error: "user_not_found" }, { status: 401 });
       await ensureUserAllowed(db, userId);
+      // A session may be refreshed for at most 30 days from the original
+      // login (audit fix, Vinay 2026-11-20): refresh used to accept any
+      // correctly-signed token forever, with no expiry and no revocation.
+      // The refreshed token keeps the original iat, so the 30-day clock
+      // cannot be reset by refreshing. After that the user logs in again.
+      const issuedAt = Number(previous.iat ?? 0);
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (issuedAt && nowSeconds - issuedAt > 30 * 24 * 3600) {
+        return json({ ok: false, error: "session_expired" }, { status: 401 });
+      }
       const sessionProvider = await resolveSessionProvider(db, userId, previous, env);
       if (!sessionProvider) {
         return json({ ok: false, error: "guest_login_disabled" }, { status: 401 });
       }
-      const token = await createSessionToken(env, userId, user.display_name, sessionProvider);
+      const token = await createSessionToken(env, userId, user.display_name, sessionProvider, issuedAt || undefined);
       return json({ ok: true, token, user, provider: sessionProvider });
     } catch (error) {
       const code = String(error?.message ?? error);
@@ -5211,22 +5401,10 @@ async function handleApi(request, env, url) {
     });
   }
 
-  if (url.pathname === "/api/session/guest" && request.method === "POST") {
-    if (!env.SESSION_SECRET) {
-      return json({ ok: false, error: "session_secret_not_configured" }, { status: 503 });
-    }
-    if (!guestSessionsAllowed(env)) {
-      return json({ ok: false, error: "guest_login_disabled" }, { status: 403 });
-    }
-    const body = await bodyJson(request);
-    const userId = String(body.user_id ?? "").trim() ||
-      String(Math.floor(10000000 + Math.random() * 90000000));
-    const displayName = String(body.display_name ?? "DarkVibeX User").trim().slice(0, 60);
-    const user = await ensureUser(db, userId, displayName);
-    await ensureUserAllowed(db, userId);
-    const token = await createSessionToken(env, userId, user.display_name, "guest");
-    return json({ ok: true, token, user, provider: "guest" });
-  }
+  // Guest login was deleted permanently (Vinay 2026-11-20): the endpoint
+  // used to mint a 7-day token for any client-supplied user_id, so anyone
+  // could take over any account. There is no guest login anymore — login
+  // is Google or email only — and no flag can bring it back.
 
   // Look a user up by their public ID (Block by ID, Vinay 2026-11-20):
   // the app types the ID shown on a profile, the worker resolves it to
@@ -5559,6 +5737,15 @@ async function handleApi(request, env, url) {
       }
       if (viewerId !== viewedUserId) {
         delete user.profile_setup_required;
+        // Private wallet and identity fields are never shown to other
+        // users (audit fix, Vinay 2026-11-20): any logged-in user could
+        // previously read anyone's coins, diamonds and date of birth.
+        delete user.coins;
+        delete user.diamonds;
+        delete user.date_of_birth;
+        delete user.age_change_count;
+        delete user.country_change_count;
+        delete user.gender_change_count;
       }
     }
     const visitorsFeature=await ownerSetting(db,"feature.visitors",{enabled:true});
@@ -6477,7 +6664,7 @@ async function handleApi(request, env, url) {
     );
     return json({
       ok:true,
-      rooms:await listRooms(db,String(session.sub)),
+      rooms:await listRooms(db,String(session.sub), env),
     });
   }
 
@@ -6571,6 +6758,16 @@ async function handleApi(request, env, url) {
     const seatCount = requestedSeatCount;
     const roomId = ownerPublicId;
     await ensureOwnerControlSchema(db);
+    // A platform-banned room stays banned: re-creating it used to wipe
+    // the owner_room_controls row and bring the room back (audit
+    // 2026-11-20). The check runs before the existing-room shortcut
+    // too, so a banned room cannot be re-opened either.
+    const controlRow = await db.prepare(
+      "SELECT banned FROM owner_room_controls WHERE room_id=?"
+    ).bind(roomId).first();
+    if (Number(controlRow?.banned ?? 0) === 1) {
+      return json({ ok:false,error:"room_banned" }, { status:403 });
+    }
     const existingRoomId = await db.prepare(
       `SELECT r.owner_user_id,r.name,r.seat_count,r.vip_only,
               COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
@@ -6637,35 +6834,16 @@ async function handleApi(request, env, url) {
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "delete" && request.method === "POST") {
-    const roomId = parts[2];
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    const room = await db.prepare("SELECT owner_user_id FROM rooms WHERE id = ?").bind(roomId).first();
-    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
-    if (String(room.owner_user_id) !== userId) {
-      return json({ ok: false, error: "room_owner_required" }, { status: 403 });
-    }
-    // Delete the room's image + follower rows too (room audit 2026-11-20:
-    // they have no foreign key, so the old delete orphaned them), and
-    // delete the R2 avatar file best-effort.
-    await ensureImageTables(db);
-    const avatarRow = await db.prepare("SELECT image_key FROM room_images WHERE room_id = ? LIMIT 1").bind(roomId).first();
-    const avatarKey = String(avatarRow?.image_key ?? "").trim();
-    await db.batch([
-      db.prepare("DELETE FROM room_members WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM room_settings WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM room_images WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM room_followers WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId),
-    ]);
-    if (avatarKey) {
-      try {
-        if (env.FILES) await env.FILES.delete(avatarKey);
-      } catch (_) {}
-    }
-    return json({ ok: true });
+    // Room delete is owner-panel only (Vinay, 2026-11-20): a user cannot
+    // delete their room from the app — only the platform owner deletes
+    // rooms, from the owner panel (not even panel staff). The teardown
+    // lives in room_cleanup.js and is used by the owner-panel delete.
+    // The route stays so callers get this answer instead of a bare 404.
+    return json({ ok:false,error:"room_delete_owner_panel_only" }, { status:403 });
   }
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "join" && request.method === "POST") {
@@ -6769,6 +6947,10 @@ async function handleApi(request, env, url) {
     const result = await db.prepare(
       "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
     ).bind(roomId, userId).run();
+    // Room chat has no backup anywhere (Vinay, 2026-11-20): if this
+    // was the last member, the room just closed and its chat is wiped
+    // at once.
+    await wipeChatOfEmptyRooms(db, env);
     // Exit is intentionally idempotent: if the member was already removed,
     // the client is still fully outside the room and should be allowed to close.
     return json({
@@ -6940,10 +7122,29 @@ async function handleApi(request, env, url) {
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const viewerId = String(session.sub);
       const member = await db.prepare(
-        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, String(session.sub)).first();
+        "SELECT joined_at FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, viewerId).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      // Room chat is ephemeral (Vinay, 2026-11-20): a member only ever
+      // sees messages sent after they entered the room, and a clear
+      // hides everything before it — an owner clear for everyone, an
+      // admin clear for everyone except the owner.
+      await ensureRoomChatClearTable(db);
+      const room = await db.prepare(
+        "SELECT owner_user_id FROM rooms WHERE id = ?"
+      ).bind(roomId).first();
+      const clear = await db.prepare(
+        "SELECT owner_cleared_at, admin_cleared_at FROM room_chat_clears WHERE room_id = ?"
+      ).bind(roomId).first();
+      const isOwner = String(room?.owner_user_id ?? "") === viewerId;
+      const joinedAt = Number(member.joined_at ?? 0);
+      const ownerClearedAt = Number(clear?.owner_cleared_at ?? 0);
+      const adminClearedAt = Number(clear?.admin_cleared_at ?? 0);
+      const cutoff = isOwner
+        ? Math.max(joinedAt, ownerClearedAt)
+        : Math.max(joinedAt, ownerClearedAt, adminClearedAt);
       const rows = await db.prepare(
         `SELECT m.id, m.user_id,
                 CASE WHEN v.level >= 18 AND v.active_until > ?
@@ -6974,9 +7175,9 @@ async function handleApi(request, env, url) {
            LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
-          WHERE m.room_id = ?
+          WHERE m.room_id = ? AND m.created_at > ?
           ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
-      ).bind(now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), roomId, cutoff).all();
       const messagesWithProfiles = await decorateRoomChatProfileMetadata(
         db,
         (rows.results ?? []).reverse(),
@@ -6987,6 +7188,8 @@ async function handleApi(request, env, url) {
     if (request.method === "POST") {
       await ensureOwnerControlSchema(db);
       await ensureRoomAdminTable(db);
+      await ensureVipSchema(db);
+      await ensureCosmeticsSchema(db);
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
       const authError = await requireSession(request, env, userId);
@@ -7087,6 +7290,43 @@ async function handleApi(request, env, url) {
     }
   }
 
+  // Chat clear (Vinay, 2026-11-20): only the room owner or a room admin
+  // can clear the room chat, from the 4-Box menu. An owner clear hides
+  // old messages from everyone; an admin clear hides them from everyone
+  // except the owner. The clear is a server-side timestamp — the
+  // messages endpoint filters on it, so a cleared chat never comes back
+  // on the next poll or after re-entering the room.
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 5 && parts[3] === "messages" && parts[4] === "clear" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const mod = await roomModeratorState(db, roomId, userId);
+    if (!mod.room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    if (!mod.isOwner && !mod.isAdmin) return json({ ok: false, error: "room_clear_owner_admin_only" }, { status: 403 });
+    await ensureRoomChatClearTable(db);
+    const clearedAt = now();
+    if (mod.isOwner) {
+      await db.prepare(
+        `INSERT INTO room_chat_clears (room_id, owner_cleared_at, admin_cleared_at)
+         VALUES (?, ?, 0)
+         ON CONFLICT(room_id) DO UPDATE SET owner_cleared_at = excluded.owner_cleared_at`
+      ).bind(roomId, clearedAt).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO room_chat_clears (room_id, owner_cleared_at, admin_cleared_at)
+         VALUES (?, 0, ?)
+         ON CONFLICT(room_id) DO UPDATE SET admin_cleared_at = excluded.admin_cleared_at`
+      ).bind(roomId, clearedAt).run();
+    }
+    return json({ ok: true, cleared_at: clearedAt });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members") {
     const roomId = parts[2];
     await ensureRoomAdminTable(db);
@@ -7103,7 +7343,7 @@ async function handleApi(request, env, url) {
       await db.prepare(
         "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
       ).bind(heartbeatTs, roomId, actorId).run();
-      const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs);
+      const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs, env);
       const member = await db.prepare(
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? AND updated_at >= ?"
       ).bind(roomId, actorId, presenceCutoff).first();

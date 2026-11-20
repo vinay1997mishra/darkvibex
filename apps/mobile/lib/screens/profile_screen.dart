@@ -1234,12 +1234,25 @@ class _SocialPeopleListScreenState extends State<_SocialPeopleListScreen> {
     if (!widget.following) return;
     final id = row['id']?.toString() ?? '';
     if (id.isEmpty) return;
-    final ok = await widget.state.backend.setUserFollow(
-      userId: widget.state.userId,
-      targetUserId: id,
-      follow: false,
-    );
-    if (!mounted || !ok) return;
+    bool ok;
+    try {
+      ok = await widget.state.backend.setUserFollow(
+        userId: widget.state.userId,
+        targetUserId: id,
+        follow: false,
+      );
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    // A failed unfollow used to fail silently (full-app audit
+    // 2026-11-20): the row stayed with no feedback at all.
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not unfollow. Please try again.')),
+      );
+      return;
+    }
     setState(() => rows.removeWhere((item) => item['id']?.toString() == id));
   }
 
@@ -2824,6 +2837,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   'Request could not be updated.',
             ),
           ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not reach the server. Please try again.')),
         );
       }
     } finally {

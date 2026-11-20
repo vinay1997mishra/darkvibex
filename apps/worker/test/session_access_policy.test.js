@@ -56,7 +56,7 @@ async function sessionToken(userId, secret, provider = "google") {
   return `${input}.${base64url(signature)}`;
 }
 
-async function fixture({ allowGuests = false } = {}) {
+async function fixture() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
   const DB = new D1Mock(sqlite);
@@ -64,7 +64,6 @@ async function fixture({ allowGuests = false } = {}) {
   const env = {
     DB,
     SESSION_SECRET: secret,
-    ...(allowGuests ? { ALLOW_GUEST_SESSIONS: true } : {}),
   };
   async function request(path, { method = "GET", body, token } = {}) {
     const headers = new Headers();
@@ -80,14 +79,14 @@ async function fixture({ allowGuests = false } = {}) {
   return { sqlite, request, secret };
 }
 
-test("guest login is disabled by default and cannot mint a token for a chosen user ID", async () => {
+test("guest login is deleted permanently: the endpoint is gone and creates no account", async () => {
   const { sqlite, request } = await fixture();
   const result = await request("/api/session/guest", {
     method: "POST",
     body: { user_id: "victim-user", display_name: "Impersonation Attempt" },
   });
-  assert.equal(result.status, 403);
-  assert.equal(result.body.error, "guest_login_disabled");
+  assert.equal(result.status, 404);
+  assert.equal(result.body.error, "not_found");
   assert.equal(
     sqlite.prepare("SELECT id FROM users WHERE id=?").get("victim-user"),
     undefined,
@@ -161,19 +160,4 @@ test("user-scoped room, relationship and ID-level routes cannot be used for anot
     const result = await request(path, { method: "POST", body, token });
     assert.equal(result.status, 403, `unexpected write access to ${path}`);
   }
-});
-
-test("explicit test-only guest fixture flag preserves isolated integration test setup", async () => {
-  const { request, sqlite } = await fixture({ allowGuests: true });
-  const result = await request("/api/session/guest", {
-    method: "POST",
-    body: { user_id: "test-only-guest", display_name: "Test Guest" },
-  });
-  assert.equal(result.status, 200);
-  assert.equal(result.body.provider, "guest");
-  assert.ok(result.body.token);
-  assert.equal(
-    sqlite.prepare("SELECT id FROM users WHERE id=?").get("test-only-guest").id,
-    "test-only-guest",
-  );
 });

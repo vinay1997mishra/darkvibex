@@ -7,10 +7,14 @@ const panelHtml = await readFile(new URL("../../owner_panel/index.html", import.
 const panelApp = await readFile(new URL("../../owner_panel/app.js", import.meta.url), "utf8");
 
 test("Main Owner Google login is restricted to the configured Gmail hash", () => {
-  assert.match(ownerApi, /MAIN_OWNER_GMAIL_SHA256/);
+  // The hash lives in the Worker secret OWNER_GMAIL_SHA256, not in source
+  // (audit A9, 2026-11-20).
+  assert.match(ownerApi, /env\.OWNER_GMAIL_SHA256/);
   assert.match(ownerApi, /owner_google_account_not_authorized/);
   assert.match(ownerApi, /\/api\/owner\/google-login/);
   assert.match(ownerApi, /owner_login_sessions/);
+  assert.doesNotMatch(ownerApi, /MAIN_OWNER_GMAIL_SHA256/);
+  assert.doesNotMatch(ownerApi, /821a3b8e/);
   assert.doesNotMatch(ownerApi, /mishrajii7991@gmail\.com/i);
 });
 

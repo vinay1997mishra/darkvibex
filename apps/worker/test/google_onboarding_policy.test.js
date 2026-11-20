@@ -21,7 +21,11 @@ test("Google onboarding state is durable and defaults existing accounts to direc
 });
 
 test("guest login remains unavailable and Google onboarding is not silently auto-started", () => {
-  assert.match(worker, /if \(!guestSessionsAllowed\(env\)\)[\s\S]*?guest_login_disabled/);
+  // Guest login was deleted permanently (Vinay 2026-11-20): no endpoint,
+  // no flag, no way to bring it back.
+  assert.doesNotMatch(worker, /guestSessionsAllowed/);
+  assert.doesNotMatch(worker, /\/api\/session\/guest/);
+  assert.doesNotMatch(worker, /ALLOW_GUEST_SESSIONS/);
   assert.doesNotMatch(appState, /attemptLightweightAuthentication\(\)/);
   assert.doesNotMatch(loginScreen, /Guest Login|Continue as Guest/i);
   assert.match(loginScreen, /login-language-selector/);

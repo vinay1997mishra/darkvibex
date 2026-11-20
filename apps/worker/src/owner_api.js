@@ -6,6 +6,7 @@ import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
 import { VIP_LEVELS } from "./vip_policy.js";
 import { ensureVipSchema, getVipStatus } from "./vip_store.js";
+import { deleteRoomRows } from "./room_cleanup.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -26,7 +27,9 @@ const json = (data, init = {}) =>
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 const encoder = new TextEncoder();
-const MAIN_OWNER_GMAIL_SHA256 = "821a3b8e3fad7bf5644a2ae91752590b48010c8ba56a3d1e647aafe55f1f85f2";
+// The main owner's Gmail fingerprint lives in the Worker secret
+// OWNER_GMAIL_SHA256 (sha256 of the Gmail), not in source (audit A9,
+// 2026-11-20). Owner Google login 403s until the secret is set.
 let schemaReady = false;
 
 function bearerToken(request) {
@@ -158,7 +161,8 @@ async function loginMainOwnerWithGoogle(db, env, body) {
 
   const email = normalizeStaffEmail(claims.email);
   const emailHash = email ? await sha256Hex(email) : "";
-  if (!email || emailHash !== MAIN_OWNER_GMAIL_SHA256) {
+  const ownerGmailHash = String(env.OWNER_GMAIL_SHA256 ?? "").trim();
+  if (!email || !ownerGmailHash || emailHash !== ownerGmailHash) {
     return json({ ok: false, error: "owner_google_account_not_authorized" }, { status: 403 });
   }
 
@@ -202,7 +206,7 @@ const STAFF_ASSIGNABLE_PERMISSIONS = new Set([
   "economy.view","economy.coin_rate.edit",
   "messaging.view","messaging.send.selected","messaging.send.all",
   "tags.view","tags.apply","tags.remove",
-  "rooms.view","rooms.edit","rooms.lock","rooms.delete","rooms.ban","rooms.live","rooms.media","rooms.theme",
+  "rooms.view","rooms.edit","rooms.lock","rooms.ban","rooms.live","rooms.media","rooms.theme",
   "themes.global.view","themes.global.save","themes.global.remove",
   "roles.view","roles.save","roles.delete",
   "banners.view","banners.save","banners.delete",
@@ -253,7 +257,6 @@ const PERMISSION_ALIASES = {
   "rooms.view":["rooms.read"],
   "rooms.edit":["rooms.write"],
   "rooms.lock":["rooms.write"],
-  "rooms.delete":["rooms.write"],
   "rooms.ban":["rooms.write"],
   "rooms.live":["rooms.live"],
   "rooms.media":["rooms.media"],
@@ -535,7 +538,14 @@ async function ensureOwnerSchema(db) {
       enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
-      last_used_at INTEGER
+      last_used_at INTEGER,
+      token_expires_at INTEGER
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_staff_login_attempts (
+      email TEXT PRIMARY KEY,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until INTEGER,
+      updated_at INTEGER NOT NULL
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_staff_sessions (
       token_hash TEXT PRIMARY KEY,
@@ -715,12 +725,22 @@ async function ensureOwnerSchema(db) {
       ["password_salt", "TEXT NOT NULL DEFAULT ''"],
       ["password_hash", "TEXT NOT NULL DEFAULT ''"],
       ["password_iterations", "INTEGER NOT NULL DEFAULT 120000"],
+      ["token_expires_at", "INTEGER"],
     ];
     for (const [name, definition] of staffAdditions) {
       if (!staffColumns.has(name)) {
         await db.prepare(`ALTER TABLE owner_staff ADD COLUMN ${name} ${definition}`).run();
       }
     }
+    // Legacy one-time staff tokens (audit A2, 2026-11-20): staff created
+    // before password login have no password, so their legacy token gets
+    // 7 days from this migration, then only password login works. Staff
+    // with a password set get no grace — the legacy token is dead for
+    // them at once. New staff rows never use the legacy path: their
+    // token_hash is a random value nobody knows (createStaff below).
+    await db.prepare(
+      "UPDATE owner_staff SET token_expires_at=? WHERE token_expires_at IS NULL AND password_hash=''"
+    ).bind(now() + 7 * 24 * 60 * 60 * 1000).run();
     await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_staff_email ON owner_staff(email) WHERE email <> ''").run();
   } catch (_) {}
   try {
@@ -823,10 +843,13 @@ async function authenticate(request, env, db) {
   }
 
   // Legacy one-time staff tokens continue to work for panels created before
-  // Gmail/password login was enabled. New staff panels do not expose such a token.
+  // Gmail/password login was enabled — but only inside a 7-day grace window
+  // set at migration (audit A2, 2026-11-20): a leaked legacy token must not
+  // work forever. New staff panels do not expose such a token, and their
+  // token_expires_at stays NULL, so this path never accepts them.
   const staff = await db.prepare(
-    "SELECT id, display_name, role, permissions_json FROM owner_staff WHERE token_hash = ? AND enabled = 1 LIMIT 1"
-  ).bind(hash).first();
+    "SELECT id, display_name, role, permissions_json FROM owner_staff WHERE token_hash = ? AND enabled = 1 AND token_expires_at IS NOT NULL AND token_expires_at > ? LIMIT 1"
+  ).bind(hash, now()).first();
   if (!staff) return null;
 
   const explicit = safeParse(staff.permissions_json, []);
@@ -838,25 +861,63 @@ async function authenticate(request, env, db) {
   return { type: "staff", id: staff.id, name: staff.display_name, role: staff.role, permissions };
 }
 
+// Staff password login throttling (audit A3, 2026-11-20): 5 wrong attempts
+// lock the email for 15 minutes. Attempts are counted per email — including
+// unknown emails, so a failed login never reveals whether the account exists.
+const MAX_STAFF_LOGIN_ATTEMPTS = 5;
+const STAFF_LOGIN_LOCK_MS = 15 * 60 * 1000;
+
+async function recordStaffLoginFailure(db, email) {
+  const ts = now();
+  const row = await db.prepare(
+    "SELECT attempts FROM owner_staff_login_attempts WHERE email=?"
+  ).bind(email).first();
+  const attempts = Number(row?.attempts ?? 0) + 1;
+  const lockedUntil = attempts >= MAX_STAFF_LOGIN_ATTEMPTS ? ts + STAFF_LOGIN_LOCK_MS : null;
+  await db.prepare(
+    `INSERT INTO owner_staff_login_attempts(email,attempts,locked_until,updated_at) VALUES(?,?,?,?)
+     ON CONFLICT(email) DO UPDATE SET attempts=excluded.attempts,locked_until=excluded.locked_until,updated_at=excluded.updated_at`
+  ).bind(email, attempts, lockedUntil, ts).run();
+}
+
 async function loginStaffWithPassword(db, body) {
   const email = normalizeStaffEmail(body.email);
   const password = String(body.password ?? "");
   if (!email || !password) {
     return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
   }
+  const attempt = await db.prepare(
+    "SELECT attempts,locked_until FROM owner_staff_login_attempts WHERE email=?"
+  ).bind(email).first();
+  if (attempt && Number(attempt.locked_until ?? 0) > now()) {
+    return json({
+      ok: false,
+      error: "too_many_attempts",
+      retry_after_seconds: Math.ceil((Number(attempt.locked_until) - now()) / 1000),
+    }, { status: 429 });
+  }
+  if (attempt && Number(attempt.locked_until ?? 0) > 0 && Number(attempt.locked_until) <= now()) {
+    // Lock expired: a fresh window starts instead of re-locking on one miss.
+    await db.prepare("DELETE FROM owner_staff_login_attempts WHERE email=?").bind(email).run();
+  }
+  const fail = async () => {
+    await recordStaffLoginFailure(db, email);
+    return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
+  };
   const staff = await db.prepare(
     `SELECT id,display_name,role,permissions_json,password_salt,password_hash,password_iterations,enabled
        FROM owner_staff
       WHERE email=? LIMIT 1`
   ).bind(email).first();
   if (!staff || Number(staff.enabled) !== 1 || !staff.password_salt || !staff.password_hash) {
-    return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
+    return fail();
   }
   const iterations = Math.max(10000, Number(staff.password_iterations ?? 120000));
   const derived = await deriveStaffPasswordHash(password, String(staff.password_salt), iterations);
   if (derived !== String(staff.password_hash)) {
-    return json({ ok: false, error: "invalid_email_or_password" }, { status: 401 });
+    return fail();
   }
+  await db.prepare("DELETE FROM owner_staff_login_attempts WHERE email=?").bind(email).run();
   await db.prepare("DELETE FROM owner_staff_sessions WHERE expires_at<=?").bind(now()).run();
   const session = await issueStaffSession(db, staff.id);
   const explicit = safeParse(staff.permissions_json, []);
@@ -1733,21 +1794,25 @@ async function handleUsers(request, db, actor, url, parts) {
        nextCoins<0||nextDiamonds<0){
       return json({ok:false,error:"invalid_balance_change"},{status:400});
     }
-    const statements=[
-      db.prepare("UPDATE users SET coins=?,diamonds=?,updated_at=? WHERE id=?")
-        .bind(nextCoins,nextDiamonds,ts,userId),
-    ];
-    if(rawCoinDelta!==0){
-      statements.push(
-        db.prepare(
-          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
-        ).bind(id(),userId,rawCoinDelta,nextCoins,actor.id,ts)
-      );
+    // Relative update guarded by the funds check (audit 2026-11-20: the
+    // old absolute SET from a stale read lost concurrent adjustments).
+    const updated = await db.prepare(
+      "UPDATE users SET coins=coins+?,diamonds=diamonds+?,updated_at=? WHERE id=? AND coins+?>=0 AND diamonds+?>=0"
+    ).bind(rawCoinDelta,rawDiamondDelta,ts,userId,rawCoinDelta,rawDiamondDelta).run();
+    if (Number(updated.meta?.changes ?? 0) !== 1) {
+      return json({ok:false,error:"invalid_balance_change"},{status:400});
     }
-    await db.batch(statements);
+    const afterRow = await db.prepare("SELECT coins,diamonds FROM users WHERE id=?").bind(userId).first();
+    const coinsAfter = Number(afterRow?.coins ?? 0);
+    const diamondsAfter = Number(afterRow?.diamonds ?? 0);
+    if(rawCoinDelta!==0){
+      await db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
+      ).bind(id(),userId,rawCoinDelta,coinsAfter,actor.id,ts).run();
+    }
     await audit(db,actor,"user_wallet_adjustment","user",userId,
       `coins=${rawCoinDelta}; diamonds=${rawDiamondDelta}`);
-    return json({ok:true,coins:nextCoins,diamonds:nextDiamonds});
+    return json({ok:true,coins:coinsAfter,diamonds:diamondsAfter});
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
@@ -1825,7 +1890,7 @@ async function handleUsers(request, db, actor, url, parts) {
   return null;
 }
 
-async function handleRooms(request, db, actor, url, parts) {
+async function handleRooms(request, db, actor, url, parts, env) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "rooms.view");
     return json({ ok: true, rooms: await listRooms(db, url.searchParams.get("q") ?? "") });
@@ -1852,9 +1917,22 @@ async function handleRooms(request, db, actor, url, parts) {
   }
 
   if (parts.length === 4 && request.method === "DELETE") {
-    requirePermission(actor, "rooms.delete");
+    // Only the platform owner deletes rooms (Vinay, 2026-11-20): panel
+    // staff cannot, and there is no rooms.delete permission to grant
+    // anymore — the permission was removed with this check.
+    if (actor.type !== "owner") return json({ ok:false,error:"owner_only" }, { status:403 });
+    // Full room teardown (audit 2026-11-20): the old delete removed only
+    // the controls row and the room row, orphaning every room-scoped row
+    // (admins, bans, messages, themes, pouches, lamp state) and the R2
+    // avatar. The controls row goes too, so a deleted room leaves no
+    // stale platform ban behind for a later room with the same id.
+    const { avatarKey } = await deleteRoomRows(db, roomId, env?.FILES ?? null);
     await db.prepare("DELETE FROM owner_room_controls WHERE room_id = ?").bind(roomId).run();
-    await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
+    if (avatarKey) {
+      try {
+        if (env?.FILES) await env.FILES.delete(avatarKey);
+      } catch (_) {}
+    }
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
     return json({ ok: true });
   }
@@ -1890,6 +1968,12 @@ async function handleRooms(request, db, actor, url, parts) {
         WHERE r.id=?`
     ).bind(roomId).first();
     if(!room) return json({ok:false,error:"not_found"},{status:404});
+    // The room lock code is a credential (audit A5, 2026-11-20): staff
+    // investigating a room only learn whether a code is set; only the
+    // platform owner sees the code itself.
+    const lockCode = String(room.lock_code ?? "");
+    room.lock_code_set = lockCode.length > 0;
+    if (actor.type !== "owner") room.lock_code = "";
     const members=await db.prepare(
       `SELECT m.user_id,m.seat_index,m.mic_muted,m.joined_at,m.updated_at,
               u.public_id,u.display_name,u.avatar_key,u.vip_level
@@ -2087,10 +2171,16 @@ async function handleMessaging(request, db, actor, url, parts) {
       recipients=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
     }
     const ts=now();
-    for(const userId of recipients){
-      await db.prepare(
+    await audit(db,actor,"official_message_started","users",body.all_users===true?"all":String(recipients.length),`${recipients.length} recipients`);
+    // Sequential per-user inserts timed out past a few thousand users and
+    // left a partial send with no audit trail (audit A4, 2026-11-20):
+    // batch the inserts in chunks of 100 instead.
+    const MESSAGE_BATCH_SIZE = 100;
+    for (let start = 0; start < recipients.length; start += MESSAGE_BATCH_SIZE) {
+      const chunk = recipients.slice(start, start + MESSAGE_BATCH_SIZE);
+      await db.batch(chunk.map((userId) => db.prepare(
         "INSERT INTO direct_messages(id,sender_user_id,receiver_user_id,text,created_at,read_at) VALUES(?,?,?,?,?,NULL)"
-      ).bind(id(),"darkvibex_official",userId,message,ts).run();
+      ).bind(id(), "darkvibex_official", userId, message, ts)));
     }
     await audit(db,actor,"official_message","users",body.all_users===true?"all":String(recipients.length),message.slice(0,120));
     return json({ok:true,sent:recipients.length});
@@ -2208,6 +2298,16 @@ async function handleBanners(request, db, actor, parts) {
   return null;
 }
 
+// The three games the app actually offers (audit A7, 2026-11-20): the
+// Games view used to list only saved game_config overrides, so with no
+// overrides the owner could not discover what is configurable. The GET
+// below always lists these three, merged with their saved override.
+const BASE_GAMES = [
+  { id: "ludo", name: "Ludo" },
+  { id: "fruit-party", name: "Fruit Party" },
+  { id: "greedy-girl", name: "Greedy Girl" },
+];
+
 async function handleGamesOwner(request, db, actor, url) {
   if(request.method==="GET"){
     requirePermission(actor,"games.view");
@@ -2255,7 +2355,23 @@ async function handleGamesOwner(request, db, actor, url) {
         };
       }
     }
-    return json({ok:true,games:(catalog.results ?? []).map(parseStoreRow),stats:bets.results ?? [],user_investigation:userInvestigation,user_error:userError});
+    const overrides = new Map((catalog.results ?? []).map((row) => [String(row.id), parseStoreRow(row)]));
+    const games = [
+      ...BASE_GAMES.map((base) => overrides.get(base.id) ?? {
+        kind: "game_config",
+        id: base.id,
+        name: base.name,
+        enabled: 1,
+        sort_order: 0,
+        price_coins: 0,
+        country: "",
+        data: { min_bet: 1, max_bet: 1000000 },
+        updated_at: 0,
+        source: "base",
+      }),
+      ...[...overrides.values()].filter((row) => !BASE_GAMES.some((base) => base.id === row.id)),
+    ];
+    return json({ok:true,games,stats:bets.results ?? [],user_investigation:userInvestigation,user_error:userError});
   }
   if(request.method==="POST"){
     requirePermission(actor,"games.configure");
@@ -2548,16 +2664,27 @@ function storePermissionForKind(kind, action) {
   return "store."+action;
 }
 
+// Owner catalog/store kinds (audit A1, 2026-11-20): only the kinds a surface
+// actually manages may be written through it. vip_rule and game_config have
+// their own endpoints (vip.save / games.configure) and must never be written
+// via catalog.save or store.save — a catalog-only staffer could otherwise
+// overwrite VIP thresholds or bet limits. vip / vip_privilege / tag / custom
+// have no readers at all, so writes to them are rejected too.
+const CATALOG_KINDS = new Set(["gift","theme","frame","vehicle","entry","ring","bubble","profile_card","profile_background","banner"]);
+const STORE_KINDS = new Set([...CATALOG_KINDS, "gift_category", "unique_id"]);
+
 async function handleStore(request, db, actor, url, parts) {
   if (parts.length===3 && request.method==="GET") {
     const kind=String(url.searchParams.get("kind") ?? "").trim().slice(0,60);
     if(!kind) return json({ok:false,error:"kind_required"},{status:400});
+    if(!STORE_KINDS.has(kind)) return json({ok:false,error:"kind_not_allowed"},{status:400});
     requirePermission(actor,storePermissionForKind(kind,"view"));
     return json({ok:true,kind,items:await effectiveOwnerStore(db,kind)});
   }
   if (parts.length===3 && request.method==="POST") {
     const body=await bodyJson(request);
     const kind=String(body.kind ?? "").trim().slice(0,60);
+    if(kind && !STORE_KINDS.has(kind)) return json({ok:false,error:"kind_not_allowed"},{status:400});
     requirePermission(actor,storePermissionForKind(kind,"save"));
     const itemId=String(body.id ?? "").trim().slice(0,100);
     const name=String(body.name ?? itemId).trim().slice(0,120);
@@ -2583,6 +2710,7 @@ async function handleStore(request, db, actor, url, parts) {
   if (parts.length===5 && request.method==="DELETE") {
     const kind=decodeURIComponent(parts[3]);
     const itemId=decodeURIComponent(parts[4]);
+    if(!STORE_KINDS.has(kind)) return json({ok:false,error:"kind_not_allowed"},{status:400});
     requirePermission(actor,storePermissionForKind(kind,"remove"));
     const items=await effectiveOwnerStore(db,kind);
     const item=items.find(row=>row.id===itemId);
@@ -2602,15 +2730,17 @@ async function handleCatalog(request, db, actor, url, parts) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "catalog.view");
     const filter = String(url.searchParams.get("kind") ?? "").trim();
+    if (filter && !CATALOG_KINDS.has(filter)) return json({ ok: false, error: "kind_not_allowed" }, { status: 400 });
     const rows = filter
       ? await db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind = ? ORDER BY sort_order ASC, updated_at DESC").bind(filter).all()
-      : await db.prepare("SELECT kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog ORDER BY kind ASC, sort_order ASC, updated_at DESC LIMIT 500").all();
+      : await db.prepare(`SELECT kind,id,name,enabled,sort_order,price_coins,country,json_data,updated_at FROM owner_catalog WHERE kind IN (${[...CATALOG_KINDS].map(() => "?").join(",")}) ORDER BY kind ASC, sort_order ASC, updated_at DESC LIMIT 500`).bind(...CATALOG_KINDS).all();
     return json({ ok: true, items: (rows.results ?? []).map((row) => ({ ...row, data: safeParse(row.json_data, {}) })) });
   }
   if (parts.length === 3 && request.method === "POST") {
-    requirePermission(actor, "catalog.save");
     const body = await bodyJson(request);
     const itemKind = String(body.kind ?? "").trim().slice(0, 60);
+    if (!CATALOG_KINDS.has(itemKind)) return json({ ok: false, error: "kind_not_allowed" }, { status: 400 });
+    requirePermission(actor, "catalog.save");
     const itemId = String(body.id ?? "").trim().slice(0, 100) || id();
     const name = String(body.name ?? "").trim().slice(0, 120);
     if (!itemKind || !name) return json({ ok: false, error: "kind_and_name_required" }, { status: 400 });
@@ -2629,9 +2759,10 @@ async function handleCatalog(request, db, actor, url, parts) {
     return json({ ok: true, id: itemId });
   }
   if (parts.length === 5 && request.method === "DELETE") {
-    requirePermission(actor, "catalog.remove");
     const itemKind = decodeURIComponent(parts[3]);
     const itemId = decodeURIComponent(parts[4]);
+    if (!CATALOG_KINDS.has(itemKind)) return json({ ok: false, error: "kind_not_allowed" }, { status: 400 });
+    requirePermission(actor, "catalog.remove");
     await db.prepare("DELETE FROM owner_catalog WHERE kind = ? AND id = ?").bind(itemKind, itemId).run();
     await audit(db, actor, "catalog_delete", itemKind, itemId, "item removed");
     return json({ ok: true });
@@ -2857,13 +2988,21 @@ async function handleTreasury(request, db, actor) {
     const delta = action === "add" ? amount : -amount;
     const next = balance + delta;
     if (!Number.isSafeInteger(next) || next < 0) return json({ ok: false, error: "invalid_treasury_balance" }, { status: 400 });
-    await db.batch([
-      db.prepare("UPDATE owner_treasury SET balance = ?, updated_at = ? WHERE id = 'main'").bind(next, ts),
-      db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)")
-        .bind(id(), delta, next, action === "add" ? "owner_topup" : "owner_deduct", actor.id, note, ts),
-    ]);
+    // Relative update (audit 2026-11-20: the old absolute SET from a
+    // stale read lost concurrent top-ups/deducts). The deduct is guarded
+    // by the funds check, so two concurrent deducts cannot overdraw.
+    const updated = await db.prepare(
+      "UPDATE owner_treasury SET balance = balance + ?, updated_at = ? WHERE id = 'main' AND balance + ? >= 0"
+    ).bind(delta, ts, delta).run();
+    if (Number(updated.meta?.changes ?? 0) !== 1) {
+      return json({ ok: false, error: "invalid_treasury_balance" }, { status: 400 });
+    }
+    const afterRow = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
+    const balanceAfter = Number(afterRow?.balance ?? 0);
+    await db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)")
+      .bind(id(), delta, balanceAfter, action === "add" ? "owner_topup" : "owner_deduct", actor.id, note, ts).run();
     await audit(db, actor, action === "add" ? "treasury_add" : "treasury_deduct", "treasury", "main", `amount=${amount}`);
-    return json({ ok: true, balance: next });
+    return json({ ok: true, balance: balanceAfter });
   }
 
   if (action === "send") {
@@ -2873,19 +3012,30 @@ async function handleTreasury(request, db, actor) {
     const user = await db.prepare("SELECT id, coins FROM users WHERE id = ?").bind(userId).first();
     if (!user) return json({ ok: false, error: "user_not_found" }, { status: 404 });
     if (balance < amount) return json({ ok: false, error: "insufficient_treasury_balance" }, { status: 409 });
-    const nextTreasury = balance - amount;
     const nextUser = Number(user.coins ?? 0) + amount;
     if (!Number.isSafeInteger(nextUser)) return json({ ok: false, error: "invalid_user_balance" }, { status: 400 });
-    await db.batch([
-      db.prepare("UPDATE owner_treasury SET balance = ?, updated_at = ? WHERE id = 'main'").bind(nextTreasury, ts),
-      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(nextUser, ts, userId),
-      db.prepare("INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_treasury',?,?,?,?)")
-        .bind(id(), userId, amount, nextUser, actor.id, ts),
-      db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, 'send_to_user', ?, ?, ?, ?)")
-        .bind(id(), -amount, nextTreasury, userId, actor.id, note, ts),
-    ]);
+    // Conditional treasury debit + relative user credit (audit 2026-11-20:
+    // the old absolute SETs from stale reads let two concurrent sends
+    // debit the treasury once while crediting both users).
+    const debited = await db.prepare(
+      "UPDATE owner_treasury SET balance = balance - ?, updated_at = ? WHERE id = 'main' AND balance >= ?"
+    ).bind(amount, ts, amount).run();
+    if (Number(debited.meta?.changes ?? 0) !== 1) {
+      return json({ ok: false, error: "insufficient_treasury_balance" }, { status: 409 });
+    }
+    await db.prepare(
+      "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
+    ).bind(amount, ts, userId).run();
+    const treasuryRow = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
+    const treasuryAfter = Number(treasuryRow?.balance ?? 0);
+    const userRow = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+    const userAfter = Number(userRow?.coins ?? 0);
+    await db.prepare("INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_treasury',?,?,?,?)")
+      .bind(id(), userId, amount, userAfter, actor.id, ts).run();
+    await db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, 'send_to_user', ?, ?, ?, ?)")
+      .bind(id(), -amount, treasuryAfter, userId, actor.id, note, ts).run();
     await audit(db, actor, "treasury_send", "user", userId, `amount=${amount}`);
-    return json({ ok: true, balance: nextTreasury, user_balance: nextUser });
+    return json({ ok: true, balance: treasuryAfter, user_balance: userAfter });
   }
 
   return json({ ok: false, error: "invalid_treasury_action" }, { status: 400 });
@@ -3007,7 +3157,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
     else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
     else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
-    else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
+    else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts, env);
     else if (parts[2] === "roles-posts") response = await handleRolesPosts(request, db, actor, url, parts);
     else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
     else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor, url);
