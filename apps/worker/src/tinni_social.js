@@ -830,7 +830,7 @@ async function relationDisconnectRequest(db, userId) {
     : String(state.user_a);
   const updatedAt = ts();
   try {
-    await db.prepare(
+    const marked = await db.prepare(
       `UPDATE cp_relationships
           SET disconnect_state='requested',
               disconnect_requested_by=?,
@@ -838,6 +838,13 @@ async function relationDisconnectRequest(db, userId) {
               updated_at=?
         WHERE user_a=? AND user_b=? AND state='active'`
     ).bind(userId,updatedAt,updatedAt,state.user_a,state.user_b).run();
+    if (Number(marked.meta?.changes ?? 0) !== 1) {
+      // The row changed between the read and this update (partner
+      // responded, timed out, or the CP ended): throw so the catch
+      // below refunds, instead of charging 20M for a request that
+      // never landed (audit 2026-11-20).
+      throw new Error("cp_not_active");
+    }
     const wallet = await db.prepare(
       "SELECT coins FROM users WHERE id=? LIMIT 1"
     ).bind(userId).first();
@@ -1047,18 +1054,25 @@ export async function cpRequest(db, userId, targetIdValue) {
 
   const [a,b] = pair(userId,targetId);
   const createdAt=ts();
-  try {
+  // Insert only when no row exists for the pair: the old upsert let two
+  // concurrent requests (A→B and B→A) both debit 20M and reset an ACTIVE
+  // CP back to pending (audit 2026-11-20). A 0-row insert means the pair
+  // already has a row — refund the debit and report it.
+  const inserted = await db.prepare(
+    `INSERT INTO cp_relationships(
+      user_a,user_b,state,intimacy,level,cycle_a_to_b,cycle_b_to_a,requested_by,created_at,updated_at
+    ) SELECT ?,?,'pending',0,1,0,0,?,?,?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM cp_relationships WHERE user_a=? AND user_b=?
+        )`
+  ).bind(a,b,userId,createdAt,createdAt,a,b).run();
+  if (Number(inserted.meta?.changes ?? 0) !== 1) {
     await db.prepare(
-      `INSERT INTO cp_relationships(
-        user_a,user_b,state,intimacy,level,cycle_a_to_b,cycle_b_to_a,requested_by,created_at,updated_at
-      ) VALUES(?,?,'pending',0,1,0,0,?,?,?)
-      ON CONFLICT(user_a,user_b) DO UPDATE SET
-        state='pending',intimacy=0,level=1,cycle_a_to_b=0,cycle_b_to_a=0,
-        requested_by=excluded.requested_by,activated_at=NULL,
-        disconnect_state='none',disconnect_requested_by=NULL,disconnect_requested_at=NULL,
-        heartbeat_state='idle',heartbeat_choice_a=NULL,heartbeat_choice_b=NULL,heartbeat_updated_at=NULL,
-        created_at=excluded.created_at,updated_at=excluded.updated_at`
-    ).bind(a,b,userId,createdAt,createdAt).run();
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(inviteCost,ts(),userId).run();
+    throw new Error("cp_already_active");
+  }
+  try {
     const wallet = await db.prepare(
       "SELECT coins FROM users WHERE id=? LIMIT 1"
     ).bind(userId).first();
@@ -1092,6 +1106,12 @@ export async function cpRequest(db, userId, targetIdValue) {
       createdAt,
     ).run();
   } catch (error) {
+    // The row was created by this call (the insert above only ever adds
+    // a new row), so remove it too — otherwise a ledger/DM failure
+    // would leave a FREE pending CP behind the refund.
+    await db.prepare(
+      "DELETE FROM cp_relationships WHERE user_a=? AND user_b=? AND requested_by=? AND created_at=?"
+    ).bind(a,b,userId,createdAt).run();
     await db.prepare(
       "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
     ).bind(inviteCost,ts(),userId).run();
@@ -1131,6 +1151,23 @@ export async function cpRespond(db, userId, accept) {
 export async function cpDisconnect(db, userId) {
   const row = await cpState(db,userId);
   if (!row) return { ok: true, cp:null };
+  if (String(row.state ?? "") !== "active") {
+    // A pending invite is not a CP yet: cancelling it costs nothing
+    // extra (the requester already paid 20M up front, which stays
+    // non-refunded like a reject). The old code charged another 20M to
+    // delete a pending row (audit 2026-11-20). Stamp the invite DM so
+    // its Accept/Reject buttons never come back.
+    const partnerId = String(row.requested_by ?? "") === String(row.user_a)
+      ? String(row.user_b)
+      : String(row.user_a);
+    await db.prepare(
+      "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
+    ).bind(row.user_a,row.user_b).run();
+    await db.prepare(
+      "UPDATE direct_messages SET kind='cp_invite_rejected' WHERE kind='cp_invite' AND sender_user_id=? AND receiver_user_id=?"
+    ).bind(row.requested_by, partnerId).run();
+    return { ok: true, cp:null };
+  }
   // Direct breakup also costs 20,000,000 coins (Vinay, 2026-11-20),
   // paid by whoever breaks it. No app screen calls this directly —
   // the app uses the request/respond flow — but the price is the same.
@@ -1202,15 +1239,6 @@ export async function recordCpGiftProgress(
 ) {
   await ensureTinniSocialSchema(db);
 
-  if (eventId) {
-    const existing = await db.prepare(
-      "SELECT 1 AS recorded FROM cp_gift_progress WHERE event_id=? LIMIT 1"
-    ).bind(eventId).first();
-    if (existing) {
-      return { progress:0, duplicate:true, cp:await cpState(db,senderUserId) };
-    }
-  }
-
   const relation = await cpState(db,senderUserId);
   if (!relation || relation.state !== "active") {
     return { progress:0, cp:relation };
@@ -1229,35 +1257,15 @@ export async function recordCpGiftProgress(
   }
 
   const levelBefore = Math.max(1, Math.floor(Number(relation.level ?? 1)));
-  let nextAToB = Math.max(0, Math.floor(Number(relation.pair_a_to_b ?? relation.cycle_a_to_b ?? 0)));
-  let nextBToA = Math.max(0, Math.floor(Number(relation.pair_b_to_a ?? relation.cycle_b_to_a ?? 0)));
-  if (aToB) nextAToB += progress;
-  if (bToA) nextBToA += progress;
-  if (!Number.isSafeInteger(nextAToB) || !Number.isSafeInteger(nextBToA)) {
-    throw new Error("cp_progress_limit");
-  }
-
-  let levelAfter = levelBefore;
-  if (relationCanLevelUp(levelBefore,nextAToB,nextBToA)) {
-    levelAfter += 1;
-    nextAToB = 0;
-    nextBToA = 0;
-  }
-
-  const intimacy = Math.max(0, Math.floor(Number(relation.intimacy ?? 0))) + progress;
-  if (!Number.isSafeInteger(intimacy)) throw new Error("cp_progress_limit");
   const updatedAt=ts();
 
-  await db.prepare(
-    `UPDATE cp_relationships
-        SET intimacy=?,level=?,cycle_a_to_b=?,cycle_b_to_a=?,updated_at=?
-      WHERE user_a=? AND user_b=? AND state='active'`
-  ).bind(
-    intimacy,levelAfter,nextAToB,nextBToA,updatedAt,relation.user_a,relation.user_b
-  ).run();
-
+  // Claim the event FIRST: the old code checked for duplicates, then
+  // updated progress, then inserted the marker — two concurrent calls
+  // with the same event both passed the check and counted the gift
+  // twice (audit 2026-11-20). A 0-row insert means the event was
+  // already recorded.
   if (eventId) {
-    await db.prepare(
+    const claimed = await db.prepare(
       `INSERT OR IGNORE INTO cp_gift_progress(
         event_id,user_a,user_b,pair_started_at,sender_user_id,receiver_user_id,
         progress,level_before,level_after,created_at
@@ -1271,18 +1279,65 @@ export async function recordCpGiftProgress(
       receiverUserId,
       progress,
       levelBefore,
-      levelAfter,
+      levelBefore,
       updatedAt,
     ).run();
+    if (Number(claimed.meta?.changes ?? 0) === 0) {
+      return { progress:0, duplicate:true, cp:await cpState(db,senderUserId) };
+    }
   }
 
+  // Relative increments, never an absolute SET from a stale read: two
+  // concurrent gifts used to read the same cycles and overwrite each
+  // other, losing one gift's progress.
+  await db.prepare(
+    `UPDATE cp_relationships
+        SET intimacy=intimacy+?,
+            cycle_a_to_b=cycle_a_to_b+?,
+            cycle_b_to_a=cycle_b_to_a+?,
+            updated_at=?
+      WHERE user_a=? AND user_b=? AND state='active'`
+  ).bind(
+    progress,
+    aToB ? progress : 0,
+    bToA ? progress : 0,
+    updatedAt,relation.user_a,relation.user_b,
+  ).run();
+
+  // Level-up is decided on the fresh totals, with a compare-and-swap on
+  // the level so two concurrent gifts can only level the pair up once.
+  // (The excess is still discarded on level-up, as before — only the
+  // race is fixed, not the level math.)
+  const fresh = await cpState(db,senderUserId);
+  let levelAfter = levelBefore;
+  if (fresh && fresh.state === "active" && relationCanLevelUp(
+    levelBefore,
+    Math.max(0, Math.floor(Number(fresh.pair_a_to_b ?? fresh.cycle_a_to_b ?? 0))),
+    Math.max(0, Math.floor(Number(fresh.pair_b_to_a ?? fresh.cycle_b_to_a ?? 0))),
+  )) {
+    const leveled = await db.prepare(
+      `UPDATE cp_relationships
+          SET level=level+1,cycle_a_to_b=0,cycle_b_to_a=0,updated_at=?
+        WHERE user_a=? AND user_b=? AND state='active' AND level=?`
+    ).bind(updatedAt,relation.user_a,relation.user_b,levelBefore).run();
+    if (Number(leveled.meta?.changes ?? 0) === 1) {
+      levelAfter = levelBefore + 1;
+    }
+  }
+  if (eventId && levelAfter !== levelBefore) {
+    await db.prepare(
+      "UPDATE cp_gift_progress SET level_after=? WHERE event_id=?"
+    ).bind(levelAfter,eventId).run();
+  }
+
+  const finalState = await cpState(db,senderUserId);
   return {
     progress,
     level_before:levelBefore,
     level_after:levelAfter,
     level_up:levelAfter > levelBefore,
-    intimacy,
-    cp:await cpState(db,senderUserId),
+    intimacy: Math.max(0, Math.floor(Number(finalState?.intimacy ?? 0))),
+    cp: finalState,
   };
 }
 

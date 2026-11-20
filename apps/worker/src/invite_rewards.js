@@ -1,4 +1,4 @@
-const COINS_PER_USD = 6_000_000;
+const COINS_PER_USD = 8_000_000;
 const SUCCESSFUL_INVITE_REWARD_COINS = 300_000;
 
 // Every newly successful invite gives the inviter a fixed one-time coin reward.

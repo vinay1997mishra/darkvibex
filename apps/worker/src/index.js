@@ -95,6 +95,7 @@ import {
   sampleLampMicProgress,
 } from "./aladdin_lamp.js";
 import { handleRocketRewardRoute } from "./rocket_rewards.js";
+import { deleteRoomRows } from "./room_cleanup.js";
 import {
   grantRocketMedalsOnLaunch,
   rocketMedalObjects,
@@ -1588,16 +1589,38 @@ async function expireRoomCustomThemes(db, roomId, ts = now()) {
 }
 
 async function expireRoomLuckyPouches(db, roomId, ts = now()) {
-  await db.batch([
-    db.prepare("UPDATE room_lucky_pouches SET status='expired_pending' WHERE room_id=? AND status='open' AND expires_at<=?")
-      .bind(roomId, ts),
-    db.prepare("UPDATE users SET coins=coins+(SELECT COALESCE(SUM(p.remaining_coins),0) FROM room_lucky_pouches p WHERE p.room_id=? AND p.owner_user_id=users.id AND p.status='expired_pending'), updated_at=? WHERE id IN (SELECT owner_user_id FROM room_lucky_pouches WHERE room_id=? AND status='expired_pending' AND remaining_coins>0)")
-      .bind(roomId, ts, roomId),
-    db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'room_lucky_pouch_refund',p.remaining_coins,u.coins,p.id,? FROM room_lucky_pouches p JOIN users u ON u.id=p.owner_user_id WHERE p.room_id=? AND p.status='expired_pending' AND p.remaining_coins>0")
-      .bind(id(), ts, roomId),
-    db.prepare("UPDATE room_lucky_pouches SET status='expired_refunded' WHERE room_id=? AND status='expired_pending'")
-      .bind(roomId),
-  ]);
+  // One ledger row per pouch, each with its own id, and each pouch is
+  // marked refunded right after its own credit (audit 2026-11-20: the
+  // old INSERT ... SELECT bound a SINGLE id() for every row, so with
+  // 2+ expired pouches the ledger insert hit a PRIMARY KEY conflict,
+  // the pouches stuck in expired_pending, and the bulk credit re-ran
+  // on every expire pass — refunding the same coins again and again).
+  await db.prepare(
+    "UPDATE room_lucky_pouches SET status='expired_pending' WHERE room_id=? AND status='open' AND expires_at<=?"
+  ).bind(roomId, ts).run();
+  const pending = await db.prepare(
+    "SELECT id, owner_user_id, remaining_coins FROM room_lucky_pouches WHERE room_id=? AND status='expired_pending' AND remaining_coins>0"
+  ).bind(roomId).all();
+  for (const pouch of pending.results ?? []) {
+    const remaining = Number(pouch.remaining_coins ?? 0);
+    if (!Number.isSafeInteger(remaining) || remaining <= 0) continue;
+    await db.prepare(
+      "UPDATE users SET coins=coins+?, updated_at=? WHERE id=?"
+    ).bind(remaining, ts, pouch.owner_user_id).run();
+    const after = await db.prepare(
+      "SELECT coins FROM users WHERE id=?"
+    ).bind(pouch.owner_user_id).first();
+    await db.prepare(
+      "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).bind(id(), pouch.owner_user_id, "room_lucky_pouch_refund", remaining, Number(after?.coins ?? 0), pouch.id, ts).run();
+    await db.prepare(
+      "UPDATE room_lucky_pouches SET status='expired_refunded' WHERE id=? AND status='expired_pending'"
+    ).bind(pouch.id).run();
+  }
+  // Pouches with nothing left to refund still move to the final state.
+  await db.prepare(
+    "UPDATE room_lucky_pouches SET status='expired_refunded' WHERE room_id=? AND status='expired_pending'"
+  ).bind(roomId).run();
 }
 
 async function ensureRoomLuckyPouchTables(db) {
@@ -2239,13 +2262,26 @@ async function walletChange(db, userId, amount, kind, referenceId = null) {
   if (!Number.isSafeInteger(next) || next < 0) throw new Error("insufficient_coins");
 
   const ts = now();
-  await db.batch([
-    db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(next, ts, userId),
-    db.prepare(
-      "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id(), userId, kind, amount, next, referenceId, ts),
-  ]);
-  return next;
+  // Atomic move: the balance changes with a relative UPDATE guarded by
+  // the funds check, so two concurrent debits can never both spend the
+  // same coins (audit 2026-11-20: the old read-then-absolute-SET let
+  // concurrent call settles under-charge and double-bill).
+  const updated = Number(amount) < 0
+    ? await db.prepare(
+        "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ? AND coins + ? >= 0"
+      ).bind(amount, ts, userId, amount).run()
+    : await db.prepare(
+        "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
+      ).bind(amount, ts, userId).run();
+  if (Number(updated.meta?.changes ?? 0) !== 1) throw new Error("insufficient_coins");
+  // balance_after is re-read after the move, so the ledger records the
+  // balance that actually landed, not the pre-read estimate.
+  const after = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+  const balanceAfter = Number(after?.coins ?? 0);
+  await db.prepare(
+    "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id(), userId, kind, amount, balanceAfter, referenceId, ts).run();
+  return balanceAfter;
 }
 
 async function settleDirectCallBilling(db, callId, ts = now()) {
@@ -2272,28 +2308,49 @@ async function settleDirectCallBilling(db, callId, ts = now()) {
     Math.floor(Number(caller?.coins ?? 0) / perMinuteCost),
   );
   if (affordableMinutes > 0) {
+    // Claim the minutes first with a compare-and-swap on billed_minutes,
+    // so two concurrent settles can never bill the same minutes twice
+    // (audit 2026-11-20: both read the same billed_minutes, both
+    // debited, both incremented — double-bill / under-charge).
+    const claimed = await db.prepare(
+      "UPDATE direct_calls SET billed_minutes=billed_minutes+? WHERE id=? AND billed_minutes=?"
+    ).bind(affordableMinutes, callId, billedMinutes).run();
+    if (Number(claimed.meta?.changes ?? 0) !== 1) {
+      return directCallRow(db, callId);
+    }
     const callerCost = affordableMinutes * perMinuteCost;
     const rewardPerMinute =
         Number(call.receiver_earning_eligible ?? 0) === 1
           ? Number(call.receiver_diamonds_per_minute ?? 0)
           : 0;
     const receiverReward = affordableMinutes * rewardPerMinute;
-    await walletChange(
-      db,
-      String(call.caller_user_id),
-      -callerCost,
-      "call_charge",
-      callId,
-    );
+    try {
+      await walletChange(
+        db,
+        String(call.caller_user_id),
+        -callerCost,
+        "call_charge",
+        callId,
+      );
+    } catch (error) {
+      // Balance dropped between the affordability read and the debit:
+      // give the claimed minutes back and end the call for funds.
+      await db.prepare(
+        "UPDATE direct_calls SET billed_minutes=billed_minutes-? WHERE id=?"
+      ).bind(affordableMinutes, callId).run();
+      await db.prepare(
+        "UPDATE direct_calls SET state='ended',ended_at=?,end_reason='insufficient_coins',updated_at=? WHERE id=? AND state='active'"
+      ).bind(ts, ts, callId).run();
+      throw error;
+    }
     const statements = [
       db.prepare(
         `UPDATE direct_calls
-            SET billed_minutes=billed_minutes+?,
-                caller_cost_coins=caller_cost_coins+?,
+            SET caller_cost_coins=caller_cost_coins+?,
                 receiver_reward_diamonds=receiver_reward_diamonds+?,
                 updated_at=?
           WHERE id=?`
-      ).bind(affordableMinutes, callerCost, receiverReward, ts, callId),
+      ).bind(callerCost, receiverReward, ts, callId),
     ];
     if (receiverReward > 0) {
       statements.push(
@@ -4616,7 +4673,14 @@ async function handleApi(request, env, url) {
     const userId = String(body.user_id ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    return json(await cpDisconnect(db, userId));
+    // Errors (e.g. insufficient_coins) are 400s, like the sibling CP
+    // routes — without the try/catch they surfaced as 500s (audit
+    // 2026-11-20).
+    try {
+      return json(await cpDisconnect(db, userId));
+    } catch (error) {
+      return json({ ok:false,error:String(error?.message ?? error) }, { status:400 });
+    }
   }
 
   if (url.pathname === "/api/cp/ring" && request.method === "POST") {
@@ -4846,13 +4910,24 @@ async function handleApi(request, env, url) {
     }
 
     try {
-      await db.prepare(
+      // Grant only if still unowned: the pre-check above can race with a
+      // second purchase, and the old upsert let both debits land for one
+      // item (audit 2026-11-20). A 0-row insert means the item was just
+      // bought — refund and report already_owned.
+      const granted = await db.prepare(
         `INSERT INTO ${table}(user_id,item_id,kind,acquired_at,expires_at,active)
-         VALUES(?,?,?,?,?,0)
-         ON CONFLICT(user_id,item_id)
-         DO UPDATE SET kind=excluded.kind,acquired_at=excluded.acquired_at,
-                       expires_at=excluded.expires_at,active=0`
-      ).bind(recipientId,itemId,product.kind,ts,expiresAt).run();
+         SELECT ?,?,?,?,?,0
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ${table} WHERE user_id=? AND item_id=? AND expires_at>?
+          )`
+      ).bind(recipientId,itemId,product.kind,ts,expiresAt,recipientId,itemId,ts).run();
+      if (Number(granted.meta?.changes ?? 0) !== 1) {
+        if(effectivePrice>0){
+          await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+            .bind(effectivePrice,now(),userId).run();
+        }
+        return json({ ok:false,error:"already_owned" }, { status:409 });
+      }
       const wallet=await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
       await db.prepare(
         "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
@@ -4877,6 +4952,12 @@ async function handleApi(request, env, url) {
         recipient_user_id:recipientId,
       });
     } catch (error) {
+      // The ledger insert failed after the item was granted: take the
+      // item back too (matched on this call's acquired_at, so an older
+      // row is never touched), or the user would keep a free item.
+      await db.prepare(
+        `DELETE FROM ${table} WHERE user_id=? AND item_id=? AND acquired_at=?`
+      ).bind(recipientId,itemId,ts).run();
       if(effectivePrice>0){
         await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
           .bind(effectivePrice,now(),userId).run();
@@ -6610,6 +6691,16 @@ async function handleApi(request, env, url) {
     const seatCount = requestedSeatCount;
     const roomId = ownerPublicId;
     await ensureOwnerControlSchema(db);
+    // A platform-banned room stays banned: re-creating it used to wipe
+    // the owner_room_controls row and bring the room back (audit
+    // 2026-11-20). The check runs before the existing-room shortcut
+    // too, so a banned room cannot be re-opened either.
+    const controlRow = await db.prepare(
+      "SELECT banned FROM owner_room_controls WHERE room_id=?"
+    ).bind(roomId).first();
+    if (Number(controlRow?.banned ?? 0) === 1) {
+      return json({ ok:false,error:"room_banned" }, { status:403 });
+    }
     const existingRoomId = await db.prepare(
       `SELECT r.owner_user_id,r.name,r.seat_count,r.vip_only,
               COALESCE(rs.party_mode,'Friends-making Party') AS party_mode,
@@ -6688,17 +6779,10 @@ async function handleApi(request, env, url) {
     }
     // Delete the room's image + follower rows too (room audit 2026-11-20:
     // they have no foreign key, so the old delete orphaned them), and
-    // delete the R2 avatar file best-effort.
-    await ensureImageTables(db);
-    const avatarRow = await db.prepare("SELECT image_key FROM room_images WHERE room_id = ? LIMIT 1").bind(roomId).first();
-    const avatarKey = String(avatarRow?.image_key ?? "").trim();
-    await db.batch([
-      db.prepare("DELETE FROM room_members WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM room_settings WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM room_images WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM room_followers WHERE room_id = ?").bind(roomId),
-      db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId),
-    ]);
+    // delete the R2 avatar file best-effort. All other room-scoped rows
+    // (admins, bans, messages, themes, pouches, lamp state) go with the
+    // room via the shared teardown in room_cleanup.js.
+    const { avatarKey } = await deleteRoomRows(db, roomId, env.FILES ?? null);
     if (avatarKey) {
       try {
         if (env.FILES) await env.FILES.delete(avatarKey);

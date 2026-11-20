@@ -6,6 +6,7 @@ import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
 import { VIP_LEVELS } from "./vip_policy.js";
 import { ensureVipSchema, getVipStatus } from "./vip_store.js";
+import { deleteRoomRows } from "./room_cleanup.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -1733,21 +1734,25 @@ async function handleUsers(request, db, actor, url, parts) {
        nextCoins<0||nextDiamonds<0){
       return json({ok:false,error:"invalid_balance_change"},{status:400});
     }
-    const statements=[
-      db.prepare("UPDATE users SET coins=?,diamonds=?,updated_at=? WHERE id=?")
-        .bind(nextCoins,nextDiamonds,ts,userId),
-    ];
-    if(rawCoinDelta!==0){
-      statements.push(
-        db.prepare(
-          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
-        ).bind(id(),userId,rawCoinDelta,nextCoins,actor.id,ts)
-      );
+    // Relative update guarded by the funds check (audit 2026-11-20: the
+    // old absolute SET from a stale read lost concurrent adjustments).
+    const updated = await db.prepare(
+      "UPDATE users SET coins=coins+?,diamonds=diamonds+?,updated_at=? WHERE id=? AND coins+?>=0 AND diamonds+?>=0"
+    ).bind(rawCoinDelta,rawDiamondDelta,ts,userId,rawCoinDelta,rawDiamondDelta).run();
+    if (Number(updated.meta?.changes ?? 0) !== 1) {
+      return json({ok:false,error:"invalid_balance_change"},{status:400});
     }
-    await db.batch(statements);
+    const afterRow = await db.prepare("SELECT coins,diamonds FROM users WHERE id=?").bind(userId).first();
+    const coinsAfter = Number(afterRow?.coins ?? 0);
+    const diamondsAfter = Number(afterRow?.diamonds ?? 0);
+    if(rawCoinDelta!==0){
+      await db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_adjustment',?,?,?,?)"
+      ).bind(id(),userId,rawCoinDelta,coinsAfter,actor.id,ts).run();
+    }
     await audit(db,actor,"user_wallet_adjustment","user",userId,
       `coins=${rawCoinDelta}; diamonds=${rawDiamondDelta}`);
-    return json({ok:true,coins:nextCoins,diamonds:nextDiamonds});
+    return json({ok:true,coins:coinsAfter,diamonds:diamondsAfter});
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
@@ -1825,7 +1830,7 @@ async function handleUsers(request, db, actor, url, parts) {
   return null;
 }
 
-async function handleRooms(request, db, actor, url, parts) {
+async function handleRooms(request, db, actor, url, parts, env) {
   if (parts.length === 3 && request.method === "GET") {
     requirePermission(actor, "rooms.view");
     return json({ ok: true, rooms: await listRooms(db, url.searchParams.get("q") ?? "") });
@@ -1853,8 +1858,18 @@ async function handleRooms(request, db, actor, url, parts) {
 
   if (parts.length === 4 && request.method === "DELETE") {
     requirePermission(actor, "rooms.delete");
+    // Full room teardown (audit 2026-11-20): the old delete removed only
+    // the controls row and the room row, orphaning every room-scoped row
+    // (admins, bans, messages, themes, pouches, lamp state) and the R2
+    // avatar. The controls row goes too, so a deleted room leaves no
+    // stale platform ban behind for a later room with the same id.
+    const { avatarKey } = await deleteRoomRows(db, roomId, env?.FILES ?? null);
     await db.prepare("DELETE FROM owner_room_controls WHERE room_id = ?").bind(roomId).run();
-    await db.prepare("DELETE FROM rooms WHERE id = ?").bind(roomId).run();
+    if (avatarKey) {
+      try {
+        if (env?.FILES) await env.FILES.delete(avatarKey);
+      } catch (_) {}
+    }
     await audit(db, actor, "room_delete", "room", roomId, "room removed");
     return json({ ok: true });
   }
@@ -2857,13 +2872,21 @@ async function handleTreasury(request, db, actor) {
     const delta = action === "add" ? amount : -amount;
     const next = balance + delta;
     if (!Number.isSafeInteger(next) || next < 0) return json({ ok: false, error: "invalid_treasury_balance" }, { status: 400 });
-    await db.batch([
-      db.prepare("UPDATE owner_treasury SET balance = ?, updated_at = ? WHERE id = 'main'").bind(next, ts),
-      db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)")
-        .bind(id(), delta, next, action === "add" ? "owner_topup" : "owner_deduct", actor.id, note, ts),
-    ]);
+    // Relative update (audit 2026-11-20: the old absolute SET from a
+    // stale read lost concurrent top-ups/deducts). The deduct is guarded
+    // by the funds check, so two concurrent deducts cannot overdraw.
+    const updated = await db.prepare(
+      "UPDATE owner_treasury SET balance = balance + ?, updated_at = ? WHERE id = 'main' AND balance + ? >= 0"
+    ).bind(delta, ts, delta).run();
+    if (Number(updated.meta?.changes ?? 0) !== 1) {
+      return json({ ok: false, error: "invalid_treasury_balance" }, { status: 400 });
+    }
+    const afterRow = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
+    const balanceAfter = Number(afterRow?.balance ?? 0);
+    await db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)")
+      .bind(id(), delta, balanceAfter, action === "add" ? "owner_topup" : "owner_deduct", actor.id, note, ts).run();
     await audit(db, actor, action === "add" ? "treasury_add" : "treasury_deduct", "treasury", "main", `amount=${amount}`);
-    return json({ ok: true, balance: next });
+    return json({ ok: true, balance: balanceAfter });
   }
 
   if (action === "send") {
@@ -2873,19 +2896,30 @@ async function handleTreasury(request, db, actor) {
     const user = await db.prepare("SELECT id, coins FROM users WHERE id = ?").bind(userId).first();
     if (!user) return json({ ok: false, error: "user_not_found" }, { status: 404 });
     if (balance < amount) return json({ ok: false, error: "insufficient_treasury_balance" }, { status: 409 });
-    const nextTreasury = balance - amount;
     const nextUser = Number(user.coins ?? 0) + amount;
     if (!Number.isSafeInteger(nextUser)) return json({ ok: false, error: "invalid_user_balance" }, { status: 400 });
-    await db.batch([
-      db.prepare("UPDATE owner_treasury SET balance = ?, updated_at = ? WHERE id = 'main'").bind(nextTreasury, ts),
-      db.prepare("UPDATE users SET coins = ?, updated_at = ? WHERE id = ?").bind(nextUser, ts, userId),
-      db.prepare("INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_treasury',?,?,?,?)")
-        .bind(id(), userId, amount, nextUser, actor.id, ts),
-      db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, 'send_to_user', ?, ?, ?, ?)")
-        .bind(id(), -amount, nextTreasury, userId, actor.id, note, ts),
-    ]);
+    // Conditional treasury debit + relative user credit (audit 2026-11-20:
+    // the old absolute SETs from stale reads let two concurrent sends
+    // debit the treasury once while crediting both users).
+    const debited = await db.prepare(
+      "UPDATE owner_treasury SET balance = balance - ?, updated_at = ? WHERE id = 'main' AND balance >= ?"
+    ).bind(amount, ts, amount).run();
+    if (Number(debited.meta?.changes ?? 0) !== 1) {
+      return json({ ok: false, error: "insufficient_treasury_balance" }, { status: 409 });
+    }
+    await db.prepare(
+      "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
+    ).bind(amount, ts, userId).run();
+    const treasuryRow = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
+    const treasuryAfter = Number(treasuryRow?.balance ?? 0);
+    const userRow = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
+    const userAfter = Number(userRow?.coins ?? 0);
+    await db.prepare("INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_treasury',?,?,?,?)")
+      .bind(id(), userId, amount, userAfter, actor.id, ts).run();
+    await db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, 'send_to_user', ?, ?, ?, ?)")
+      .bind(id(), -amount, treasuryAfter, userId, actor.id, note, ts).run();
     await audit(db, actor, "treasury_send", "user", userId, `amount=${amount}`);
-    return json({ ok: true, balance: nextTreasury, user_balance: nextUser });
+    return json({ ok: true, balance: treasuryAfter, user_balance: userAfter });
   }
 
   return json({ ok: false, error: "invalid_treasury_action" }, { status: 400 });
@@ -3007,7 +3041,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
     else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
     else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
-    else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts);
+    else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts, env);
     else if (parts[2] === "roles-posts") response = await handleRolesPosts(request, db, actor, url, parts);
     else if (parts[2] === "banners") response = await handleBanners(request, db, actor, parts);
     else if (parts[2] === "games") response = await handleGamesOwner(request, db, actor, url);

@@ -132,49 +132,53 @@ export async function transferRoleCoins(db,{
     }
   }
   const reference=crypto.randomUUID();
-  const after=Number(wallet.balance_coins)-amount;
-  const receiverAfter=Number(receiver.coins ?? 0)+amount+coinsBonus;
-  const receiverLedgerEntries=[
-    {
-      id:crypto.randomUUID(),
-      kind:walletType==="coin_seller"?"coin_seller_received":"merchant_received",
-      amount,
-      balanceAfter:Number(receiver.coins ?? 0)+amount,
-    },
-  ];
-  if(coinsBonus>0){
-    receiverLedgerEntries.push({
-      id:crypto.randomUUID(),
-      kind:"vip_coins_bonus",
-      amount:coinsBonus,
-      balanceAfter:receiverAfter,
-    });
+  // Atomic, relative moves (audit 2026-11-20): the old batch SET absolute
+  // balances from stale reads, so two concurrent sends to the same
+  // receiver overwrote each other and lost coins — and in real D1 a
+  // failed sender guard would not have stopped the receiver credit in
+  // the same batch. Balances for the ledgers are re-read after the move.
+  const debited = await db.prepare(
+    "UPDATE role_wallets SET balance_coins=balance_coins-?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
+  ).bind(amount,ts,senderUserId,walletType,amount).run();
+  if (Number(debited.meta?.changes ?? 0) !== 1) {
+    throw new Error("insufficient_role_wallet_coins");
   }
-  await db.batch([
-    db.prepare(
-      "UPDATE role_wallets SET balance_coins=?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
-    ).bind(after,ts,senderUserId,walletType,amount),
-    db.prepare("UPDATE users SET coins=?,updated_at=? WHERE id=?")
-      .bind(receiverAfter,ts,receiverUserId),
-    db.prepare(
-      `INSERT INTO role_wallet_ledger(
-        id,user_id,wallet_type,kind,coin_amount,
-        coin_balance_after,counterparty_user_id,reference_id,created_at
-      ) VALUES(?,?,?,?,?,?,?,?,?)`
-    ).bind(
-      crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,after,
-      receiverUserId,reference,ts,
-    ),
-    ...receiverLedgerEntries.map((entry)=>db.prepare(
+  await db.prepare(
+    "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+  ).bind(amount + coinsBonus, ts, receiverUserId).run();
+  const receiverRow = await db.prepare(
+    "SELECT coins FROM users WHERE id=?"
+  ).bind(receiverUserId).first();
+  const receiverBalance = Number(receiverRow?.coins ?? 0);
+  const senderRow = await db.prepare(
+    "SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?"
+  ).bind(senderUserId,walletType).first();
+  const senderBalance = Number(senderRow?.balance_coins ?? 0);
+  await db.prepare(
+    `INSERT INTO role_wallet_ledger(
+      id,user_id,wallet_type,kind,coin_amount,
+      coin_balance_after,counterparty_user_id,reference_id,created_at
+    ) VALUES(?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,senderBalance,
+    receiverUserId,reference,ts,
+  ).run();
+  await db.prepare(
+    "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+  ).bind(
+    crypto.randomUUID(),receiverUserId,walletType==="coin_seller"?"coin_seller_received":"merchant_received",amount,receiverBalance - coinsBonus,reference,ts,
+  ).run();
+  if (coinsBonus > 0) {
+    await db.prepare(
       "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
     ).bind(
-      entry.id,receiverUserId,entry.kind,entry.amount,entry.balanceAfter,reference,ts,
-    )),
-  ]);
+      crypto.randomUUID(),receiverUserId,"vip_coins_bonus",coinsBonus,receiverBalance,reference,ts,
+    ).run();
+  }
   return {
     transfer_id:reference,
-    sender_role_coin_balance:after,
-    receiver_coin_balance:receiverAfter,
+    sender_role_coin_balance:senderBalance,
+    receiver_coin_balance:receiverBalance,
     coins_bonus:coinsBonus,
   };
 }
@@ -191,19 +195,26 @@ export async function adjustRoleWallet(db,{
   if(!Number.isSafeInteger(nextCoins)||nextCoins<0){
     throw new Error("invalid_role_wallet_adjustment");
   }
-  await db.batch([
-    db.prepare(
-      "UPDATE role_wallets SET balance_coins=?,updated_at=? WHERE user_id=? AND wallet_type=?"
-    ).bind(nextCoins,ts,userId,walletType),
-    db.prepare(
-      `INSERT INTO role_wallet_ledger(
-        id,user_id,wallet_type,kind,coin_amount,
-        coin_balance_after,counterparty_user_id,reference_id,created_at
-      ) VALUES(?,?,?,?,?,?,NULL,?,?)`
-    ).bind(
-      crypto.randomUUID(),userId,walletType,"owner_adjustment",
-      Number(coinDelta),nextCoins,referenceId,ts,
-    ),
-  ]);
-  return {balance_coins:nextCoins};
+  // Relative update guarded by the funds check (audit 2026-11-20: the
+  // old absolute SET from a stale read lost concurrent adjustments).
+  const updated = await db.prepare(
+    "UPDATE role_wallets SET balance_coins=balance_coins+?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins+?>=0"
+  ).bind(Number(coinDelta),ts,userId,walletType,Number(coinDelta)).run();
+  if (Number(updated.meta?.changes ?? 0) !== 1) {
+    throw new Error("invalid_role_wallet_adjustment");
+  }
+  const afterRow = await db.prepare(
+    "SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?"
+  ).bind(userId,walletType).first();
+  const balanceAfter = Number(afterRow?.balance_coins ?? 0);
+  await db.prepare(
+    `INSERT INTO role_wallet_ledger(
+      id,user_id,wallet_type,kind,coin_amount,
+      coin_balance_after,counterparty_user_id,reference_id,created_at
+    ) VALUES(?,?,?,?,?,?,NULL,?,?)`
+  ).bind(
+    crypto.randomUUID(),userId,walletType,"owner_adjustment",
+    Number(coinDelta),balanceAfter,referenceId,ts,
+  ).run();
+  return {balance_coins:balanceAfter};
 }
