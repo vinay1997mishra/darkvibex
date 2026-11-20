@@ -1,8 +1,10 @@
 // Combined room-state API (Vinay, 2026-11-20): one 3s poll carrying
-// members + messages + controls + gift events, instead of four separate
-// timers — same speed (members were 4s, messages 8s, controls 20s),
-// fewer Workers requests. Poll-slowdown was rejected by Vinay ("room me
-// msg turant dikhna chahiye"), so the refresh must NOT get slower.
+// members + messages + controls + gift events + settings, instead of
+// five separate timers — same speed (members were 4s, messages 8s,
+// controls 20s, settings 60s), fewer Workers requests. Any room
+// setting change (room DP, background, name, lock, room chat off)
+// shows to everyone within 3s. Poll-slowdown was rejected by Vinay
+// ("room me msg turant dikhna chahiye"), so the refresh must NOT get slower.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -46,14 +48,14 @@ void main() {
     expect(source, isNot(contains('const Duration(seconds: 20)')));
   });
 
-  test('the settings 60s timer stays separate', () {
+  test('the 60s settings timer is gone — settings ride the 3s state poll', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
-    expect(source, contains('Timer? settingsRefreshTimer;'));
-    expect(source, contains('settingsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {'));
-    expect(source, contains('if (appIsActive()) unawaited(_loadRoomSettings());'));
+    expect(source, isNot(contains('settingsRefreshTimer')));
+    expect(source, isNot(contains('const Duration(seconds: 60)')));
+    expect(source, isNot(contains('Settings change rarely, so they keep')));
   });
 
-  test('the state loader applies all four sections', () {
+  test('the state loader applies all five sections', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
     final start = source.indexOf('Future<void> _loadRoomState()');
     expect(start, isNot(-1));
@@ -66,6 +68,34 @@ void main() {
     expect(loader, contains('_applyRoomMessages('));
     expect(loader, contains('_applyRoomControls('));
     expect(loader, contains('_applyRoomGiftEvents('));
+    expect(loader, contains('_applyRoomSettings('));
+    // Settings may be absent on an older worker: guarded, never a crash.
+    expect(loader, contains('if (settings is Map) {'));
+  });
+
+  test('the settings loader stays for entry and post-action refreshes', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    expect(source, contains('Future<void> _loadRoomSettings() async {'));
+    expect(source, contains('unawaited(_loadRoomSettings());'));
+    expect(source, contains('await _loadRoomSettings();'));
+    expect(source, contains('void _applyRoomSettings('));
+  });
+
+  test('the settings applier covers the room settings fields', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    final start = source.indexOf('void _applyRoomSettings(');
+    expect(start, isNot(-1));
+    final end = source.indexOf('Future<void> _openRoomSettings()', start);
+    final applier = source.substring(start, end);
+    expect(applier, contains("settings['name']"));
+    expect(applier, contains("settings['seat_count']"));
+    expect(applier, contains("settings['locked']"));
+    expect(applier, contains("settings['theme_asset_key']"));
+    expect(applier, contains("settings['avatar_key']"));
+    expect(applier, contains("settings['announcement']"));
+    expect(applier, contains("settings['welcome_image_key']"));
+    expect(applier, contains("settings['group_pk_enabled']"));
+    expect(applier, contains('roomAvatarKey = avatarKey;'));
   });
 
   test('the state loader preserves kick detection exactly', () {

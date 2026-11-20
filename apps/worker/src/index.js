@@ -1854,10 +1854,11 @@ async function roomModeratorState(db, roomId, userId) {
 }
 
 // Combined room-state (Vinay, 2026-11-20): ONE worker call every 3s
-// carrying members + messages + controls + gift events, so the room stays
-// instant while the Workers free-tier request count drops. These loaders
-// hold the exact GET logic of the four standalone room endpoints — the
-// routes call them, and GET /api/rooms/:id/state calls all four at once.
+// carrying members + messages + controls + gift events + settings, so the
+// room stays instant while the Workers free-tier request count drops.
+// These loaders hold the exact GET logic of the five standalone room
+// endpoints — the routes call them, and GET /api/rooms/:id/state calls
+// all five at once.
 // Success returns the standalone endpoint's response body verbatim;
 // failure returns { ok: false, error, status }.
 async function checkRoomMemberPresence(db, env, roomId, actorId) {
@@ -2093,6 +2094,59 @@ async function loadRoomControlsState(db, roomId, actorId) {
     is_owner: mod.isOwner,
     is_admin: mod.isAdmin,
   };
+}
+
+// Settings ride in the 3s state call too (Vinay, 2026-11-20): ANY room
+// setting change — DP, background, name, lock, room chat off — must show
+// to everyone in the room within 3s. loadRoomSettingsRow holds the shared
+// SELECT (the POST branch uses it as well); loadRoomSettingsState builds
+// the exact settings object the standalone GET returns, so the two can
+// never drift apart.
+async function loadRoomSettingsRow(db, roomId) {
+  await ensureRoomSettingsTable(db);
+  await ensureImageTables(db);
+  await ensureRoomCustomThemeTable(db);
+  await expireRoomCustomThemes(db, roomId, now());
+  await ensureVipSchema(db);
+  return db.prepare(
+    `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
+            COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled,
+            COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
+            COALESCE(s.room_mode, 'voice') AS room_mode,
+            COALESCE(s.seat_theme_id, 'royal-gold') AS seat_theme_id,
+            COALESCE(ct.asset_key, '') AS theme_asset_key,
+            COALESCE(s.lock_password_code, '') AS lock_password_code,
+            CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
+            CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key,
+            COALESCE(ri.image_key, '') AS avatar_key
+       FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
+       LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
+       LEFT JOIN room_custom_themes ct ON ct.id = s.theme_id
+        AND ct.room_id = r.id AND (ct.expires_at IS NULL OR ct.expires_at > ?)
+       LEFT JOIN room_images ri ON ri.room_id = r.id
+      WHERE r.id = ?`
+  ).bind(now(), now(), roomId).first();
+}
+
+async function loadRoomSettingsState(db, roomId, viewerId) {
+  const room = await loadRoomSettingsRow(db, roomId);
+  if (!room) return { ok: false, error: "room_not_found", status: 404 };
+  const member = await db.prepare(
+    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+  ).bind(roomId, viewerId).first();
+  if (!member) return { ok: false, error: "room_membership_required", status: 403 };
+  const settings = { ...room };
+  delete settings.lock_password_code;
+  if (String(viewerId) === String(room.owner_user_id) && Number(room.locked) === 1) {
+    settings.lock_code = String(room.lock_password_code ?? "");
+  }
+  // Room chat on/off is an owner feature flag, not a room row — it rides
+  // with settings so the app learns chat was turned off in the same 3s
+  // call instead of waiting on the 60s settings poll.
+  await ensureOwnerControlSchema(db);
+  const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
+  settings.feature = { messages: messagesFeature };
+  return { ok: true, settings };
 }
 async function ensureLegalConsentTable(db) {
   await db.prepare(
@@ -6689,46 +6743,17 @@ async function handleApi(request, env, url) {
 
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "settings") {
     const roomId = parts[2];
-    await ensureRoomSettingsTable(db);
-    await ensureImageTables(db);
-    await ensureRoomCustomThemeTable(db);
-    await expireRoomCustomThemes(db, roomId, now());
-    await ensureVipSchema(db);
-    const room = await db.prepare(
-      `SELECT r.id, r.owner_user_id, r.name, r.seat_count, r.locked,
-              COALESCE(s.announcement, '') AS announcement, COALESCE(s.theme_id, 'dark') AS theme_id, COALESCE(s.group_pk_enabled, 0) AS group_pk_enabled,
-              COALESCE(s.party_mode, 'Friends-making Party') AS party_mode,
-              COALESCE(s.room_mode, 'voice') AS room_mode,
-              COALESCE(s.seat_theme_id, 'royal-gold') AS seat_theme_id,
-              COALESCE(ct.asset_key, '') AS theme_asset_key,
-              COALESCE(s.lock_password_code, '') AS lock_password_code,
-              CASE WHEN COALESCE(s.lock_password_hash, '') <> '' THEN 1 ELSE 0 END AS lock_password_set,
-              CASE WHEN ov.level >= 5 AND ov.active_until > ? THEN COALESCE(s.welcome_image_key, '') ELSE '' END AS welcome_image_key,
-              COALESCE(ri.image_key, '') AS avatar_key
-         FROM rooms r LEFT JOIN room_settings s ON s.room_id = r.id
-         LEFT JOIN user_vip ov ON ov.user_id = r.owner_user_id
-         LEFT JOIN room_custom_themes ct ON ct.id = s.theme_id
-          AND ct.room_id = r.id AND (ct.expires_at IS NULL OR ct.expires_at > ?)
-         LEFT JOIN room_images ri ON ri.room_id = r.id
-        WHERE r.id = ?`
-    ).bind(now(), now(), roomId).first();
-    if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
     if (request.method === "GET") {
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
-      const member = await db.prepare(
-        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, String(session.sub)).first();
-      if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
-      const settings = { ...room };
-      delete settings.lock_password_code;
-      if (String(session.sub) === String(room.owner_user_id) && Number(room.locked) === 1) {
-        settings.lock_code = String(room.lock_password_code ?? "");
-      }
-      return json({ ok: true, settings });
+      const loaded = await loadRoomSettingsState(db, roomId, String(session.sub));
+      if (!loaded.ok) return json({ ok: false, error: loaded.error }, { status: loaded.status });
+      return json(loaded);
     }
     if (request.method === "POST") {
+      const room = await loadRoomSettingsRow(db, roomId);
+      if (!room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
       const authError = await requireSession(request, env, userId);
@@ -7628,13 +7653,16 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
   }
 
   // Combined room-state (Vinay, 2026-11-20): ONE call every 3s carrying
-  // members + messages + controls + gift events, so the room stays
-  // instant (messages/members today refresh at 8s/4s) while the Workers
-  // free-tier request count drops. Members load first: the heartbeat +
-  // presence rule is the kick signal, so a missing/stale membership row
-  // 403s exactly like the standalone members endpoint. A disabled
-  // messages feature is an owner setting, not a kick — the room still
-  // polls everything else and just sees no chat.
+  // members + messages + controls + gift events + settings, so the room
+  // stays instant (messages/members today refresh at 8s/4s) while the
+  // Workers free-tier request count drops. Members load first: the
+  // heartbeat + presence rule is the kick signal, so a missing/stale
+  // membership row 403s exactly like the standalone members endpoint. A
+  // disabled messages feature is an owner setting, not a kick — the room
+  // still polls everything else and just sees no chat. Settings ride
+  // along too, so ANY setting change (DP, background, name, lock, room
+  // chat off) shows to everyone within 3s — but a settings failure must
+  // never fail the whole call.
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "state" && request.method === "GET") {
     const roomId = parts[2];
     const authError = await requireSession(request, env);
@@ -7669,12 +7697,23 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const afterId = String(url.searchParams.get("after_id") ?? "").slice(0, 100);
     const eventsLoaded = await loadRoomGiftEventsState(db, roomId, actorId, after, afterId, "");
     if (!eventsLoaded.ok) return json({ ok: false, error: eventsLoaded.error }, { status: eventsLoaded.status });
+    // Settings must never fail the whole state call: a settings problem
+    // returns null settings and the room still gets members/messages/
+    // controls/events (the app keeps its last-known settings).
+    let settingsLoaded = null;
+    try {
+      const loaded = await loadRoomSettingsState(db, roomId, actorId);
+      if (loaded.ok) settingsLoaded = loaded.settings;
+    } catch (error) {
+      settingsLoaded = null;
+    }
     return json({
       ok: true,
       members: membersLoaded.members,
       messages: messagesLoaded.messages,
       controls: controlsLoaded,
       events: eventsLoaded.events,
+      settings: settingsLoaded,
     });
   }
   // Was I kicked from this room? (room audit 2026-11-20) — the app asks

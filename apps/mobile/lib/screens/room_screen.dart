@@ -127,7 +127,6 @@ class _RoomScreenState extends State<RoomScreen>
   // Room polling is split by data freshness needs. Polling every 4 seconds
   // for all four resources multiplied Worker requests for every connected user.
   Timer? roomStateTimer;
-  Timer? settingsRefreshTimer;
   Timer? arrivalEffectTimer;
   Map<String, dynamic>? arrivalEffectMember;
   String? roomAvatarKey;
@@ -302,20 +301,18 @@ class _RoomScreenState extends State<RoomScreen>
     unawaited(_loadRoomMessages());
     unawaited(_loadRoomGiftEvents());
 
-    // One 3s poll for members + messages + controls + gift events
-    // (combined room-state endpoint) instead of four separate timers.
-    // Speed does not drop — members were 4s, messages 8s, controls
-    // 20s; now all refresh every 3s — while the Workers free-tier
-    // request count drops. User actions still refresh data immediately
-    // through the old loaders. Settings change rarely, so they keep
-    // their own 60s timer.
+    // One 3s poll for members + messages + controls + gift events +
+    // settings (combined room-state endpoint) instead of five separate
+    // timers. Speed does not drop — members were 4s, messages 8s,
+    // controls 20s, settings 60s; now all refresh every 3s — while
+    // the Workers free-tier request count drops. Any room setting
+    // change (room DP, background, name, lock, room chat off) shows
+    // to everyone within 3s. User actions still refresh data
+    // immediately through the old loaders.
     bool appIsActive() =>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     roomStateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (appIsActive()) unawaited(_loadRoomState());
-    });
-    settingsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (appIsActive()) unawaited(_loadRoomSettings());
     });
   }
 
@@ -469,6 +466,20 @@ class _RoomScreenState extends State<RoomScreen>
             .whereType<Map>()
             .map((row) => Map<String, dynamic>.from(row))
             .toList(),
+      );
+    }
+    // Settings ride the same 3s poll now — any room setting change
+    // (room DP, background, name, lock, room chat off) shows to
+    // everyone within 3s. Absent on an older worker: skipped, never
+    // a crash and never a stale clear of the current values.
+    final settings = state['settings'];
+    if (settings is Map) {
+      // The state payload embeds the settings map itself; if a worker
+      // shape wraps it under a `settings` key instead, unwrap that —
+      // applying the wrapper would clear the boolean fields.
+      final inner = settings['settings'];
+      _applyRoomSettings(
+        Map<String, dynamic>.from(inner is Map ? inner : settings),
       );
     }
   }
@@ -1793,6 +1804,15 @@ class _RoomScreenState extends State<RoomScreen>
     final value = await widget.state.backend.roomSettings(roomId: widget.room.id);
     final settings = value?['settings'];
     if (!mounted || settings is! Map) return;
+    _applyRoomSettings(Map<String, dynamic>.from(settings));
+  }
+
+  /// Applies a settings map to the same state fields [_loadRoomSettings]
+  /// sets (name, seats, lock, theme/background, room DP, PK,
+  /// announcement, welcome image). Shared by the old settings loader
+  /// and the combined state loader so both paths render identically.
+  void _applyRoomSettings(Map<String, dynamic> settings) {
+    if (!mounted) return;
     setState(() {
       roomName = settings['name']?.toString() ?? roomName;
       roomSeatCount = int.tryParse(settings['seat_count']?.toString() ?? '') ?? roomSeatCount;
@@ -2462,7 +2482,6 @@ class _RoomScreenState extends State<RoomScreen>
       rocketOverlay.dispose();
     }
     roomStateTimer?.cancel();
-    settingsRefreshTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
     giftRibbonTimer?.cancel();
