@@ -8984,9 +8984,7 @@ async function handleApi(request, env, url) {
     try {
       await awardIdLevelGift(db, sender, cost, eventId, giftCreatedAt);
       await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, giftCreatedAt);
-      if (giftId !== "cp-invite") {
-        cpProgress = await recordCpGiftProgress(db, sender, receiver, cost, eventId);
-      }
+      cpProgress = await recordCpGiftProgress(db, sender, receiver, cost, eventId);
     } catch (error) {
       progressPending = true;
       console.error("gift_post_commit_processing_failed", {

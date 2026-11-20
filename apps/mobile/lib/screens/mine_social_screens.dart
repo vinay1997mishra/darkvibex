@@ -1143,7 +1143,8 @@ class _CpScreenState extends State<CpScreen> {
         title: const Text('CP Invite'),
         content: const Text(
           'Send a confession invitation to this mutual friend? '
-          'CP Invite costs 2,222,222 DarkVibeX coins.',
+          'CP Invite costs 20,000,000 DarkVibeX coins. The coins are '
+          'not refunded if your friend rejects.',
         ),
         actions: [
           TextButton(
@@ -1204,7 +1205,8 @@ class _CpScreenState extends State<CpScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Disconnect CP'),
         content: const Text(
-          'Send a CP disconnect request? Your partner must accept it. '
+          'Send a CP disconnect request? Disconnecting costs 20,000,000 '
+          'coins, paid by you now. Your partner must accept it. '
           'If nobody responds, the request times out after 24 hours.',
         ),
         actions: [
@@ -1524,7 +1526,7 @@ class _CpScreenState extends State<CpScreen> {
                 ),
                 title: Text('Become CP'),
                 subtitle: Text(
-                  'Invite a mutual friend. The CP invitation costs 2,222,222 coins.',
+                  'Invite a mutual friend. The CP invitation costs 20,000,000 coins.',
                 ),
               ),
               ListTile(
