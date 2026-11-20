@@ -44,4 +44,36 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     state.dispose();
   });
+
+  testWidgets('profile save stays blocked until the terms agreement is ticked',
+      (tester) async {
+    final state = AppState()
+      ..isAuthenticated = true
+      ..needsProfileSetup = true;
+
+    await tester.pumpWidget(
+      MaterialApp(home: LoginScreen(state: state)),
+    );
+
+    expect(find.byKey(const Key('create-id-agree-terms')), findsOneWidget);
+    expect(find.textContaining('Refunds policy'), findsOneWidget);
+    expect(find.text('Read Terms & Privacy'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('complete-profile-button'))).onPressed,
+      isNull,
+    );
+
+    await tester.ensureVisible(find.byKey(const Key('create-id-agree-terms')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('create-id-agree-terms')));
+    await tester.pump();
+
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('complete-profile-button'))).onPressed,
+      isNotNull,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
 }
