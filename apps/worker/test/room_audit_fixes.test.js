@@ -244,16 +244,13 @@ test("room settings return the current room avatar key", async () => {
   assert.equal(settings.body.settings.avatar_key, `rooms/${roomId}/avatar-999.jpg`);
 });
 
-test("CP and VS state are readable by another logged-in user, not by guests", async () => {
+test("CP state is readable by another logged-in user, not by guests", async () => {
   const fx = await fixture();
   await makeUser(fx, "cp-actor");
   await makeUser(fx, "cp-target");
   const cp = await fx.request("/api/cp?user_id=cp-target", { userId: "cp-actor" });
   assert.equal(cp.status, 200, JSON.stringify(cp.body));
   assert.equal(cp.body.ok, true);
-  const vs = await fx.request("/api/vs?user_id=cp-target", { userId: "cp-actor" });
-  assert.equal(vs.status, 200, JSON.stringify(vs.body));
-  assert.equal(vs.body.ok, true);
   const anon = await fx.request("/api/cp?user_id=cp-target", {});
   assert.equal(anon.status, 401);
 });

@@ -1027,7 +1027,6 @@ async function resetVipRule(){
 const DEFAULT_GIFT_CATEGORIES = [
   {id:"normal",name:"Normal",builtIn:true},
   {id:"cp",name:"CP",builtIn:true},
-  {id:"vs",name:"VS",builtIn:true},
   {id:"luxury",name:"Luxury",builtIn:true},
   {id:"backpack",name:"Backpack",builtIn:true},
   {id:"exclusive",name:"Exclusive",builtIn:true},

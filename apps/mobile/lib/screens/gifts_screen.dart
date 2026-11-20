@@ -26,7 +26,6 @@ class _GiftsScreenState extends State<GiftsScreen> {
     'Gift Box',
     'Lucky',
     'CP',
-    'VS',
     'Country',
     'Luxury',
     'Backpack',

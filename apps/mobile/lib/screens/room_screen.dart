@@ -2630,8 +2630,6 @@ class _RoomScreenState extends State<RoomScreen>
                   return category == 'lucky';
                 case 'CP':
                   return category == 'cp' || category.contains('couple');
-                case 'VS':
-                  return category == 'vs' || category.contains('versus');
                 case 'Country':
                   return category == 'country';
                 case 'Luxury':
@@ -2647,8 +2645,6 @@ class _RoomScreenState extends State<RoomScreen>
                         'lucky',
                         'cp',
                         'couple',
-                        'vs',
-                        'versus',
                         'country',
                         'luxury',
                         'backpack',
@@ -2714,7 +2710,6 @@ class _RoomScreenState extends State<RoomScreen>
                             'Normal',
                             'Lucky',
                             'CP',
-                            'VS',
                             'Country',
                             'Luxury',
                             'Backpack',

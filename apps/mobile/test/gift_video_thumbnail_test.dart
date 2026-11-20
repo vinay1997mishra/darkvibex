@@ -20,7 +20,6 @@ void main() {
       'Normal',
       'Lucky',
       'CP',
-      'VS',
       'Country',
       'Luxury',
       'Backpack',
