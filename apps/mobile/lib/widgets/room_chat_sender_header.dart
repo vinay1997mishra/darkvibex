@@ -19,11 +19,16 @@ class RoomChatSenderHeader extends StatelessWidget {
     this.vipLevel = 0,
     this.frameAssetUrl,
     this.frameVideoUrl,
+    this.onAvatarTap,
   });
 
   final String displayName;
   final String? avatarUrl;
   final Map<String, String>? avatarHeaders;
+
+  /// Fired when the sender's avatar (DP) is tapped — the room chat opens
+  /// the sender's profile card. Null = the avatar is not tappable.
+  final VoidCallback? onAvatarTap;
 
   /// Sender's active VIP level (0 = none). Drives the golden tag
   /// (VIP5-18) next to the name and the frame level.
@@ -95,13 +100,19 @@ class RoomChatSenderHeader extends StatelessWidget {
     // The frame auto-sizes to the 28px chat avatar (VipAnimatedFrame.auto
     // measures the avatar at runtime). No frame when frameAssetUrl is empty.
     final String frameUrl = frameAssetUrl?.trim() ?? '';
-    if (frameUrl.isEmpty) return avatar;
-    return VipAnimatedFrame.auto(
-      enabled: true,
-      level: vipLevel,
-      assetUrl: frameUrl,
-      videoUrl: frameVideoUrl,
-      child: avatar,
+    final Widget shown = frameUrl.isEmpty
+        ? avatar
+        : VipAnimatedFrame.auto(
+            enabled: true,
+            level: vipLevel,
+            assetUrl: frameUrl,
+            videoUrl: frameVideoUrl,
+            child: avatar,
+          );
+    if (onAvatarTap == null) return shown;
+    return GestureDetector(
+      onTap: onAvatarTap,
+      child: shown,
     );
   }
 
