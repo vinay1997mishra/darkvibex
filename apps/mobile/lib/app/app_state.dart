@@ -127,6 +127,11 @@ class AppState extends ChangeNotifier {
   double vipExpBalance = 0;
   int vipTotalReceivedCoins = 0;
   int vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
+  int dailyRewardAmount = 0;
+  bool dailyRewardClaimedToday = false;
+  bool dailyRewardEligible = false;
+  int dailyRewardClaimedCoins = 0;
+  bool dailyRewardLoading = false;
   DateTime? vipActiveUntil;
   String? customVipId;
   String? vipError;
@@ -801,6 +806,11 @@ class AppState extends ChangeNotifier {
     activeVehicleId = null;
     activeCosmetics.clear();
     vipFreeSayHiRemaining = VipPolicy.freeSayHiUses;
+    dailyRewardAmount = 0;
+    dailyRewardClaimedToday = false;
+    dailyRewardEligible = false;
+    dailyRewardClaimedCoins = 0;
+    dailyRewardLoading = false;
     vipActiveUntil = null;
     customVipId = null;
     vipError = null;
@@ -979,7 +989,68 @@ class AppState extends ChangeNotifier {
           );
       }
     }
+    await refreshDailyReward(notify: false);
     if (notify) notifyListeners();
+  }
+
+  void _applyDailyRewardStatus(Map<String, dynamic>? value) {
+    if (value == null) return;
+    dailyRewardEligible = value['eligible'] == true;
+    dailyRewardAmount =
+        int.tryParse(value['amount_coins']?.toString() ?? '') ?? 0;
+    dailyRewardClaimedToday = value['claimed_today'] == true;
+    dailyRewardClaimedCoins =
+        int.tryParse(value['claimed_coins']?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> refreshDailyReward({bool notify = true}) async {
+    if (!backendConnected || !isAuthenticated) {
+      dailyRewardEligible = false;
+      dailyRewardAmount = 0;
+      dailyRewardClaimedToday = false;
+      dailyRewardClaimedCoins = 0;
+      if (notify) notifyListeners();
+      return;
+    }
+    final value = await backend.vipDailyRewardStatus(userId: userId);
+    _applyDailyRewardStatus(value);
+    if (notify) notifyListeners();
+  }
+
+  Future<bool> claimDailyReward() async {
+    if (!backendConnected ||
+        !isAuthenticated ||
+        dailyRewardLoading ||
+        dailyRewardClaimedToday ||
+        !dailyRewardEligible) {
+      return false;
+    }
+    dailyRewardLoading = true;
+    vipError = null;
+    notifyListeners();
+    try {
+      final value = await backend.claimVipDailyReward(userId: userId);
+      if (value?['ok'] != true) {
+        vipError = switch (value?['error']?.toString()) {
+          'vip_daily_reward_locked' =>
+            'Daily rewards unlock at VIP 5.',
+          'vip_inactive' => 'Daily rewards need an active VIP.',
+          _ => 'Daily reward could not be claimed.',
+        };
+        return false;
+      }
+      dailyRewardClaimedCoins =
+          int.tryParse(value?['reward']?.toString() ?? '') ?? 0;
+      final balance =
+          int.tryParse(value?['coin_balance']?.toString() ?? '');
+      if (balance != null) coins = balance;
+      _applyDailyRewardStatus(value);
+      await refreshWallet(notify: false);
+      return true;
+    } finally {
+      dailyRewardLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> refreshIdLevel({bool notify = true}) async {

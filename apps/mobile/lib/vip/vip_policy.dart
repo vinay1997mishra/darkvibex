@@ -81,7 +81,7 @@ class VipPolicy {
     VipPrivilege(id: 'exp_boost_1_1x', title: 'EXP Boost 1.1x', description: 'Earn 1.1x VIP EXP on every coin purchase.', minLevel: 1),
     VipPrivilege(id: 'chat_bubble', title: 'Chat Bubble', description: 'VIP chat bubble with richer styles at higher levels.', minLevel: 2),
     VipPrivilege(id: 'hide_last_online', title: 'Hide Last Online', description: 'Hide last-online information from the profile.', minLevel: 2),
-    VipPrivilege(id: 'daily_rewards', title: 'Daily Rewards', description: 'Daily login rewards, claimable every day.', minLevel: 2),
+    VipPrivilege(id: 'daily_rewards', title: 'Daily Rewards', description: 'Daily coin rewards, claimable every day from VIP5.', minLevel: 5),
     VipPrivilege(id: 'room_background', title: 'Change Room Background', description: 'Use a custom background in your own room.', minLevel: 3),
     // Friends Limit Expanded was REMOVED (Vinay, 2026-11-19):
     // "Friends limit nhi rakhni" — VIP4 keeps only Entrance Effect.
