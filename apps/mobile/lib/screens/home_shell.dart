@@ -38,21 +38,41 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int index = 0;
   int _refreshToken = 0;
   final Set<int> visited = <int>{0};
   bool _weeklyDialogScheduled = false;
   bool _dailyRewardDialogScheduled = false;
+  Timer? _cpInvitePollTimer;
+  bool _cpInviteChecking = false;
+  bool _cpInviteDialogOpen = false;
+  final Set<String> _cpInvitesSeen = <String>{};
 
   @override
   void initState() {
     super.initState();
     widget.state.addListener(_weeklyStateChanged);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleWeeklySignIn();
       _scheduleVipDailyReward();
+      unawaited(_checkCpInvite());
     });
+    // CP invite pop-up (Vinay, 2026-11-20): shows the moment an invite
+    // arrives while the user is online, and on coming online when the
+    // invite was sent while they were away.
+    _cpInvitePollTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_checkCpInvite()),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_checkCpInvite());
+    }
   }
 
   @override
@@ -69,6 +89,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _cpInvitePollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     widget.state.removeListener(_weeklyStateChanged);
     super.dispose();
   }
@@ -144,6 +166,91 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       showVipDailyRewardDialog(context, state: widget.state);
     });
+  }
+
+  // CP invite pop-up (Vinay, 2026-11-20): when a CP invite arrives, the
+  // receiver sees a pop-up on screen with Accept and Reject — at once
+  // while online, or on coming online when it was sent while they were
+  // away. Each invite pops up only once; choosing is also once per
+  // invite — dismissing the pop-up leaves the choice in the DM chat,
+  // where the invite message stays permanently.
+  Future<void> _checkCpInvite() async {
+    if (!mounted ||
+        _cpInviteChecking ||
+        _cpInviteDialogOpen ||
+        !widget.state.backendConnected ||
+        !widget.state.isAuthenticated) {
+      return;
+    }
+    _cpInviteChecking = true;
+    try {
+      final value = await widget.state.backend.cpState(
+        userId: widget.state.userId,
+      );
+      if (!mounted) return;
+      final cp = value?['cp'];
+      if (cp is! Map) return;
+      final pendingForMe = cp['state']?.toString() == 'pending' &&
+          cp['requested_by']?.toString() != widget.state.userId;
+      if (!pendingForMe) return;
+      final key =
+          '${cp['user_a']}|${cp['user_b']}|${cp['created_at']}';
+      if (_cpInvitesSeen.contains(key)) return;
+      _cpInvitesSeen.add(key);
+      final partnerName = ((cp['user_a']?.toString() ?? '') ==
+                  widget.state.userId
+              ? cp['user_b_name']
+              : cp['user_a_name'])
+          ?.toString()
+          .trim();
+      final name = (partnerName == null || partnerName.isEmpty)
+          ? 'Someone'
+          : partnerName;
+      _cpInviteDialogOpen = true;
+      final accept = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.favorite_rounded, color: Color(0xFFFF5C8A)),
+              SizedBox(width: 8),
+              Text('CP invite'),
+            ],
+          ),
+          content: Text('$name wants to be your CP'),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Reject'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+      _cpInviteDialogOpen = false;
+      if (!mounted || accept == null) return;
+      final result = await widget.state.backend.cpRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result?['ok'] == true
+                ? (accept ? 'You are CP now ❤️' : 'CP invite rejected')
+                : (result?['error']?.toString() ?? 'Could not respond to the invite'),
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint('DarkVibeX CP invite check failed ($error)');
+    } finally {
+      _cpInviteChecking = false;
+    }
   }
 
   @override

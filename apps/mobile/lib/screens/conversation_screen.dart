@@ -124,6 +124,109 @@ class _ConversationScreenState extends State<ConversationScreen> {
     setState(() => loading = false);
   }
 
+  bool _respondingToCpInvite = false;
+
+  Future<void> _respondToCpInvite(bool accept) async {
+    if (_respondingToCpInvite) return;
+    setState(() => _respondingToCpInvite = true);
+    try {
+      final result = await widget.state.backend.cpRespond(
+        userId: widget.state.userId,
+        accept: accept,
+      );
+      if (!mounted) return;
+      if (result?['ok'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result?['error']?.toString() ?? 'Could not respond to the invite',
+            ),
+          ),
+        );
+        return;
+      }
+      await _load();
+    } finally {
+      if (mounted) setState(() => _respondingToCpInvite = false);
+    }
+  }
+
+  Widget _cpInviteCard(Map<String, dynamic> item, bool mine) {
+    final kind = item['kind']?.toString() ?? '';
+    final accepted = kind == 'cp_invite_accepted';
+    final decided = kind != 'cp_invite';
+    final partnerName = widget.otherName;
+    final String title;
+    final String subtitle;
+    if (mine) {
+      title = 'CP invite sent';
+      subtitle = decided
+          ? (accepted
+              ? '$partnerName accepted your CP invite ❤️'
+              : '$partnerName rejected your CP invite')
+          : 'Waiting for $partnerName to respond…';
+    } else {
+      title = 'CP invite';
+      subtitle = decided
+          ? (accepted
+              ? 'You accepted $partnerName\'s CP invite ❤️'
+              : 'You rejected this CP invite')
+          : '$partnerName wants to be your CP';
+    }
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 300),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A1530),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xAAFF5C8A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.favorite_rounded,
+                color: Color(0xFFFF5C8A),
+                size: 20,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(subtitle),
+          if (!mine && !decided) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  onPressed: _respondingToCpInvite
+                      ? null
+                      : () => _respondToCpInvite(false),
+                  child: const Text('Reject'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _respondingToCpInvite
+                      ? null
+                      : () => _respondToCpInvite(true),
+                  child: const Text('Accept'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _sendEnvelope() async {
     if (!isFriend) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -416,6 +519,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                     if (!mine && item['status'] == 'expired') const Text('Expired · sender refunded'),
                                   ]),
                                 )),
+                              ),
+                            );
+                          }
+                          // CP invite message (Vinay, 2026-11-20): the
+                          // invite stays permanently in the DM chat. Its
+                          // kind records the verdict, so Accept/Reject can
+                          // be chosen only once per invite — a later
+                          // re-invite is a new message with fresh buttons.
+                          if ((item['kind']?.toString() ?? '')
+                              .startsWith('cp_invite')) {
+                            final mine = item['sender_user_id']?.toString() ==
+                                widget.state.userId;
+                            return Align(
+                              alignment: mine
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 7),
+                                child: _cpInviteCard(item, mine),
                               ),
                             );
                           }
