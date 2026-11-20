@@ -1965,6 +1965,11 @@ async function ensureImageTables(db) {
       created_at INTEGER NOT NULL
     )`
   ).run();
+  // CP invite DMs carry kind='cp_invite' (Vinay, 2026-11-20) so the app
+  // can render Accept/Reject on them; older rows stay 'text'.
+  try {
+    await db.prepare("ALTER TABLE direct_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'").run();
+  } catch (_) {}
 }
 
 const ROOM_PRESENCE_TTL_MS = 30 * 1000;
@@ -7747,7 +7752,7 @@ async function handleApi(request, env, url) {
     const retentionDays = vip.active ? Number(vip.message_retention_days ?? 0) : 0;
     const cutoff = retentionDays > 0 ? now() - retentionDays * 86400000 : 0;
     const rows = await db.prepare(
-      `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
+      `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.kind, m.text, m.created_at, m.read_at,
               i.image_key,
               (SELECT p.item_id FROM user_props p
                 WHERE p.user_id=m.sender_user_id AND p.kind='bubble'

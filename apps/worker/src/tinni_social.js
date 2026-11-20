@@ -167,6 +167,7 @@ export async function ensureTinniSocialSchema(db) {
   } catch (_) {}
   for (const sql of [
     "ALTER TABLE cp_relationships ADD COLUMN activated_at INTEGER",
+    "ALTER TABLE direct_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
     "ALTER TABLE cp_relationships ADD COLUMN disconnect_state TEXT NOT NULL DEFAULT 'none'",
     "ALTER TABLE cp_relationships ADD COLUMN disconnect_requested_by TEXT",
     "ALTER TABLE cp_relationships ADD COLUMN disconnect_requested_at INTEGER",
@@ -1072,6 +1073,24 @@ export async function cpRequest(db, userId, targetIdValue) {
       "cp:" + targetId,
       createdAt,
     ).run();
+    // CP invite DM (Vinay, 2026-11-20): the invite shows PERMANENTLY in
+    // the DM chat with Accept/Reject, and the pop-up reads the pending
+    // CP row. One DM per invite — a new request after a reject writes a
+    // new row; the old one keeps its decided kind.
+    const requester = await db.prepare(
+      "SELECT display_name FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    const requesterName = String(requester?.display_name ?? "").trim() || "Someone";
+    await db.prepare(
+      "INSERT INTO direct_messages(id,sender_user_id,receiver_user_id,kind,text,created_at,read_at) VALUES(?,?,?,?,?,?,NULL)"
+    ).bind(
+      uid("dm-"),
+      userId,
+      targetId,
+      "cp_invite",
+      `💌 CP invite from ${requesterName}`,
+      createdAt,
+    ).run();
   } catch (error) {
     await db.prepare(
       "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
@@ -1099,6 +1118,13 @@ export async function cpRespond(db, userId, accept) {
       "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
     ).bind(row.user_a,row.user_b).run();
   }
+  // The invite DM keeps its verdict forever (Vinay, 2026-11-20): Accept
+  // or Reject can be chosen only ONCE per invite, so the message records
+  // the choice and its buttons never come back. A later re-invite writes
+  // a NEW dm row; this update only touches still-pending invites.
+  await db.prepare(
+    "UPDATE direct_messages SET kind=? WHERE kind='cp_invite' AND sender_user_id=? AND receiver_user_id=?"
+  ).bind(accept ? "cp_invite_accepted" : "cp_invite_rejected", row.requested_by, userId).run();
   return accept ? cpState(db,userId) : null;
 }
 
