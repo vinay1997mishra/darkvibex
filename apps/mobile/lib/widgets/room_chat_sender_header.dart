@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'vip_animated_frame.dart';
+import 'vip_name_text.dart';
 import 'vip_tag_image.dart';
 
 /// Sender identity shown above each room chat bubble.
@@ -207,11 +208,10 @@ class RoomChatSenderHeader extends StatelessWidget {
             _avatar(),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(
-                name,
-                key: const Key('room-chat-sender-name'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: VipNameText(
+                name: name,
+                vipLevel: vipLevel,
+                textKey: const Key('room-chat-sender-name'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,

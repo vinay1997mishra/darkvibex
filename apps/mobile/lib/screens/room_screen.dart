@@ -26,6 +26,7 @@ import '../widgets/vip_entry_effect_banner.dart';
 import '../widgets/gift_ribbon_banner.dart';
 import '../widgets/level_medal.dart';
 import '../widgets/vip_tag_image.dart';
+import '../widgets/vip_name_text.dart';
 import '../widgets/profile_card_anim_background.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
@@ -3343,10 +3344,9 @@ class _RoomScreenState extends State<RoomScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 62, 16, 16),
                         child: Column(
                           children: [
-                            Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            VipNameText(
+                              name: name,
+                              vipLevel: activeVipLevel,
                               style: TextStyle(
                                 color: hasCardBackground
                                     ? const Color(0xFFE8C882)
