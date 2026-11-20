@@ -1485,14 +1485,14 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ? null
                                 : () {
                                     Navigator.pop(sheetContext);
-                                    Navigator.of(context).push<void>(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => PublicProfileScreen(
-                                          state: widget.state,
-                                          userId: userId,
-                                        ),
-                                      ),
-                                    );
+                                    Future<void>.delayed(Duration.zero, () {
+                                      if (!mounted) return;
+                                      _openRoomUserProfile(
+                                        userId,
+                                        name,
+                                        avatar,
+                                      );
+                                    });
                                   },
                           );
                         },
@@ -3059,22 +3059,22 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
-  /// Room chat DP tap (Vinay, 2026-11-20): someone else's DP opens their
-  /// profile card; my own DP opens my main profile page (the card popup
-  /// never shows for myself).
-  Future<void> _openChatSenderProfile(
-    String senderId,
+  /// Room user tap (Vinay, 2026-11-20): like other live apps, tapping a
+  /// user in the room opens their profile card first; my own opens my
+  /// main profile page (the card popup never shows for myself).
+  Future<void> _openRoomUserProfile(
+    String userId,
     String? displayName,
     String? avatarKey,
   ) async {
-    if (senderId.isEmpty) return;
-    if (senderId == widget.state.userId) {
+    if (userId.isEmpty) return;
+    if (userId == widget.state.userId) {
       if (!mounted) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => PublicProfileScreen(
             state: widget.state,
-            userId: senderId,
+            userId: userId,
           ),
         ),
       );
@@ -3082,7 +3082,7 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     await _showSeatMemberProfile(
       <String, dynamic>{
-        'user_id': senderId,
+        'user_id': userId,
         'display_name': displayName ?? '',
         'avatar_key': avatarKey ?? '',
       },
@@ -8922,13 +8922,13 @@ class _RoomScreenState extends State<RoomScreen> {
                                     // once and then shows the still.
                                     frameAssetUrl: vipFrameStillUrlForVipLevel(senderVipLevel),
                                     frameVideoUrl: vipFrameVapUrlForVipLevel(senderVipLevel),
-                                    // Tapping the sender's DP in room chat
-                                    // opens their profile card (Vinay,
-                                    // 2026-11-20); tapping the card itself
-                                    // opens their main profile page.
+                                    // Tapping the sender's DP or name in
+                                    // room chat opens their profile card
+                                    // (Vinay, 2026-11-20); tapping the card
+                                    // itself opens their main profile page.
                                     onAvatarTap: senderId.isEmpty
                                         ? null
-                                        : () => _openChatSenderProfile(
+                                        : () => _openRoomUserProfile(
                                               senderId,
                                               name,
                                               avatarKey,
