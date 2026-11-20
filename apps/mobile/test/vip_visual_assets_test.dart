@@ -411,15 +411,34 @@ void main() {
         vipProfileCardAnimVideoKeys[level],
         'profile-card-anims/vip$level-${vipProfileCardAnimAnimals[level]}.mp4',
       );
+    }
+    // VIP1-3 have a still pic only, no video.
+    expect(vipProfileCardStillAnimals.length, 18);
+    expect(vipProfileCardStillAnimals[1], 'cat');
+    expect(vipProfileCardStillAnimals[2], 'swan');
+    expect(vipProfileCardStillAnimals[3], 'dolphin');
+    for (var level = 1; level <= 18; level++) {
       expect(
         vipProfileCardAnimStillKeys[level],
-        'profile-card-stills/vip$level-${vipProfileCardAnimAnimals[level]}.png',
+        'profile-card-stills/vip$level-${vipProfileCardStillAnimals[level]}.png',
       );
     }
   });
 
   test('profile card animation still URLs point at the R2 profile-card-stills/ PNGs',
       () {
+    expect(
+      profileCardAnimStillUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip1-cat.png',
+    );
+    expect(
+      profileCardAnimStillUrlForVipLevel(2),
+      '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip2-swan.png',
+    );
+    expect(
+      profileCardAnimStillUrlForVipLevel(3),
+      '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip3-dolphin.png',
+    );
     expect(
       profileCardAnimStillUrlForVipLevel(5),
       '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip5-deer.png',
@@ -428,8 +447,7 @@ void main() {
       profileCardAnimStillUrlForVipLevel(18),
       '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip18-dragon.png',
     );
-    expect(profileCardAnimStillUrlForVipLevel(2), isNull);
-    expect(profileCardAnimStillUrlForVipLevel(3), isNull);
+    expect(profileCardAnimStillUrlForVipLevel(0), isNull);
     expect(profileCardAnimStillUrlForVipLevel(19), isNull);
   });
 

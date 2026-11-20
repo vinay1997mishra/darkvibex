@@ -45,11 +45,11 @@ class ProfileCardAnimBackground extends StatefulWidget {
   });
 
   /// Background animation for a VIP level, resolved from the level:
-  /// video + still URLs from vip_visual_assets.dart. VIP1-3 (and out
-  /// of range) resolve to no video and no still, so only [child] is
-  /// shown. [videoKey] is the Worker's profile_card_anim video_key —
-  /// only the level's own animation ever plays (a custom/Owner key
-  /// resolves to null, still only).
+  /// video + still URLs from vip_visual_assets.dart. VIP1-3 resolve
+  /// to no video but a still pic; out of range resolves to neither,
+  /// so only [child] is shown. [videoKey] is the Worker's
+  /// profile_card_anim video_key — only the level's own animation
+  /// ever plays (a custom/Owner key resolves to null, still only).
   factory ProfileCardAnimBackground.forVipLevel({
     Key? key,
     required int level,
