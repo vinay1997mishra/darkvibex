@@ -3395,7 +3395,15 @@ class _RoomScreenState extends State<RoomScreen> {
               targetUserId: userId,
               follow: next,
             );
-            if (!ok || !sheetContext.mounted) return;
+            if (!ok) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Could not update follow')),
+                );
+              }
+              return;
+            }
+            if (!sheetContext.mounted) return;
             final newFriends = await widget.state.backend.friends(
               userId: widget.state.userId,
             );
