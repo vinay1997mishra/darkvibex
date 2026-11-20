@@ -27,6 +27,7 @@ import '../widgets/gift_ribbon_banner.dart';
 import '../widgets/level_medal.dart';
 import '../widgets/vip_tag_image.dart';
 import '../widgets/vip_name_text.dart';
+import '../widgets/vip_priority_message_banner.dart';
 import '../widgets/profile_card_anim_background.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
@@ -81,6 +82,20 @@ class _RoomScreenState extends State<RoomScreen> {
   final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
     <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
   ];
+
+  /// Priority message the user dismissed with the banner's X. The
+  /// banner stays hidden until a newer priority message arrives.
+  Map<String, dynamic>? _dismissedPriorityMessage;
+
+  /// The priority message pinned at the top of the room chat (VIP9+),
+  /// or null when there is none or it was dismissed.
+  Map<String, dynamic>? get _pinnedPriorityMessage {
+    final latest = latestPriorityMessage(chat);
+    if (latest == null || identical(latest, _dismissedPriorityMessage)) {
+      return null;
+    }
+    return latest;
+  }
   final TextEditingController roomChatController = TextEditingController();
   final ScrollController roomChatScrollController = ScrollController();
   int? _roomChatClearedAtMs;
@@ -244,6 +259,7 @@ class _RoomScreenState extends State<RoomScreen> {
     setState(() {
       _roomChatClearedAtMs = clearedAt;
       chat.clear();
+      _dismissedPriorityMessage = null;
       for (final timer in seatReactionTimers.values) {
         timer.cancel();
       }
@@ -8337,6 +8353,13 @@ class _RoomScreenState extends State<RoomScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_pinnedPriorityMessage case final priority?)
+                    VipPriorityMessageBanner(
+                      message: priority,
+                      onDismissed: () => setState(
+                        () => _dismissedPriorityMessage = priority,
+                      ),
+                    ),
                   Expanded(
                     child: ListView.builder(
                       key: const Key('room-chat-list'),
