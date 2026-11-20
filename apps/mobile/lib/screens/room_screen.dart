@@ -101,8 +101,6 @@ class _RoomScreenState extends State<RoomScreen>
   }
   final TextEditingController roomChatController = TextEditingController();
   final ScrollController roomChatScrollController = ScrollController();
-  int? _roomChatClearedAtMs;
-  bool _roomChatClearMarkerLoaded = false;
   bool roomMessageSending = false;
   bool uploadingRoomImage = false;
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
@@ -200,16 +198,6 @@ class _RoomScreenState extends State<RoomScreen>
   bool get isRoomHost => widget.room.ownerUserId == widget.state.userId;
   bool get isRoomAdmin => isRoomHost || amRoomAdmin;
 
-  String get _roomChatClearPreferenceKey =>
-      'darkvibex.room_chat.clear.${widget.state.userId}.${widget.room.id}';
-
-  Future<void> _ensureRoomChatClearMarkerLoaded() async {
-    if (_roomChatClearMarkerLoaded) return;
-    final preferences = await SharedPreferences.getInstance();
-    _roomChatClearedAtMs = preferences.getInt(_roomChatClearPreferenceKey);
-    _roomChatClearMarkerLoaded = true;
-  }
-
   int? _roomMessageTimestampMs(dynamic value) {
     if (value is num) {
       final timestamp = value.toInt();
@@ -224,15 +212,20 @@ class _RoomScreenState extends State<RoomScreen>
     return DateTime.tryParse(raw)?.toLocal().millisecondsSinceEpoch;
   }
 
-  Future<void> _confirmClearRoomChat() async {
+  // Chat clear (Vinay, 2026-11-20): the room owner/admin clears the chat
+  // on the server from the 4-Box menu. An owner clear hides the old chat
+  // from everyone; an admin clear hides it from everyone except the
+  // owner. The server filters on the clear, so a cleared chat never
+  // comes back on the next poll or after re-entering the room.
+  Future<void> _clearRoomChat() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear room chat?'),
-        content: const Text(
-          'This clears the current chat history on this device only. '
-          'Other participants’ history will not be deleted, and new messages '
-          'will continue to appear.',
+        title: const Text('Chat clear?'),
+        content: Text(
+          isRoomHost
+              ? 'This clears the room chat for everyone. New messages will keep appearing.'
+              : 'This clears the room chat for everyone except the room owner. New messages will keep appearing.',
         ),
         actions: [
           TextButton(
@@ -242,33 +235,33 @@ class _RoomScreenState extends State<RoomScreen>
           FilledButton(
             key: const Key('confirm-clear-room-chat'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Clear chat'),
+            child: const Text('Chat clear'),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
 
-    await _ensureRoomChatClearMarkerLoaded();
-    final preferences = await SharedPreferences.getInstance();
-    final timestamps = chat
-        .map((message) => _roomMessageTimestampMs(message['created_at']))
-        .whereType<int>();
-    final newestMessageAt = timestamps.fold<int?>(
-      null,
-      (latest, timestamp) =>
-          latest == null || timestamp > latest ? timestamp : latest,
-    );
-    final cutoff = newestMessageAt ?? DateTime.now().millisecondsSinceEpoch;
-    final previousCutoff = preferences.getInt(_roomChatClearPreferenceKey);
-    final clearedAt = previousCutoff != null && previousCutoff > cutoff
-        ? previousCutoff
-        : cutoff;
-    await preferences.setInt(_roomChatClearPreferenceKey, clearedAt);
+    bool ok;
+    try {
+      ok = await widget.state.backend.clearRoomChat(
+        roomId: widget.room.id,
+        userId: widget.state.userId,
+      );
+    } catch (_) {
+      ok = false;
+    }
     if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not clear the chat. Please try again.'),
+        ),
+      );
+      return;
+    }
 
     setState(() {
-      _roomChatClearedAtMs = clearedAt;
       chat.clear();
       _dismissedPriorityMessage = null;
       for (final timer in seatReactionTimers.values) {
@@ -287,7 +280,7 @@ class _RoomScreenState extends State<RoomScreen>
     });
     _scrollChatToLatest();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Room chat cleared on this device')),
+      const SnackBar(content: Text('Room chat cleared')),
     );
   }
 
@@ -714,25 +707,15 @@ class _RoomScreenState extends State<RoomScreen>
 
   Future<void> _loadRoomMessages() async {
     if (!widget.state.backendConnected) return;
-    await _ensureRoomChatClearMarkerLoaded();
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
     if (!mounted) return;
 
-    final clearedAt = _roomChatClearedAtMs;
-    final visibleRows = clearedAt == null
-        ? rows
-        : rows.where((message) {
-            final timestamp = _roomMessageTimestampMs(message['created_at']);
-            return timestamp != null && timestamp > clearedAt;
-          }).toList(growable: false);
-
-    if (visibleRows.isEmpty &&
-        clearedAt == null &&
+    if (rows.isEmpty &&
         chat.length == 1 &&
         chat.first['text'] == 'Welcome to the room 👋') {
       return;
     }
-    final next = visibleRows
+    final next = rows
         .map((message) => Map<String, dynamic>.from(message))
         .toList();
     _syncSeatReactions(next);
@@ -7340,6 +7323,12 @@ class _RoomScreenState extends State<RoomScreen>
         isRoomHost,
       ),
       (
+        'Chat clear',
+        Icons.delete_sweep_rounded,
+        _clearRoomChat,
+        isRoomAdmin,
+      ),
+      (
         'Report',
         Icons.report_rounded,
         _reportRoom,
@@ -7351,6 +7340,7 @@ class _RoomScreenState extends State<RoomScreen>
       if (tool.$1 == 'Room Type' || tool.$1 == 'Music') return isRoomAdmin;
       if (tool.$1 == 'Public Screen') return isRoomAdmin;
       if (tool.$1 == 'VIP-only Room') return isRoomHost;
+      if (tool.$1 == 'Chat clear') return isRoomAdmin;
       if (tool.$1 == 'Report') return !isRoomHost;
       return true;
     }).toList(growable: false);
@@ -7424,19 +7414,6 @@ class _RoomScreenState extends State<RoomScreen>
         child: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              key: const Key('room-clear-chat-menu'),
-              leading: const Icon(Icons.delete_sweep_rounded),
-              title: const Text('Clear room chat'),
-              subtitle: const Text('Clear history on this device'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                Future<void>.delayed(
-                  const Duration(milliseconds: 180),
-                  _confirmClearRoomChat,
-                );
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.copy_rounded),
               title: const Text('Copy room ID'),

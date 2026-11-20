@@ -770,6 +770,19 @@ class BackendApi {
     return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
+  Future<bool> clearRoomChat({
+    required String roomId,
+    required String userId,
+  }) async {
+    final value = await _json(
+      'POST',
+      '/api/rooms/${Uri.encodeComponent(roomId)}/messages/clear',
+      body: <String, dynamic>{'user_id': userId},
+      returnErrorBody: true,
+    );
+    return value?['ok'] == true;
+  }
+
   Future<List<Map<String, dynamic>>> roomGiftEvents({
     required String roomId,
     required int after,

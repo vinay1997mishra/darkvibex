@@ -2002,16 +2002,76 @@ async function ensureImageTables(db) {
 
 const ROOM_PRESENCE_TTL_MS = 30 * 1000;
 
-async function cleanupStaleRoomMembers(db, ts = now()) {
+async function cleanupStaleRoomMembers(db, ts = now(), env = null) {
   const cutoff = Number(ts) - ROOM_PRESENCE_TTL_MS;
   await db.prepare(
     "DELETE FROM room_members WHERE updated_at > 0 AND updated_at < ?"
   ).bind(cutoff).run();
+  await wipeChatOfEmptyRooms(db, env);
   return cutoff;
 }
 
+// Room chat clear markers (Vinay, 2026-11-20): the room owner and the
+// room admins clear the chat separately. An owner clear hides old
+// messages from everyone; an admin clear hides them from everyone
+// EXCEPT the owner. Two timestamps, so the order of the clears never
+// matters: a later admin clear can never resurrect messages an owner
+// clear already hid from the owner.
+async function ensureRoomChatClearTable(db) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS room_chat_clears (
+      room_id TEXT PRIMARY KEY,
+      owner_cleared_at INTEGER NOT NULL DEFAULT 0,
+      admin_cleared_at INTEGER NOT NULL DEFAULT 0
+    )`
+  ).run();
+}
+
+// Room chat has no backup anywhere (Vinay, 2026-11-20): the moment a
+// room has no members left it is closed, and its chat is deleted at
+// once — messages, their image rows, the clear markers, and the image
+// files in R2 (best-effort). Rooms that still have members keep their
+// chat; a member who re-enters sees nothing old because the messages
+// endpoint only returns messages sent after their joined_at.
+async function wipeChatOfEmptyRooms(db, env) {
+  await ensureRoomChatClearTable(db);
+  await ensureImageTables(db);
+  const emptyRoomIds = `SELECT r.id FROM rooms r WHERE NOT EXISTS (
+    SELECT 1 FROM room_members m WHERE m.room_id = r.id
+  )`;
+  const imageKeys = await db.prepare(
+    `SELECT image_key FROM room_message_images
+      WHERE message_id IN (
+        SELECT id FROM room_messages WHERE room_id IN (${emptyRoomIds})
+      )`
+  ).all();
+  await db.prepare(
+    `DELETE FROM room_message_images WHERE message_id IN (
+       SELECT id FROM room_messages WHERE room_id IN (${emptyRoomIds})
+     )`
+  ).run();
+  const deleted = await db.prepare(
+    `DELETE FROM room_messages WHERE room_id IN (${emptyRoomIds})`
+  ).run();
+  await db.prepare(
+    `DELETE FROM room_chat_clears WHERE room_id IN (${emptyRoomIds})`
+  ).run();
+  if (env?.FILES) {
+    for (const row of imageKeys.results ?? []) {
+      const key = String(row.image_key ?? "");
+      if (!key) continue;
+      try {
+        await env.FILES.delete(key);
+      } catch (_) {
+        // Best-effort: a missing file never stops the wipe.
+      }
+    }
+  }
+  return Number(deleted.meta?.changes ?? 0);
+}
+
 // Public lists hide empty rooms; once created, an owner's permanent room always remains recoverable in My room.
-async function listRooms(db, viewerUserId) {
+async function listRooms(db, viewerUserId, env = null) {
   await ensureOwnerControlSchema(db);
   await ensureImageTables(db);
   await ensureRoomSettingsTable(db);
@@ -2020,7 +2080,7 @@ async function listRooms(db, viewerUserId) {
     "SELECT country_code FROM users WHERE id=? LIMIT 1"
   ).bind(viewerUserId).first();
   const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
-  const presenceCutoff = await cleanupStaleRoomMembers(db, now());
+  const presenceCutoff = await cleanupStaleRoomMembers(db, now(), env);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.vip_only, r.country_code,
             CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -4760,7 +4820,7 @@ async function handleApi(request, env, url) {
     // Count only members fresh within the presence TTL, like listRooms
     // (room audit 2026-11-20: followed rooms showed phantom online counts
     // from stale members).
-    const presenceCutoff = await cleanupStaleRoomMembers(db, now());
+    const presenceCutoff = await cleanupStaleRoomMembers(db, now(), env);
     const rows = await db.prepare(
       `SELECT r.id,r.name,
               CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -6604,7 +6664,7 @@ async function handleApi(request, env, url) {
     );
     return json({
       ok:true,
-      rooms:await listRooms(db,String(session.sub)),
+      rooms:await listRooms(db,String(session.sub), env),
     });
   }
 
@@ -6887,6 +6947,10 @@ async function handleApi(request, env, url) {
     const result = await db.prepare(
       "DELETE FROM room_members WHERE room_id = ? AND user_id = ?"
     ).bind(roomId, userId).run();
+    // Room chat has no backup anywhere (Vinay, 2026-11-20): if this
+    // was the last member, the room just closed and its chat is wiped
+    // at once.
+    await wipeChatOfEmptyRooms(db, env);
     // Exit is intentionally idempotent: if the member was already removed,
     // the client is still fully outside the room and should be allowed to close.
     return json({
@@ -7058,10 +7122,29 @@ async function handleApi(request, env, url) {
       const authError = await requireSession(request, env);
       if (authError) return authError;
       const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+      const viewerId = String(session.sub);
       const member = await db.prepare(
-        "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
-      ).bind(roomId, String(session.sub)).first();
+        "SELECT joined_at FROM room_members WHERE room_id = ? AND user_id = ?"
+      ).bind(roomId, viewerId).first();
       if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+      // Room chat is ephemeral (Vinay, 2026-11-20): a member only ever
+      // sees messages sent after they entered the room, and a clear
+      // hides everything before it — an owner clear for everyone, an
+      // admin clear for everyone except the owner.
+      await ensureRoomChatClearTable(db);
+      const room = await db.prepare(
+        "SELECT owner_user_id FROM rooms WHERE id = ?"
+      ).bind(roomId).first();
+      const clear = await db.prepare(
+        "SELECT owner_cleared_at, admin_cleared_at FROM room_chat_clears WHERE room_id = ?"
+      ).bind(roomId).first();
+      const isOwner = String(room?.owner_user_id ?? "") === viewerId;
+      const joinedAt = Number(member.joined_at ?? 0);
+      const ownerClearedAt = Number(clear?.owner_cleared_at ?? 0);
+      const adminClearedAt = Number(clear?.admin_cleared_at ?? 0);
+      const cutoff = isOwner
+        ? Math.max(joinedAt, ownerClearedAt)
+        : Math.max(joinedAt, ownerClearedAt, adminClearedAt);
       const rows = await db.prepare(
         `SELECT m.id, m.user_id,
                 CASE WHEN v.level >= 18 AND v.active_until > ?
@@ -7092,9 +7175,9 @@ async function handleApi(request, env, url) {
            LEFT JOIN owner_user_overrides io ON io.user_id = m.user_id
            LEFT JOIN user_vip v ON v.user_id = m.user_id
            LEFT JOIN room_message_images mi ON mi.message_id = m.id
-          WHERE m.room_id = ?
+          WHERE m.room_id = ? AND m.created_at > ?
           ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
-      ).bind(now(), now(), now(), now(), now(), roomId).all();
+      ).bind(now(), now(), now(), now(), now(), roomId, cutoff).all();
       const messagesWithProfiles = await decorateRoomChatProfileMetadata(
         db,
         (rows.results ?? []).reverse(),
@@ -7105,6 +7188,8 @@ async function handleApi(request, env, url) {
     if (request.method === "POST") {
       await ensureOwnerControlSchema(db);
       await ensureRoomAdminTable(db);
+      await ensureVipSchema(db);
+      await ensureCosmeticsSchema(db);
       const body = await bodyJson(request);
       const userId = String(body.user_id ?? "").trim();
       const authError = await requireSession(request, env, userId);
@@ -7205,6 +7290,43 @@ async function handleApi(request, env, url) {
     }
   }
 
+  // Chat clear (Vinay, 2026-11-20): only the room owner or a room admin
+  // can clear the room chat, from the 4-Box menu. An owner clear hides
+  // old messages from everyone; an admin clear hides them from everyone
+  // except the owner. The clear is a server-side timestamp — the
+  // messages endpoint filters on it, so a cleared chat never comes back
+  // on the next poll or after re-entering the room.
+  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 5 && parts[3] === "messages" && parts[4] === "clear" && request.method === "POST") {
+    const roomId = parts[2];
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const mod = await roomModeratorState(db, roomId, userId);
+    if (!mod.room) return json({ ok: false, error: "room_not_found" }, { status: 404 });
+    const member = await db.prepare(
+      "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+    ).bind(roomId, userId).first();
+    if (!member) return json({ ok: false, error: "room_membership_required" }, { status: 403 });
+    if (!mod.isOwner && !mod.isAdmin) return json({ ok: false, error: "room_clear_owner_admin_only" }, { status: 403 });
+    await ensureRoomChatClearTable(db);
+    const clearedAt = now();
+    if (mod.isOwner) {
+      await db.prepare(
+        `INSERT INTO room_chat_clears (room_id, owner_cleared_at, admin_cleared_at)
+         VALUES (?, ?, 0)
+         ON CONFLICT(room_id) DO UPDATE SET owner_cleared_at = excluded.owner_cleared_at`
+      ).bind(roomId, clearedAt).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO room_chat_clears (room_id, owner_cleared_at, admin_cleared_at)
+         VALUES (?, 0, ?)
+         ON CONFLICT(room_id) DO UPDATE SET admin_cleared_at = excluded.admin_cleared_at`
+      ).bind(roomId, clearedAt).run();
+    }
+    return json({ ok: true, cleared_at: clearedAt });
+  }
+
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "members") {
     const roomId = parts[2];
     await ensureRoomAdminTable(db);
@@ -7221,7 +7343,7 @@ async function handleApi(request, env, url) {
       await db.prepare(
         "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
       ).bind(heartbeatTs, roomId, actorId).run();
-      const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs);
+      const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs, env);
       const member = await db.prepare(
         "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? AND updated_at >= ?"
       ).bind(roomId, actorId, presenceCutoff).first();
