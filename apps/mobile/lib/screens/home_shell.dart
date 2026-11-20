@@ -18,6 +18,7 @@ import 'gifts_screen.dart';
 import 'vip_screen.dart';
 import 'room_screen.dart';
 import 'weekly_sign_in_dialog.dart';
+import 'vip_daily_reward_dialog.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -42,6 +43,7 @@ class _HomeShellState extends State<HomeShell> {
   int _refreshToken = 0;
   final Set<int> visited = <int>{0};
   bool _weeklyDialogScheduled = false;
+  bool _dailyRewardDialogScheduled = false;
 
   @override
   void initState() {
@@ -49,6 +51,7 @@ class _HomeShellState extends State<HomeShell> {
     widget.state.addListener(_weeklyStateChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleWeeklySignIn();
+      _scheduleVipDailyReward();
     });
   }
 
@@ -59,7 +62,9 @@ class _HomeShellState extends State<HomeShell> {
     oldWidget.state.removeListener(_weeklyStateChanged);
     widget.state.addListener(_weeklyStateChanged);
     _weeklyDialogScheduled = false;
+    _dailyRewardDialogScheduled = false;
     _scheduleWeeklySignIn();
+    _scheduleVipDailyReward();
   }
 
   @override
@@ -105,6 +110,7 @@ class _HomeShellState extends State<HomeShell> {
   void _weeklyStateChanged() {
     if (!mounted) return;
     _scheduleWeeklySignIn();
+    _scheduleVipDailyReward();
   }
 
   void _scheduleWeeklySignIn() {
@@ -118,6 +124,25 @@ class _HomeShellState extends State<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       showWeeklySignInDialog(context, state: widget.state);
+    });
+  }
+
+  // Daily reward pop-up (Vinay, 2026-11-20): when the app opens, a
+  // VIP5+ user who has not claimed today sees the claim dialog. Once
+  // per shell lifetime; if the user picks Later, it shows again on the
+  // next app open while the day is still unclaimed.
+  void _scheduleVipDailyReward() {
+    if (!mounted ||
+        _dailyRewardDialogScheduled ||
+        !widget.state.dailyRewardReady ||
+        !widget.state.dailyRewardEligible ||
+        widget.state.dailyRewardClaimedToday) {
+      return;
+    }
+    _dailyRewardDialogScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showVipDailyRewardDialog(context, state: widget.state);
     });
   }
 
