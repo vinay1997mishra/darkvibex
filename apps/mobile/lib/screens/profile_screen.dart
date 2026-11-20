@@ -1652,6 +1652,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   bool isMutual = false;
   bool followBusy = false;
   bool blockBusy = false;
+  bool isBlocked = false;
   bool reportBusy = false;
   bool cpInviteBusy = false;
 
@@ -1705,6 +1706,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         Future<List<Map<String, dynamic>>>.value(
           const <Map<String, dynamic>>[],
         ),
+      if (resolvedId != widget.state.userId)
+        widget.state.backend.blockedUsers(userId: widget.state.userId)
+      else
+        Future<List<Map<String, dynamic>>>.value(
+          const <Map<String, dynamic>>[],
+        ),
     ]);
 
     final rawStats = values[0] is Map ? values[0] as Map : null;
@@ -1714,6 +1721,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final rawVs = values[4] is Map ? values[4] as Map : null;
     final following = values[5] == true;
     final friends = values[6] is List ? values[6] as List : const [];
+    final blockedRows = values[7] is List ? values[7] as List : const [];
 
     if (!mounted) return;
     setState(() {
@@ -1738,6 +1746,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       isFollowing = following;
       isMutual = friends.whereType<Map>().any(
             (row) => row['id']?.toString() == resolvedId,
+          );
+      isBlocked = blockedRows.whereType<Map>().any(
+            (row) => row['user_id']?.toString() == resolvedId,
           );
       loading = false;
     });
@@ -2086,6 +2097,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       if (ok) {
         isFollowing = false;
         isMutual = false;
+        isBlocked = true;
       }
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2096,6 +2108,26 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (ok && mounted) {
       Navigator.maybePop(context);
     }
+  }
+
+  Future<void> _unblockUser() async {
+    if (isSelf || blockBusy) return;
+    setState(() => blockBusy = true);
+    final ok = await widget.state.backend.setUserBlocked(
+      userId: widget.state.userId,
+      targetUserId: targetId,
+      blocked: false,
+    );
+    if (!mounted) return;
+    setState(() {
+      blockBusy = false;
+      if (ok) isBlocked = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'User unblocked' : 'Could not unblock user'),
+      ),
+    );
   }
 
   Widget _profileMoreMenu() {
@@ -2113,10 +2145,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           _reportUser();
         } else if (value == 'block') {
           _blockUser();
+        } else if (value == 'unblock') {
+          _unblockUser();
         }
       },
-      itemBuilder: (_) => const <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(
+      itemBuilder: (_) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
           value: 'report',
           child: Row(
             children: [
@@ -2127,12 +2161,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ),
         ),
         PopupMenuItem<String>(
-          value: 'block',
+          value: isBlocked ? 'unblock' : 'block',
           child: Row(
             children: [
-              Icon(Icons.block_rounded),
-              SizedBox(width: 10),
-              Text('Block'),
+              Icon(
+                isBlocked ? Icons.block_outlined : Icons.block_rounded,
+              ),
+              const SizedBox(width: 10),
+              Text(isBlocked ? 'Unblock' : 'Block'),
             ],
           ),
         ),

@@ -1876,6 +1876,18 @@ class BackendApi {
     return value?['ok'] == true && value?['blocked'] == blocked;
   }
 
+  /// Look a user up by the public ID shown on their profile, for Block by ID.
+  /// Returns null when no (visible) user has that ID.
+  Future<Map<String, dynamic>?> userByPublicId(String publicId) async {
+    final value = await _json(
+      'GET',
+      '/api/users/by-public-id?public_id=${Uri.encodeQueryComponent(publicId)}',
+    );
+    if (value?['ok'] != true) return null;
+    final user = value?['user'];
+    return user is Map ? Map<String, dynamic>.from(user) : null;
+  }
+
   Future<List<Map<String, dynamic>>> followers({
     required String userId,
   }) async {
