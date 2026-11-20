@@ -814,15 +814,49 @@ async function relationDisconnectRequest(db, userId) {
     if (String(state.disconnect_requested_by ?? "") === String(userId)) return state;
     throw new Error("cp_disconnect_waiting_for_response");
   }
+  // Breaking a CP costs 20,000,000 coins (Vinay, 2026-11-20), paid by
+  // the partner who asks for the disconnect, up front — no refund if
+  // the partner refuses, same as a rejected CP request.
+  const disconnectCost = 20000000;
+  const debit = await db.prepare(
+    "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+  ).bind(disconnectCost,ts(),userId,disconnectCost).run();
+  if (Number(debit.meta?.changes ?? 0) !== 1) {
+    throw new Error("insufficient_coins");
+  }
+  const partnerId = String(state.user_a) === String(userId)
+    ? String(state.user_b)
+    : String(state.user_a);
   const updatedAt = ts();
-  await db.prepare(
-    `UPDATE cp_relationships
-        SET disconnect_state='requested',
-            disconnect_requested_by=?,
-            disconnect_requested_at=?,
-            updated_at=?
-      WHERE user_a=? AND user_b=? AND state='active'`
-  ).bind(userId,updatedAt,updatedAt,state.user_a,state.user_b).run();
+  try {
+    await db.prepare(
+      `UPDATE cp_relationships
+          SET disconnect_state='requested',
+              disconnect_requested_by=?,
+              disconnect_requested_at=?,
+              updated_at=?
+        WHERE user_a=? AND user_b=? AND state='active'`
+    ).bind(userId,updatedAt,updatedAt,state.user_a,state.user_b).run();
+    const wallet = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    await db.prepare(
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).bind(
+      uid("cp-"),
+      userId,
+      "cp_disconnect",
+      -disconnectCost,
+      Number(wallet?.coins ?? 0),
+      "cp:" + partnerId,
+      updatedAt,
+    ).run();
+  } catch (error) {
+    await db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(disconnectCost,ts(),userId).run();
+    throw error;
+  }
   return cpState(db,userId);
 }
 
@@ -977,6 +1011,15 @@ export async function cpState(db, userId) {
   };
 }
 
+async function mutualFriends(db, userId, targetId) {
+  const row = await db.prepare(
+    `SELECT
+       EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS a,
+       EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) AS b`
+  ).bind(userId,targetId,targetId,userId).first();
+  return Number(row?.a ?? 0) === 1 && Number(row?.b ?? 0) === 1;
+}
+
 export async function cpRequest(db, userId, targetIdValue) {
   await ensureTinniSocialSchema(db);
   const targetId = String(targetIdValue ?? "").trim();
@@ -990,7 +1033,10 @@ export async function cpRequest(db, userId, targetIdValue) {
   if (await cpBlockingFlow(db,userId)) throw new Error("cp_already_active");
   if (await cpBlockingFlow(db,targetId)) throw new Error("target_cp_already_active");
 
-  const inviteCost = 2222222;
+  // CP costs 20,000,000 coins (Vinay, 2026-11-20), paid by the requester
+  // up front. No refund if the partner rejects (Vinay: "Nhi milenge
+  // wapas 20m reject hone per").
+  const inviteCost = 20000000;
   const debit = await db.prepare(
     "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
   ).bind(inviteCost,ts(),userId,inviteCost).run();
@@ -1047,6 +1093,8 @@ export async function cpRespond(db, userId, accept) {
       "UPDATE cp_relationships SET state='active',activated_at=?,disconnect_state='none',disconnect_requested_by=NULL,disconnect_requested_at=NULL,heartbeat_state='idle',heartbeat_choice_a=NULL,heartbeat_choice_b=NULL,updated_at=? WHERE user_a=? AND user_b=?"
     ).bind(ts(),ts(),row.user_a,row.user_b).run();
   } else {
+    // Reject: the 20,000,000 request coins are NOT refunded (Vinay,
+    // 2026-11-20) — the row is simply deleted.
     await db.prepare(
       "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
     ).bind(row.user_a,row.user_b).run();
@@ -1057,9 +1105,44 @@ export async function cpRespond(db, userId, accept) {
 export async function cpDisconnect(db, userId) {
   const row = await cpState(db,userId);
   if (!row) return { ok: true, cp:null };
-  await db.prepare(
-    "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
-  ).bind(row.user_a,row.user_b).run();
+  // Direct breakup also costs 20,000,000 coins (Vinay, 2026-11-20),
+  // paid by whoever breaks it. No app screen calls this directly —
+  // the app uses the request/respond flow — but the price is the same.
+  const disconnectCost = 20000000;
+  const debit = await db.prepare(
+    "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+  ).bind(disconnectCost,ts(),userId,disconnectCost).run();
+  if (Number(debit.meta?.changes ?? 0) !== 1) {
+    throw new Error("insufficient_coins");
+  }
+  const partnerId = String(row.user_a) === String(userId)
+    ? String(row.user_b)
+    : String(row.user_a);
+  const deletedAt = ts();
+  try {
+    await db.prepare(
+      "DELETE FROM cp_relationships WHERE user_a=? AND user_b=?"
+    ).bind(row.user_a,row.user_b).run();
+    const wallet = await db.prepare(
+      "SELECT coins FROM users WHERE id=? LIMIT 1"
+    ).bind(userId).first();
+    await db.prepare(
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).bind(
+      uid("cp-"),
+      userId,
+      "cp_disconnect",
+      -disconnectCost,
+      Number(wallet?.coins ?? 0),
+      "cp:" + partnerId,
+      deletedAt,
+    ).run();
+  } catch (error) {
+    await db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(disconnectCost,ts(),userId).run();
+    throw error;
+  }
   return { ok: true, cp:null };
 }
 

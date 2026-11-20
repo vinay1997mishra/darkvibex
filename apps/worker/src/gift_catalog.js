@@ -410,14 +410,6 @@ export const BASE_GIFT_CATALOG = [
     "category": "cp"
   },
   {
-    "id": "cp-invite",
-    "name": "CP Invite",
-    "emoji": "💌",
-    "coin_cost": 2222222,
-    "vip_level": 0,
-    "category": "cp"
-  },
-  {
     "id": "cp-love-ring",
     "name": "Love Ring",
     "emoji": "💍",
