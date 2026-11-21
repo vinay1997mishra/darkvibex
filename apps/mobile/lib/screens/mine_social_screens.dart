@@ -5,7 +5,6 @@ import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
 import 'family_wallet_screen.dart';
-import 'gifts_screen.dart';
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key, required this.state});
@@ -1297,18 +1296,6 @@ class _CpScreenState extends State<CpScreen> {
     }
   }
 
-  Future<void> _openCpGifts() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => GiftsScreen(
-          state: widget.state,
-          initialCategory: 'CP',
-        ),
-      ),
-    );
-    if (mounted) await _load();
-  }
-
   Future<void> _addMemory() async {
     final controller = TextEditingController();
     final text = await showDialog<String>(
@@ -2052,29 +2039,6 @@ class _CpScreenState extends State<CpScreen> {
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            Expanded(
-                              child: TinniPanel(
-                                onTap: _openCpGifts,
-                                child: const Column(
-                                  children: [
-                                    TinniGlowIcon(
-                                      icon: Icons.card_giftcard_rounded,
-                                      size: 22,
-                                      boxSize: 42,
-                                    ),
-                                    SizedBox(height: 5),
-                                    Text(
-                                      'CP Gifts',
-                                      style: TextStyle(
-                                        color: TinniPalette.gold,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
                             Expanded(
                               child: TinniPanel(
                                 onTap: _showRingCabinet,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../call/call_ringtone.dart';
 import '../ui/tinni_style.dart';
 import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
@@ -36,6 +37,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   List<Map<String, dynamic>> activity = const [];
   Timer? callPollTimer;
   bool incomingCallOpen = false;
+  final CallRingtonePlayer _ringtonePlayer = CallRingtonePlayer();
 
   AppState get state => widget.state;
 
@@ -79,6 +81,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void dispose() {
     callPollTimer?.cancel();
+    unawaited(_ringtonePlayer.dispose());
     super.dispose();
   }
 
@@ -133,6 +136,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
     incomingCallOpen = true;
     final callerName =
         call['caller_name']?.toString().trim().isNotEmpty == true ? call['caller_name'].toString() : 'User';
+    // Caller tune (Vinay, 2026-11-21): the ringtone the user picked
+    // rings while the incoming call waits. Muted calls never reach
+    // here — the server refuses them before any ringing call exists.
+    unawaited(_ringtonePlayer.start(state.callRingtoneId));
     final accept = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -159,6 +166,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ],
       ),
     );
+    await _ringtonePlayer.stop();
     if (!mounted) {
       incomingCallOpen = false;
       return;
@@ -368,6 +376,103 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ),
       );
 
+  // Inbox message mute + delete (Vinay, 2026-11-21): long-press a
+  // conversation to mute its notifications or delete the whole chat.
+  Future<void> _showConversationActions(DirectMessage item) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => TinniPanel(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('inbox-action-mute'),
+              leading: Icon(
+                item.muted
+                    ? Icons.volume_up_rounded
+                    : Icons.volume_off_rounded,
+                color: TinniPalette.gold,
+              ),
+              title: Text(item.muted ? 'Unmute' : 'Mute'),
+              subtitle: const Text('Notifications for this chat'),
+              onTap: () => Navigator.pop(sheetContext, 'mute'),
+            ),
+            ListTile(
+              key: const Key('inbox-action-delete'),
+              leading: const Icon(
+                Icons.delete_rounded,
+                color: Colors.redAccent,
+              ),
+              title: const Text(
+                'Delete chat',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+              subtitle:
+                  const Text('Delete all messages with this person'),
+              onTap: () => Navigator.pop(sheetContext, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'mute') await _toggleMuteMessages(item);
+    if (action == 'delete') await _confirmDeleteConversation(item);
+  }
+
+  Future<void> _toggleMuteMessages(DirectMessage item) async {
+    final muting = !item.muted;
+    final ok = muting
+        ? await state.muteMessageUser(item.id)
+        : await state.unmuteMessageUser(item.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message mute setting could not be saved'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteConversation(DirectMessage item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('message-delete-confirm'),
+        title: Text('Delete chat with ${item.name}?'),
+        content: const Text(
+          'All messages with this person will be deleted for you. '
+          'The other person will still see them. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('message-delete-cancel'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('message-delete-confirm-button'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final ok = await state.deleteConversation(item.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conversation could not be deleted'),
+        ),
+      );
+    }
+  }
+
   Widget _conversationTile(DirectMessage item) => Padding(
         padding: const EdgeInsets.only(bottom: 9),
         child: TinniPanel(
@@ -428,14 +533,27 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 fontWeight: item.unread > 0 ? FontWeight.w700 : FontWeight.w400,
               ),
             ),
-            trailing: item.unread > 0
-                ? Badge(
-                    label: Text(
-                      item.unread > 99 ? '99+' : item.unread.toString(),
-                    ),
-                  )
-                : const Icon(Icons.chevron_right_rounded),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (item.muted)
+                  const Icon(
+                    Icons.volume_off_rounded,
+                    size: 18,
+                    color: TinniPalette.muted,
+                  ),
+                if (item.muted) const SizedBox(width: 6),
+                item.unread > 0
+                    ? Badge(
+                        label: Text(
+                          item.unread > 99 ? '99+' : item.unread.toString(),
+                        ),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+              ],
+            ),
             onTap: () => _openConversation(item),
+            onLongPress: () => _showConversationActions(item),
           ),
         ),
       );

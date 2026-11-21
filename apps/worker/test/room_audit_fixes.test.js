@@ -439,7 +439,7 @@ test("deleting a room removes its image, follower rows and the R2 avatar", async
   assert.deepEqual(fx.files.deleted, [`rooms/${roomId}/avatar-777.jpg`]);
 });
 
-test("a kick records a marker, re-join clears it, a prune leaves none", async () => {
+test("a kick records a marker, re-join clears it, a quiet member stays and leaves none", async () => {
   const fx = await fixture();
   await makeUser(fx, "kick-owner");
   await makeUser(fx, "kick-victim");
@@ -463,11 +463,15 @@ test("a kick records a marker, re-join clears it, a prune leaves none", async ()
   const statusAfter = await fx.request(`/api/rooms/${roomId}/kick-status?user_id=kick-victim`, { userId: "kick-victim" });
   assert.equal(statusAfter.body.kicked, false);
 
-  // A presence-timeout prune (not a kick) leaves no marker.
+  // A quiet member (not a kick) leaves no marker — and since 2026-11-21
+  // (Vinay) there is no presence-timeout prune, so the member's row
+  // stays even with a heartbeat 60s old. They are just not SHOWN in
+  // the list until they poll again (online-only visibility).
   fx.sqlite.prepare("UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?").run(Date.now() - 60000, roomId, "prune-victim");
   const polled = await fx.request(`/api/rooms/${roomId}/members?user_id=kick-owner`, { userId: "kick-owner" });
   assert.equal(polled.status, 200, JSON.stringify(polled.body));
-  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_members WHERE room_id=? AND user_id=?").get(roomId, "prune-victim").n, 0);
+  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_members WHERE room_id=? AND user_id=?").get(roomId, "prune-victim").n, 1);
+  assert.equal((polled.body.members ?? []).some((member) => member.user_id === "prune-victim"), false);
   const pruneStatus = await fx.request(`/api/rooms/${roomId}/kick-status?user_id=prune-victim`, { userId: "prune-victim" });
   assert.equal(pruneStatus.status, 200, JSON.stringify(pruneStatus.body));
   assert.equal(pruneStatus.body.kicked, false);

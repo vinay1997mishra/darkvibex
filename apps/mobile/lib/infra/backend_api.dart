@@ -1268,6 +1268,23 @@ class BackendApi {
     return featured;
   }
 
+  /// Combined gifts + diamonds + coins (Vinay, 2026-11-21 — "Har user ka
+  /// alag combined API rakh"): ONE session-scoped call every 3s carrying the
+  /// full priced catalog + this user's live coin/diamond balances + recent
+  /// histories. Same pattern as [fruitPartyState]/[greedyGirlState]: the
+  /// server derives the user from the session, so no user_id is sent. The
+  /// standalone [giftCatalog]/[diamondsHistory]/[coinsHistory] calls keep
+  /// working unchanged (full histories on open); this is the live source.
+  Future<Map<String, dynamic>?> giftsCombinedState() async {
+    final value = await _json(
+      'GET',
+      '/api/gifts/combined',
+      returnErrorBody: true,
+    );
+    if (value == null) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
   Future<List<Map<String, dynamic>>> customGifts({
     required String userId,
   }) async {
@@ -1284,8 +1301,11 @@ class BackendApi {
         .toList(growable: false);
   }
 
+  // DM gift (Vinay, 2026-11-21): roomId is optional — a gift sent from
+  // the 1-to-1 DM chat has no room, so the key is left out entirely and
+  // the server records it as a DM gift (room_id null).
   Future<Map<String, dynamic>?> sendGift({
-    required String roomId,
+    String? roomId,
     required String senderUserId,
     required String receiverUserId,
     required String giftId,
@@ -1297,7 +1317,7 @@ class BackendApi {
         // Return server rejection codes so the room can show the actual reason.
         returnErrorBody: true,
         body: <String, dynamic>{
-          'room_id': roomId,
+          if (roomId != null && roomId.isNotEmpty) 'room_id': roomId,
           'sender_user_id': senderUserId,
           'receiver_user_id': receiverUserId,
           'gift_id': giftId,
@@ -1508,6 +1528,11 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  /// Combined Girls Party state (round + timer + config + wallet +
+  /// my bets + history) in ONE call. The screen polls this every 3s
+  /// (Vinay, 2026-11-21) instead of separate state calls — same pattern
+  /// as [roomStateOrNull]; the 250ms local clock keeps the countdown
+  /// ticking between syncs and a poll only corrects it to server time.
   Future<Map<String, dynamic>?> fruitPartyState() =>
       _json(
         'GET',
@@ -1533,6 +1558,11 @@ class BackendApi {
         },
       );
 
+  /// Combined Greedy Girl state (round + timer + config + wallet +
+  /// my bets + history) in ONE call. The screen polls this every 3s
+  /// (Vinay, 2026-11-21) instead of separate state calls — same pattern
+  /// as [roomStateOrNull]; the 250ms local clock keeps the countdown
+  /// ticking between syncs and a poll only corrects it to server time.
   Future<Map<String, dynamic>?> greedyGirlState() =>
       _json(
         'GET',
@@ -1610,11 +1640,13 @@ class BackendApi {
     required String roomId,
     int after = 0,
     String afterId = '',
+    String? period,
   }) async {
     final value = await _json(
       'GET',
       '/api/rooms/${Uri.encodeComponent(roomId)}/state'
-      '?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}',
+      '?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}'
+      '${period == null ? '' : '&period=${Uri.encodeQueryComponent(period)}'}',
     );
     if (value == null) return null;
     return Map<String, dynamic>.from(value);
@@ -1791,6 +1823,140 @@ class BackendApi {
     );
     return value?['ok'] == true;
   }
+
+  /// Call mute + ringtone (Vinay, 2026-11-21): mute all incoming
+  /// calls, mute calls from selected persons, pick the caller tune.
+  /// Stored server-side so the setting survives reinstall.
+  Future<Map<String, dynamic>?> callMuteSettings({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/calls/mute-settings?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> setCallMuteSettings({
+    required String userId,
+    bool? muteAll,
+    String? ringtone,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/mute-settings',
+        body: <String, dynamic>{
+          'user_id': userId,
+          if (muteAll != null) 'mute_all': muteAll,
+          if (ringtone != null) 'ringtone': ringtone,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> muteCallUser({
+    required String userId,
+    required String mutedUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/mute-user',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'muted_user_id': mutedUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> unmuteCallUser({
+    required String userId,
+    required String mutedUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/unmute-user',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'muted_user_id': mutedUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<List<Map<String, dynamic>>> mutedCallUsers({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/calls/muted-users?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['users'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  /// Inbox message mute + delete (Vinay, 2026-11-21): mute messages
+  /// from selected persons from the inbox long-press menu, and delete
+  /// a whole conversation. Stored server-side so the setting survives
+  /// reinstall — mirrors the call-mute methods above.
+  Future<Map<String, dynamic>?> muteMessageUser({
+    required String userId,
+    required String mutedUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/messages/mute-user',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'muted_user_id': mutedUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> unmuteMessageUser({
+    required String userId,
+    required String mutedUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/messages/unmute-user',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'muted_user_id': mutedUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<List<Map<String, dynamic>>> mutedMessageUsers({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/messages/muted-users?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['users'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> deleteConversation({
+    required String userId,
+    required String otherUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/messages/conversation/delete',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'other_user_id': otherUserId,
+        },
+        returnErrorBody: true,
+      );
 
   Future<List<Map<String, dynamic>>> officialMessages() async {
     final value = await _json('GET', '/api/messages/official');

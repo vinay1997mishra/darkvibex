@@ -19,6 +19,7 @@ import '../infra/backend_api.dart';
 import '../infra/agora_rtc.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
+import '../room/month_top_gifter.dart';
 import '../room/ktv_service.dart';
 import '../vip/vip_policy.dart';
 import '../vip/vip_visual_assets.dart';
@@ -53,6 +54,7 @@ import '../utils/rocket_reward_frames.dart';
 import '../widgets/rocket_reward_frame_preview.dart';
 import 'conversation_screen.dart';
 import 'rocket_room_screen.dart';
+import 'room_gift_ranking_screen.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -112,6 +114,9 @@ class _RoomScreenState extends State<RoomScreen>
   Future<void> _giftPlaybackQueue = Future<void>.value();
   List<Map<String, dynamic>> roomGiftRanking = <Map<String, dynamic>>[];
   bool _roomGiftRankingInitialized = false;
+  // Month's top gifter for the header chip, from the 3s state poll
+  // (gift_month_top). Shown only while they are in the room.
+  Map<String, dynamic>? roomMonthTopGifter;
   int _lastObservedRocketCompleted = 0;
   OverlayEntry? _rocketLaunchOverlay;
   bool _rocketRewardDialogShowing = false;
@@ -482,25 +487,49 @@ class _RoomScreenState extends State<RoomScreen>
         Map<String, dynamic>.from(inner is Map ? inner : settings),
       );
     }
+    // Gift totals ride this same 3s poll (Vinay, 2026-11-21): the
+    // lifetime total for the trophy/total chips, and the month's top
+    // gifter for the header chip. Absent on an older worker: skipped,
+    // never a crash and never a stale clear of the current values.
+    final giftTotal = state['gift_lifetime_total'];
+    final giftMonthTop = state['gift_month_top'];
+    final nextTotal = giftTotal is num ? giftTotal.toInt() : null;
+    final nextTop =
+        giftMonthTop is Map ? Map<String, dynamic>.from(giftMonthTop) : null;
+    final nextTopId = nextTop?['user_id']?.toString() ?? '';
+    final currentTopId = roomMonthTopGifter?['user_id']?.toString() ?? '';
+    if ((nextTotal != null && nextTotal > roomGiftLifetimeTotal) ||
+        nextTopId != currentTopId) {
+      if (!mounted) return;
+      setState(() {
+        if (nextTotal != null && nextTotal > roomGiftLifetimeTotal) {
+          roomGiftLifetimeTotal = nextTotal;
+        }
+        roomMonthTopGifter = nextTop;
+      });
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // The 3s state poll is gated on the app being active, so a
-      // background gap longer than the 30s presence TTL prunes my
-      // membership row server-side. Reconcile once on return instead of
-      // letting the poll count it as a kick.
+      // background gap pauses my heartbeat — but my membership row
+      // is never pruned (Vinay, 2026-11-21: an ID leaves a room only
+      // when the user leaves it himself). Reconcile once on return
+      // anyway, so a real kick during the gap still shows its dialog
+      // instead of being counted as a transient failure.
       unawaited(_reconcileMembershipAfterResume());
     }
   }
 
-  /// After a background gap, tell a real kick apart from a
-  /// presence-timeout prune. The server records a kick marker only for
-  /// an actual kick (worker part of this audit fix); a prune leaves
-  /// none. Kicked -> the normal "Removed from room" flow. Pruned ->
-  /// silently re-join and reset the kick tracker so the next poll does
-  /// not show that dialog for a room I was never kicked from.
+  /// After a background gap, tell a real kick apart from a leave.
+  /// The server records a kick marker only for an actual kick; a
+  /// leave leaves none, and there is no presence-timeout prune
+  /// (Vinay, 2026-11-21). Kicked -> the normal "Removed from room"
+  /// flow. Left -> silently re-join and reset the kick tracker so
+  /// the next poll does not show that dialog for a room I was never
+  /// kicked from.
   Future<void> _reconcileMembershipAfterResume() async {
     if (_leavingRoom || !mounted || !widget.state.backendConnected) return;
     List<Map<String, dynamic>>? rows;
@@ -1568,121 +1597,28 @@ class _RoomScreenState extends State<RoomScreen>
     );
   }
 
+  // Touching the Ranking / total chips opens the room ranking page
+  // (Vinay, 2026-11-21): this room only, Day / Week / Month, top 99.
+  // The old bottom sheet is replaced by the page.
   Future<void> _showRoomGiftRanking() async {
-    await _loadRoomGiftRanking();
+    await _openRoomGiftRanking();
+  }
+
+  // Monthly top gifter shown in the header (Vinay, 2026-11-21): the ID
+  // disappears the moment the top gifter exits the room, so it only
+  // shows while they are among the room members.
+  Map<String, dynamic>? get _monthTopGifterInRoom =>
+      monthTopGifterInRoom(roomMonthTopGifter, roomMembers);
+
+  Future<void> _openRoomGiftRanking({String initialPeriod = 'day'}) async {
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: TinniPalette.nearBlack,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .64,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.emoji_events_rounded,
-                      color: TinniPalette.gold,
-                    ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Room Ranking',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      _compactRoomCoins(roomGiftLifetimeTotal),
-                      style: const TextStyle(
-                        color: TinniPalette.gold,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: roomGiftRanking.isEmpty
-                    ? const Center(child: Text('No gifting ranking yet'))
-                    : ListView.builder(
-                        itemCount: roomGiftRanking.length,
-                        itemBuilder: (context, index) {
-                          final row = roomGiftRanking[index];
-                          final userId = row['user_id']?.toString() ?? '';
-                          final name =
-                              row['display_name']?.toString() ?? 'User';
-                          final avatar = row['avatar_key']?.toString() ?? '';
-                          final sent = int.tryParse(
-                                row['sent_coins']?.toString() ?? '',
-                              ) ??
-                              0;
-                          return ListTile(
-                            leading: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                CircleAvatar(
-                                  backgroundImage: avatar.isEmpty
-                                      ? null
-                                      : NetworkImage(
-                                          widget.state.backend.fileUrl(avatar),
-                                          headers:
-                                              widget.state.backend.fileHeaders,
-                                        ),
-                                  child: avatar.isEmpty
-                                      ? const Icon(Icons.person_rounded)
-                                      : null,
-                                ),
-                                Positioned(
-                                  right: -5,
-                                  top: -5,
-                                  child: CircleAvatar(
-                                    radius: 10,
-                                    backgroundColor: TinniPalette.gold,
-                                    child: Text(
-                                      '${index + 1}',
-                                      style: const TextStyle(
-                                        color: Colors.black,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            title: Text(name),
-                            subtitle: Text(
-                              'Sent ${_compactRoomCoins(sent)} coins',
-                            ),
-                            trailing:
-                                const Icon(Icons.chevron_right_rounded),
-                            onTap: userId.isEmpty
-                                ? null
-                                : () {
-                                    Navigator.pop(sheetContext);
-                                    Future<void>.delayed(Duration.zero, () {
-                                      if (!mounted) return;
-                                      _openRoomUserProfile(
-                                        userId,
-                                        name,
-                                        avatar,
-                                      );
-                                    });
-                                  },
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoomGiftRankingScreen(
+          roomId: widget.room.id,
+          roomName: roomName,
+          backend: widget.state.backend,
+          initialPeriod: initialPeriod,
         ),
       ),
     );
@@ -2621,25 +2557,40 @@ class _RoomScreenState extends State<RoomScreen>
   }
 
   Future<void> _sendGiftToSeatUser(String receiverId) async {
-    // Get the authoritative server wallet balance before showing Gift Box.
-    // A stale/default AppState balance must never be presented as the wallet.
+    // Combined gifts + diamonds + coins (Vinay, 2026-11-21): ONE call
+    // carrying the full catalog + the authoritative server wallet balance
+    // before showing Gift Box, instead of separate refreshWallet +
+    // giftCatalog calls. A stale/default AppState balance must never be
+    // presented as the wallet.
+    List<Map<String, dynamic>> catalog = <Map<String, dynamic>>[];
     if (widget.state.backendConnected) {
       try {
-        await widget.state.refreshWallet(notify: false);
+        final combined =
+            await widget.state.backend.giftsCombinedState();
+        final rows = combined?['gifts'];
+        if (rows is List) {
+          catalog = rows
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false);
+        }
+        final wallet = combined?['wallet'];
+        if (wallet is Map) {
+          final coins = int.tryParse(wallet['coins']?.toString() ?? '');
+          if (coins != null && coins != widget.state.coins) {
+            widget.state.setCoinBalance(coins);
+          }
+          final diamonds =
+              int.tryParse(wallet['diamonds']?.toString() ?? '');
+          if (diamonds != null && diamonds != widget.state.diamonds) {
+            widget.state.setDiamondBalance(diamonds);
+          }
+        }
       } catch (_) {
-        // Keep the Gift Box available when the wallet endpoint is temporarily
-        // unreachable; the last known balance remains visible.
+        // A network drop must not kill the Gift Box — it opens with an
+        // empty catalog and the last known balance.
+        catalog = <Map<String, dynamic>>[];
       }
-    }
-    List<Map<String, dynamic>> catalog;
-    try {
-      catalog = widget.state.backendConnected
-          ? await widget.state.backend.giftCatalog(userId: widget.state.userId)
-          : <Map<String, dynamic>>[];
-    } catch (_) {
-      // A network drop must not kill the Gift Box — it opens with an
-      // empty catalog and the last known balance.
-      catalog = <Map<String, dynamic>>[];
     }
     if (!mounted) return;
     List<Map<String, dynamic>> fetchedMembers;
@@ -8558,6 +8509,39 @@ class _RoomScreenState extends State<RoomScreen>
                     ],
                   ),
                 ),
+                // Month's top gifter (Vinay, 2026-11-21): their ID shows
+                // here for the month, and disappears the moment they exit
+                // the room (see _monthTopGifterInRoom). Tapping opens the
+                // ranking page on the Monthly tab.
+                if (_monthTopGifterInRoom != null) ...[
+                  const SizedBox(width: 6),
+                  TinniPanel(
+                    key: const Key('room-header-top-gifter'),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                    onTap: () =>
+                        _openRoomGiftRanking(initialPeriod: 'month'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.emoji_events_rounded,
+                          size: 15,
+                          color: TinniPalette.gold,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'ID ${formatPublicUserId(_monthTopGifterInRoom!['public_id'])}',
+                          style: const TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 _RoomLampButton(onTap: _openLamp),
                 const SizedBox(width: 6),
