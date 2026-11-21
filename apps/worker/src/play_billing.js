@@ -16,9 +16,14 @@
 // revokes the granted coins (never below zero) and PERMANENTLY bans the
 // user ID (Vinay, 2026-11-20).
 //
-// India prices (Rs.110/220/550/1100/5500) are set in Play Console, not
-// in code. The service-account JSON key lives in the Worker secret
+// India prices (Rs.110/220/550/1,100) are set in Play Console, not in code. The
+// service-account JSON key lives in the Worker secret
 // PLAY_SERVICE_ACCOUNT_JSON and is never committed.
+//
+// Only 4 packs (Vinay, 2026-11-21): Rs.110 ($1), Rs.220 ($2), Rs.550 ($5)
+// and Rs.1,100 ($10). The Rs.5,500 product was removed from the packs
+// list; it must also be removed/archived in Play Console (Vinay's
+// side) before it stops being buyable in the store.
 import { awardSellerVipExp, createVipGrant, ensureVipSchema, getVipStatus } from "./vip_store.js";
 
 export const PLAY_PACKAGE_NAME = "com.darkvibex.app";
@@ -31,7 +36,6 @@ export const PLAY_PACKS = [
   { product_id: "coins_16000000", coins: 16000000, usd_value: 2 },
   { product_id: "coins_40000000", coins: 40000000, usd_value: 5 },
   { product_id: "coins_80000000", coins: 80000000, usd_value: 10 },
-  { product_id: "coins_400000000", coins: 400000000, usd_value: 50 },
 ];
 
 const PLAY_PACKS_BY_ID = new Map(PLAY_PACKS.map((pack) => [pack.product_id, pack]));

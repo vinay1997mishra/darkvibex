@@ -169,7 +169,7 @@ function rtdnBody(notification) {
 const OIDC_BEARER = "Bearer oidc-test-token";
 const WEBHOOK_PATH = "/api/webhooks/google-play";
 
-test("packs list the 5 Play products and first-recharge availability", async () => {
+test("packs list the 4 Play products and first-recharge availability", async () => {
   const fx = await fixture();
   makeUser(fx, "buyer-1");
   const packs = await fx.call("/api/play/packs", { userId: "buyer-1" });
@@ -180,7 +180,6 @@ test("packs list the 5 Play products and first-recharge availability", async () 
     { product_id: "coins_16000000", coins: 16000000, usd_value: 2 },
     { product_id: "coins_40000000", coins: 40000000, usd_value: 5 },
     { product_id: "coins_80000000", coins: 80000000, usd_value: 10 },
-    { product_id: "coins_400000000", coins: 400000000, usd_value: 50 },
   ]);
   assert.equal(packs.body.first_recharge_available, true);
   const unauthenticated = await fx.call("/api/play/packs");
@@ -225,6 +224,44 @@ test("first verify doubles coins, grants VIP1 for 10 days, EXP on the total", as
   // First-recharge offer is spent now.
   const packs = await fx.call("/api/play/packs", { userId: "buyer-1" });
   assert.equal(packs.body.first_recharge_available, false);
+});
+
+test("first verify of the $5 pack doubles 40M to 80M with EXP on the total", async () => {
+  const fx = await fixture();
+  makeUser(fx, "buyer-1");
+  const result = await fx.call("/api/play/verify", {
+    method: "POST", userId: "buyer-1",
+    body: { productId: "coins_40000000", purchaseToken: "tok-five" },
+  });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.first_recharge, true);
+  assert.equal(result.body.coins_credited, 40000000);
+  assert.equal(result.body.bonus_coins, 40000000);
+  // EXP on ALL 80,000,000 credited coins: 80,000,000 * 3 / 160,000 = 1500
+  // (VIP0 boost 1.0x). 1500 EXP passes the VIP2 threshold (1200), so the
+  // effective level is 2 from EXP — above the VIP1 grant (which is still
+  // recorded, once per user ever).
+  assert.equal(result.body.exp_awarded, 1500);
+  assert.equal(result.body.vip_level, 2);
+  assert.equal(coins(fx, "buyer-1"), 80000000);
+  assert.deepEqual(ledgerKinds(fx, "buyer-1"), ["play_purchase:40000000", "play_purchase_bonus:40000000"]);
+  const purchase = fx.sqlite.prepare("SELECT * FROM play_purchases WHERE purchase_token=?").get("tok-five");
+  assert.equal(purchase.status, "granted");
+  assert.equal(purchase.coins_credited, 40000000);
+  assert.equal(purchase.bonus_coins, 40000000);
+  assert.equal(purchase.exp_awarded, 1500);
+  assert.equal(purchase.first_recharge, 1);
+  const grant = fx.sqlite.prepare("SELECT * FROM vip_grants WHERE user_id=?").get("buyer-1");
+  assert.equal(grant.level, 1);
+  assert.equal(grant.source, "play_first_recharge");
+  assert.equal(grant.reference_id, "tok-five");
+  assert.ok(grant.expires_at - grant.granted_at === 10 * 86400000, `grant lasts 10 days, got ${grant.expires_at - grant.granted_at}ms`);
+  assert.equal(fx.sqlite.prepare("SELECT vip_level FROM users WHERE id=?").get("buyer-1").vip_level, 2);
+  // The purchase was consumed on Google after granting.
+  assert.equal(google.consumeCalls.length, 1);
+  assert.ok(google.consumeCalls[0].includes("coins_40000000"));
+  assert.ok(google.consumeCalls[0].includes("tok-five"));
 });
 
 test("duplicate verify returns the stored result without crediting again", async () => {

@@ -217,6 +217,10 @@ class _RechargeScreenState extends State<RechargeScreen> {
       final bonus =
           int.tryParse(result['bonus_coins']?.toString() ?? '') ?? 0;
       final firstRecharge = result['first_recharge'] == true;
+      // Amounts show in dollars only, everywhere in the app (Vinay,
+      // 2026-11-21): no rupee amount is ever shown here, even though
+      // the Play sheet itself charges in rupees. The notice only
+      // states the coins.
       final message = StringBuffer('${_formatCoins(credited)} coins added to your wallet!');
       if (bonus > 0) {
         message.write(' Includes ${_formatCoins(bonus)} first-recharge bonus coins.');
@@ -525,8 +529,11 @@ class _PackTile extends StatelessWidget {
 
   final PlayPack pack;
 
-  /// Localized Play storefront price (e.g. "₹110.00"), or null when
-  /// the store has not returned it yet. Prices are never hardcoded.
+  /// Localized Play storefront price (e.g. "₹110.00"). The button
+  /// shows the pack's $ label ($1 / $2 / $5 / $10, Vinay 2026-11-21) — the
+  /// storefront price is only used to know the store has the pack,
+  /// and the rupee amount is what the payment sheet charges.
+  /// Null while the store has not returned it yet.
   final String? price;
   final bool buying;
   final bool buyingAny;
@@ -564,7 +571,7 @@ class _PackTile extends StatelessWidget {
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(price ?? '—'),
+                  : Text(pack.usdLabel),
             ),
           ],
         ),

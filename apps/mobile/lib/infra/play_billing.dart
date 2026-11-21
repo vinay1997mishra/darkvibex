@@ -8,11 +8,21 @@ import 'backend_api.dart';
 /// slice). Prices are set in Play Console and always come from the
 /// Play storefront — this list only fixes product IDs and coins per
 /// pack, never a price.
+///
+/// [usdLabel] is what the pack shows as in the app (Vinay, 2026-11-21):
+/// packs display as $1 / $2 / $5 / $10; the rupee amount
+/// (Rs.110 / Rs.220 / Rs.550 / Rs.1,100) is what the Play payment sheet
+/// charges and what the wallet shows after the payment.
 class PlayPack {
-  const PlayPack({required this.productId, required this.coins});
+  const PlayPack({
+    required this.productId,
+    required this.coins,
+    required this.usdLabel,
+  });
 
   final String productId;
   final int coins;
+  final String usdLabel;
 }
 
 /// Google Play Billing for coin purchases (Vinay, 2026-11-20).
@@ -33,13 +43,13 @@ class PlayPack {
 class PlayBillingService {
   PlayBillingService({InAppPurchase? store}) : _storeOverride = store;
 
-  /// The 5 coin packs, cheapest first.
+  /// The 4 coin packs (Vinay, 2026-11-21), cheapest first. Rs.5,500
+  /// was removed; it must also be removed in Play Console (Vinay's side).
   static const List<PlayPack> packs = <PlayPack>[
-    PlayPack(productId: 'coins_8000000', coins: 8000000),
-    PlayPack(productId: 'coins_16000000', coins: 16000000),
-    PlayPack(productId: 'coins_40000000', coins: 40000000),
-    PlayPack(productId: 'coins_80000000', coins: 80000000),
-    PlayPack(productId: 'coins_400000000', coins: 400000000),
+    PlayPack(productId: 'coins_8000000', coins: 8000000, usdLabel: '\$1'),
+    PlayPack(productId: 'coins_16000000', coins: 16000000, usdLabel: '\$2'),
+    PlayPack(productId: 'coins_40000000', coins: 40000000, usdLabel: '\$5'),
+    PlayPack(productId: 'coins_80000000', coins: 80000000, usdLabel: '\$10'),
   ];
 
   static const Set<String> productIds = <String>{
@@ -47,7 +57,6 @@ class PlayBillingService {
     'coins_16000000',
     'coins_40000000',
     'coins_80000000',
-    'coins_400000000',
   };
 
   final InAppPurchase? _storeOverride;
