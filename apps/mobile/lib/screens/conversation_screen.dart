@@ -35,6 +35,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool sendingEnvelope = false;
   bool isFriend = false;
   bool startingCall = false;
+  bool callsMutedForPeer = false;
 
   List<Map<String, dynamic>> get _timeline {
     final items = <Map<String, dynamic>>[
@@ -118,6 +119,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
       isFriend = friends.any(
         (row) => row['id']?.toString() == widget.otherUserId,
       );
+      // Call mute (Vinay, 2026-11-21): the per-person mute switch in
+      // this chat reflects the server-side setting.
+      await widget.state.refreshCallSettings(notify: false);
+      callsMutedForPeer =
+          widget.state.mutedCallUserIds.contains(widget.otherUserId);
     }
     await _persistMessages();
     if (!mounted) return;
@@ -455,6 +461,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           content: Text(
             switch (error) {
               'friends_required' => 'Both users must be friends before calling.',
+              'call_muted' => 'This user has muted calls.',
               'user_busy' => 'This user is busy on another call.',
               _ => 'Call could not be started.',
             },
@@ -476,6 +483,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
     );
   }
 
+  Future<void> _toggleMuteCalls() async {
+    final muting = !callsMutedForPeer;
+    final ok = muting
+        ? await widget.state.muteCallUser(widget.otherUserId)
+        : await widget.state.unmuteCallUser(widget.otherUserId);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call mute setting could not be saved')),
+      );
+      return;
+    }
+    setState(() => callsMutedForPeer = muting);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -492,6 +514,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.call_rounded),
+            ),
+          if (isFriend)
+            PopupMenuButton<String>(
+              tooltip: 'Chat options',
+              onSelected: (value) async {
+                if (value == 'mute_calls') await _toggleMuteCalls();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem<String>(
+                  value: 'mute_calls',
+                  child: Text(
+                    callsMutedForPeer ? 'Unmute calls' : 'Mute calls',
+                  ),
+                ),
+              ],
             ),
           if (widget.state.hasVipPrivilege('red_envelope'))
             IconButton(

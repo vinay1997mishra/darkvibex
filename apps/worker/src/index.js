@@ -2238,6 +2238,10 @@ async function ensureDirectCallTable(db) {
     ["caller_cost_coins", "INTEGER NOT NULL DEFAULT 0"],
     ["receiver_reward_diamonds", "INTEGER NOT NULL DEFAULT 0"],
     ["end_reason", "TEXT"],
+    // Call mute + missed-call push (Vinay, 2026-11-21): 1 once the
+    // receiver has been notified that this call was missed, so the
+    // same missed call is never notified twice.
+    ["missed_notified", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [name, definition] of callAdditions) {
     if (callColumns.has(name)) continue;
@@ -2247,9 +2251,42 @@ async function ensureDirectCallTable(db) {
 
 async function expireDirectCalls(db, ts = now()) {
   await ensureDirectCallTable(db);
+  // Return the calls that just expired so the caller can notify the
+  // receiver (missed call). Routes without env ignore the return.
+  const newlyMissed = await db.prepare(
+    "SELECT id,caller_user_id,receiver_user_id FROM direct_calls WHERE state='ringing' AND created_at<?"
+  ).bind(ts - 45000).all();
   await db.prepare(
     "UPDATE direct_calls SET state='missed',ended_at=?,updated_at=? WHERE state='ringing' AND created_at<?"
   ).bind(ts, ts, ts - 45000).run();
+  return newlyMissed.results ?? [];
+}
+
+// Call mute + missed-call push (Vinay, 2026-11-21): expire ringing
+// calls and send the receiver a missed-call notification for each one
+// that has not been notified yet. Best-effort — a failed push never
+// breaks the route that triggered the expiry.
+async function expireDirectCallsAndNotify(env, db) {
+  let missed = [];
+  try {
+    missed = await expireDirectCalls(db);
+  } catch (_) {
+    return;
+  }
+  for (const call of missed) {
+    try {
+      await sendMissedCallPush(env, db, {
+        receiverUserId: String(call.receiver_user_id ?? ""),
+        callerUserId: String(call.caller_user_id ?? ""),
+        callId: String(call.id ?? ""),
+      });
+      await db.prepare(
+        "UPDATE direct_calls SET missed_notified=1 WHERE id=?"
+      ).bind(String(call.id ?? "")).run();
+    } catch (_) {
+      // One failed notification never blocks the others.
+    }
+  }
 }
 
 async function directCallRow(db, callId) {
@@ -4295,6 +4332,166 @@ async function sendDirectMessagePush(
       }
     }),
   );
+}
+
+// Call mute + ringtone (Vinay, 2026-11-21): the user can mute ALL
+// incoming calls, or mute calls from SELECTED persons. The setting is
+// stored server-side (D1) so it survives reinstall. The ringtone the
+// user picked is the caller tune that rings on incoming unmuted calls.
+const CALL_RINGTONES = ["classic", "chime", "melody", "gentle"];
+const DEFAULT_CALL_RINGTONE = "classic";
+
+async function ensureCallMuteTables(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_call_mute (
+      user_id TEXT PRIMARY KEY,
+      mute_all INTEGER NOT NULL DEFAULT 0,
+      ringtone TEXT NOT NULL DEFAULT 'classic',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_call_muted_users (
+      user_id TEXT NOT NULL,
+      muted_user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, muted_user_id)
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_user_call_muted_users_user ON user_call_muted_users(user_id)"
+    ),
+  ]);
+}
+
+async function getCallMuteSettings(db, userId) {
+  await ensureCallMuteTables(db);
+  const row = await db.prepare(
+    "SELECT mute_all,ringtone FROM user_call_mute WHERE user_id=? LIMIT 1"
+  ).bind(userId).first();
+  const muted = await db.prepare(
+    "SELECT muted_user_id FROM user_call_muted_users WHERE user_id=? ORDER BY created_at DESC"
+  ).bind(userId).all();
+  const ringtone = CALL_RINGTONES.includes(String(row?.ringtone ?? ""))
+    ? String(row.ringtone)
+    : DEFAULT_CALL_RINGTONE;
+  return {
+    mute_all: Number(row?.mute_all ?? 0) === 1,
+    ringtone,
+    muted_user_ids: (muted.results ?? []).map((r) => String(r.muted_user_id ?? "")),
+  };
+}
+
+// True when the receiver muted all calls, or muted this caller.
+// Block and mutual-follow are checked separately and stay untouched.
+async function isCallMutedFor(db, receiverId, callerId) {
+  const settings = await getCallMuteSettings(db, receiverId);
+  if (settings.mute_all) return true;
+  return settings.muted_user_ids.includes(String(callerId));
+}
+
+async function sendCallPush(env, db, { receiverUserId, callerUserId, callId, kind }) {
+  if (!String(env.FCM_SERVICE_ACCOUNT_JSON ?? "").trim()) return;
+  await ensurePushTables(db);
+  const deviceRows = await db.prepare(
+    `SELECT token
+       FROM push_devices
+      WHERE user_id=? AND enabled=1
+      ORDER BY updated_at DESC
+      LIMIT 8`
+  ).bind(receiverUserId).all();
+  const devices = deviceRows.results ?? [];
+  if (!devices.length) return;
+
+  const caller = await db.prepare(
+    "SELECT display_name FROM users WHERE id=? LIMIT 1"
+  ).bind(callerUserId).first();
+  const callerName = String(caller?.display_name ?? "DarkVibeX user").slice(0, 80);
+  const auth = await fcmAccess(env);
+  if (!auth) return;
+
+  const isMissed = kind === "missed_call";
+  await Promise.all(
+    devices.map(async (device) => {
+      const token = String(device.token ?? "").trim();
+      if (!token) return;
+      try {
+        const response = await fetch(
+          `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(auth.projectId)}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${auth.token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              message: {
+                token,
+                data: {
+                  type: kind,
+                  caller_user_id: String(callerUserId),
+                  caller_name: callerName,
+                  call_id: String(callId),
+                },
+                android: {
+                  priority: "high",
+                  ttl: "86400s",
+                },
+                notification: {
+                  title: callerName,
+                  body: isMissed ? "Missed call" : "Incoming call",
+                },
+              },
+            }),
+          },
+        );
+        if (response.ok) return;
+        const errorText = await response.text();
+        if (
+          errorText.includes("UNREGISTERED") ||
+          errorText.includes("registration-token-not-registered")
+        ) {
+          await db.prepare(
+            "DELETE FROM push_devices WHERE token=?"
+          ).bind(token).run();
+        }
+        console.error("DarkVibeX call push failed", {
+          receiverUserId,
+          kind,
+          status: response.status,
+          error: errorText.slice(0, 300),
+        });
+      } catch (error) {
+        console.error("DarkVibeX call push request failed", {
+          receiverUserId,
+          kind,
+          error: String(error?.message ?? error),
+        });
+      }
+    }),
+  );
+}
+
+// Incoming unmuted call: the notification must reach the phone
+// IMMEDIATELY (Vinay, 2026-11-21) — high-priority FCM, sent the
+// moment the call is created. The app also polls, so a missing push
+// config never breaks ringing while the app is open.
+async function sendIncomingCallPush(env, db, { receiverUserId, callerUserId, callId }) {
+  await sendCallPush(env, db, {
+    receiverUserId,
+    callerUserId,
+    callId,
+    kind: "incoming_call",
+  });
+}
+
+// Missed / offline call (Vinay, 2026-11-21): when a call is not
+// picked or the receiver is offline, the receiver still gets a
+// missed-call notification.
+async function sendMissedCallPush(env, db, { receiverUserId, callerUserId, callId }) {
+  await sendCallPush(env, db, {
+    receiverUserId,
+    callerUserId,
+    callId,
+    kind: "missed_call",
+  });
 }
 
 async function handleApi(request, env, url) {
@@ -8846,7 +9043,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       return json({ ok: false, error: "invalid_call_target" }, { status: 400 });
     }
     await ensureDirectCallTable(db);
-    await expireDirectCalls(db);
+    await expireDirectCallsAndNotify(env, db);
     if (await usersBlockedEitherWay(db, callerId, receiverId)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
     }
@@ -8858,6 +9055,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     ).bind(callerId,receiverId,receiverId,callerId).first();
     if (Number(mutual?.a ?? 0) !== 1 || Number(mutual?.b ?? 0) !== 1) {
       return json({ ok: false, error: "friends_required" }, { status: 403 });
+    }
+    // Call mute (Vinay, 2026-11-21): if the receiver muted all calls,
+    // or muted this caller, the call never rings and never notifies.
+    // The caller gets a clean failure instead of a ringing state.
+    if (await isCallMutedFor(db, receiverId, callerId)) {
+      return json({ ok: false, error: "call_muted" }, { status: 403 });
     }
     const busy = await db.prepare(
       `SELECT id FROM direct_calls
@@ -8887,6 +9090,21 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
          receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
        VALUES(?,?,?,'ringing',?,NULL,NULL,?,'direct',400000,0,0,0,0,0)`
     ).bind(callId,callerId,receiverId,createdAt,createdAt).run();
+    // Instant incoming-call notification (Vinay, 2026-11-21): the
+    // receiver's phone is notified immediately, not only on the next
+    // 5s poll. Best-effort — a failed push never fails the call.
+    try {
+      await sendIncomingCallPush(env, db, {
+        receiverUserId: receiverId,
+        callerUserId: callerId,
+        callId,
+      });
+    } catch (error) {
+      console.error("DarkVibeX incoming call push failed", {
+        callId,
+        error: String(error?.message ?? error),
+      });
+    }
     return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
   }
 
@@ -8894,7 +9112,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    await expireDirectCalls(db);
+    await expireDirectCallsAndNotify(env, db);
     const row = await db.prepare(
       `SELECT c.*,
               u.display_name AS caller_name,
@@ -8939,7 +9157,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const callId = String(url.searchParams.get("call_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    await expireDirectCalls(db);
+    await expireDirectCallsAndNotify(env, db);
     let call = await directCallRow(db,callId);
     if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
       return json({ ok:false,error:"call_not_found" }, { status:404 });
@@ -8971,6 +9189,98 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       "UPDATE direct_calls SET state='ended',ended_at=?,updated_at=? WHERE id=? AND state IN ('ringing','active')"
     ).bind(ts,ts,callId).run();
     return json({ ok:true,call:await directCallRow(db,callId) });
+  }
+
+  // Call mute + ringtone settings (Vinay, 2026-11-21): stored
+  // server-side so they survive reinstall. Mute all calls, mute calls
+  // from selected persons, and pick the caller tune that rings on
+  // incoming unmuted calls.
+  if (url.pathname === "/api/calls/mute-settings" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const settings = await getCallMuteSettings(db, userId);
+    return json({ ok: true, ...settings });
+  }
+
+  if (url.pathname === "/api/calls/mute-settings" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallMuteTables(db);
+    const hasMuteAll = body.mute_all === true || body.mute_all === false;
+    const ringtone = typeof body.ringtone === "string" && CALL_RINGTONES.includes(body.ringtone)
+      ? body.ringtone
+      : null;
+    if (body.ringtone != null && ringtone == null) {
+      return json({ ok: false, error: "invalid_ringtone" }, { status: 400 });
+    }
+    if (!hasMuteAll && ringtone == null) {
+      return json({ ok: false, error: "nothing_to_update" }, { status: 400 });
+    }
+    const current = await getCallMuteSettings(db, userId);
+    const nextMuteAll = hasMuteAll ? (body.mute_all === true ? 1 : 0) : (current.mute_all ? 1 : 0);
+    const nextRingtone = ringtone ?? current.ringtone;
+    await db.prepare(
+      `INSERT INTO user_call_mute(user_id,mute_all,ringtone,updated_at)
+       VALUES(?,?,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         mute_all=excluded.mute_all,
+         ringtone=excluded.ringtone,
+         updated_at=excluded.updated_at`
+    ).bind(userId, nextMuteAll, nextRingtone, now()).run();
+    const settings = await getCallMuteSettings(db, userId);
+    return json({ ok: true, ...settings });
+  }
+
+  if (url.pathname === "/api/calls/mute-user" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const mutedUserId = String(body.muted_user_id ?? "").trim();
+    if (!userId || !mutedUserId || mutedUserId === userId) {
+      return json({ ok: false, error: "invalid_mute_target" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallMuteTables(db);
+    await ensureUser(db, mutedUserId);
+    await db.prepare(
+      "INSERT OR IGNORE INTO user_call_muted_users(user_id,muted_user_id,created_at) VALUES(?,?,?)"
+    ).bind(userId, mutedUserId, now()).run();
+    return json({ ok: true, ...(await getCallMuteSettings(db, userId)) });
+  }
+
+  if (url.pathname === "/api/calls/unmute-user" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const mutedUserId = String(body.muted_user_id ?? "").trim();
+    if (!userId || !mutedUserId) {
+      return json({ ok: false, error: "invalid_mute_target" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallMuteTables(db);
+    await db.prepare(
+      "DELETE FROM user_call_muted_users WHERE user_id=? AND muted_user_id=?"
+    ).bind(userId, mutedUserId).run();
+    return json({ ok: true, ...(await getCallMuteSettings(db, userId)) });
+  }
+
+  if (url.pathname === "/api/calls/muted-users" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const settings = await getCallMuteSettings(db, userId);
+    if (!settings.muted_user_ids.length) return json({ ok: true, users: [] });
+    const placeholders = settings.muted_user_ids.map(() => "?").join(",");
+    const rows = await db.prepare(
+      `SELECT id,display_name,avatar_key,public_id FROM users WHERE id IN (${placeholders})`
+    ).bind(...settings.muted_user_ids).all();
+    return json({ ok: true, users: rows.results ?? [] });
   }
 
   if (url.pathname === "/api/friends" && request.method === "GET") {

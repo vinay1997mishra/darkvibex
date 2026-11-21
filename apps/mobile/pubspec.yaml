@@ -52,3 +52,8 @@ flutter:
     - assets/images/ring_royal.svg
     - assets/vip18/
     - assets/medals/
+    # Call ringtones (Vinay, 2026-11-21): the user picks one as the
+    # caller tune that rings on incoming unmuted calls. The same files
+    # also live in android/app/src/main/res/raw/ so the native
+    # notification can play the selected tone while the app is closed.
+    - assets/ringtones/

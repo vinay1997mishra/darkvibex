@@ -5,6 +5,7 @@ import '../i18n/darkvibex_localization.dart';
 import '../ui/tinni_style.dart';
 import 'legal_policy_screen.dart';
 import 'mine_social_screens.dart';
+import 'call_settings_screen.dart';
 import 'settings_function_screens.dart';
 
 class AppSettingsScreen extends StatelessWidget {
@@ -51,6 +52,18 @@ class AppSettingsScreen extends StatelessWidget {
                         MaterialPageRoute<void>(
                           builder: (_) =>
                               MessageNotificationScreen(state: state),
+                        ),
+                      ),
+                    ),
+                    _row(
+                      context,
+                      key: const Key('setting-call-settings'),
+                      icon: Icons.call_rounded,
+                      title: 'Call settings',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              CallSettingsScreen(state: state),
                         ),
                       ),
                     ),

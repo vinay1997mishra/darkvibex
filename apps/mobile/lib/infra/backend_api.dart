@@ -1792,6 +1792,78 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  /// Call mute + ringtone (Vinay, 2026-11-21): mute all incoming
+  /// calls, mute calls from selected persons, pick the caller tune.
+  /// Stored server-side so the setting survives reinstall.
+  Future<Map<String, dynamic>?> callMuteSettings({
+    required String userId,
+  }) =>
+      _json(
+        'GET',
+        '/api/calls/mute-settings?user_id=${Uri.encodeQueryComponent(userId)}',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> setCallMuteSettings({
+    required String userId,
+    bool? muteAll,
+    String? ringtone,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/mute-settings',
+        body: <String, dynamic>{
+          'user_id': userId,
+          if (muteAll != null) 'mute_all': muteAll,
+          if (ringtone != null) 'ringtone': ringtone,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> muteCallUser({
+    required String userId,
+    required String mutedUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/mute-user',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'muted_user_id': mutedUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> unmuteCallUser({
+    required String userId,
+    required String mutedUserId,
+  }) =>
+      _json(
+        'POST',
+        '/api/calls/unmute-user',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'muted_user_id': mutedUserId,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<List<Map<String, dynamic>>> mutedCallUsers({
+    required String userId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/calls/muted-users?user_id=${Uri.encodeQueryComponent(userId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['users'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
   Future<List<Map<String, dynamic>>> officialMessages() async {
     final value = await _json('GET', '/api/messages/official');
     final rows = value?['notices'];

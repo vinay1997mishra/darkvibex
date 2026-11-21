@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../call/call_ringtone.dart';
 import '../ui/tinni_style.dart';
 import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
@@ -36,6 +37,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   List<Map<String, dynamic>> activity = const [];
   Timer? callPollTimer;
   bool incomingCallOpen = false;
+  final CallRingtonePlayer _ringtonePlayer = CallRingtonePlayer();
 
   AppState get state => widget.state;
 
@@ -79,6 +81,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void dispose() {
     callPollTimer?.cancel();
+    unawaited(_ringtonePlayer.dispose());
     super.dispose();
   }
 
@@ -133,6 +136,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
     incomingCallOpen = true;
     final callerName =
         call['caller_name']?.toString().trim().isNotEmpty == true ? call['caller_name'].toString() : 'User';
+    // Caller tune (Vinay, 2026-11-21): the ringtone the user picked
+    // rings while the incoming call waits. Muted calls never reach
+    // here — the server refuses them before any ringing call exists.
+    unawaited(_ringtonePlayer.start(state.callRingtoneId));
     final accept = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -159,6 +166,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ],
       ),
     );
+    await _ringtonePlayer.stop();
     if (!mounted) {
       incomingCallOpen = false;
       return;
