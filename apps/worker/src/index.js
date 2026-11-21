@@ -10332,12 +10332,6 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, url);
       }
-      if (url.pathname === "/creator-studio" || url.pathname.startsWith("/creator-studio/")) {
-        return new Response("Not Found", {
-          status: 404,
-          headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" },
-        });
-      }
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return json({ ok: false, error: "not_found" }, { status: 404 });
     } catch (error) {
