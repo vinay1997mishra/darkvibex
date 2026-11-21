@@ -26,7 +26,11 @@ test("expired persisted access tokens can refresh without changing account ID", 
   assert.ok(workerSource.includes("30 * 24 * 3600"));
   assert.ok(workerSource.includes('error: "session_expired"'));
   assert.ok(workerSource.includes('error: "guest_login_disabled"'));
-  assert.ok(stateSource.includes("'guest_login_disabled'"));
+  // Guest login is permanently removed (Vinay 2026-11-21) and the app has
+  // no users, so the app no longer handles guest_login_disabled at all:
+  // the string must stay out of the app. If anyone re-adds guest login
+  // handling to the app, this fails.
+  assert.ok(!stateSource.includes("'guest_login_disabled'"));
   assert.ok(!stateSource.includes("continueAsGuest"));
   assert.ok(!apiSource.includes("startGuestSession"));
   assert.ok(apiSource.includes("'/api/session/refresh'"));

@@ -317,7 +317,6 @@ class AppState extends ChangeNotifier {
         'forbidden',
         'user_banned',
         'user_suspended',
-        'guest_login_disabled',
       };
       final refreshIsTerminal = terminalErrors.contains(refreshError);
       final profileIsTerminal = terminalErrors.contains(profileError);
