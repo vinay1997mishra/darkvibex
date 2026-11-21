@@ -95,8 +95,13 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   void initState() {
     super.initState();
     unawaited(_load());
+    // Combined game-state (Vinay, 2026-11-21): ONE worker call every 3s
+    // carrying round + timer + config + wallet + my bets + history, so
+    // everything updates together in one go — same pattern as the room
+    // combined API. The 250ms clock below keeps the countdown ticking
+    // locally between syncs; a poll only corrects it to server time.
     stateTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 3),
       (_) => unawaited(_load(silent: true)),
     );
     clockTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -239,7 +244,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     try {
       value = await widget.state.backend.fruitPartyState();
     } catch (_) {
-      // Transient failure: treated like no data below; the 5s poll
+      // Transient failure: treated like no data below; the 3s poll
       // retries instead of an unhandled error every tick.
       value = null;
     } finally {
@@ -440,6 +445,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
             children: [
               Text(
                 seconds.toString().padLeft(2, '0'),
+                key: const Key('fruit-party-countdown-number'),
                 style: const TextStyle(
                   color: Color(0xFFF5C542),
                   fontSize: 34,

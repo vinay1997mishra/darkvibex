@@ -258,6 +258,82 @@ async function decorateRoomChatProfileMetadata(db, messages) {
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 
+// Room gift ranking periods use IST calendar windows (Vinay, 2026-11-21):
+// the day list changes at every IST midnight, the week list every Monday
+// 00:00 IST, and the month list refreshes on the 1st of the month.
+const IST_OFFSET_MS = 5 * 60 * 60 * 1000 + 30 * 60 * 1000;
+function istPeriodWindow(period, nowMs) {
+  const ist = new Date(nowMs + IST_OFFSET_MS);
+  const year = ist.getUTCFullYear();
+  const month = ist.getUTCMonth();
+  const date = ist.getUTCDate();
+  let startIstMs;
+  let endIstMs;
+  if (period === "day") {
+    startIstMs = Date.UTC(year, month, date);
+    endIstMs = startIstMs + 24 * 60 * 60 * 1000;
+  } else if (period === "week") {
+    // Monday-start week.
+    const mondayOffset = (ist.getUTCDay() + 6) % 7;
+    startIstMs = Date.UTC(year, month, date - mondayOffset);
+    endIstMs = startIstMs + 7 * 24 * 60 * 60 * 1000;
+  } else {
+    // month
+    startIstMs = Date.UTC(year, month, 1);
+    endIstMs = Date.UTC(year, month + 1, 1);
+  }
+  return { start: startIstMs - IST_OFFSET_MS, end: endIstMs - IST_OFFSET_MS };
+}
+
+// Room gift ranking rides the 3s room state poll (Vinay, 2026-11-21):
+// no separate ranking API. The state response always carries the
+// lifetime total + the current month's top gifter (one row, for the
+// header chip); the full top-99 list for a period is included only
+// when the caller passes ?period= (the ranking page polls with it).
+// A period with no sending returns an empty ranking. This room only.
+const roomGiftRankingSelect = `SELECT g.sender_user_id AS user_id,
+        CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+        COALESCE(u.display_name,'User') AS display_name,
+        u.avatar_key,
+        SUM(g.coin_cost) AS sent_coins,
+        COUNT(*) AS gift_count
+   FROM gift_events g
+   LEFT JOIN users u ON u.id=g.sender_user_id
+   LEFT JOIN owner_user_overrides io ON io.user_id=g.sender_user_id`;
+const roomGiftRankingGroup = `GROUP BY g.sender_user_id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
+  ORDER BY sent_coins DESC,gift_count DESC,g.sender_user_id ASC`;
+
+async function loadRoomGiftSummaryState(db, roomId, periodParam) {
+  const period = ["day", "week", "month", "lifetime"].includes(periodParam) ? periodParam : null;
+  const totalRow = await db.prepare(
+    "SELECT COALESCE(SUM(coin_cost),0) AS lifetime_total FROM gift_events WHERE room_id=?"
+  ).bind(roomId).first();
+  const monthWindow = istPeriodWindow("month", now());
+  const monthTop = await db.prepare(
+    `${roomGiftRankingSelect} WHERE g.room_id=? AND g.created_at>=? AND g.created_at<? ${roomGiftRankingGroup} LIMIT 1`
+  ).bind(roomId, monthWindow.start, monthWindow.end).all();
+  let ranking = [];
+  if (period != null) {
+    const windowArgs = [];
+    let windowClause = "";
+    if (period !== "lifetime") {
+      const window = istPeriodWindow(period, now());
+      windowClause = " AND g.created_at>=? AND g.created_at<?";
+      windowArgs.push(window.start, window.end);
+    }
+    const rows = await db.prepare(
+      `${roomGiftRankingSelect} WHERE g.room_id=?${windowClause} ${roomGiftRankingGroup} LIMIT 99`
+    ).bind(roomId, ...windowArgs).all();
+    ranking = rows.results ?? [];
+  }
+  return {
+    lifetime_total: Number(totalRow?.lifetime_total ?? 0),
+    month_top: monthTop.results?.[0] ?? null,
+    period: period ?? "lifetime",
+    ranking,
+  };
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -1089,6 +1165,113 @@ async function effectiveGiftCatalog(db) {
   );
 }
 
+// Priced gift catalog for one user (Vinay, 2026-11-21 — combined API):
+// VIP-gated base catalog + approved custom gifts, each priced through the
+// owner's per-user pricing. Shared by GET /api/gifts/catalog and GET
+// /api/gifts/combined so both return the exact same catalog.
+async function loadPricedGiftCatalog(db, userId) {
+  const vip = await getVipStatus(db, userId, now());
+  await ensureCustomGiftSchema(db);
+  const custom = await db.prepare(
+    "SELECT id,name,asset_key,coin_cost FROM custom_gifts WHERE status='approved' ORDER BY updated_at DESC LIMIT 100"
+  ).all();
+  const customRows = (custom.results ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    emoji: "🎁",
+    coin_cost: Number(row.coin_cost),
+    vip_level: 0,
+    category: "custom",
+    asset_key: row.asset_key,
+  }));
+  const available = [
+    ...(await effectiveGiftCatalog(db)).filter((gift) =>
+      Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
+    ...customRows,
+  ];
+  const priced = [];
+  for (const gift of available) {
+    const pricing = await ownerUserPricing(
+      db, userId, "gift", String(gift.id ?? ""), Number(gift.coin_cost ?? 0), null,
+    );
+    const price = Math.max(1, Number(pricing.price_coins ?? gift.coin_cost ?? 0));
+    priced.push({
+      ...gift,
+      coin_cost: price,
+      owner_price_override: pricing.overridden,
+    });
+  }
+  return priced;
+}
+
+// Combined gifts + diamonds + coins state for ONE user (Vinay, 2026-11-21 —
+// "Har user ka alag combined API rakh"): ONE call every 3s carrying the full
+// priced catalog (same as /api/gifts/catalog) + this user's live wallet
+// balances + recent diamond/coin history, so gift UIs, the Diamond received
+// view and the coin balance all update together without separate calls.
+// The caller is the session user (session.sub) — never another user's data.
+// Histories are capped at 20 recent rows per section: the full 200-row
+// histories stay on /api/wallet/diamonds/history and /api/wallet/coins/history
+// (loaded once on open), so a 3s poll at Lucky-gift volume (5k–10k gifts
+// from one user) cannot balloon the payload.
+const GIFTS_COMBINED_HISTORY_LIMIT = 20;
+async function giftsCombinedState(db, userId, ts = now()) {
+  const user = await ensureUser(db, userId);
+  const gifts = await loadPricedGiftCatalog(db, userId);
+  await ensureDiamondConversionTable(db);
+  const diamondsGifts = await db.prepare(
+    `SELECT g.id,g.gift_id,
+            COALESCE(u.display_name,'User') AS sender_name,
+            u.public_id AS sender_public_id,
+            g.sender_user_id,g.coin_cost AS diamonds,g.created_at
+       FROM gift_events g
+       LEFT JOIN users u ON u.id=g.sender_user_id
+      WHERE g.receiver_user_id=?
+      ORDER BY g.created_at DESC LIMIT ?`
+  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
+  const conversions = await db.prepare(
+    "SELECT id,diamonds,coins,rate,created_at FROM diamond_conversions WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
+  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
+  const coinsGifts = await db.prepare(
+    `SELECT g.id,g.gift_id,
+            COALESCE(u.display_name,'User') AS receiver_name,
+            u.public_id AS receiver_public_id,
+            g.receiver_user_id,g.coin_cost AS coins,g.created_at
+       FROM gift_events g
+       LEFT JOIN users u ON u.id=g.receiver_user_id
+      WHERE g.sender_user_id=?
+      ORDER BY g.created_at DESC LIMIT ?`
+  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
+  const sellerReceived = await db.prepare(
+    `SELECT l.id,l.kind,l.amount AS coins,l.reference_id,l.created_at,
+            CASE WHEN l.kind='merchant_received' THEN 'merchant' ELSE 'coin_seller' END AS wallet_type
+       FROM wallet_ledger l
+      WHERE l.user_id=? AND l.kind IN ('coin_seller_received','merchant_received')
+      ORDER BY l.created_at DESC LIMIT ?`
+  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
+  return {
+    ok: true,
+    server_time: ts,
+    gifts,
+    current_coins: Number(user?.coins ?? 0),
+    current_diamonds: Number(user?.diamonds ?? 0),
+    wallet: {
+      coins: Number(user?.coins ?? 0),
+      diamonds: Number(user?.diamonds ?? 0),
+    },
+    diamonds: {
+      current_diamonds: Number(user?.diamonds ?? 0),
+      gifts: diamondsGifts.results ?? [],
+      conversions: conversions.results ?? [],
+    },
+    coins: {
+      current_coins: Number(user?.coins ?? 0),
+      gifts: coinsGifts.results ?? [],
+      seller_received: sellerReceived.results ?? [],
+    },
+  };
+}
+
 // Resolve the visual bundle configured for each VIP level. Asset references
 // point at the same live catalog used by Store purchases, so Owner edits flow to
 // the app without shipping another APK.
@@ -1766,10 +1949,12 @@ async function ensureRoomSafetyTables(db) {
 }
 
 // Kick markers (room audit 2026-11-20): a plain kick records one row so
-// the app can tell a real kick apart from a presence-timeout prune when
-// it resumes — backgrounding the app for >30s prunes the member row,
-// which looks identical to a kick otherwise. The marker is cleared on
-// re-join, so it never outlives the next entry.
+// the app can tell a real kick apart from a missing member row when it
+// resumes. Since 2026-11-21 there is no presence-timeout prune (Vinay:
+// an ID leaves a room only when the user leaves it himself), so a
+// missing row now means a real kick, a leave, or a ban — the marker
+// names the kick case. The marker is cleared on re-join, so it never
+// outlives the next entry.
 async function ensureRoomKickEventsTable(db) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS room_kick_events (
@@ -1866,10 +2051,14 @@ async function checkRoomMemberPresence(db, env, roomId, actorId) {
   await db.prepare(
     "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
   ).bind(heartbeatTs, roomId, actorId).run();
-  const presenceCutoff = await cleanupStaleRoomMembers(db, heartbeatTs, env);
+  const presenceCutoff = await refreshRoomPresence(db, heartbeatTs, env);
+  // Membership is the row itself (Vinay, 2026-11-21): no freshness
+  // check — a member whose heartbeat went stale is still in the room,
+  // so a background gap never 403s. Freshness only decides who is
+  // SHOWN in the member list (loadRoomMemberRows).
   const member = await db.prepare(
-    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ? AND updated_at >= ?"
-  ).bind(roomId, actorId, presenceCutoff).first();
+    "SELECT 1 AS active FROM room_members WHERE room_id = ? AND user_id = ?"
+  ).bind(roomId, actorId).first();
   if (!member) return { ok: false, error: "room_membership_required", status: 403 };
   return { ok: true, presenceCutoff };
 }
@@ -2238,6 +2427,10 @@ async function ensureDirectCallTable(db) {
     ["caller_cost_coins", "INTEGER NOT NULL DEFAULT 0"],
     ["receiver_reward_diamonds", "INTEGER NOT NULL DEFAULT 0"],
     ["end_reason", "TEXT"],
+    // Call mute + missed-call push (Vinay, 2026-11-21): 1 once the
+    // receiver has been notified that this call was missed, so the
+    // same missed call is never notified twice.
+    ["missed_notified", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [name, definition] of callAdditions) {
     if (callColumns.has(name)) continue;
@@ -2247,9 +2440,42 @@ async function ensureDirectCallTable(db) {
 
 async function expireDirectCalls(db, ts = now()) {
   await ensureDirectCallTable(db);
+  // Return the calls that just expired so the caller can notify the
+  // receiver (missed call). Routes without env ignore the return.
+  const newlyMissed = await db.prepare(
+    "SELECT id,caller_user_id,receiver_user_id FROM direct_calls WHERE state='ringing' AND created_at<?"
+  ).bind(ts - 45000).all();
   await db.prepare(
     "UPDATE direct_calls SET state='missed',ended_at=?,updated_at=? WHERE state='ringing' AND created_at<?"
   ).bind(ts, ts, ts - 45000).run();
+  return newlyMissed.results ?? [];
+}
+
+// Call mute + missed-call push (Vinay, 2026-11-21): expire ringing
+// calls and send the receiver a missed-call notification for each one
+// that has not been notified yet. Best-effort — a failed push never
+// breaks the route that triggered the expiry.
+async function expireDirectCallsAndNotify(env, db) {
+  let missed = [];
+  try {
+    missed = await expireDirectCalls(db);
+  } catch (_) {
+    return;
+  }
+  for (const call of missed) {
+    try {
+      await sendMissedCallPush(env, db, {
+        receiverUserId: String(call.receiver_user_id ?? ""),
+        callerUserId: String(call.caller_user_id ?? ""),
+        callId: String(call.id ?? ""),
+      });
+      await db.prepare(
+        "UPDATE direct_calls SET missed_notified=1 WHERE id=?"
+      ).bind(String(call.id ?? "")).run();
+    } catch (_) {
+      // One failed notification never blocks the others.
+    }
+  }
 }
 
 async function directCallRow(db, callId) {
@@ -2296,13 +2522,24 @@ async function ensureImageTables(db) {
   } catch (_) {}
 }
 
+// Room presence (Vinay, 2026-11-21): an ID leaves a room ONLY when the
+// user leaves it himself, is kicked/banned, changes country, or joins
+// another room. There is NO presence timeout on MEMBERSHIP: a
+// backgrounded or quiet member is never removed, so this function
+// deletes nothing. The 30s window still defines "online": only members
+// with a fresh heartbeat are SHOWN in the member list (Vinay, 2026-11-21
+// 16:20 IST: "Jo user jab tak app me online hai tab tak hi dikhega"),
+// only they count toward the online number in the room lists, and a
+// room with no fresh member stays hidden from public lists — that keeps
+// abandoned rooms from surfacing. A member who goes quiet just stops
+// being shown; the moment they poll again their heartbeat refreshes and
+// they reappear, with no re-join and no kick dialog. Empty rooms still
+// get their chat wiped at once (Vinay, 2026-11-20): that only happens
+// now when the last member genuinely leaves.
 const ROOM_PRESENCE_TTL_MS = 30 * 1000;
 
-async function cleanupStaleRoomMembers(db, ts = now(), env = null) {
+async function refreshRoomPresence(db, ts = now(), env = null) {
   const cutoff = Number(ts) - ROOM_PRESENCE_TTL_MS;
-  await db.prepare(
-    "DELETE FROM room_members WHERE updated_at > 0 AND updated_at < ?"
-  ).bind(cutoff).run();
   await wipeChatOfEmptyRooms(db, env);
   return cutoff;
 }
@@ -2376,7 +2613,7 @@ async function listRooms(db, viewerUserId, env = null) {
     "SELECT country_code FROM users WHERE id=? LIMIT 1"
   ).bind(viewerUserId).first();
   const viewerCountry = String(viewer?.country_code ?? "").trim().toUpperCase();
-  const presenceCutoff = await cleanupStaleRoomMembers(db, now(), env);
+  const presenceCutoff = await refreshRoomPresence(db, now(), env);
   const result = await db.prepare(
     `SELECT r.id, r.name, r.owner_user_id, r.seat_count, r.locked, r.vip_only, r.country_code,
             CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -4222,6 +4459,17 @@ async function sendDirectMessagePush(
   ).bind(receiverUserId).first();
   if (Number(preference?.message_enabled ?? 1) !== 1) return;
 
+  // Deleted chats stay gone (Vinay, 2026-11-21): if the receiver
+  // deleted this conversation, its new messages get no notification
+  // — no inbox row and no unread count either, so the chat never
+  // comes back on a new message.
+  if (await isConversationHiddenFor(db, receiverUserId, senderUserId)) return;
+
+  // Inbox message mute (Vinay, 2026-11-21): a muted chat still
+  // receives the message — only its push notification is silenced.
+  // The check lives here, in the only place a DM push is sent.
+  if (await isMessageMutedFor(db, receiverUserId, senderUserId)) return;
+
   const deviceRows = await db.prepare(
     `SELECT token
        FROM push_devices
@@ -4295,6 +4543,241 @@ async function sendDirectMessagePush(
       }
     }),
   );
+}
+
+// Call mute + ringtone (Vinay, 2026-11-21): the user can mute ALL
+// incoming calls, or mute calls from SELECTED persons. The setting is
+// stored server-side (D1) so it survives reinstall. The ringtone the
+// user picked is the caller tune that rings on incoming unmuted calls.
+const CALL_RINGTONES = ["classic", "chime", "melody", "gentle"];
+const DEFAULT_CALL_RINGTONE = "classic";
+
+async function ensureCallMuteTables(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_call_mute (
+      user_id TEXT PRIMARY KEY,
+      mute_all INTEGER NOT NULL DEFAULT 0,
+      ringtone TEXT NOT NULL DEFAULT 'classic',
+      updated_at INTEGER NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_call_muted_users (
+      user_id TEXT NOT NULL,
+      muted_user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, muted_user_id)
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_user_call_muted_users_user ON user_call_muted_users(user_id)"
+    ),
+  ]);
+}
+
+async function getCallMuteSettings(db, userId) {
+  await ensureCallMuteTables(db);
+  const row = await db.prepare(
+    "SELECT mute_all,ringtone FROM user_call_mute WHERE user_id=? LIMIT 1"
+  ).bind(userId).first();
+  const muted = await db.prepare(
+    "SELECT muted_user_id FROM user_call_muted_users WHERE user_id=? ORDER BY created_at DESC"
+  ).bind(userId).all();
+  const ringtone = CALL_RINGTONES.includes(String(row?.ringtone ?? ""))
+    ? String(row.ringtone)
+    : DEFAULT_CALL_RINGTONE;
+  return {
+    mute_all: Number(row?.mute_all ?? 0) === 1,
+    ringtone,
+    muted_user_ids: (muted.results ?? []).map((r) => String(r.muted_user_id ?? "")),
+  };
+}
+
+// True when the receiver muted all calls, or muted this caller.
+// Block and mutual-follow are checked separately and stay untouched.
+async function isCallMutedFor(db, receiverId, callerId) {
+  const settings = await getCallMuteSettings(db, receiverId);
+  if (settings.mute_all) return true;
+  return settings.muted_user_ids.includes(String(callerId));
+}
+
+// Inbox message mute (Vinay, 2026-11-21): the user can mute messages
+// from SELECTED persons. Muting only silences the push notification —
+// messages still arrive and still show in the inbox with their unread
+// count. Stored server-side (D1) so it survives reinstall, mirroring
+// the call-mute tables above.
+async function ensureMessageMuteTables(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_message_muted_users (
+      user_id TEXT NOT NULL,
+      muted_user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, muted_user_id)
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_user_message_muted_users_user ON user_message_muted_users(user_id)"
+    ),
+  ]);
+}
+
+async function getMessageMutedUserIds(db, userId) {
+  await ensureMessageMuteTables(db);
+  const muted = await db.prepare(
+    "SELECT muted_user_id FROM user_message_muted_users WHERE user_id=? ORDER BY created_at DESC"
+  ).bind(userId).all();
+  return (muted.results ?? []).map((r) => String(r.muted_user_id ?? ""));
+}
+
+// True when the receiver muted messages from this sender.
+async function isMessageMutedFor(db, receiverId, senderId) {
+  const mutedIds = await getMessageMutedUserIds(db, receiverId);
+  return mutedIds.includes(String(senderId));
+}
+
+// Inbox conversation delete, delete-for-me only (Vinay, 2026-11-21):
+// deleting a chat hides it ONLY for the user who deleted it — the
+// other person keeps every message. Stored server-side (D1) as a
+// per-user hidden flag, so no message row is ever deleted here.
+// The flag PERSISTS: a new message from that person must NOT bring
+// the chat back (Vinay, 2026-11-21: "New msg aane per chat waps nhi
+// aani chahiye") — no notification, no unread count, no inbox row.
+// Nothing clears the row: not incoming messages, not messages the
+// deleter sends afterwards, not mute/unmute. The thread still shows
+// messages sent AFTER deleted_at if the deleter opens it directly
+// (e.g. from the other person's profile) — only the messages that
+// existed at delete time stay hidden forever.
+async function ensureDeletedConversationTables(db) {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS user_deleted_conversations (
+      user_id TEXT NOT NULL,
+      other_user_id TEXT NOT NULL,
+      deleted_at INTEGER NOT NULL,
+      PRIMARY KEY(user_id, other_user_id)
+    )`),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_user_deleted_conversations_user ON user_deleted_conversations(user_id)"
+    ),
+  ]);
+}
+
+async function isConversationHiddenFor(db, userId, otherUserId) {
+  await ensureDeletedConversationTables(db);
+  const row = await db.prepare(
+    "SELECT 1 AS hidden FROM user_deleted_conversations WHERE user_id=? AND other_user_id=? LIMIT 1"
+  ).bind(userId, otherUserId).first();
+  return Number(row?.hidden ?? 0) === 1;
+}
+
+async function getDeletedConversationCutoff(db, userId, otherUserId) {
+  await ensureDeletedConversationTables(db);
+  const row = await db.prepare(
+    "SELECT deleted_at FROM user_deleted_conversations WHERE user_id=? AND other_user_id=? LIMIT 1"
+  ).bind(userId, otherUserId).first();
+  return Number(row?.deleted_at ?? 0);
+}
+
+async function sendCallPush(env, db, { receiverUserId, callerUserId, callId, kind }) {
+  if (!String(env.FCM_SERVICE_ACCOUNT_JSON ?? "").trim()) return;
+  await ensurePushTables(db);
+  const deviceRows = await db.prepare(
+    `SELECT token
+       FROM push_devices
+      WHERE user_id=? AND enabled=1
+      ORDER BY updated_at DESC
+      LIMIT 8`
+  ).bind(receiverUserId).all();
+  const devices = deviceRows.results ?? [];
+  if (!devices.length) return;
+
+  const caller = await db.prepare(
+    "SELECT display_name FROM users WHERE id=? LIMIT 1"
+  ).bind(callerUserId).first();
+  const callerName = String(caller?.display_name ?? "DarkVibeX user").slice(0, 80);
+  const auth = await fcmAccess(env);
+  if (!auth) return;
+
+  const isMissed = kind === "missed_call";
+  await Promise.all(
+    devices.map(async (device) => {
+      const token = String(device.token ?? "").trim();
+      if (!token) return;
+      try {
+        const response = await fetch(
+          `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(auth.projectId)}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${auth.token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              message: {
+                token,
+                data: {
+                  type: kind,
+                  caller_user_id: String(callerUserId),
+                  caller_name: callerName,
+                  call_id: String(callId),
+                },
+                android: {
+                  priority: "high",
+                  ttl: "86400s",
+                },
+                notification: {
+                  title: callerName,
+                  body: isMissed ? "Missed call" : "Incoming call",
+                },
+              },
+            }),
+          },
+        );
+        if (response.ok) return;
+        const errorText = await response.text();
+        if (
+          errorText.includes("UNREGISTERED") ||
+          errorText.includes("registration-token-not-registered")
+        ) {
+          await db.prepare(
+            "DELETE FROM push_devices WHERE token=?"
+          ).bind(token).run();
+        }
+        console.error("DarkVibeX call push failed", {
+          receiverUserId,
+          kind,
+          status: response.status,
+          error: errorText.slice(0, 300),
+        });
+      } catch (error) {
+        console.error("DarkVibeX call push request failed", {
+          receiverUserId,
+          kind,
+          error: String(error?.message ?? error),
+        });
+      }
+    }),
+  );
+}
+
+// Incoming unmuted call: the notification must reach the phone
+// IMMEDIATELY (Vinay, 2026-11-21) — high-priority FCM, sent the
+// moment the call is created. The app also polls, so a missing push
+// config never breaks ringing while the app is open.
+async function sendIncomingCallPush(env, db, { receiverUserId, callerUserId, callId }) {
+  await sendCallPush(env, db, {
+    receiverUserId,
+    callerUserId,
+    callId,
+    kind: "incoming_call",
+  });
+}
+
+// Missed / offline call (Vinay, 2026-11-21): when a call is not
+// picked or the receiver is offline, the receiver still gets a
+// missed-call notification.
+async function sendMissedCallPush(env, db, { receiverUserId, callerUserId, callId }) {
+  await sendCallPush(env, db, {
+    receiverUserId,
+    callerUserId,
+    callId,
+    kind: "missed_call",
+  });
 }
 
 async function handleApi(request, env, url) {
@@ -5116,7 +5599,7 @@ async function handleApi(request, env, url) {
     // Count only members fresh within the presence TTL, like listRooms
     // (room audit 2026-11-20: followed rooms showed phantom online counts
     // from stale members).
-    const presenceCutoff = await cleanupStaleRoomMembers(db, now(), env);
+    const presenceCutoff = await refreshRoomPresence(db, now(), env);
     const rows = await db.prepare(
       `SELECT r.id,r.name,
               CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
@@ -7160,7 +7643,7 @@ async function handleApi(request, env, url) {
       ).bind(roomId, userId, ts, ts),
     ]);
     // Re-joining clears a previous kick marker for this room (room audit
-    // 2026-11-20: the marker only distinguishes a kick from a prune).
+    // 2026-11-20: the marker only names a kick).
     await ensureRoomKickEventsTable(db);
     await db.prepare("DELETE FROM room_kick_events WHERE room_id=? AND user_id=?").bind(roomId, userId).run();
     await recordLampRoomEntry(db, roomId, userId, ts);
@@ -7636,9 +8119,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       const result = await db.prepare("DELETE FROM room_members WHERE room_id = ? AND user_id = ?")
         .bind(roomId, targetId).run();
       // A plain kick (not a ban) records a kick marker so the app can
-      // tell a real kick apart from a presence-timeout prune on resume
-      // (room audit 2026-11-20). A ban needs no marker: the banned user
-      // cannot re-join, so the re-join attempt fails with room_blocked.
+      // tell a real kick apart from a leave on resume (room audit
+      // 2026-11-20; no presence prune since 2026-11-21). A ban needs no
+      // marker: the banned user cannot re-join, so the re-join attempt
+      // fails with room_blocked.
       if (!shouldBan && Number(result.meta?.changes ?? 0) > 0) {
         await ensureRoomKickEventsTable(db);
         await db.prepare(
@@ -7707,6 +8191,11 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     } catch (error) {
       settingsLoaded = null;
     }
+    // Gift ranking rides this same 3s poll (Vinay, 2026-11-21): the
+    // lifetime total + month top gifter always, the full top-99 list
+    // only when the caller passes ?period= (the ranking page).
+    const giftPeriodParam = String(url.searchParams.get("period") ?? "").trim().toLowerCase();
+    const giftSummary = await loadRoomGiftSummaryState(db, roomId, giftPeriodParam);
     return json({
       ok: true,
       members: membersLoaded.members,
@@ -7714,13 +8203,18 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       controls: controlsLoaded,
       events: eventsLoaded.events,
       settings: settingsLoaded,
+      gift_lifetime_total: giftSummary.lifetime_total,
+      gift_month_top: giftSummary.month_top,
+      gift_period: giftSummary.period,
+      gift_ranking: giftSummary.ranking,
     });
   }
   // Was I kicked from this room? (room audit 2026-11-20) — the app asks
   // this on resume when its member row is gone, to tell a real kick
-  // apart from a presence-timeout prune (background >30s). A prune leaves
-  // no marker, so the app silently re-joins instead of showing the
-  // "removed" dialog.
+  // apart from a leave. Since 2026-11-21 there is no presence-timeout
+  // prune, so a missing row is a kick, a leave, or a ban — and only a
+  // kick leaves a marker, so the app shows the "removed" dialog only
+  // for a real kick.
   if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "kick-status" && request.method === "GET") {
     const roomId = parts[2];
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
@@ -8172,6 +8666,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     if (authError) return authError;
     await ensureImageTables(db);
     await ensureCosmeticsSchema(db);
+    await ensureDeletedConversationTables(db);
     const vip = await getVipStatus(db, userId, now());
     const retentionDays = vip.active ? Number(vip.message_retention_days ?? 0) : 0;
     const cutoff = retentionDays > 0 ? now() - retentionDays * 86400000 : 0;
@@ -8191,9 +8686,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         WHERE ((m.sender_user_id = ? AND m.receiver_user_id = ?)
            OR (m.sender_user_id = ? AND m.receiver_user_id = ?))
           AND (? = 0 OR m.created_at >= ?)
+          AND m.created_at > COALESCE(
+            (SELECT deleted_at FROM user_deleted_conversations
+              WHERE user_id = ? AND other_user_id = ?), 0)
         ORDER BY m.created_at DESC
         LIMIT ?`
-    ).bind(now(), now(), userId, otherId, otherId, userId, cutoff, cutoff, retentionDays > 0 ? 2000 : 20).all();
+    ).bind(now(), now(), userId, otherId, otherId, userId, cutoff, cutoff, userId, otherId, retentionDays > 0 ? 2000 : 20).all();
     rows.results = await decorateMessagesWithVipChatBox(db, (rows.results ?? []).reverse());
     await db.prepare(
       "UPDATE direct_messages SET read_at = ? WHERE receiver_user_id = ? AND sender_user_id = ? AND read_at IS NULL"
@@ -8211,22 +8709,33 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureImageTables(db);
+    await ensureMessageMuteTables(db);
+    await ensureDeletedConversationTables(db);
     const rows = await db.prepare(
       `SELECT m.id, m.sender_user_id, m.receiver_user_id, m.text, m.created_at, m.read_at,
               i.image_key,
               (SELECT COUNT(*) FROM direct_messages unread
                 WHERE unread.sender_user_id = CASE WHEN m.sender_user_id = ? THEN m.receiver_user_id ELSE m.sender_user_id END
                   AND unread.receiver_user_id = ? AND unread.read_at IS NULL) AS unread_count,
+              (SELECT 1 FROM user_message_muted_users mm
+                WHERE mm.user_id = ?
+                  AND mm.muted_user_id = CASE WHEN m.sender_user_id = ? THEN m.receiver_user_id ELSE m.sender_user_id END
+                LIMIT 1) AS muted,
               s.display_name AS sender_name, s.avatar_key AS sender_avatar_key,
               r.display_name AS receiver_name, r.avatar_key AS receiver_avatar_key
          FROM direct_messages m
          LEFT JOIN users s ON s.id = m.sender_user_id
          LEFT JOIN users r ON r.id = m.receiver_user_id
          LEFT JOIN direct_message_images i ON i.message_id = m.id
-        WHERE m.sender_user_id = ? OR m.receiver_user_id = ?
+        WHERE (m.sender_user_id = ? OR m.receiver_user_id = ?)
+          AND NOT EXISTS (
+            SELECT 1 FROM user_deleted_conversations dc
+             WHERE dc.user_id = ?
+               AND dc.other_user_id = CASE WHEN m.sender_user_id = ? THEN m.receiver_user_id ELSE m.sender_user_id END
+          )
         ORDER BY m.created_at DESC
         LIMIT 200`
-    ).bind(userId, userId, userId, userId).all();
+    ).bind(userId, userId, userId, userId, userId, userId, userId, userId).all();
 
     const seen = new Set();
     const inbox = [];
@@ -8242,9 +8751,95 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         image_key: row.image_key,
         created_at: row.created_at,
         unread: Number(row.unread_count ?? 0),
+        muted: Number(row.muted ?? 0) === 1,
       });
     }
     return json({ ok: true, inbox });
+  }
+
+  // Inbox message mute (Vinay, 2026-11-21): mute/unmute messages
+  // from selected persons from the inbox long-press menu. Mirrors
+  // the call-mute endpoints: the server is the source of truth.
+  if (url.pathname === "/api/messages/mute-user" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const mutedUserId = String(body.muted_user_id ?? "").trim();
+    if (!userId || !mutedUserId || mutedUserId === userId) {
+      return json({ ok: false, error: "invalid_mute_target" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureMessageMuteTables(db);
+    await ensureUser(db, mutedUserId);
+    await db.prepare(
+      "INSERT OR IGNORE INTO user_message_muted_users(user_id,muted_user_id,created_at) VALUES(?,?,?)"
+    ).bind(userId, mutedUserId, now()).run();
+    return json({ ok: true, muted_user_ids: await getMessageMutedUserIds(db, userId) });
+  }
+
+  if (url.pathname === "/api/messages/unmute-user" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const mutedUserId = String(body.muted_user_id ?? "").trim();
+    if (!userId || !mutedUserId) {
+      return json({ ok: false, error: "invalid_mute_target" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureMessageMuteTables(db);
+    await db.prepare(
+      "DELETE FROM user_message_muted_users WHERE user_id=? AND muted_user_id=?"
+    ).bind(userId, mutedUserId).run();
+    return json({ ok: true, muted_user_ids: await getMessageMutedUserIds(db, userId) });
+  }
+
+  if (url.pathname === "/api/messages/muted-users" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const mutedUserIds = await getMessageMutedUserIds(db, userId);
+    if (!mutedUserIds.length) return json({ ok: true, users: [] });
+    const placeholders = mutedUserIds.map(() => "?").join(",");
+    const rows = await db.prepare(
+      `SELECT id,display_name,avatar_key,public_id FROM users WHERE id IN (${placeholders})`
+    ).bind(...mutedUserIds).all();
+    return json({ ok: true, users: rows.results ?? [] });
+  }
+
+  // Inbox message delete, delete-for-me only (Vinay, 2026-11-21):
+  // deleting a conversation hides it ONLY for the user who deleted
+  // it — the other person keeps every message. No message row is
+  // deleted here: the endpoint only records a per-user hidden flag
+  // (user_deleted_conversations), so the 45-day server retention and
+  // red envelopes are untouched. The flag PERSISTS: a new message
+  // from that person does not bring the chat back (no inbox row, no
+  // unread count, no push). `deleted` counts the messages this
+  // delete hid from the deleter — re-deleting with no new messages
+  // hides nothing and returns 0.
+  if (url.pathname === "/api/messages/conversation/delete" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const otherUserId = String(body.other_user_id ?? "").trim();
+    if (!userId || !otherUserId || otherUserId === userId) {
+      return json({ ok: false, error: "invalid_conversation" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureDeletedConversationTables(db);
+    await ensureUser(db, otherUserId);
+    const prevCutoff = await getDeletedConversationCutoff(db, userId, otherUserId);
+    const pair = [userId, otherUserId, otherUserId, userId];
+    const found = await db.prepare(
+      `SELECT COUNT(*) AS n FROM direct_messages
+        WHERE ((sender_user_id=? AND receiver_user_id=?)
+           OR (sender_user_id=? AND receiver_user_id=?))
+          AND created_at > ?`
+    ).bind(...pair, prevCutoff).first();
+    await db.prepare(
+      "INSERT OR REPLACE INTO user_deleted_conversations(user_id,other_user_id,deleted_at) VALUES(?,?,?)"
+    ).bind(userId, otherUserId, now()).run();
+    return json({ ok: true, deleted: Number(found?.n ?? 0) });
   }
 
   if (parts[0] === "api" && parts[1] === "wallet" && parts.length === 3 && request.method === "GET") {
@@ -8846,7 +9441,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       return json({ ok: false, error: "invalid_call_target" }, { status: 400 });
     }
     await ensureDirectCallTable(db);
-    await expireDirectCalls(db);
+    await expireDirectCallsAndNotify(env, db);
     if (await usersBlockedEitherWay(db, callerId, receiverId)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
     }
@@ -8858,6 +9453,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     ).bind(callerId,receiverId,receiverId,callerId).first();
     if (Number(mutual?.a ?? 0) !== 1 || Number(mutual?.b ?? 0) !== 1) {
       return json({ ok: false, error: "friends_required" }, { status: 403 });
+    }
+    // Call mute (Vinay, 2026-11-21): if the receiver muted all calls,
+    // or muted this caller, the call never rings and never notifies.
+    // The caller gets a clean failure instead of a ringing state.
+    if (await isCallMutedFor(db, receiverId, callerId)) {
+      return json({ ok: false, error: "call_muted" }, { status: 403 });
     }
     const busy = await db.prepare(
       `SELECT id FROM direct_calls
@@ -8887,6 +9488,21 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
          receiver_earning_eligible,billed_minutes,caller_cost_coins,receiver_reward_diamonds)
        VALUES(?,?,?,'ringing',?,NULL,NULL,?,'direct',400000,0,0,0,0,0)`
     ).bind(callId,callerId,receiverId,createdAt,createdAt).run();
+    // Instant incoming-call notification (Vinay, 2026-11-21): the
+    // receiver's phone is notified immediately, not only on the next
+    // 5s poll. Best-effort — a failed push never fails the call.
+    try {
+      await sendIncomingCallPush(env, db, {
+        receiverUserId: receiverId,
+        callerUserId: callerId,
+        callId,
+      });
+    } catch (error) {
+      console.error("DarkVibeX incoming call push failed", {
+        callId,
+        error: String(error?.message ?? error),
+      });
+    }
     return json({ ok: true, call: await directCallRow(db, callId) }, { status: 201 });
   }
 
@@ -8894,7 +9510,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    await expireDirectCalls(db);
+    await expireDirectCallsAndNotify(env, db);
     const row = await db.prepare(
       `SELECT c.*,
               u.display_name AS caller_name,
@@ -8939,7 +9555,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const callId = String(url.searchParams.get("call_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    await expireDirectCalls(db);
+    await expireDirectCallsAndNotify(env, db);
     let call = await directCallRow(db,callId);
     if (!call || (call.caller_user_id !== userId && call.receiver_user_id !== userId)) {
       return json({ ok:false,error:"call_not_found" }, { status:404 });
@@ -8971,6 +9587,98 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       "UPDATE direct_calls SET state='ended',ended_at=?,updated_at=? WHERE id=? AND state IN ('ringing','active')"
     ).bind(ts,ts,callId).run();
     return json({ ok:true,call:await directCallRow(db,callId) });
+  }
+
+  // Call mute + ringtone settings (Vinay, 2026-11-21): stored
+  // server-side so they survive reinstall. Mute all calls, mute calls
+  // from selected persons, and pick the caller tune that rings on
+  // incoming unmuted calls.
+  if (url.pathname === "/api/calls/mute-settings" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const settings = await getCallMuteSettings(db, userId);
+    return json({ ok: true, ...settings });
+  }
+
+  if (url.pathname === "/api/calls/mute-settings" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallMuteTables(db);
+    const hasMuteAll = body.mute_all === true || body.mute_all === false;
+    const ringtone = typeof body.ringtone === "string" && CALL_RINGTONES.includes(body.ringtone)
+      ? body.ringtone
+      : null;
+    if (body.ringtone != null && ringtone == null) {
+      return json({ ok: false, error: "invalid_ringtone" }, { status: 400 });
+    }
+    if (!hasMuteAll && ringtone == null) {
+      return json({ ok: false, error: "nothing_to_update" }, { status: 400 });
+    }
+    const current = await getCallMuteSettings(db, userId);
+    const nextMuteAll = hasMuteAll ? (body.mute_all === true ? 1 : 0) : (current.mute_all ? 1 : 0);
+    const nextRingtone = ringtone ?? current.ringtone;
+    await db.prepare(
+      `INSERT INTO user_call_mute(user_id,mute_all,ringtone,updated_at)
+       VALUES(?,?,?,?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         mute_all=excluded.mute_all,
+         ringtone=excluded.ringtone,
+         updated_at=excluded.updated_at`
+    ).bind(userId, nextMuteAll, nextRingtone, now()).run();
+    const settings = await getCallMuteSettings(db, userId);
+    return json({ ok: true, ...settings });
+  }
+
+  if (url.pathname === "/api/calls/mute-user" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const mutedUserId = String(body.muted_user_id ?? "").trim();
+    if (!userId || !mutedUserId || mutedUserId === userId) {
+      return json({ ok: false, error: "invalid_mute_target" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallMuteTables(db);
+    await ensureUser(db, mutedUserId);
+    await db.prepare(
+      "INSERT OR IGNORE INTO user_call_muted_users(user_id,muted_user_id,created_at) VALUES(?,?,?)"
+    ).bind(userId, mutedUserId, now()).run();
+    return json({ ok: true, ...(await getCallMuteSettings(db, userId)) });
+  }
+
+  if (url.pathname === "/api/calls/unmute-user" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const mutedUserId = String(body.muted_user_id ?? "").trim();
+    if (!userId || !mutedUserId) {
+      return json({ ok: false, error: "invalid_mute_target" }, { status: 400 });
+    }
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureCallMuteTables(db);
+    await db.prepare(
+      "DELETE FROM user_call_muted_users WHERE user_id=? AND muted_user_id=?"
+    ).bind(userId, mutedUserId).run();
+    return json({ ok: true, ...(await getCallMuteSettings(db, userId)) });
+  }
+
+  if (url.pathname === "/api/calls/muted-users" && request.method === "GET") {
+    const userId = String(url.searchParams.get("user_id") ?? "").trim();
+    if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    const settings = await getCallMuteSettings(db, userId);
+    if (!settings.muted_user_ids.length) return json({ ok: true, users: [] });
+    const placeholders = settings.muted_user_ids.map(() => "?").join(",");
+    const rows = await db.prepare(
+      `SELECT id,display_name,avatar_key,public_id FROM users WHERE id IN (${placeholders})`
+    ).bind(...settings.muted_user_ids).all();
+    return json({ ok: true, users: rows.results ?? [] });
   }
 
   if (url.pathname === "/api/friends" && request.method === "GET") {
@@ -9242,38 +9950,26 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const userId = String(url.searchParams.get("user_id") ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
-    const vip = await getVipStatus(db, userId, now());
-    await ensureCustomGiftSchema(db);
-    const custom = await db.prepare(
-      "SELECT id,name,asset_key,coin_cost FROM custom_gifts WHERE status='approved' ORDER BY updated_at DESC LIMIT 100"
-    ).all();
-    const customRows = (custom.results ?? []).map((row) => ({
-      id: row.id,
-      name: row.name,
-      emoji: "🎁",
-      coin_cost: Number(row.coin_cost),
-      vip_level: 0,
-      category: "custom",
-      asset_key: row.asset_key,
-    }));
-    const available=[
-      ...(await effectiveGiftCatalog(db)).filter((gift) =>
-        Number(gift.vip_level ?? 0) === 0 || (vip.active && vip.level >= Number(gift.vip_level))),
-      ...customRows,
-    ];
-    const priced=[];
-    for(const gift of available){
-      const pricing=await ownerUserPricing(
-        db,userId,"gift",String(gift.id ?? ""),Number(gift.coin_cost ?? 0),null,
-      );
-      const price=Math.max(1,Number(pricing.price_coins ?? gift.coin_cost ?? 0));
-      priced.push({
-        ...gift,
-        coin_cost:price,
-        owner_price_override:pricing.overridden,
-      });
-    }
-    return json({ ok: true, gifts: priced });
+    return json({ ok: true, gifts: await loadPricedGiftCatalog(db, userId) });
+  }
+
+  // Combined gifts + diamonds + coins (Vinay, 2026-11-21 — "Har user ka
+  // alag combined API rakh"): ONE session-scoped call every 3s carrying the
+  // full priced catalog + this user's live coin/diamond balances + recent
+  // histories, so gift UIs, the Diamond received view and the coin balance
+  // update together. Same pattern as the games state endpoints: the user is
+  // the session user (session.sub), never a user_id from the request.
+  if (url.pathname === "/api/gifts/combined" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await giftsCombinedState(db, userId, now()));
   }
 
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
@@ -9331,6 +10027,26 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     if (await usersBlockedEitherWay(db, sender, receiver)) {
       return json({ ok:false,error:"blocked_user" }, { status:403 });
     }
+    // DM gift (Vinay, 2026-11-21): a gift sent with no room goes to the
+    // 1-to-1 DM chat, so it needs the same mutual-follow rule as a DM
+    // message — otherwise anyone could drop gift DMs (and unread badges)
+    // on a stranger. Room gifts keep the room-membership rule below.
+    // A user gifting themself is trivially a mutual friend: the SQL
+    // below returns true for both directions when the two ids match,
+    // so self-gifts keep working (see test/self_gift_policy.test.js).
+    const dmGift = !String(body.room_id ?? "").trim();
+    if (dmGift) {
+      await ensureTinniSocialSchema(db);
+      const mutualFriend = await db.prepare(
+        `SELECT
+           (EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) OR ? = ?) AS a,
+           (EXISTS(SELECT 1 FROM user_follows WHERE follower_id=? AND target_id=?) OR ? = ?) AS b`
+      ).bind(sender, receiver, sender, receiver, receiver, sender, receiver, sender).first();
+      if (Number(mutualFriend?.a ?? 0) !== 1 ||
+          Number(mutualFriend?.b ?? 0) !== 1) {
+        return json({ ok:false,error:"friends_required" }, { status:403 });
+      }
+    }
     // NOTE: self-gifting stays ALLOWED on purpose — see
     // test/self_gift_policy.test.js (the game-room sheet even offers
     // "Send to yourself"). It costs real coins, so it is not an exploit.
@@ -9377,6 +10093,27 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         "UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ? AND EXISTS (" +
         "SELECT 1 FROM gift_events WHERE id=?)"
       ).bind(cost, giftCreatedAt, receiver, eventId),
+      // DM gift (Vinay, 2026-11-21): a room-less gift also writes a
+      // kind='gift' DM row — same pattern as the red-envelope DM row —
+      // so the gift shows in the 1-to-1 thread and the inbox for both
+      // sides. Gated on the gift_events row, so a failed debit writes
+      // nothing. Room gifts write no DM row.
+      ...(!giftRoomId
+          ? [
+              db.prepare(
+                "INSERT INTO direct_messages (id, sender_user_id, receiver_user_id, kind, text, created_at, read_at) " +
+                "SELECT ?,?,?, 'gift', ?,?,NULL WHERE EXISTS (" +
+                "SELECT 1 FROM gift_events WHERE id=?)"
+              ).bind(
+                id(),
+                sender,
+                receiver,
+                `🎁 ${[gift.emoji, gift.name ?? giftId].filter((part) => String(part ?? "").trim()).join(" ")} · ${cost} coins`,
+                giftCreatedAt,
+                eventId,
+              ),
+            ]
+          : []),
     ]);
 
     const committedGift = await db.prepare(

@@ -136,6 +136,13 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   void initState() {
     super.initState();
     unawaited(_load());
+    // Combined game-state (Vinay, 2026-11-21): ONE worker call every 3s
+    // carrying round + timer + config + wallet + my bets + history, so
+    // everything updates together in one go — same pattern as the room
+    // combined API. The 250ms clock below keeps the countdown ticking
+    // locally between syncs; a poll only corrects it to server time.
+    // (The 5s kiss timer further down only replays the local emote
+    // video — it makes no network call.)
     refreshTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => unawaited(_load(silent: true)),

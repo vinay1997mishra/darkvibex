@@ -190,6 +190,11 @@ void main() {
       expect(find.text('DarkVibeX • Music Room'), findsOneWidget);
       expect(find.text('ID 766793'), findsOneWidget);
       expect(find.byKey(const Key('rocket-room-total')), findsOneWidget);
+      // Realistic gold trophy image, same size as the old flat icon.
+      expect(
+        find.byKey(const Key('rocket-room-total-trophy')),
+        findsOneWidget,
+      );
       expect(find.text('42.0M'), findsWidgets);
 
       // Ladder: current level 6 highlighted; all 18 levels reachable by

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../call/call_ringtone.dart';
 import '../i18n/darkvibex_localization.dart';
 import '../infra/backend_api.dart';
 import '../vip/vip_policy.dart';
@@ -50,14 +51,36 @@ class DirectMessage {
     required this.name,
     required this.preview,
     this.unread = 0,
+    this.muted = false,
     this.avatarKey,
     this.createdAt = 0,
   });
+
+  /// One inbox row from GET /api/messages/inbox. The server is the
+  /// source of truth for both the unread count and the muted flag —
+  /// the count comes from unread direct_messages, the flag from the
+  /// user's message-mute list, so no extra round-trip is needed.
+  factory DirectMessage.fromRow(Map<String, dynamic> row) =>
+      DirectMessage(
+        id: row['id']?.toString() ?? '',
+        name: row['name']?.toString() ?? 'User',
+        preview: row['preview']?.toString() ?? '',
+        unread: int.tryParse(row['unread']?.toString() ?? '') ?? 0,
+        muted: row['muted'] == true ||
+            row['muted'] == 1 ||
+            row['muted']?.toString() == '1',
+        avatarKey: row['avatar_key']?.toString(),
+        createdAt: int.tryParse(row['created_at']?.toString() ?? '') ?? 0,
+      );
 
   final String id;
   final String name;
   final String preview;
   final int unread;
+
+  /// True when the user muted messages from this person (inbox
+  /// long-press menu): messages still arrive, only the push is silent.
+  final bool muted;
   final String? avatarKey;
   final int createdAt;
 }
@@ -189,6 +212,16 @@ class AppState extends ChangeNotifier {
   Future<void> Function()? minimizedRoomClose;
 
   final List<DirectMessage> messages = <DirectMessage>[];
+
+  // Call mute + ringtone (Vinay, 2026-11-21): mute all incoming calls,
+  // mute calls from selected persons, pick the caller tune. The server
+  // is the source of truth (survives reinstall); the ringtone choice
+  // is also mirrored to SharedPreferences so the native FCM service
+  // can play the selected tone while the app is closed.
+  static const String callRingtonePrefKey = 'dvx.call.ringtone';
+  bool callMuteAll = false;
+  String callRingtoneId = defaultCallRingtoneId;
+  final Set<String> mutedCallUserIds = <String>{};
 
   void showMinimizedRoom({
     required RoomSummary room,
@@ -731,6 +764,7 @@ class AppState extends ChangeNotifier {
       }
     });
     await loadOptional('inbox', () => refreshInbox(notify: false));
+    await loadOptional('call settings', () => refreshCallSettings(notify: false));
   }
 
   Future<void> refreshRooms({bool notify = true}) async {
@@ -749,15 +783,7 @@ class AppState extends ChangeNotifier {
     if (!backendConnected) return;
     final remoteInbox = await backend.inbox(userId: userId);
     final latestFirst = remoteInbox
-        .map((row) => DirectMessage(
-              id: row['id']?.toString() ?? '',
-              name: row['name']?.toString() ?? 'User',
-              preview: row['preview']?.toString() ?? '',
-              unread: int.tryParse(row['unread']?.toString() ?? '') ?? 0,
-              avatarKey: row['avatar_key']?.toString(),
-              createdAt:
-                  int.tryParse(row['created_at']?.toString() ?? '') ?? 0,
-            ))
+        .map(DirectMessage.fromRow)
         .toList(growable: false)
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     messages
@@ -774,6 +800,116 @@ class AppState extends ChangeNotifier {
     );
     notifyListeners();
     return ok;
+  }
+
+  // Call mute + ringtone (Vinay, 2026-11-21).
+  void _applyCallMuteSettings(Map<String, dynamic> value) {
+    callMuteAll = value['mute_all'] == true;
+    callRingtoneId =
+        callRingtoneForId(value['ringtone']?.toString() ?? defaultCallRingtoneId).id;
+    final muted = value['muted_user_ids'];
+    mutedCallUserIds
+      ..clear()
+      ..addAll(
+        muted is List
+            ? muted.map((e) => e.toString()).where((e) => e.isNotEmpty)
+            : const <String>[],
+      );
+  }
+
+  Future<void> refreshCallSettings({bool notify = true}) async {
+    if (!backendConnected || !isAuthenticated) return;
+    // Local mirror first so the ringtone is available instantly even
+    // before the server round-trip finishes.
+    final prefs = await SharedPreferences.getInstance();
+    final localRingtone = prefs.getString(callRingtonePrefKey);
+    if (localRingtone != null && localRingtone.isNotEmpty) {
+      callRingtoneId = callRingtoneForId(localRingtone).id;
+    }
+    final value = await backend.callMuteSettings(userId: userId);
+    if (value?['ok'] != true) {
+      if (notify) notifyListeners();
+      return;
+    }
+    _applyCallMuteSettings(value!);
+    await prefs.setString(callRingtonePrefKey, callRingtoneId);
+    if (notify) notifyListeners();
+  }
+
+  Future<bool> setCallMuteAll(bool value) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved = await backend.setCallMuteSettings(userId: userId, muteAll: value);
+    if (saved?['ok'] != true) return false;
+    _applyCallMuteSettings(saved!);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> setCallRingtone(String ringtoneId) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved =
+        await backend.setCallMuteSettings(userId: userId, ringtone: ringtoneId);
+    if (saved?['ok'] != true) return false;
+    _applyCallMuteSettings(saved!);
+    await (await SharedPreferences.getInstance())
+        .setString(callRingtonePrefKey, callRingtoneId);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> muteCallUser(String otherUserId) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved = await backend.muteCallUser(userId: userId, mutedUserId: otherUserId);
+    if (saved?['ok'] != true) return false;
+    _applyCallMuteSettings(saved!);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> unmuteCallUser(String otherUserId) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved =
+        await backend.unmuteCallUser(userId: userId, mutedUserId: otherUserId);
+    if (saved?['ok'] != true) return false;
+    _applyCallMuteSettings(saved!);
+    notifyListeners();
+    return true;
+  }
+
+  // Inbox message mute + delete (Vinay, 2026-11-21). Muting one
+  // person silences only that chat's push notifications — messages
+  // still arrive. Deleting a conversation deletes all messages with
+  // that person. Both are server-enforced; the inbox refreshes after
+  // every change so the muted flag and unread counts stay true.
+  Future<bool> muteMessageUser(String otherUserId) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved =
+        await backend.muteMessageUser(userId: userId, mutedUserId: otherUserId);
+    if (saved?['ok'] != true) return false;
+    await refreshInbox(notify: false);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> unmuteMessageUser(String otherUserId) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved = await backend.unmuteMessageUser(
+        userId: userId, mutedUserId: otherUserId);
+    if (saved?['ok'] != true) return false;
+    await refreshInbox(notify: false);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> deleteConversation(String otherUserId) async {
+    if (!backendConnected || !isAuthenticated) return false;
+    final saved = await backend.deleteConversation(
+        userId: userId, otherUserId: otherUserId);
+    if (saved?['ok'] != true) return false;
+    messages.removeWhere((item) => item.id == otherUserId);
+    await refreshInbox(notify: false);
+    notifyListeners();
+    return true;
   }
 
   Future<void> signOut() async {

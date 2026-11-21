@@ -175,6 +175,11 @@ test("spending coins on a gift earns no VIP EXP", async () => {
 
   // The receiver spends 100 coins on a Rose gift for the seller. The
   // gift commits (coins debited, diamonds credited) but EXP does not move.
+  // DM gifts need mutual follow (Vinay, 2026-11-21), so the receiver and
+  // seller follow each other first.
+  const now = Date.now();
+  sqlite.prepare("INSERT INTO user_follows(follower_id,target_id,created_at) VALUES(?,?,?)").run("receiver", "seller", now);
+  sqlite.prepare("INSERT INTO user_follows(follower_id,target_id,created_at) VALUES(?,?,?)").run("seller", "receiver", now);
   const gift = await request("/api/gifts/send", {
     method: "POST", userId: "receiver",
     body: { sender_user_id: "receiver", receiver_user_id: "seller", gift_id: "rose" },

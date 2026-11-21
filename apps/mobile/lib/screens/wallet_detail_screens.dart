@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,6 +18,25 @@ List<Map<String, dynamic>> _walletRows(dynamic value) {
       .whereType<Map>()
       .map((row) => Map<String, dynamic>.from(row))
       .toList(growable: false);
+}
+
+/// Merge live combined-API rows into a history list (Vinay, 2026-11-21):
+/// incoming rows first (newest), deduplicated by id, capped at 200. The
+/// full history loaded on open is kept — new gifts/conversions just appear
+/// at the top on the 3s combined poll instead of needing a manual refresh.
+List<Map<String, dynamic>> mergeHistoryRows(
+  List<Map<String, dynamic>> existing,
+  List<Map<String, dynamic>> incoming,
+) {
+  final seen = <String>{};
+  final merged = <Map<String, dynamic>>[];
+  for (final row in [...incoming, ...existing]) {
+    final id = row['id']?.toString() ?? '';
+    if (id.isNotEmpty && !seen.add(id)) continue;
+    merged.add(row);
+    if (merged.length >= 200) break;
+  }
+  return merged;
 }
 
 String _walletNumber(int value) {
@@ -47,11 +68,26 @@ class CoinsHistoryScreen extends StatefulWidget {
 class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
   bool loading = true;
   Map<String, dynamic> data = const {};
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     load();
+    // Combined gifts + coins (Vinay, 2026-11-21): ONE call every 3s carrying
+    // the live coin balance + recent coin history, so deducts (gifts, bets)
+    // and adds (recharge, diamond exchange) show without manual refresh.
+    // The full 200-row history still loads once on open via [load].
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_pollCombined()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -62,6 +98,43 @@ class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
     setState(() {
       data = value ?? const {};
       loading = false;
+    });
+  }
+
+  Future<void> _pollCombined() async {
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.giftsCombinedState();
+    } catch (_) {
+      value = null;
+    }
+    if (!mounted || value == null || value['ok'] != true) return;
+    final coins = value['coins'];
+    if (coins is! Map) return;
+    final wallet = value['wallet'];
+    if (wallet is Map) {
+      final balance = _walletInt(wallet['coins']);
+      if (balance != widget.state.coins) {
+        widget.state.setCoinBalance(balance);
+      }
+      final diamonds = _walletInt(wallet['diamonds']);
+      if (diamonds != widget.state.diamonds) {
+        widget.state.setDiamondBalance(diamonds);
+      }
+    }
+    setState(() {
+      data = <String, dynamic>{
+        ...data,
+        'current_coins': _walletInt(coins['current_coins']),
+        'gifts': mergeHistoryRows(
+          _walletRows(data['gifts']),
+          _walletRows(coins['gifts']),
+        ),
+        'seller_received': mergeHistoryRows(
+          _walletRows(data['seller_received']),
+          _walletRows(coins['seller_received']),
+        ),
+      };
     });
   }
 
@@ -187,11 +260,24 @@ class _SellerReceivedCoinsScreenState
     extends State<SellerReceivedCoinsScreen> {
   bool loading = true;
   List<Map<String, dynamic>> rows = const [];
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     load();
+    // Combined gifts + coins (Vinay, 2026-11-21): the seller-received list
+    // updates live on the same 3s combined poll as the Coins History.
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_pollCombined()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -202,6 +288,21 @@ class _SellerReceivedCoinsScreenState
     setState(() {
       rows = _walletRows(value?['seller_received']);
       loading = false;
+    });
+  }
+
+  Future<void> _pollCombined() async {
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.giftsCombinedState();
+    } catch (_) {
+      value = null;
+    }
+    if (!mounted || value == null || value['ok'] != true) return;
+    final coins = value['coins'];
+    if (coins is! Map) return;
+    setState(() {
+      rows = mergeHistoryRows(rows, _walletRows(coins['seller_received']));
     });
   }
 
@@ -270,6 +371,7 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
   bool loading = true;
   bool converting = false;
   Map<String, dynamic> data = const {};
+  Timer? _pollTimer;
   final TextEditingController _exchangeAmountController =
       TextEditingController();
 
@@ -292,12 +394,58 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
   void initState() {
     super.initState();
     load();
+    // Combined gifts + diamonds (Vinay, 2026-11-21): ONE call every 3s
+    // carrying the live diamond balance + received gifts, so incoming gifts'
+    // diamonds show without manual refresh. The full 200-row history still
+    // loads once on open via [load]; the poll only merges new rows on top.
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_pollCombined()),
+    );
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _exchangeAmountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pollCombined() async {
+    Map<String, dynamic>? value;
+    try {
+      value = await widget.state.backend.giftsCombinedState();
+    } catch (_) {
+      value = null;
+    }
+    if (!mounted || value == null || value['ok'] != true) return;
+    final diamonds = value['diamonds'];
+    if (diamonds is! Map) return;
+    final wallet = value['wallet'];
+    if (wallet is Map) {
+      final balance = _walletInt(wallet['diamonds']);
+      if (balance != widget.state.diamonds) {
+        widget.state.setDiamondBalance(balance);
+      }
+      final coins = _walletInt(wallet['coins']);
+      if (coins != widget.state.coins) {
+        widget.state.setCoinBalance(coins);
+      }
+    }
+    setState(() {
+      data = <String, dynamic>{
+        ...data,
+        'current_diamonds': _walletInt(diamonds['current_diamonds']),
+        'gifts': mergeHistoryRows(
+          _walletRows(data['gifts']),
+          _walletRows(diamonds['gifts']),
+        ),
+        'conversions': mergeHistoryRows(
+          _walletRows(data['conversions']),
+          _walletRows(diamonds['conversions']),
+        ),
+      };
+    });
   }
 
   Future<void> load() async {

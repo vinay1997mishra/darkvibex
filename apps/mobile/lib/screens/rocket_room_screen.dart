@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
+import 'package:darkvibex/screens/room_gift_ranking_screen.dart';
 import 'package:darkvibex/ui/tinni_style.dart';
 import 'package:darkvibex/utils/rocket_progress.dart';
 import 'package:darkvibex/utils/rocket_top_rewards.dart';
@@ -428,32 +429,56 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
   }
 
   Widget _buildTotalRow() {
+    // Touching the total gifting amount opens the room ranking page
+    // (Vinay, 2026-11-21): this room only, Day / Week / Month, top 99.
+    // The display itself is unchanged.
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
-      child: Row(
-        children: [
-          const Icon(Icons.emoji_events_rounded,
-              color: Color(0xFFFFB11B), size: 22),
-          const SizedBox(width: 4),
-          Text(
-            _compactCoins(widget.lifetimeTotal),
-            key: const Key('rocket-room-total'),
-            style: const TextStyle(
-              color: Color(0xFFFFB11B),
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
+      child: InkWell(
+        key: const Key('rocket-room-total-gifts'),
+        onTap: _openGiftRanking,
+        child: Row(
+          children: [
+            // Realistic gold trophy (Vinay, 2026-11-21): same size as
+            // the flat icon it replaces (22 high).
+            Image.asset(
+              'assets/images/gold_trophy.png',
+              key: const Key('rocket-room-total-trophy'),
+              height: 22,
             ),
-          ),
-          const SizedBox(width: 6),
-          const Text(
-            'room gifts',
-            style: TextStyle(
-              color: Color(0xFFB9C8F3),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+            const SizedBox(width: 4),
+            Text(
+              _compactCoins(widget.lifetimeTotal),
+              key: const Key('rocket-room-total'),
+              style: const TextStyle(
+                color: Color(0xFFFFB11B),
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            const Text(
+              'room gifts',
+              style: TextStyle(
+                color: Color(0xFFB9C8F3),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openGiftRanking() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoomGiftRankingScreen(
+          roomId: widget.roomId,
+          roomName: widget.roomName,
+          backend: widget.backend,
+        ),
       ),
     );
   }

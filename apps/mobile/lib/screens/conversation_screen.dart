@@ -33,8 +33,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool loading = true;
   bool uploadingImage = false;
   bool sendingEnvelope = false;
+  bool sendingGift = false;
   bool isFriend = false;
   bool startingCall = false;
+  bool callsMutedForPeer = false;
 
   List<Map<String, dynamic>> get _timeline {
     final items = <Map<String, dynamic>>[
@@ -118,6 +120,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
       isFriend = friends.any(
         (row) => row['id']?.toString() == widget.otherUserId,
       );
+      // Call mute (Vinay, 2026-11-21): the per-person mute switch in
+      // this chat reflects the server-side setting.
+      await widget.state.refreshCallSettings(notify: false);
+      callsMutedForPeer =
+          widget.state.mutedCallUserIds.contains(widget.otherUserId);
     }
     await _persistMessages();
     if (!mounted) return;
@@ -438,6 +445,107 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
+  // DM gift (Vinay, 2026-11-21): pic and gift both send from inside the
+  // 1-to-1 DM chat. The pic button already existed; this adds the gift
+  // button next to it. The gift goes to the DM partner with no room, and
+  // the server writes a kind='gift' DM row so it shows in the thread.
+  Future<void> _sendGift() async {
+    if (!isFriend) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gifts can only be sent to mutual friends.')),
+      );
+      return;
+    }
+    if (!widget.state.backendConnected || sendingGift) return;
+    List<Map<String, dynamic>> gifts = const <Map<String, dynamic>>[];
+    try {
+      gifts = await widget.state.backend.giftCatalog(userId: widget.state.userId);
+    } catch (_) {
+      gifts = const <Map<String, dynamic>>[];
+    }
+    if (!mounted) return;
+    if (gifts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No gifts available right now.')),
+      );
+      return;
+    }
+    final chosen = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => _DmGiftPicker(
+        gifts: gifts,
+        receiverName: widget.otherName,
+        coins: widget.state.coins,
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    final giftId = chosen['id']?.toString() ?? '';
+    final cost = int.tryParse(chosen['coin_cost']?.toString() ?? '') ?? 0;
+    if (giftId.isEmpty || cost <= 0) return;
+    if (cost > widget.state.coins) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough coins for this gift.')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Send ${chosen['name'] ?? 'gift'}?'),
+        content: Text('Send to ${widget.otherName} for $cost coins?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Send gift'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => sendingGift = true);
+    Map<String, dynamic>? result;
+    try {
+      result = await widget.state.backend.sendGift(
+        senderUserId: widget.state.userId,
+        receiverUserId: widget.otherUserId,
+        giftId: giftId,
+        coinCost: cost,
+      );
+    } catch (_) {
+      result = null;
+    } finally {
+      if (mounted) setState(() => sendingGift = false);
+    }
+    if (!mounted) return;
+    if (result?['ok'] != true) {
+      final error = result?['error']?.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            switch (error) {
+              'friends_required' => 'Both users must be friends before gifting.',
+              'insufficient_coins' => 'Not enough coins for this gift.',
+              'vip_required' => 'This gift needs a higher VIP level.',
+              'gifts_disabled' => 'Gifts are disabled.',
+              _ => 'Gift could not be sent.',
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    await widget.state.refreshWallet();
+    await _load();
+    await widget.state.refreshInbox();
+    if (mounted) setState(() {});
+  }
+
   Future<void> _startCall() async {
     if (!isFriend || startingCall || !widget.state.backendConnected) return;
     setState(() => startingCall = true);
@@ -455,6 +563,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           content: Text(
             switch (error) {
               'friends_required' => 'Both users must be friends before calling.',
+              'call_muted' => 'This user has muted calls.',
               'user_busy' => 'This user is busy on another call.',
               _ => 'Call could not be started.',
             },
@@ -476,6 +585,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
     );
   }
 
+  Future<void> _toggleMuteCalls() async {
+    final muting = !callsMutedForPeer;
+    final ok = muting
+        ? await widget.state.muteCallUser(widget.otherUserId)
+        : await widget.state.unmuteCallUser(widget.otherUserId);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call mute setting could not be saved')),
+      );
+      return;
+    }
+    setState(() => callsMutedForPeer = muting);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -492,6 +616,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.call_rounded),
+            ),
+          if (isFriend)
+            PopupMenuButton<String>(
+              tooltip: 'Chat options',
+              onSelected: (value) async {
+                if (value == 'mute_calls') await _toggleMuteCalls();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem<String>(
+                  value: 'mute_calls',
+                  child: Text(
+                    callsMutedForPeer ? 'Unmute calls' : 'Mute calls',
+                  ),
+                ),
+              ],
             ),
           if (widget.state.hasVipPrivilege('red_envelope'))
             IconButton(
@@ -537,6 +676,58 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                     if (!mine && item['status'] == 'expired') const Text('Expired · sender refunded'),
                                   ]),
                                 )),
+                              ),
+                            );
+                          }
+                          // DM gift (Vinay, 2026-11-21): a room-less gift
+                          // writes a kind='gift' DM row, rendered as a gold
+                          // gift card in the thread for both sides.
+                          if (item['kind']?.toString() == 'gift') {
+                            final mine = item['sender_user_id']?.toString() ==
+                                widget.state.userId;
+                            return Align(
+                              alignment: mine
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 7),
+                                child: Container(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 300),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x664B3511),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: const Color(0xAAFFD36A),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.card_giftcard_rounded,
+                                        color: Color(0xFFFFD36A),
+                                        size: 22,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          item['text']?.toString() ??
+                                              '🎁 Gift',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             );
                           }
@@ -692,6 +883,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         : const Icon(Icons.image_rounded),
                   ),
                   const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: !isFriend || sendingGift ? null : _sendGift,
+                    tooltip: 'Send gift',
+                    icon: sendingGift
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.card_giftcard_rounded),
+                  ),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: TextField(
                       controller: controller,
@@ -731,4 +930,186 @@ String _expiry(int expiresAt) {
   final hours = left ~/ 3600000;
   final minutes = (left % 3600000) ~/ 60000;
   return 'expires in ${hours}h ${minutes}m';
+}
+
+// DM gift picker (Vinay, 2026-11-21): the same 6 categories as the room
+// gift panel (Normal, Lucky, CP, Country, Luxury, Backpack). Tapping a
+// gift returns it to the DM screen, which confirms and sends it.
+class _DmGiftPicker extends StatefulWidget {
+  const _DmGiftPicker({
+    required this.gifts,
+    required this.receiverName,
+    required this.coins,
+  });
+
+  final List<Map<String, dynamic>> gifts;
+  final String receiverName;
+  final int coins;
+
+  @override
+  State<_DmGiftPicker> createState() => _DmGiftPickerState();
+}
+
+class _DmGiftPickerState extends State<_DmGiftPicker> {
+  static const _categories = <String>[
+    'Normal',
+    'Lucky',
+    'CP',
+    'Country',
+    'Luxury',
+    'Backpack',
+  ];
+
+  String _selectedCategory = 'Normal';
+
+  String _giftCategory(Map<String, dynamic> item) {
+    final raw = (item['category'] ?? item['gift_category'] ?? item['type'] ?? '')
+        .toString()
+        .toLowerCase();
+    return raw.replaceAll('-', '').replaceAll('_', '').replaceAll(' ', '');
+  }
+
+  List<Map<String, dynamic>> get _visibleGifts {
+    return widget.gifts.where((item) {
+      final category = _giftCategory(item);
+      switch (_selectedCategory) {
+        case 'Lucky':
+          return category == 'lucky';
+        case 'CP':
+          return category == 'cp' || category.contains('couple');
+        case 'Country':
+          return category == 'country';
+        case 'Luxury':
+          return category == 'luxury';
+        case 'Backpack':
+          return category == 'backpack';
+        case 'Normal':
+        default:
+          return category.isEmpty ||
+              category == 'normal' ||
+              category == 'gift' ||
+              !const <String>{
+                'lucky',
+                'cp',
+                'couple',
+                'country',
+                'luxury',
+                'backpack',
+              }.contains(category);
+      }
+    }).toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _visibleGifts;
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.62,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Send a gift to ${widget.receiverName}',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${widget.coins} coins',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final category in _categories)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(category),
+                          selected: _selectedCategory == category,
+                          onSelected: (_) =>
+                              setState(() => _selectedCategory = category),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: visible.isEmpty
+                    ? const Center(child: Text('No gifts in this category'))
+                    : GridView.builder(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 0.72,
+                        ),
+                        itemCount: visible.length,
+                        itemBuilder: (context, index) {
+                          final gift = visible[index];
+                          final cost = int.tryParse(
+                                gift['coin_cost']?.toString() ?? '',
+                              ) ??
+                              0;
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => Navigator.pop(context, gift),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white10,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 4,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    gift['emoji']?.toString() ?? '🎁',
+                                    style: const TextStyle(fontSize: 30),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    gift['name']?.toString() ??
+                                        gift['id']?.toString() ??
+                                        'Gift',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$cost',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFFFFD36A),
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

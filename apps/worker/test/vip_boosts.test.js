@@ -342,6 +342,11 @@ test("gift discount reduces the coin cost at send time (VIP8 10%, VIP18 30%)", a
   // The receiver is the gift SENDER here: VIP8 with coins to spend.
   await setVipLevel("receiver", 8);
   sqlite.prepare("UPDATE users SET coins=100000 WHERE id='receiver'").run();
+  // DM gifts need mutual follow (Vinay, 2026-11-21), so the receiver and
+  // seller follow each other first.
+  const now = Date.now();
+  sqlite.prepare("INSERT INTO user_follows(follower_id,target_id,created_at) VALUES(?,?,?)").run("receiver", "seller", now);
+  sqlite.prepare("INSERT INTO user_follows(follower_id,target_id,created_at) VALUES(?,?,?)").run("seller", "receiver", now);
   const sellerDiamondsBefore = sqlite.prepare("SELECT diamonds FROM users WHERE id='seller'").get().diamonds;
   const gift = await request("/api/gifts/send", {
     method: "POST", userId: "receiver",
@@ -386,6 +391,11 @@ test("gift discount does not apply below VIP8", async () => {
   const { sqlite, request, setVipLevel } = await fixture();
   await setVipLevel("receiver", 7);
   sqlite.prepare("UPDATE users SET coins=100000 WHERE id='receiver'").run();
+  // DM gifts need mutual follow (Vinay, 2026-11-21), so the receiver and
+  // seller follow each other first.
+  const now = Date.now();
+  sqlite.prepare("INSERT INTO user_follows(follower_id,target_id,created_at) VALUES(?,?,?)").run("receiver", "seller", now);
+  sqlite.prepare("INSERT INTO user_follows(follower_id,target_id,created_at) VALUES(?,?,?)").run("seller", "receiver", now);
   const gift = await request("/api/gifts/send", {
     method: "POST", userId: "receiver",
     body: { sender_user_id: "receiver", receiver_user_id: "seller", gift_id: "rose" },

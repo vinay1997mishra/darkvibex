@@ -271,7 +271,7 @@ test("when the last member leaves, the room chat is deleted", async () => {
   assert.deepEqual(await getMessages(fx, roomId, "fresh"), []);
 });
 
-test("stale members are cleaned up and the empty room chat is wiped on list", async () => {
+test("stale members stay in the room and the chat is wiped only when the last member leaves", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
@@ -284,10 +284,24 @@ test("stale members are cleaned up and the empty room chat is wiped on list", as
   assert.equal(messageCount(fx, roomId), 2);
 
   // Both members went quiet: their presence rows are older than the
-  // 30s TTL, so the next room list treats the room as closed. (updated_at
-  // must stay > 0: the stale cleanup skips never-heartbeated rows.)
+  // 30s TTL. Since 2026-11-21 (Vinay) there is no presence prune, so
+  // the next room list must NOT remove them and must NOT wipe the
+  // chat — but only online members are SHOWN, so the quiet member is
+  // hidden from the list until they poll again. (updated_at must stay
+  // > 0: rows that never heartbeated are a different case.)
   fx.sqlite.prepare("UPDATE room_members SET updated_at = 1 WHERE room_id = ?").run(roomId);
   const listed = await fx.request("/api/rooms", { userId: "owner" });
   assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_members WHERE room_id=?").get(roomId).n, 2);
+  assert.equal(messageCount(fx, roomId), 2);
+  const members = await fx.request(`/api/rooms/${roomId}/members?user_id=owner`, { userId: "owner" });
+  assert.equal(members.status, 200, JSON.stringify(members.body));
+  assert.equal((members.body.members ?? []).length, 1);
+
+  // The chat is wiped only when the room genuinely empties: both
+  // members leave for real.
+  await leaveRoom(fx, roomId, "member");
+  assert.equal(messageCount(fx, roomId), 2);
+  await leaveRoom(fx, roomId, "owner");
   assert.equal(messageCount(fx, roomId), 0);
 });

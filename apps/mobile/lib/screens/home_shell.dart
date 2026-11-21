@@ -14,7 +14,6 @@ import 'messages_screen.dart';
 import 'mine_social_screens.dart';
 import 'profile_screen.dart';
 import 'ranking_screen.dart';
-import 'gifts_screen.dart';
 import 'vip_screen.dart';
 import 'room_screen.dart';
 import 'weekly_sign_in_dialog.dart';
@@ -1519,17 +1518,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
           context,
           MaterialPageRoute<void>(
             builder: (_) => CpRankingScreen(state: state),
-          ),
-        ),
-      ),
-      (
-        'Gift Festival',
-        'Popular, luxury, CP, VS and backpack gift collections',
-        Icons.card_giftcard_rounded,
-        () => Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => GiftsScreen(state: state),
           ),
         ),
       ),
