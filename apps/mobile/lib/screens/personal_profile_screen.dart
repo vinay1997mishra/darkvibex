@@ -747,7 +747,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                     subtitle: Text(
                       widget.state.authProvider == 'google'
                           ? 'Google'
-                          : 'Guest',
+                          : 'Email',
                     ),
                   ),
                   ListTile(

@@ -147,11 +147,9 @@ class AppSettingsScreen extends StatelessWidget {
                   ),
                   title: Text(darkVibeXText(language, 'sign_out')),
                   subtitle: Text(
-                    switch (state.authProvider) {
-                      'google' => 'Google account',
-                      'email' => 'Email account',
-                      _ => 'Guest session',
-                    },
+                    state.authProvider == 'google'
+                        ? 'Google account'
+                        : 'Email account',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () async {

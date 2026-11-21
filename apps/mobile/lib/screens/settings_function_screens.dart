@@ -190,7 +190,7 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
                     Text(
                       widget.state.authProvider == 'google'
                           ? _settingsText(widget.state, 'google_linked')
-                          : _settingsText(widget.state, 'guest_account'),
+                          : 'Email account',
                     ),
                     const SizedBox(height: 6),
                     Text(
