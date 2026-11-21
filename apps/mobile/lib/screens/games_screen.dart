@@ -204,7 +204,7 @@ class _GamesScreenState extends State<GamesScreen> {
               key: const Key('open-fruit-party'),
               leading: const Text('🍒', style: TextStyle(fontSize: 34)),
               title: const Text(
-                'FRUIT PARTY',
+                'GIRLS PARTY',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
               subtitle: const Text(

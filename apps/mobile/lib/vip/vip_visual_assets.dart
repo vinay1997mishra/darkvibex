@@ -674,6 +674,51 @@ const String greedyGirlBackgroundKey =
 String get greedyGirlBackgroundUrl =>
     '$kVipVisualR2PublicBaseUrl/$greedyGirlBackgroundKey';
 
+// ---------------------------------------------------------------------------
+// Fruit Party girls (one girl per fruit)
+// ---------------------------------------------------------------------------
+//
+// The 8 Fruit Party tiles are girls, not fruit emojis: tile 1 is the
+// original Greedy Girl (purple); tiles 2-8 are the new kiss-style girls,
+// each with her own kiss video (played on the winning tile) and a tile
+// still (the resting tile picture).
+
+/// Girl colour for a Fruit Party fruit key, in grid order
+/// (lemon, raspberry, kiwi, plum, banana, strawberry, watermelon, cherry).
+/// Unknown keys fall back to purple (the original Greedy Girl).
+const Map<String, String> fruitPartyGirlByFruitKey = <String, String>{
+  'lemon': 'purple',
+  'raspberry': 'blue',
+  'kiwi': 'red',
+  'plum': 'orange',
+  'banana': 'pink',
+  'strawberry': 'gold',
+  'watermelon': 'teal',
+  'cherry': 'green',
+};
+
+/// Girl colour for a Fruit Party fruit key.
+String fruitPartyGirlForFruitKey(String? key) =>
+    fruitPartyGirlByFruitKey[key?.trim() ?? ''] ?? 'purple';
+
+/// R2 key of the kiss video for a Fruit Party girl. Purple reuses the
+/// Greedy Girl kiss emote; the other girls have their own clips under
+/// fruit-party/girls/.
+String fruitPartyGirlKissKey(String girl) => girl == 'purple'
+    ? greedyGirlKissEmoteKey
+    : 'fruit-party/girls/$girl-kiss.mp4';
+
+/// Direct R2 URL of the kiss video for a Fruit Party girl.
+String fruitPartyGirlKissUrl(String girl) =>
+    '$kVipVisualR2PublicBaseUrl/${fruitPartyGirlKissKey(girl)}';
+
+/// R2 key of the tile still for a Fruit Party girl (220px JPG).
+String fruitPartyGirlStillKey(String girl) => 'fruit-party/girls/$girl.jpg';
+
+/// Direct R2 URL of the tile still for a Fruit Party girl.
+String fruitPartyGirlStillUrl(String girl) =>
+    '$kVipVisualR2PublicBaseUrl/${fruitPartyGirlStillKey(girl)}';
+
 /// Parses a chat message back into a panda emote name: "[panda:happy]"
 /// -> "happy". Null for anything else.
 String? pandaEmoteNameFromMarker(String? text) {
