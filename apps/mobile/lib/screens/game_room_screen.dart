@@ -635,7 +635,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
               ListTile(
                 key: const Key('game-room-play-fruit-party'),
                 leading: const Text('🍒', style: TextStyle(fontSize: 30)),
-                title: const Text('Fruit Party'),
+                title: const Text('Girls Party'),
                 onTap: () => Navigator.pop(sheetContext, 'fruit-party'),
               ),
               ListTile(

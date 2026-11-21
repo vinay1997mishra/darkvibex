@@ -943,7 +943,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                   Expanded(
                     child: Text(
                       panel == 'game'
-                          ? 'Fruit Party'
+                          ? 'Girls Party'
                           : panel == 'rules'
                           ? 'How to play'
                           : 'Game records',
@@ -965,7 +965,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Close Fruit Party',
+                    tooltip: 'Close Girls Party',
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(
                       Icons.close,

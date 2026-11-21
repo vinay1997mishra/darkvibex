@@ -41,7 +41,7 @@ Future<AppState> _openWithGame(
 }
 
 Future<void> _closeFruitParty(WidgetTester tester, AppState state) async {
-  await tester.tap(find.byTooltip('Close Fruit Party'));
+  await tester.tap(find.byTooltip('Close Girls Party'));
   await tester.pumpAndSettle();
   expect(find.byType(FruitPartyScreen), findsNothing);
   await tester.pumpWidget(const SizedBox());
@@ -50,7 +50,7 @@ Future<void> _closeFruitParty(WidgetTester tester, AppState state) async {
 
 void main() {
   for (final size in [const Size(360, 640), const Size(412, 892)]) {
-    testWidgets('Fruit Party half-screen layout and Lucky rules at $size', (
+    testWidgets('Girls Party half-screen layout and Lucky rules at $size', (
       tester,
     ) async {
       tester.view.physicalSize = size;
@@ -94,7 +94,7 @@ void main() {
         size.height * .5,
       );
       expect(tester.takeException(), isNull);
-      expect(find.text('Fruit Party'), findsOneWidget);
+      expect(find.text('Girls Party'), findsOneWidget);
       final silver = find.byKey(const Key('fruit-party-silver-lucky'));
       final gold = find.byKey(const Key('fruit-party-gold-lucky'));
       expect(tester.getCenter(silver).dx, lessThan(tester.getCenter(gold).dx));
@@ -116,7 +116,7 @@ void main() {
               .writeAsBytes(bytes!.buffer.asUint8List());
         }
       }
-      await tester.tap(find.byTooltip('Close Fruit Party'));
+      await tester.tap(find.byTooltip('Close Girls Party'));
       await tester.pumpAndSettle();
       expect(find.byType(FruitPartyScreen), findsNothing);
       await tester.pumpWidget(const SizedBox());
@@ -124,7 +124,7 @@ void main() {
     });
   }
 
-  testWidgets('Fruit Party winners strip shows top winners and gold timer', (
+  testWidgets('Girls Party winners strip shows top winners and gold timer', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(412, 892);
@@ -188,14 +188,14 @@ void main() {
     expect(timer.style?.color, const Color(0xFFF5C542));
     expect(timer.style?.fontSize, 34);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byTooltip('Close Fruit Party'));
+    await tester.tap(find.byTooltip('Close Girls Party'));
     await tester.pumpAndSettle();
     expect(find.byType(FruitPartyScreen), findsNothing);
     await tester.pumpWidget(const SizedBox());
     state.dispose();
   });
 
-  testWidgets('Fruit Party marquee lights spin continuously', (
+  testWidgets('Girls Party marquee lights spin continuously', (
     tester,
   ) async {
     final state = await _openWithGame(tester, <String, dynamic>{
@@ -243,7 +243,7 @@ void main() {
   });
 
   testWidgets(
-    'Fruit Party round-end popup shows the winning girl and top 3 winners',
+    'Girls Party round-end popup shows the winning girl and top 3 winners',
     (tester) async {
       final state = await _openWithGame(tester, <String, dynamic>{
         'round': {
@@ -289,7 +289,7 @@ void main() {
     },
   );
 
-  testWidgets('Fruit Party grid has 8 girl tiles and 7 bet amounts incl 20M', (
+  testWidgets('Girls Party grid has 8 girl tiles and 7 bet amounts incl 20M', (
     tester,
   ) async {
     final state = await _openWithGame(tester, <String, dynamic>{
@@ -341,7 +341,7 @@ void main() {
     await _closeFruitParty(tester, state);
   });
 
-  test('Fruit Party girls map one per fruit with distinct faces', () {
+  test('Girls Party girls map one per fruit with distinct faces', () {
     expect(fruitPartyGirlForFruitKey('lemon'), 'purple');
     expect(fruitPartyGirlForFruitKey('raspberry'), 'blue');
     expect(fruitPartyGirlForFruitKey('kiwi'), 'red');
@@ -376,7 +376,7 @@ void main() {
     );
   });
 
-  test('Fruit Party uses the purple-gold palette, no deep blue', () {
+  test('Girls Party uses the purple-gold palette, no deep blue', () {
     final source = File(
       'lib/screens/fruit_party_screen.dart',
     ).readAsStringSync();
