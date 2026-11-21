@@ -95,7 +95,7 @@ Future<void> _pumpScreen(
 }
 
 void main() {
-  testWidgets('buy coins section renders all 5 packs when the store is unavailable',
+  testWidgets('buy coins section renders all four packs when the store is unavailable',
       (tester) async {
     final state = AppState();
     await _pumpScreen(tester, state: state);
@@ -142,8 +142,10 @@ void main() {
       await tester.pumpAndSettle();
       final button = tester.widget<FilledButton>(find.byKey(key));
       expect(button.onPressed, isNotNull);
+      // Packs display as $1 / $2 / $5 / $10 (Vinay, 2026-11-21); the rupee
+      // amount is what the Play sheet charges, not the tile.
       expect(
-        find.descendant(of: find.byKey(key), matching: find.text('₹110.00')),
+        find.descendant(of: find.byKey(key), matching: find.text(pack.usdLabel)),
         findsOneWidget,
       );
     }
