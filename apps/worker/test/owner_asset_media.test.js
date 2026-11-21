@@ -17,9 +17,8 @@ const bubbleWidget = await read("../../mobile/lib/widgets/cosmetic_store_preview
 const mediaPreview = await read("../../mobile/lib/widgets/custom_asset_media_preview.dart");
 const effectPlayback = await read("../../mobile/lib/widgets/custom_asset_effect_playback.dart");
 
-test("removed editor route is hard-blocked with HTTP 404", () => {
-  assert.match(worker, /url\.pathname === "\/creator-studio" \|\| url\.pathname\.startsWith\("\/creator-studio\/"\)/);
-  assert.match(worker, /status: 404/);
+test("creator studio route is permanently removed", () => {
+  assert.doesNotMatch(worker, /creator-studio/);
   assert.doesNotMatch(worker, /studioAssetUrl|assets\.local/);
 });
 
