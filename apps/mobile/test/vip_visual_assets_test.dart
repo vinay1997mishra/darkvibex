@@ -1,4 +1,6 @@
 import 'package:darkvibex/vip/vip_visual_assets.dart';
+import 'package:darkvibex/widgets/profile_card_anim_background.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -379,21 +381,20 @@ void main() {
     expect(giftRibbonPanelColorsForVipLevel(0).panel, 0xFFD09E48);
   });
 
-  test('profile card animation URLs point at the R2 profile-card-anims/ mp4s (VIP4-18 only)',
+  test('profile card animation URLs point at the R2 profile-card-anims/ mp4s (VIP5-18 only)',
       () {
-    // v4 animations run from VIP4 onwards; VIP1-3 have none.
-    expect(vipProfileCardAnimAnimals.length, 15);
-    expect(vipProfileCardAnimAnimals[4], 'fox');
+    // v4 animations run from VIP5 onwards; VIP1-4 have none (VIP4's
+    // old screenshot video was retired 2026-11-21 — still only, clean
+    // frame).
+    expect(vipProfileCardAnimAnimals.length, 14);
+    expect(vipProfileCardAnimAnimals[4], isNull);
     expect(vipProfileCardAnimAnimals[5], 'deer');
     expect(vipProfileCardAnimAnimals[10], 'lion');
     expect(vipProfileCardAnimAnimals[16], 'leviathan');
     expect(vipProfileCardAnimAnimals[18], 'dragon');
     expect(vipProfileCardAnimAnimals[1], isNull);
     expect(vipProfileCardAnimAnimals[3], isNull);
-    expect(
-      profileCardAnimVideoUrlForVipLevel(4),
-      '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip4-fox.mp4',
-    );
+    expect(profileCardAnimVideoUrlForVipLevel(4), isNull);
     expect(
       profileCardAnimVideoUrlForVipLevel(5),
       '$kVipVisualR2PublicBaseUrl/profile-card-anims/vip5-deer.mp4',
@@ -406,21 +407,24 @@ void main() {
     expect(profileCardAnimVideoUrlForVipLevel(3), isNull);
     expect(profileCardAnimVideoUrlForVipLevel(0), isNull);
     expect(profileCardAnimVideoUrlForVipLevel(19), isNull);
-    for (var level = 4; level <= 18; level++) {
+    for (var level = 5; level <= 18; level++) {
       expect(
         vipProfileCardAnimVideoKeys[level],
         'profile-card-anims/vip$level-${vipProfileCardAnimAnimals[level]}.mp4',
       );
     }
-    // VIP1-3 have a still pic only, no video.
+    // VIP1-4 have a still pic only, no video.
     expect(vipProfileCardStillAnimals.length, 18);
     expect(vipProfileCardStillAnimals[1], 'cat');
     expect(vipProfileCardStillAnimals[2], 'swan');
     expect(vipProfileCardStillAnimals[3], 'dolphin');
+    expect(vipProfileCardStillAnimals[4], 'fox');
     for (var level = 1; level <= 18; level++) {
       expect(
         vipProfileCardAnimStillKeys[level],
-        'profile-card-stills/vip$level-${vipProfileCardStillAnimals[level]}.png',
+        level == 4
+            ? 'profile-card-frames/vip4-fox.webp'
+            : 'profile-card-stills/vip$level-${vipProfileCardStillAnimals[level]}.png',
       );
     }
   });
@@ -438,6 +442,12 @@ void main() {
     expect(
       profileCardAnimStillUrlForVipLevel(3),
       '$kVipVisualR2PublicBaseUrl/profile-card-stills/vip3-dolphin.png',
+    );
+    // VIP4's still is the new clean frame WebP, not the old
+    // screenshot PNG.
+    expect(
+      profileCardAnimStillUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip4-fox.webp',
     );
     expect(
       profileCardAnimStillUrlForVipLevel(5),
@@ -473,9 +483,216 @@ void main() {
       profileCardAnimVideoUrlForDisplay('custom-assets/card-123.mp4', 13),
       isNull,
     );
-    // VIP1-3 have no animation (static cards only).
+    // VIP1-4 have no animation (static cards only) — VIP4's old
+    // screenshot video key resolves to nothing, not the old MP4.
     expect(profileCardAnimVideoUrlForDisplay('', 1), isNull);
     expect(profileCardAnimVideoUrlForDisplay('', 3), isNull);
+    expect(profileCardAnimVideoUrlForDisplay('', 4), isNull);
+    expect(
+      profileCardAnimVideoUrlForDisplay(
+          'profile-card-anims/vip4-fox.mp4', 4),
+      isNull,
+    );
+  });
+
+  test('VIP4 shows the new clean frame, never the screenshot assets',
+      () {
+    // VIP4 (fox) is still only: the clean frame WebP as its still,
+    // no animation video from any helper, and the old screenshot keys
+    // resolve from nowhere.
+    expect(
+      profileCardAnimStillUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip4-fox.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip4-fox.webp',
+    );
+    expect(profileCardAnimVideoUrlForVipLevel(4), isNull);
+    expect(profileCardFrameAnimVideoUrlForVipLevel(4), isNull);
+    expect(
+      profileCardAnimVideoUrlForDisplay(
+          'profile-card-anims/vip4-fox.mp4', 4),
+      isNull,
+    );
+    expect(profileCardFrameAnimVideoUrlForDisplay('', 4), isNull);
+    expect(vipProfileCardAnimVideoKeys[4], isNull);
+    expect(
+      vipProfileCardAnimStillKeys[4],
+      'profile-card-frames/vip4-fox.webp',
+    );
+    for (final String key in vipProfileCardAnimVideoKeys.values) {
+      expect(key, isNot(contains('vip4-fox')));
+    }
+    for (final String key in vipProfileCardAnimStillKeys.values) {
+      expect(key, isNot(contains('profile-card-stills/vip4-fox.png')));
+    }
+    for (final String key in vipProfileCardAnimStillKeys.values) {
+      expect(key, isNot(contains('profile-card-anims/vip4-fox.mp4')));
+    }
+  });
+
+  test('profile card frame still URLs point at the R2 profile-card-frames/ WebPs (VIP1-18)',
+      () {
+    // Every level 1-18 has a frame still; VIP1-3 use the v4 still,
+    // VIP4 the new clean v3-style fox frame, VIP16 the clean wide
+    // frame, the rest the v3 design.
+    expect(vipProfileCardFrameStillKeys.length, 18);
+    expect(
+      profileCardFrameStillUrlForVipLevel(1),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip1-cat.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(2),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip2-swan.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(3),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip3-dolphin.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(4),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip4-fox.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(5),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip5-deer.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(16),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip16-leviathan.webp',
+    );
+    expect(
+      profileCardFrameStillUrlForVipLevel(18),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip18-dragon.webp',
+    );
+    expect(profileCardFrameStillUrlForVipLevel(0), isNull);
+    expect(profileCardFrameStillUrlForVipLevel(19), isNull);
+    for (var level = 1; level <= 18; level++) {
+      expect(
+        vipProfileCardFrameStillKeys[level],
+        'profile-card-frames/vip$level-${vipProfileCardStillAnimals[level]}.webp',
+      );
+    }
+  });
+
+  test('profile card frame animation URLs point at the R2 profile-card-frames/ mp4s (VIP5-18 only)',
+      () {
+    // Frame animations run from VIP5 onwards and loop; VIP1-4 have
+    // a still only.
+    expect(vipProfileCardFrameAnimAnimals.length, 14);
+    expect(vipProfileCardFrameAnimAnimals[5], 'deer');
+    expect(vipProfileCardFrameAnimAnimals[8], 'panther');
+    expect(vipProfileCardFrameAnimAnimals[13], 'gorilla');
+    expect(vipProfileCardFrameAnimAnimals[16], 'leviathan');
+    expect(vipProfileCardFrameAnimAnimals[18], 'dragon');
+    expect(vipProfileCardFrameAnimAnimals[1], isNull);
+    expect(vipProfileCardFrameAnimAnimals[4], isNull);
+    expect(
+      profileCardFrameAnimVideoUrlForVipLevel(5),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip5-deer-anim.mp4',
+    );
+    expect(
+      profileCardFrameAnimVideoUrlForVipLevel(13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla-anim.mp4',
+    );
+    expect(
+      profileCardFrameAnimVideoUrlForVipLevel(18),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip18-dragon-anim.mp4',
+    );
+    expect(profileCardFrameAnimVideoUrlForVipLevel(1), isNull);
+    expect(profileCardFrameAnimVideoUrlForVipLevel(4), isNull);
+    expect(profileCardFrameAnimVideoUrlForVipLevel(0), isNull);
+    expect(profileCardFrameAnimVideoUrlForVipLevel(19), isNull);
+    for (var level = 5; level <= 18; level++) {
+      expect(
+        vipProfileCardFrameAnimVideoKeys[level],
+        'profile-card-frames/vip$level-${vipProfileCardFrameAnimAnimals[level]}-anim.mp4',
+      );
+    }
+  });
+
+  test('profileCardFrameAnimVideoUrlForDisplay plays only the level own frame animation',
+      () {
+    // The displayed card IS the level's own frame animation (or no key
+    // configured, so the level animation is used): the frame video plays.
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay(
+          'profile-card-frames/vip13-gorilla-anim.mp4', 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla-anim.mp4',
+    );
+    // The Worker catalog still sends the level's old
+    // profile-card-anims/ key: that also counts as the level's own
+    // video and resolves to the frame animation.
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay(
+          'profile-card-anims/vip13-gorilla.mp4', 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla-anim.mp4',
+    );
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay('', 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla-anim.mp4',
+    );
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay(null, 13),
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla-anim.mp4',
+    );
+    // A custom/Owner video key has no frame animation: still only.
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay(
+          'custom-assets/card-123.mp4', 13),
+      isNull,
+    );
+    // Another level's key is not this level's own video: still only.
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay(
+          'profile-card-frames/vip5-deer-anim.mp4', 13),
+      isNull,
+    );
+    // VIP1-4 have no frame animation (still only).
+    expect(profileCardFrameAnimVideoUrlForDisplay('', 1), isNull);
+    expect(profileCardFrameAnimVideoUrlForDisplay('', 4), isNull);
+    expect(
+      profileCardFrameAnimVideoUrlForDisplay(
+          'profile-card-anims/vip4-fox.mp4', 4),
+      isNull,
+    );
+  });
+
+  test('ProfileCardAnimBackground.forVipLevel resolves the frame video + still',
+      () {
+    // VIP5-18: looping frame animation + still (no pump: constructing
+    // the widget does not start the video player).
+    final Widget vip13 =
+        ProfileCardAnimBackground.forVipLevel(level: 13, child: const SizedBox.shrink());
+    expect(vip13, isA<ProfileCardAnimBackground>());
+    expect(
+      (vip13 as ProfileCardAnimBackground).videoUrl,
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla-anim.mp4',
+    );
+    expect(
+      vip13.stillUrl,
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla.webp',
+    );
+    // VIP1-4: still only, no video.
+    final Widget vip4 =
+        ProfileCardAnimBackground.forVipLevel(level: 4, child: const SizedBox.shrink());
+    expect((vip4 as ProfileCardAnimBackground).videoUrl, isNull);
+    expect(
+      vip4.stillUrl,
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip4-fox.webp',
+    );
+    // A custom video key resolves to still only.
+    final Widget custom = ProfileCardAnimBackground.forVipLevel(
+      level: 13,
+      videoKey: 'custom-assets/card-123.mp4',
+      child: const SizedBox.shrink(),
+    );
+    expect((custom as ProfileCardAnimBackground).videoUrl, isNull);
+    expect(
+      custom.stillUrl,
+      '$kVipVisualR2PublicBaseUrl/profile-card-frames/vip13-gorilla.webp',
+    );
   });
 
   test('resolver sends profile-card anim/still keys direct from R2', () {

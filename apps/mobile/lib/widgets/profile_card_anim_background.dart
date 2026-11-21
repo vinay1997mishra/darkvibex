@@ -5,30 +5,31 @@ import 'package:video_player/video_player.dart';
 
 import '../vip/vip_visual_assets.dart';
 
-/// Plays a VIP profile card animation as the BACKGROUND of the profile
+/// Plays a VIP profile card FRAME as the BACKGROUND of the profile
 /// card popup, with the reference layout overlaid in the foreground.
 ///
 /// Layout rule (Vinay, 2026-11-19, approved): the popup shows the
 /// reference layout in the FOREGROUND — DP top centre (in place of the
 /// frame's blue diamond), name + badges, medals, ID/Fans, bio, 4
-/// buttons (Send gifts, Follow, Chat, Mention) — and this animation
+/// buttons (Send gifts, Follow, Chat, Mention) — and this frame
 /// plays in the BACKGROUND behind all the text. This widget owns the
 /// background only; the caller passes the foreground content as
 /// [child] and lays it out exactly like the reference.
 ///
-/// Behaviour (matches the v4 animation rule):
-/// - The video is the level's 5-second MP4, direct from R2
-///   (profile-card-anims/vip<N>-<animal>.mp4). It plays ONCE (no
-///   loop) and ends calmly; on completion the widget swaps back to
-///   the v3 still PNG, so the card stays visible at rest.
-/// - While the video downloads/initialises, the still PNG is shown
-///   (the poster) — the card is never an empty box.
+/// Behaviour (frame rule, Vinay, 2026-11-21 — all 18 frames added in
+/// one pass, 5 s, loop):
+/// - The video is the level's 5-second frame animation MP4, direct
+///   from R2 (profile-card-frames/vip<N>-<animal>-anim.mp4, VIP5-18).
+///   It LOOPS while the card is open; on any video error it swaps
+///   back to the frame still, so the card stays visible at rest.
+/// - While the video downloads/initialises, the frame still WebP is
+///   shown (the poster) — the card is never an empty box.
 /// - On any video error (bad URL, download failure, decoder failure)
 ///   it swaps back to the still. If the still also fails, [background]
 ///   is shown (default: a dark container).
-/// - When there is no video URL at all (VIP1-3 have no animation),
-///   the still is shown directly and no player is created. When there
-///   is no still either, only [child] is shown.
+/// - When there is no video URL at all (VIP1-4 have no frame
+///   animation), the still is shown directly and no player is created.
+///   When there is no still either, only [child] is shown.
 ///
 /// The video is a full-bleed scene (opaque background), so
 /// video_player CAN play it — unlike the transparent WebMs, which
@@ -44,10 +45,11 @@ class ProfileCardAnimBackground extends StatefulWidget {
     this.background,
   });
 
-  /// Background animation for a VIP level, resolved from the level:
-  /// video + still URLs from vip_visual_assets.dart. VIP1-3 resolve
-  /// to no video but a still pic; out of range resolves to neither,
-  /// so only [child] is shown. [videoKey] is the Worker's
+  /// Background frame animation for a VIP level, resolved from the level:
+  /// video + still URLs from vip_visual_assets.dart. VIP5-18 resolve to
+  /// a looping 5-second frame animation + still; VIP1-4 resolve to a
+  /// still pic only (no frame animation); out of range resolves to
+  /// neither, so only [child] is shown. [videoKey] is the Worker's
   /// profile_card_anim video_key — only the level's own animation
   /// ever plays (a custom/Owner key resolves to null, still only).
   factory ProfileCardAnimBackground.forVipLevel({
@@ -60,20 +62,20 @@ class ProfileCardAnimBackground extends StatefulWidget {
   }) {
     return ProfileCardAnimBackground(
       key: key,
-      videoUrl: profileCardAnimVideoUrlForDisplay(videoKey, level),
-      stillUrl: profileCardAnimStillUrlForVipLevel(level),
+      videoUrl: profileCardFrameAnimVideoUrlForDisplay(videoKey, level),
+      stillUrl: profileCardFrameStillUrlForVipLevel(level),
       child: child,
       fit: fit,
       background: background,
     );
   }
 
-  /// Direct R2 URL of the 5-second background animation MP4.
+  /// Direct R2 URL of the 5-second looping frame animation MP4.
   /// Empty/null = no video: the still is shown directly.
   final String? videoUrl;
 
-  /// Direct R2 URL of the v3 still PNG (poster while the video loads;
-  /// image shown after the video ends or errors).
+  /// Direct R2 URL of the frame still WebP (poster while the video loads;
+  /// image shown when the video errors).
   final String? stillUrl;
 
   /// Foreground content: the reference layout (DP, name, badges,
@@ -115,7 +117,8 @@ class _ProfileCardAnimBackgroundState
     final controller = _controller;
     if (controller == null || !mounted) return;
     if (controller.value.hasError || controller.value.isCompleted) {
-      // Finished, or failed: show the still. Never a black box.
+      // Failed (or finished, if looping is unavailable on the
+      // platform): show the still. Never a black box.
       if (_showVideo) setState(() => _showVideo = false);
     }
   }
@@ -129,7 +132,7 @@ class _ProfileCardAnimBackgroundState
     try {
       await controller.initialize();
       if (!mounted) return;
-      await controller.setLooping(false);
+      await controller.setLooping(true);
       setState(() => _showVideo = true);
       await controller.play();
     } catch (_) {

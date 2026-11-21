@@ -303,6 +303,10 @@ test("VIP profile card animation catalog covers VIP4-18 only, no bottom line in 
   assert.equal(profileCardAnimForVipLevel(10)?.animal, "lion");
   assert.equal(profileCardAnimForVipLevel(16)?.animal, "leviathan");
   assert.equal(profileCardAnimForVipLevel(18)?.animal, "dragon");
+  // VIP4's entry is still-only with the new clean frame — its old
+  // screenshot still/video were retired 2026-11-21.
+  assert.equal(profileCardAnimForVipLevel(4)?.asset_key, "profile-card-frames/vip4-fox.webp");
+  assert.equal(profileCardAnimForVipLevel(4)?.video_key, null);
   assert.equal(profileCardAnimForVipLevel(1), null);
   assert.equal(profileCardAnimForVipLevel(2), null);
   assert.equal(profileCardAnimForVipLevel(3), null);
@@ -313,10 +317,9 @@ test("VIP profile card animation catalog covers VIP4-18 only, no bottom line in 
 });
 
 test("VIP profile card animation URLs point at the R2 profile-card-anims/ keys", () => {
-  assert.equal(
-    profileCardAnimUrlForVipLevel(4),
-    `${R2_BASE}/profile-card-anims/vip4-fox.mp4`,
-  );
+  // VIP4 has no video (still only, clean frame) — its URL is null
+  // and it is left out of the video URL list.
+  assert.equal(profileCardAnimUrlForVipLevel(4), null);
   assert.equal(
     profileCardAnimUrlForVipLevel(5),
     `${R2_BASE}/profile-card-anims/vip5-deer.mp4`,
@@ -327,7 +330,7 @@ test("VIP profile card animation URLs point at the R2 profile-card-anims/ keys",
   );
   assert.equal(profileCardAnimUrlForVipLevel(3), null);
   assert.equal(profileCardAnimUrlForVipLevel(1), null);
-  assert.equal(allProfileCardAnimUrls().length, 15);
+  assert.equal(allProfileCardAnimUrls().length, 14);
   assert.ok(allProfileCardAnimUrls().every((url) => url.startsWith(`${R2_BASE}/profile-card-anims/`)));
   assert.ok(allProfileCardAnimUrls().every((url) => url.endsWith(".mp4")));
 });
@@ -354,6 +357,35 @@ test("VIP profile card animation visual plays once as background, still is the f
   );
   assert.equal(profileCardAnimStillUrlForVipLevel(2), null);
   assert.equal(allProfileCardAnimStillUrls().length, 15);
-  assert.ok(allProfileCardAnimStillUrls().every((url) => url.startsWith(`${R2_BASE}/profile-card-stills/`)));
-  assert.ok(allProfileCardAnimStillUrls().every((url) => url.endsWith(".png")));
+  // VIP5-18 stills are the profile-card-stills/ PNGs; VIP4's still is
+  // the new clean frame WebP.
+  assert.ok(allProfileCardAnimStillUrls().every((url) => typeof url === "string" && url.length > 0));
+  assert.ok(allProfileCardAnimStillUrls().slice(1).every((url) => url.startsWith(`${R2_BASE}/profile-card-stills/`)));
+  assert.ok(allProfileCardAnimStillUrls().slice(1).every((url) => url.endsWith(".png")));
+  assert.equal(
+    profileCardAnimStillUrlForVipLevel(4),
+    `${R2_BASE}/profile-card-frames/vip4-fox.webp`,
+  );
+});
+
+test("VIP4 profile card is still-only with the new clean frame, never the screenshot assets", () => {
+  // The old screenshot still/video must resolve from nowhere: no
+  // video URL, no video key in the visual, still URL is the clean
+  // frame WebP.
+  const visual = profileCardAnimVisualForVipLevel(4);
+  assert.equal(visual.id, "vip-profile-card-anim-4");
+  assert.equal(visual.kind, "profile_card_anim");
+  assert.equal(visual.asset_key, "profile-card-frames/vip4-fox.webp");
+  assert.equal(visual.video_key, null);
+  assert.equal(visual.media_type, "image");
+  assert.equal(visual.animation_type, "none");
+  assert.equal(visual.animation_ms, 5000);
+  assert.equal(profileCardAnimUrlForVipLevel(4), null);
+  assert.equal(
+    profileCardAnimStillUrlForVipLevel(4),
+    `${R2_BASE}/profile-card-frames/vip4-fox.webp`,
+  );
+  assert.ok(!allProfileCardAnimUrls().some((url) => url.includes("vip4-fox")));
+  assert.ok(!allProfileCardAnimStillUrls().some((url) => url.includes("profile-card-stills/vip4-fox.png")));
+  assert.ok(!JSON.stringify(VIP_PROFILE_CARD_ANIM_CATALOG).includes("profile-card-anims/vip4-fox.mp4"));
 });

@@ -904,26 +904,33 @@ GiftRibbonPanelColors giftRibbonPanelColorsForVipLevel(int level) {
 //          wide horizontal frame content inside; frame design stays
 //          exactly as the starting still, camera static, NO zoom, only
 //          the animal moves gently, ends calmly)
-//   still: profile-card-stills/vip<N>-<animal>.png (the v3 design,
-//          VIP4: its V1 clean frame) — poster while the video loads,
-//          and the fallback when the video cannot play or finishes.
+//   still: profile-card-stills/vip<N>-<animal>.png (the v3 design) —
+//          poster while the video loads, and the fallback when the
+//          video cannot play or finishes. EXCEPTION — VIP4: its old
+//          still/video were built from an app screenshot
+//          (cosmetics-shop UI behind the fox frame), so VIP4's still
+//          below is the new clean frame
+//          (profile-card-frames/vip4-fox.webp, generated 2026-11-21)
+//          and VIP4 has NO video (still only).
 //
-// v4 runs from VIP4 onwards and NO design has a bottom line — every
+// v4 runs from VIP5 onwards and NO design has a bottom line — every
 // frame is open at the bottom, top and sides only, and no design
 // carries any text ("VIP N" / "Profile Card" never appear; the VIP
-// tag is already in the profile). VIP1-3 have NO video animation,
+// tag is already in the profile). VIP1-4 have NO video animation,
 // only a normal still pic (Vinay, 2026-11-20, "normal pic lagegi
-// 1 se 3 tak"): the still helpers below return the pic for VIP1-18,
-// the video helpers return null for VIP1-3.
+// 1 se 3 tak"; VIP4 still-only since 2026-11-21, screenshot video
+// retired): the still helpers below return the pic for VIP1-18,
+// the video helpers return null for VIP1-4.
 //
 // The video is a full-bleed scene (opaque background), NOT a
 // transparent cutout — unlike the VAP frames, video_player CAN play
 // it (opaque texture is fine here). Never feed it a WebM.
 
-/// Animal per VIP level for PROFILE CARD animations. VIP4 = fox,
-/// VIP5 = deer ... VIP18 = dragon. VIP1-3 have no animation.
+/// Animal per VIP level for PROFILE CARD animations. VIP5 = deer,
+/// VIP6 = wolf ... VIP18 = dragon. VIP1-4 have no animation (VIP4's
+/// old screenshot video was retired 2026-11-21 — still only, clean
+/// frame).
 const Map<int, String> vipProfileCardAnimAnimals = <int, String>{
-  4: 'fox',
   5: 'deer',
   6: 'wolf',
   7: 'eagle',
@@ -942,7 +949,7 @@ const Map<int, String> vipProfileCardAnimAnimals = <int, String>{
 
 /// Animal per VIP level for PROFILE CARD stills. VIP1 = cat,
 /// VIP2 = swan, VIP3 = dolphin, VIP4 = fox ... VIP18 = dragon.
-/// Every level 1-18 has a still pic; only VIP4-18 have a video
+/// Every level 1-18 has a still pic; only VIP5-18 have a video
 /// animation (see [vipProfileCardAnimAnimals]).
 const Map<int, String> vipProfileCardStillAnimals = <int, String>{
   1: 'cat',
@@ -973,24 +980,28 @@ Map<int, String> get vipProfileCardAnimVideoKeys => <int, String>{
             'profile-card-anims/vip${entry.key}-${entry.value}.mp4',
     };
 
-/// R2 key of the fallback still PNG per level (VIP1-18).
+/// R2 key of the fallback still per level (VIP1-18). VIP4's still is
+/// the new clean frame WebP (profile-card-frames/vip4-fox.webp) — the
+/// old screenshot PNG (profile-card-stills/vip4-fox.png) must never
+/// resolve from anywhere.
 Map<int, String> get vipProfileCardAnimStillKeys => <int, String>{
       for (final MapEntry<int, String> entry
           in vipProfileCardStillAnimals.entries)
-        entry.key:
-            'profile-card-stills/vip${entry.key}-${entry.value}.png',
+        entry.key: entry.key == 4
+            ? 'profile-card-frames/vip4-fox.webp'
+            : 'profile-card-stills/vip${entry.key}-${entry.value}.png',
     };
 
 /// Direct R2 URL of the background animation MP4 for [level], or null
-/// for VIP1-3 (no animation) / out of range.
+/// for VIP1-4 (no animation) / out of range.
 String? profileCardAnimVideoUrlForVipLevel(int level) {
   final String? key = vipProfileCardAnimVideoKeys[level];
   if (key == null) return null;
   return '$kVipVisualR2PublicBaseUrl/$key';
 }
 
-/// Direct R2 URL of the fallback still PNG for [level], or null out
-/// of range. VIP1-3 have a still pic, no video.
+/// Direct R2 URL of the fallback still for [level], or null out
+/// of range. VIP1-4 have a still pic, no video.
 String? profileCardAnimStillUrlForVipLevel(int level) {
   final String? key = vipProfileCardAnimStillKeys[level];
   if (key == null) return null;
@@ -1009,12 +1020,111 @@ String? profileCardAnimStillUrlForVipLevel(int level) {
 /// level's animation behind it.
 String? profileCardAnimVideoUrlForDisplay(String? videoKey, int level) {
   final String? animKey = vipProfileCardAnimVideoKeys[level];
-  if (animKey == null) return null; // VIP1-3: no animation.
+  if (animKey == null) return null; // VIP1-4: no animation.
   final String key = (videoKey ?? '').trim();
   if (key.isEmpty || key == animKey) {
     return profileCardAnimVideoUrlForVipLevel(level);
   }
   return null; // Custom/Owner video: still only, no v4 animation.
+}
+
+// ---------------------------------------------------------------------------
+// Profile card frames (VIP1-18 stills, VIP5-18 looping animations)
+// ---------------------------------------------------------------------------
+//
+// The profile card popup shows the level's FRAME design as its
+// background (Vinay, 2026-11-21, "Add kar de saare is bar dubara ke
+// liye kuch mat chodiyo" — all 18 frames added in one pass):
+//   still: profile-card-frames/vip<N>-<animal>.webp (the v3 frame
+//          design; VIP1-3: v4 still; VIP4: new clean v3-style fox
+//          frame generated 2026-11-21 — every local VIP4 frame file
+//          was an app screenshot; VIP16: the clean wide frame
+//          ...4957abf4...)
+//   video: profile-card-frames/vip<N>-<animal>-anim.mp4 (5 s, LOOP,
+//          VIP5-18 only; VIP1-4 have no frame animation, still only).
+//
+// The frame still is the poster while the video loads and the fallback
+// when the video cannot play. The video LOOPS (Vinay, 2026-11-21,
+// "Loop me rahega") — unlike the old profile-card-anims/ videos which
+// played once. The old profile-card-anims/ + profile-card-stills/
+// helpers above stay as-is (their R2 assets still exist); the popup
+// now uses these frame helpers instead.
+
+/// Animal per VIP level for PROFILE CARD FRAME animations. VIP5 = deer,
+/// VIP6 = wolf, VIP7 = eagle, VIP8 = panther, VIP9 = cobra,
+/// VIP10 = lion, VIP11 = tiger, VIP12 = mammoth, VIP13 = gorilla,
+/// VIP14 = bear, VIP15 = kraken, VIP16 = leviathan, VIP17 = phoenix,
+/// VIP18 = dragon. VIP1-4 have no frame animation (still only).
+const Map<int, String> vipProfileCardFrameAnimAnimals = <int, String>{
+  5: 'deer',
+  6: 'wolf',
+  7: 'eagle',
+  8: 'panther',
+  9: 'cobra',
+  10: 'lion',
+  11: 'tiger',
+  12: 'mammoth',
+  13: 'gorilla',
+  14: 'bear',
+  15: 'kraken',
+  16: 'leviathan',
+  17: 'phoenix',
+  18: 'dragon',
+};
+
+/// R2 key of the frame still WebP per level (VIP1-18).
+Map<int, String> get vipProfileCardFrameStillKeys => <int, String>{
+      for (final MapEntry<int, String> entry
+          in vipProfileCardStillAnimals.entries)
+        entry.key:
+            'profile-card-frames/vip${entry.key}-${entry.value}.webp',
+    };
+
+/// R2 key of the looping frame animation MP4 per level (VIP5-18).
+Map<int, String> get vipProfileCardFrameAnimVideoKeys => <int, String>{
+      for (final MapEntry<int, String> entry
+          in vipProfileCardFrameAnimAnimals.entries)
+        entry.key:
+            'profile-card-frames/vip${entry.key}-${entry.value}-anim.mp4',
+    };
+
+/// Direct R2 URL of the frame still WebP for [level], or null out
+/// of range. Every level 1-18 has a frame still.
+String? profileCardFrameStillUrlForVipLevel(int level) {
+  final String? key = vipProfileCardFrameStillKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// Direct R2 URL of the looping frame animation MP4 for [level], or
+/// null for VIP1-4 (no frame animation) / out of range.
+String? profileCardFrameAnimVideoUrlForVipLevel(int level) {
+  final String? key = vipProfileCardFrameAnimVideoKeys[level];
+  if (key == null) return null;
+  return '$kVipVisualR2PublicBaseUrl/$key';
+}
+
+/// Frame animation video URL for the card actually being displayed, or
+/// null when the card has no frame animation video.
+///
+/// The video plays ONLY for the level's own frame animation: [videoKey]
+/// is the member's profile_card_anim video_key from the Worker. The
+/// Worker catalog still sends the level's old profile-card-anims/ key,
+/// so that key AND the new frame anim key both count as "the level's
+/// own video". A custom/Owner video key has no frame animation, so this
+/// returns null and the caller shows the still only. Never guess a
+/// video URL for a custom card — that would play the wrong level's
+/// animation behind it.
+String? profileCardFrameAnimVideoUrlForDisplay(String? videoKey, int level) {
+  final String? frameAnimKey = vipProfileCardFrameAnimVideoKeys[level];
+  if (frameAnimKey == null) return null; // VIP1-4: no frame animation.
+  final String key = (videoKey ?? '').trim();
+  if (key.isEmpty ||
+      key == frameAnimKey ||
+      key == vipProfileCardAnimVideoKeys[level]) {
+    return profileCardFrameAnimVideoUrlForVipLevel(level);
+  }
+  return null; // Custom/Owner video: still only, no frame animation.
 }
 
 // ---------------------------------------------------------------------------
