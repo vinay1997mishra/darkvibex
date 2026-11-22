@@ -14,6 +14,7 @@ import {
   recordRechargeInviteCommission,
   reverseRechargeInviteCommission,
 } from "../src/invite_rewards.js";
+import { ensurePlayBillingSchema } from "../src/play_billing.js";
 
 class D1Mock {
   constructor(database) { this.database = database; }
@@ -112,11 +113,13 @@ function sellerBalance(fx, userId, walletType) {
   return Number(row?.balance_coins ?? 0);
 }
 
-async function bind(fx, inviteeId, code) {
+async function bind(fx, inviteeId, code, deviceKey) {
+  const body = { user_id: inviteeId, invitation_code: code };
+  if (deviceKey) body.device_key = deviceKey;
   return fx.request("/api/invite/bind", {
     method: "POST",
     userId: inviteeId,
-    body: { user_id: inviteeId, invitation_code: code },
+    body,
   });
 }
 
@@ -550,4 +553,138 @@ test("reversal after a withdrawal takes only what is left, never below zero", as
   assert.equal(reversed.applied, true);
   assert.equal(reversed.clawed_back_usd_cents, 50);
   assert.equal(dollarBalance(fx, "inviter-1"), 250);
+});
+
+// ---- Invited-users table: total recharge per invitee (Vinay, 2026-11-23) ----
+
+test("summary shows each invitee's total recharge in dollars; refunded and pending do not count", async () => {
+  const fx = await fixture();
+  const inviter = makeUser(fx, "inviter-1");
+  makeUser(fx, "invitee-1");
+  makeUser(fx, "invitee-2");
+  await bind(fx, "invitee-1", inviter.publicId);
+  await bind(fx, "invitee-2", inviter.publicId);
+
+  await ensurePlayBillingSchema(fx.DB);
+  const now = Date.now();
+  const insert = fx.sqlite.prepare(
+    "INSERT INTO play_purchases (purchase_token, user_id, product_id, coins_credited, bonus_coins, exp_awarded, first_recharge, status, created_at) VALUES (?,?,?,?,0,0,0,?,?)"
+  );
+  insert.run("tok-1", "invitee-1", "coins_8000000", 8000000, "granted", now);
+  insert.run("tok-2", "invitee-1", "coins_80000000", 80000000, "granted", now);
+  insert.run("tok-3", "invitee-1", "coins_40000000", 40000000, "refunded", now);
+  insert.run("tok-4", "invitee-1", "coins_16000000", 16000000, "pending", now);
+  insert.run("tok-5", "invitee-1", "coins_unknown", 0, "granted", now);
+
+  // Seller-wallet transfers into the normal wallet also count as
+  // recharge (Vinay, 2026-11-23), valued at $1 = 8,000,000 coins.
+  // The VIP purchase bonus is free platform coins, not a recharge.
+  const ledger = fx.sqlite.prepare(
+    "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+  );
+  ledger.run(crypto.randomUUID(), "invitee-1", "coin_seller_received", 8000000, 8000000, "ref-1", now);
+  ledger.run(crypto.randomUUID(), "invitee-1", "merchant_received", 4000000, 12000000, "ref-2", now);
+  ledger.run(crypto.randomUUID(), "invitee-1", "vip_coins_bonus", 400000, 12400000, "ref-1", now);
+
+  const result = await summary(fx, "inviter-1");
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  const users = result.body.invited_users;
+  assert.equal(users.length, 2);
+  const first = users.find((u) => u.user_id === "invitee-1");
+  // $1 + $10 granted = 1100 cents; the refunded $5, pending $2 and the
+  // unknown product count for nothing. Seller transfers add $1.00 +
+  // $0.50 = 150 cents; the 400,000-coin VIP bonus is not a recharge.
+  assert.equal(first.total_recharge_usd_cents, 1250);
+  const second = users.find((u) => u.user_id === "invitee-2");
+  assert.equal(second.total_recharge_usd_cents, 0);
+});
+
+// ---- Unlimited invites (Vinay, 2026-11-23): no cap on how many people ----
+// ---- one user can invite; the Share-page table shows 5, rest scroll. ----
+
+test("invites are unlimited: the summary lists every invitee, not just 100", async () => {
+  const fx = await fixture();
+  const inviter = makeUser(fx, "inviter-1");
+  const now = Date.now();
+  for (let i = 0; i < 105; i++) {
+    const inviteeId = `invitee-${i}`;
+    makeUser(fx, inviteeId);
+    fx.sqlite.prepare(
+      "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
+    ).run(inviteeId, "inviter-1", inviter.publicId, now - i * 1000);
+  }
+
+  const result = await summary(fx, "inviter-1");
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.invite_count, 105);
+  assert.equal(result.body.invited_users.length, 105);
+  // The backfill pays the 800,000 reward for every one of them.
+  assert.equal(result.body.successful_invite_reward_coins, 105 * 800000);
+  assert.equal(userCoins(fx, "inviter-1"), 105 * 800000);
+});
+
+// ---- One device, one ID (Vinay, 2026-11-23) ----
+
+test("one device can use an invite code for one ID only", async () => {
+  const fx = await fixture();
+  const inviter = makeUser(fx, "inviter-1");
+  makeUser(fx, "invitee-1");
+  makeUser(fx, "invitee-2");
+  makeUser(fx, "invitee-3");
+
+  // The first account on the device binds fine.
+  const first = await bind(fx, "invitee-1", inviter.publicId, "device-abc");
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(userCoins(fx, "inviter-1"), 800000);
+
+  // A second account on the SAME device cannot use any invite code.
+  const second = await bind(fx, "invitee-2", inviter.publicId, "device-abc");
+  assert.equal(second.status, 400, JSON.stringify(second.body));
+  assert.equal(second.body.error, "device_already_used_invite");
+  assert.equal(userCoins(fx, "inviter-1"), 800000);
+
+  // The same account re-binding is still already_bound, not a device error.
+  const again = await bind(fx, "invitee-1", inviter.publicId, "device-abc");
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.equal(again.body.binding.already_bound, true);
+
+  // A different device binds fine; no device key at all also binds (old clients).
+  const third = await bind(fx, "invitee-2", inviter.publicId, "device-xyz");
+  assert.equal(third.status, 200, JSON.stringify(third.body));
+  const fourth = await bind(fx, "invitee-3", inviter.publicId);
+  assert.equal(fourth.status, 200, JSON.stringify(fourth.body));
+  assert.equal(userCoins(fx, "inviter-1"), 3 * 800000);
+});
+
+// ---- 48-hour invite window (Vinay, 2026-11-23) ----
+
+test("invite code must be entered within 48 hours of the ID being created", async () => {
+  const fx = await fixture();
+  const inviter = makeUser(fx, "inviter-1");
+  const now = Date.now();
+
+  // A fresh account binds fine.
+  makeUser(fx, "invitee-1");
+  const ok = await bind(fx, "invitee-1", inviter.publicId);
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+
+  // An account created 49 hours ago: the window has closed.
+  makeUser(fx, "invitee-2");
+  fx.sqlite.prepare("UPDATE users SET created_at=? WHERE id=?").run(
+    now - 49 * 60 * 60 * 1000,
+    "invitee-2",
+  );
+  const late = await bind(fx, "invitee-2", inviter.publicId);
+  assert.equal(late.status, 400, JSON.stringify(late.body));
+  assert.equal(late.body.error, "invite_window_expired");
+  assert.equal(userCoins(fx, "inviter-1"), 800000);
+
+  // The summary reports the window: open for the fresh account, closed
+  // for the old one, with the 48-hour length.
+  const fresh = await summary(fx, "invitee-1");
+  assert.equal(fresh.body.invite_window_open, true);
+  assert.equal(fresh.body.invite_window_hours, 48);
+  const old = await summary(fx, "invitee-2");
+  assert.equal(old.body.invite_window_open, false);
+  assert.ok(old.body.invite_window_ends_at > 0);
 });

@@ -74,6 +74,10 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
   int get _dollarBalanceCents =>
       int.tryParse(data?['referral_dollar_balance_usd_cents']?.toString() ?? '') ?? 0;
 
+  // The enter-code option closes 48 hours after the ID is created
+  // (Vinay, 2026-11-23). A missing field (old server) means open.
+  bool get _inviteWindowOpen => data?['invite_window_open'] != false;
+
   List<Map<String, dynamic>> get _dollarCommissions {
     final raw = data?['referral_dollar_commissions'];
     if (raw is! List) return const <Map<String, dynamic>>[];
@@ -342,7 +346,11 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
     final error = result?['error']?.toString() ?? 'Unable to join invitation code.';
     final message = error == 'cannot_invite_self'
         ? 'You cannot use your own invitation code.'
-        : error.replaceAll('_', ' ');
+        : error == 'invite_window_expired'
+            ? 'Invite codes can only be entered within 48 hours of creating your ID.'
+            : error == 'device_already_used_invite'
+                ? 'This device has already used an invite code.'
+                : error.replaceAll('_', ' ');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -721,16 +729,22 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                             height: 1.35,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  if (boundMap == null) ...[
-                    const SizedBox(height: 12),
-                    _sectionTitle('Join an inviter'),
-                    _panel(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
+                        // Enter an inviter's code here, beside your own
+                        // code (Vinay, 2026-11-23): the option stays on
+                        // this screen for later, not just the one-time
+                        // prompt after login — but only within 48 hours
+                        // of the ID being created, then it disappears.
+                        if (boundMap == null && _inviteWindowOpen) ...[
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Have an invitation code?',
+                            style: TextStyle(
+                              color: TinniPalette.cream,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
                           TextField(
                             controller: _codeController,
                             keyboardType: TextInputType.number,
@@ -752,9 +766,10 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                             onPressed: joining ? () {} : _join,
                           ),
                         ],
-                      ),
+                      ],
                     ),
-                  ] else ...[
+                  ),
+                  if (boundMap != null) ...[
                     const SizedBox(height: 12),
                     _sectionTitle('Joined inviter'),
                     _panel(
@@ -874,62 +889,81 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
       );
 
   Widget _inviteRecordsTable(List<Map<String, dynamic>> invited) {
+    // The invited-users list scrolls up/down inside a fixed-height box
+    // (Vinay, 2026-11-23): 5 invites show at a time, the rest are seen
+    // by scrolling. A long list must not push the rest of the Share page
+    // down. The horizontal scroll stays for the wide table.
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Table(
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          border: TableBorder.all(
-            color: const Color(0x44FFD36B),
-            width: 0.8,
-          ),
-          columnWidths: const <int, TableColumnWidth>{
-            0: FixedColumnWidth(190),
-            1: FixedColumnWidth(90),
-            2: FixedColumnWidth(145),
-            3: FixedColumnWidth(155),
-            4: FixedColumnWidth(135),
-            5: FixedColumnWidth(120),
-            6: FixedColumnWidth(110),
-          },
-          children: [
-            TableRow(
-              decoration: const BoxDecoration(color: Color(0xFF7A1320)),
-              children: [
-                _inviteTableCell('DP / Name', header: true),
-                _inviteTableCell('8-digit ID', header: true),
-                _inviteTableCell('Invite Date & Time', header: true),
-                _inviteTableCell('Coin Seller Coins', header: true),
-                _inviteTableCell('Commission', header: true),
-                _inviteTableCell('Invite Reward', header: true),
-                _inviteTableCell('Referral \$', header: true),
-              ],
-            ),
-            for (final row in invited)
-              TableRow(
-                decoration: const BoxDecoration(color: Color(0xFF5A0D17)),
+      child: SizedBox(
+        height: 272,
+        child: Scrollbar(
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Table(
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                border: TableBorder.all(
+                  color: const Color(0x44FFD36B),
+                  width: 0.8,
+                ),
+                columnWidths: const <int, TableColumnWidth>{
+                  0: FixedColumnWidth(190),
+                  1: FixedColumnWidth(90),
+                  2: FixedColumnWidth(145),
+                  3: FixedColumnWidth(155),
+                  4: FixedColumnWidth(135),
+                  5: FixedColumnWidth(120),
+                  6: FixedColumnWidth(110),
+                  7: FixedColumnWidth(110),
+                },
                 children: [
-                  _inviteUserCell(row),
-                  _inviteTableCell(
-                    formatPublicUserId(row['public_id']),
+                  TableRow(
+                    decoration: const BoxDecoration(color: Color(0xFF7A1320)),
+                    children: [
+                      _inviteTableCell('DP / Name', header: true),
+                      _inviteTableCell('8-digit ID', header: true),
+                      _inviteTableCell('Invite Date & Time', header: true),
+                      _inviteTableCell('Coin Seller Coins', header: true),
+                      _inviteTableCell('Commission', header: true),
+                      _inviteTableCell('Invite Reward', header: true),
+                      _inviteTableCell('Referral \$', header: true),
+                      _inviteTableCell('Recharge', header: true),
+                    ],
                   ),
-                  _inviteTableCell(_formatDateTime(row['bound_at'])),
-                  _inviteTableCell(
-                    '${_formatCoins(row['received_coins'])} coins',
-                  ),
-                  _inviteTableCell(
-                    '+${_formatCoins(row['commission_coins'])}',
-                  ),
-                  _inviteTableCell(
-                    '+${_formatCoins(row['fixed_reward_coins'])}',
-                  ),
-                  _inviteTableCell(
-                    '+${_formatDollars(row['referral_commission_usd_cents'])}',
-                  ),
+                  for (final row in invited)
+                    TableRow(
+                      decoration:
+                          const BoxDecoration(color: Color(0xFF5A0D17)),
+                      children: [
+                        _inviteUserCell(row),
+                        _inviteTableCell(
+                          formatPublicUserId(row['public_id']),
+                        ),
+                        _inviteTableCell(_formatDateTime(row['bound_at'])),
+                        _inviteTableCell(
+                          '${_formatCoins(row['received_coins'])} coins',
+                        ),
+                        _inviteTableCell(
+                          '+${_formatCoins(row['commission_coins'])}',
+                        ),
+                        _inviteTableCell(
+                          '+${_formatCoins(row['fixed_reward_coins'])}',
+                        ),
+                        _inviteTableCell(
+                          '+${_formatDollars(row['referral_commission_usd_cents'])}',
+                        ),
+                        _inviteTableCell(
+                          _formatDollars(row['total_recharge_usd_cents']),
+                        ),
+                      ],
+                    ),
                 ],
               ),
-          ],
+            ),
+          ),
         ),
       ),
     );
