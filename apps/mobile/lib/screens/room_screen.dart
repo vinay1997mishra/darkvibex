@@ -32,6 +32,7 @@ import '../widgets/gift_ribbon_banner.dart';
 import '../widgets/top_room_banner.dart';
 import '../widgets/level_medal.dart';
 import '../widgets/vip_tag_image.dart';
+import '../widgets/role_tag_image.dart';
 import '../widgets/vip_name_text.dart';
 import '../widgets/vip_priority_message_banner.dart';
 import '../widgets/vip_show_id_text.dart';
@@ -4150,6 +4151,13 @@ class _RoomScreenState extends State<RoomScreen>
                                     vipLevel: activeVipLevel,
                                     fontSize: 12,
                                   ),
+                                // Role tag — hidden until Vinay says show.
+                                // profile['role'] comes from /api/users/:id,
+                                // which already selects users.role.
+                                RoleTagImage(
+                                  role: profile['role']?.toString(),
+                                  fontSize: 12,
+                                ),
                                 Text(
                                   '|',
                                   style: TextStyle(
@@ -10361,6 +10369,7 @@ class _RoomScreenState extends State<RoomScreen>
                                     tags: profileTags,
                                     medals: profileMedals,
                                     vipLevel: senderVipLevel,
+                                    role: message['role']?.toString(),
                                     // Animal frame still (VIP5-18) with its
                                     // VAP alpha-video; the frame animates
                                     // once and then shows the still.

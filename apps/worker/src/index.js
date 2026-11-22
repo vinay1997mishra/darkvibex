@@ -2399,6 +2399,7 @@ async function loadRoomMessagesState(db, roomId, viewerId) {
                        AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1
                  THEN 'Anonymous' ELSE u.display_name END AS display_name,
             u.avatar_key,
+            u.role,
             CASE WHEN v.active_until > ? THEN v.level ELSE 0 END AS active_vip_level,
             CASE WHEN v.level >= 18 AND v.active_until > ?
                        AND json_extract(v.preferences_json, '$.anonymous_everywhere') = 1

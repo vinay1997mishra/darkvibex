@@ -67,6 +67,7 @@ const List<String> kDirectR2AssetPrefixes = <String>[
   'frames/',
   'entry-effects/',
   'vip-tags/',
+  'tags/',
   'vip-medals/',
   'profile-banners/',
   'profile-card-anims/',

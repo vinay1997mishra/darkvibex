@@ -35,3 +35,15 @@ test("room sender header stays above the bubble and message content excludes sen
   assert.match(header, /_tagChip/);
   assert.match(header, /_medalChip/);
 });
+
+test("room messages carry the sender's role so the chat header can show "
+    + "the role tag (hidden until Vinay says show)", () => {
+  // The room-messages SELECT reads the sender's users.role next to the
+  // avatar and VIP level.
+  assert.match(worker, /u\.avatar_key,\s*\n\s*u\.role,/);
+  // The app feeds that role into the sender header, which renders the
+  // role tag next to the VIP tag.
+  assert.match(room, /role: message\['role'\]\?\.toString\(\)/);
+  assert.match(header, /final String\? role;/);
+  assert.match(header, /RoleTagImage\(role: role, fontSize: 11\)/);
+});

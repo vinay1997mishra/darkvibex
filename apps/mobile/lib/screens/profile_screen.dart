@@ -21,6 +21,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../widgets/vip_name_text.dart';
 import '../widgets/vip_show_id_text.dart';
 import '../widgets/vip_tag_image.dart';
+import '../widgets/role_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -391,6 +392,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             // Golden VIP tag (VIP5-18), sized to the tag chip (~21px).
                             if (state.vipLevel >= 5)
                               VipTagImage(vipLevel: state.vipLevel, fontSize: 12),
+                            // Role tag (Coin Seller / CS / Merchant / Admin /
+                            // Official) — hidden until Vinay says show.
+                            RoleTagImage(role: state.userRole, fontSize: 12),
                             if (state.hasVipPrivilege('honorary_title'))
                               _mineTag('King of VIP'),
                           ],
