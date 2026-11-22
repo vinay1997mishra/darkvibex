@@ -2595,6 +2595,21 @@ async function ensureDirectCallTable(db) {
   }
 }
 
+// Direct calls (audit 2026-11-22): an `active` call whose apps are
+// both gone must not lock both users out of new calls forever. The
+// call screen polls /api/calls/status every 2s while the call is live
+// and the poll refreshes updated_at (see the status route below), so
+// an active call whose updated_at is older than this idle window
+// means neither side has polled for that long — both apps are dead,
+// crashed or offline. Ending it here frees both users (the start
+// route's user_busy check only sees ringing/active rows) and stops
+// the /agora/token membership check from minting tokens for a dead
+// channel. 5 minutes is generous for network blips (the poll is 2s)
+// and short enough that a stuck call frees up quickly. There is
+// deliberately NO hard max duration: billing already ends a call when
+// the caller runs out of coins, and a long live call must not be cut.
+const DIRECT_CALL_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
 async function expireDirectCalls(db, ts = now()) {
   await ensureDirectCallTable(db);
   // Return the calls that just expired so the caller can notify the
@@ -2605,6 +2620,15 @@ async function expireDirectCalls(db, ts = now()) {
   await db.prepare(
     "UPDATE direct_calls SET state='missed',ended_at=?,updated_at=? WHERE state='ringing' AND created_at<?"
   ).bind(ts, ts, ts - 45000).run();
+  // Idle active calls: both sides stopped polling, so the call is
+  // orphaned. End it (end_reason marks why) instead of leaving it
+  // `active` until the 45-day D1 retention delete. Billing is NOT
+  // settled here on purpose: the last status poll already billed up
+  // to the last live minute, and the idle minutes were never on a
+  // live call.
+  await db.prepare(
+    "UPDATE direct_calls SET state='ended',ended_at=?,end_reason='idle_timeout',updated_at=? WHERE state='active' AND updated_at<?"
+  ).bind(ts, ts, ts - DIRECT_CALL_IDLE_TIMEOUT_MS).run();
   return newlyMissed.results ?? [];
 }
 
@@ -9979,7 +10003,16 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       return json({ ok:false,error:"call_not_found" }, { status:404 });
     }
     if (call.state === "active") {
-      call = await settleDirectCallBilling(db, callId, now());
+      // Heartbeat (audit 2026-11-22): every status poll refreshes
+      // updated_at, so it means "last seen alive" even in minutes
+      // where no new billing is due (settle only writes updated_at
+      // when a new minute is billed). expireDirectCalls ends an
+      // active call once this goes stale.
+      const ts = now();
+      await db.prepare(
+        "UPDATE direct_calls SET updated_at=? WHERE id=? AND state='active'"
+      ).bind(ts, callId).run();
+      call = await settleDirectCallBilling(db, callId, ts);
     }
     return json({ ok:true,call });
   }
@@ -11470,6 +11503,21 @@ async function handleLiveKitToken(request, env) {
 export default {
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(expireInboxEnvelopes(requireDb(env)));
+    // Direct calls (audit 2026-11-22): expire orphaned active calls
+    // even when nobody hits a call route — the lazy expiry on the
+    // call routes only runs when a user does something. Best-effort
+    // like the other cleanups; the missed-call push inside is
+    // once-only (missed_notified), so the 5-minute tick can never
+    // double-notify.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          await expireDirectCallsAndNotify(env, requireDb(env));
+        } catch (_) {
+          // Best-effort: a failed cleanup never breaks the schedule.
+        }
+      })(),
+    );
     // Message backup retention (Vinay, 2026-11-19): the server keeps a
     // backup of chat messages for 45 days only. Once a day (03:00 UTC,
     // first 5-minute tick) messages older than 45 days are deleted
