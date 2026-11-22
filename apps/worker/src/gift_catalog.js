@@ -712,6 +712,591 @@ export const BASE_GIFT_CATALOG = [
     "coin_cost": 12000000,
     "vip_level": 0,
     "category": "normal"
+  },
+  {
+    "id": "glass-cherry",
+    "name": "Cherry",
+    "emoji": "🍒",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/cherry.png"
+  },
+  {
+    "id": "glass-balloon",
+    "name": "Balloon",
+    "emoji": "🎈",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/balloon.png"
+  },
+  {
+    "id": "glass-music-note",
+    "name": "Music Note",
+    "emoji": "🎵",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/music-note.png"
+  },
+  {
+    "id": "glass-tulip",
+    "name": "Tulip",
+    "emoji": "🌷",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/tulip.png"
+  },
+  {
+    "id": "glass-lotus",
+    "name": "Lotus",
+    "emoji": "🪷",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/lotus.png"
+  },
+  {
+    "id": "glass-cloud",
+    "name": "Cloud",
+    "emoji": "☁️",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/cloud.png"
+  },
+  {
+    "id": "glass-snowflake",
+    "name": "Snowflake",
+    "emoji": "❄️",
+    "coin_cost": 10,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/snowflake.png"
+  },
+  {
+    "id": "glass-heart",
+    "name": "Heart",
+    "emoji": "❤️",
+    "coin_cost": 15,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/heart.png"
+  },
+  {
+    "id": "glass-star",
+    "name": "Star",
+    "emoji": "⭐",
+    "coin_cost": 15,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/star.png"
+  },
+  {
+    "id": "glass-moon",
+    "name": "Moon",
+    "emoji": "🌙",
+    "coin_cost": 15,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/moon.png"
+  },
+  {
+    "id": "glass-lightning",
+    "name": "Lightning",
+    "emoji": "⚡",
+    "coin_cost": 15,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/lightning.png"
+  },
+  {
+    "id": "glass-mushroom",
+    "name": "Mushroom",
+    "emoji": "🍄",
+    "coin_cost": 15,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/mushroom.png"
+  },
+  {
+    "id": "glass-autumn-leaf",
+    "name": "Autumn Leaf",
+    "emoji": "🍂",
+    "coin_cost": 15,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/autumn-leaf.png"
+  },
+  {
+    "id": "glass-cupcake",
+    "name": "Cupcake",
+    "emoji": "🧁",
+    "coin_cost": 25,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/cupcake.png"
+  },
+  {
+    "id": "glass-ice-cream",
+    "name": "Ice Cream",
+    "emoji": "🍦",
+    "coin_cost": 25,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/ice-cream.png"
+  },
+  {
+    "id": "glass-strawberry",
+    "name": "Strawberry",
+    "emoji": "🍓",
+    "coin_cost": 25,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/strawberry.png"
+  },
+  {
+    "id": "glass-mango",
+    "name": "Mango",
+    "emoji": "🥭",
+    "coin_cost": 25,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/mango.png"
+  },
+  {
+    "id": "glass-coral",
+    "name": "Coral",
+    "emoji": "🪸",
+    "coin_cost": 25,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/coral.png"
+  },
+  {
+    "id": "glass-starfish",
+    "name": "Starfish",
+    "emoji": "⭐",
+    "coin_cost": 25,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/starfish.png"
+  },
+  {
+    "id": "glass-rose",
+    "name": "Rose",
+    "emoji": "🌹",
+    "coin_cost": 30,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/rose.png"
+  },
+  {
+    "id": "glass-butterfly",
+    "name": "Butterfly",
+    "emoji": "🦋",
+    "coin_cost": 30,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/butterfly.png"
+  },
+  {
+    "id": "glass-bee",
+    "name": "Bee",
+    "emoji": "🐝",
+    "coin_cost": 30,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/bee.png"
+  },
+  {
+    "id": "glass-sunflower",
+    "name": "Sunflower",
+    "emoji": "🌻",
+    "coin_cost": 30,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/sunflower.png"
+  },
+  {
+    "id": "glass-jellyfish",
+    "name": "Jellyfish",
+    "emoji": "🪼",
+    "coin_cost": 30,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/jellyfish.png"
+  },
+  {
+    "id": "glass-seahorse",
+    "name": "Seahorse",
+    "emoji": "🐴",
+    "coin_cost": 30,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/seahorse.png"
+  },
+  {
+    "id": "glass-cat",
+    "name": "Cat",
+    "emoji": "🐱",
+    "coin_cost": 50,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/cat.png"
+  },
+  {
+    "id": "glass-dog",
+    "name": "Dog",
+    "emoji": "🐶",
+    "coin_cost": 50,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/dog.png"
+  },
+  {
+    "id": "glass-rabbit",
+    "name": "Rabbit",
+    "emoji": "🐰",
+    "coin_cost": 50,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/rabbit.png"
+  },
+  {
+    "id": "glass-panda",
+    "name": "Panda",
+    "emoji": "🐼",
+    "coin_cost": 50,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/panda.png"
+  },
+  {
+    "id": "glass-frog",
+    "name": "Frog",
+    "emoji": "🐸",
+    "coin_cost": 50,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/frog.png"
+  },
+  {
+    "id": "glass-turtle",
+    "name": "Turtle",
+    "emoji": "🐢",
+    "coin_cost": 50,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/turtle.png"
+  },
+  {
+    "id": "glass-pot",
+    "name": "Flower Pot",
+    "emoji": "🪴",
+    "coin_cost": 100,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/pot.png"
+  },
+  {
+    "id": "glass-rainbow",
+    "name": "Rainbow",
+    "emoji": "🌈",
+    "coin_cost": 100,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/rainbow.png"
+  },
+  {
+    "id": "glass-fireworks",
+    "name": "Fireworks",
+    "emoji": "🎆",
+    "coin_cost": 100,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/fireworks.png"
+  },
+  {
+    "id": "glass-guitar",
+    "name": "Guitar",
+    "emoji": "🎸",
+    "coin_cost": 100,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/guitar.png"
+  },
+  {
+    "id": "glass-snowman",
+    "name": "Snowman",
+    "emoji": "⛄",
+    "coin_cost": 100,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/snowman.png"
+  },
+  {
+    "id": "glass-crab",
+    "name": "Crab",
+    "emoji": "🦀",
+    "coin_cost": 100,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/crab.png"
+  },
+  {
+    "id": "glass-car",
+    "name": "Car",
+    "emoji": "🚗",
+    "coin_cost": 150,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/car.png"
+  },
+  {
+    "id": "glass-dolphin",
+    "name": "Dolphin",
+    "emoji": "🐬",
+    "coin_cost": 150,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/dolphin.png"
+  },
+  {
+    "id": "glass-swan",
+    "name": "Swan",
+    "emoji": "🦢",
+    "coin_cost": 150,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/swan.png"
+  },
+  {
+    "id": "glass-peacock",
+    "name": "Peacock",
+    "emoji": "🦚",
+    "coin_cost": 150,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/peacock.png"
+  },
+  {
+    "id": "glass-octopus",
+    "name": "Octopus",
+    "emoji": "🐙",
+    "coin_cost": 150,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/octopus.png"
+  },
+  {
+    "id": "glass-whale",
+    "name": "Whale",
+    "emoji": "🐳",
+    "coin_cost": 150,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/whale.png"
+  },
+  {
+    "id": "glass-lion",
+    "name": "Lion",
+    "emoji": "🦁",
+    "coin_cost": 200,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/lion.png"
+  },
+  {
+    "id": "glass-tiger",
+    "name": "Tiger",
+    "emoji": "🐅",
+    "coin_cost": 200,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/tiger.png"
+  },
+  {
+    "id": "glass-elephant",
+    "name": "Elephant",
+    "emoji": "🐘",
+    "coin_cost": 200,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/elephant.png"
+  },
+  {
+    "id": "glass-horse",
+    "name": "Horse",
+    "emoji": "🐎",
+    "coin_cost": 200,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/horse.png"
+  },
+  {
+    "id": "glass-penguin",
+    "name": "Penguin",
+    "emoji": "🐧",
+    "coin_cost": 200,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/penguin.png"
+  },
+  {
+    "id": "glass-owl",
+    "name": "Owl",
+    "emoji": "🦉",
+    "coin_cost": 200,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/owl.png"
+  },
+  {
+    "id": "glass-fox",
+    "name": "Fox",
+    "emoji": "🦊",
+    "coin_cost": 300,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/fox.png"
+  },
+  {
+    "id": "glass-deer",
+    "name": "Deer",
+    "emoji": "🦌",
+    "coin_cost": 300,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/deer.png"
+  },
+  {
+    "id": "glass-koala",
+    "name": "Koala",
+    "emoji": "🐨",
+    "coin_cost": 300,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/koala.png"
+  },
+  {
+    "id": "glass-dragon",
+    "name": "Dragon",
+    "emoji": "🐉",
+    "coin_cost": 300,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/dragon.png"
+  },
+  {
+    "id": "glass-diamond",
+    "name": "Diamond",
+    "emoji": "💎",
+    "coin_cost": 500,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/diamond.png"
+  },
+  {
+    "id": "glass-crown",
+    "name": "Crown",
+    "emoji": "👑",
+    "coin_cost": 500,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/crown.png"
+  },
+  {
+    "id": "glass-crystal-ball",
+    "name": "Crystal Ball",
+    "emoji": "🔮",
+    "coin_cost": 500,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/crystal-ball.png"
+  },
+  {
+    "id": "glass-magic-wand",
+    "name": "Magic Wand",
+    "emoji": "🪄",
+    "coin_cost": 500,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/magic-wand.png"
+  },
+  {
+    "id": "glass-unicorn",
+    "name": "Unicorn",
+    "emoji": "🦄",
+    "coin_cost": 777,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/unicorn.png"
+  },
+  {
+    "id": "glass-sun",
+    "name": "Sun",
+    "emoji": "☀️",
+    "coin_cost": 777,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/sun.png"
+  },
+  {
+    "id": "glass-hot-air-balloon",
+    "name": "Hot Air Balloon",
+    "emoji": "🎈",
+    "coin_cost": 1000,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/hot-air-balloon.png"
+  },
+  {
+    "id": "glass-rocket",
+    "name": "Rocket",
+    "emoji": "🚀",
+    "coin_cost": 1000,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/rocket.png"
+  },
+  {
+    "id": "glass-treasure-chest",
+    "name": "Treasure Chest",
+    "emoji": "🗝️",
+    "coin_cost": 2500,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/treasure-chest.png"
+  },
+  {
+    "id": "glass-golden-key",
+    "name": "Golden Key",
+    "emoji": "🔑",
+    "coin_cost": 2500,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/golden-key.png"
+  },
+  {
+    "id": "glass-castle",
+    "name": "Castle",
+    "emoji": "🏰",
+    "coin_cost": 5000,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/castle.png"
+  },
+  {
+    "id": "glass-phoenix",
+    "name": "Phoenix",
+    "emoji": "🔥",
+    "coin_cost": 5000,
+    "vip_level": 0,
+    "category": "lucky",
+    "asset_key": "gifts/glass/phoenix.png"
   }
 ];
 
