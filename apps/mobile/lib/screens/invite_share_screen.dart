@@ -63,6 +63,222 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
     return value.toStringAsFixed(1);
   }
 
+  // Integer US cents -> "$3.00" / "$0.05".
+  String _formatDollars(Object? rawCents) {
+    final cents = int.tryParse(rawCents?.toString() ?? '') ?? 0;
+    final sign = cents < 0 ? '-' : '';
+    final abs = cents.abs();
+    return '$sign\$${abs ~/ 100}.${(abs % 100).toString().padLeft(2, '0')}';
+  }
+
+  int get _dollarBalanceCents =>
+      int.tryParse(data?['referral_dollar_balance_usd_cents']?.toString() ?? '') ?? 0;
+
+  List<Map<String, dynamic>> get _dollarCommissions {
+    final raw = data?['referral_dollar_commissions'];
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> get _dollarWithdrawals {
+    final raw = data?['referral_dollar_withdrawals'];
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
+  }
+
+  int get _withdrawMinCents =>
+      int.tryParse(data?['referral_withdrawal_min_usd_cents']?.toString() ?? '') ?? 300;
+
+  bool _withdrawing = false;
+
+  Future<void> _showWithdrawDialog() async {
+    final balance = _dollarBalanceCents;
+    final min = _withdrawMinCents;
+    if (balance < min) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You need at least ${_formatDollars(min)} to withdraw.',
+          ),
+        ),
+      );
+      return;
+    }
+    final amountController = TextEditingController(
+      text: (balance / 100).toStringAsFixed(2),
+    );
+    String? selectedProviderId;
+    List<Map<String, dynamic>> providers = const [];
+    bool providersLoading = true;
+    String? dialogError;
+    final loaded = await state.backend.rechargeProviders();
+    if (!mounted) {
+      amountController.dispose();
+      return;
+    }
+    providers = loaded;
+    providersLoading = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Withdraw referral dollars'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Balance: ${_formatDollars(balance)}  •  Minimum: ${_formatDollars(min)}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Amount in dollars',
+                    hintText: 'e.g. 3.00',
+                    prefixIcon: Icon(Icons.attach_money_rounded),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Send to (coin seller / merchant):',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                if (providersLoading)
+                  const Center(child: CircularProgressIndicator())
+                else if (providers.isEmpty)
+                  const Text('No coin sellers or merchants found.')
+                else
+                  RadioGroup<String>(
+                    groupValue: selectedProviderId,
+                    onChanged: (value) =>
+                        setDialogState(() => selectedProviderId = value),
+                    child: Column(
+                      children: providers.map((provider) {
+                        final id = provider['user_id']?.toString() ?? '';
+                        final name =
+                            provider['display_name']?.toString().trim() ?? '';
+                        final publicId =
+                            provider['public_id']?.toString() ?? '';
+                        final role = provider['role']?.toString() ?? '';
+                        return RadioListTile<String>(
+                          value: id,
+                          title: Text(name.isNotEmpty ? name : 'Seller'),
+                          subtitle: Text(
+                            'ID $publicId  •  $role',
+                          ),
+                        );
+                      }).toList(growable: false),
+                    ),
+                  ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    dialogError!,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                const Text(
+                  'The seller / merchant receives the dollars and automatically gets 11,000,000 coins per \$1 into their seller wallet. You get nothing extra for sending the dollars.',
+                  style: TextStyle(fontSize: 11, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: _withdrawing
+                  ? null
+                  : () async {
+                      final dollars =
+                          double.tryParse(amountController.text.trim());
+                      if (dollars == null) {
+                        setDialogState(
+                          () => dialogError = 'Enter a valid amount.',
+                        );
+                        return;
+                      }
+                      final cents = (dollars * 100).round();
+                      if (cents < min) {
+                        setDialogState(
+                          () => dialogError =
+                              'Minimum withdrawal is ${_formatDollars(min)}.',
+                        );
+                        return;
+                      }
+                      if (cents > balance) {
+                        setDialogState(
+                          () => dialogError =
+                              'Amount is more than your balance.',
+                        );
+                        return;
+                      }
+                      if (selectedProviderId == null) {
+                        setDialogState(
+                          () => dialogError =
+                              'Select a coin seller or merchant.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        _withdrawing = true;
+                        dialogError = null;
+                      });
+                      final result =
+                          await state.backend.withdrawInviteDollars(
+                        userId: state.userId,
+                        providerUserId: selectedProviderId!,
+                        amountUsdCents: cents,
+                      );
+                      if (!mounted) return;
+                      setDialogState(() => _withdrawing = false);
+                      if (result?['ok'] == true) {
+                        final withdrawal = result?['withdrawal'];
+                        final coins =
+                            withdrawal is Map ? withdrawal['coins_credited'] : null;
+                        Navigator.of(dialogContext).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Sent ${_formatDollars(cents)}. The seller receives ${_formatCoins(coins)} coins in their seller wallet.',
+                            ),
+                          ),
+                        );
+                        await _load();
+                        return;
+                      }
+                      final error = result?['error']?.toString() ??
+                          'Withdrawal failed.';
+                      setDialogState(
+                        () => dialogError = error.replaceAll('_', ' '),
+                      );
+                    },
+              child: Text(_withdrawing ? 'Sending...' : 'Send'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amountController.dispose();
+  }
+
   String get invitationCode =>
       data?['invitation_code']?.toString() ?? state.publicId;
 
@@ -75,7 +291,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
       'Join me on DarkVibeX: $inviteLink\n'
       'Invitation code: $invitationCode\n'
       'If you install from this link, the invitation binds automatically after signup. '
-      'Only coins received through eligible Coin Seller transfers into the invited user\'s normal wallet count toward commission.';
+      'Every successful invite earns 800,000 coins once, plus 5% of every recharge the invited friend makes in the next 3 months, in dollars.';
 
   Future<void> _copyCode() async {
     await Clipboard.setData(ClipboardData(text: invitationCode));
@@ -248,7 +464,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Invite friends and earn commission only when they receive eligible Coin Seller coins in their normal wallet.',
+                          'Invite friends and earn 800,000 coins per successful invite, plus 5% of every recharge they make in the next 3 months, in dollars.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: TinniPalette.cream,
@@ -264,7 +480,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                             ),
                             _stat(
                               'Rate basis',
-                              '1\$ = 6,000,000',
+                              '1\$ = ${_formatCoins(data?['coins_per_usd'])}',
                             ),
                             _stat(
                               'Level',
@@ -331,6 +547,84 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                           )
                         else
                           _inviteRecordsTable(invited),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _sectionTitle('Referral Dollars'),
+                  _panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _recordRow(
+                          'Dollar balance',
+                          _formatDollars(
+                            data?['referral_dollar_balance_usd_cents'],
+                          ),
+                        ),
+                        _divider(),
+                        _recordRow(
+                          'Total referral dollars earned',
+                          _formatDollars(
+                            data?['referral_dollar_commission_usd_cents'],
+                          ),
+                        ),
+                        _divider(),
+                        _recordRow(
+                          'Commission rate',
+                          '${_formatPercent(data?['referral_commission_rate_percent'])}% of every recharge, 3 months from joining',
+                        ),
+                        const SizedBox(height: 12),
+                        _goldButton(
+                          label: _dollarBalanceCents >= _withdrawMinCents
+                              ? 'Withdraw'
+                              : 'Withdraw (min ${_formatDollars(_withdrawMinCents)})',
+                          icon: Icons.account_balance_wallet_rounded,
+                          onPressed: _showWithdrawDialog,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Recent referral earnings',
+                          style: TextStyle(
+                            color: TinniPalette.gold,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (_dollarCommissions.isEmpty)
+                          const Text(
+                            'No recharge commissions yet. When an invited friend recharges within 3 months of joining, 5% of that recharge lands here in dollars.',
+                            style: TextStyle(
+                              color: TinniPalette.cream,
+                              fontSize: 12,
+                            ),
+                          )
+                        else
+                          ..._dollarCommissions.map(
+                            (row) => _recordRow(
+                              '${(row['display_name']?.toString().trim().isNotEmpty == true ? row['display_name'].toString() : 'Invited friend')} recharged ${_formatDollars(row['recharge_usd_cents'])}',
+                              '+${_formatDollars(row['commission_usd_cents'])}${row['status'] == 'reversed' ? ' (reversed)' : ''}',
+                            ),
+                          ),
+                        if (_dollarWithdrawals.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Withdrawals',
+                            style: TextStyle(
+                              color: TinniPalette.gold,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ..._dollarWithdrawals.map(
+                            (row) => _recordRow(
+                              'To ${(row['provider_name']?.toString().trim().isNotEmpty == true ? row['provider_name'].toString() : row['provider_role']?.toString() ?? 'seller')} (${row['provider_public_id'] ?? ''})',
+                              '-${_formatDollars(row['amount_usd_cents'])}  •  ${_formatCoins(row['coins_credited'])} coins to seller wallet',
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -420,7 +714,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ],
                         const SizedBox(height: 10),
                         const Text(
-                          "Each successful invite gives 300,000 coins once. Ongoing commission counts only coins credited to the invited user's normal wallet through eligible Coin Seller transfers. Merchant transfers, gifts, game winnings and other coin sources do not count. Rewards are coins only; no Entry Vehicle or other prize item is included.",
+                          "Each successful invite gives 800,000 coins once. Every recharge the invited friend makes within 3 months of joining also earns you 5% of that recharge in dollars, shown below. At \$3 you can withdraw the dollars to a coin seller or merchant — they receive the dollars and automatically get 11,000,000 coins per \$1 into their seller wallet. Only coins received through eligible Coin Seller transfers into the invited user's normal wallet count toward the coin commission. Merchant transfers, gifts, game winnings and other coin sources do not count.",
                           style: TextStyle(
                             color: TinniPalette.cream,
                             fontSize: 11,
@@ -597,6 +891,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
             3: FixedColumnWidth(155),
             4: FixedColumnWidth(135),
             5: FixedColumnWidth(120),
+            6: FixedColumnWidth(110),
           },
           children: [
             TableRow(
@@ -608,6 +903,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                 _inviteTableCell('Coin Seller Coins', header: true),
                 _inviteTableCell('Commission', header: true),
                 _inviteTableCell('Invite Reward', header: true),
+                _inviteTableCell('Referral \$', header: true),
               ],
             ),
             for (final row in invited)
@@ -627,6 +923,9 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                   ),
                   _inviteTableCell(
                     '+${_formatCoins(row['fixed_reward_coins'])}',
+                  ),
+                  _inviteTableCell(
+                    '+${_formatDollars(row['referral_commission_usd_cents'])}',
                   ),
                 ],
               ),

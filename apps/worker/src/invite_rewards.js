@@ -1,5 +1,17 @@
 const COINS_PER_USD = 8_000_000;
-const SUCCESSFUL_INVITE_REWARD_COINS = 300_000;
+const SUCCESSFUL_INVITE_REWARD_COINS = 800_000;
+
+// Invite/referral dollars (Vinay, 2026-11-23): every recharge an invitee
+// makes within 3 months of binding earns the inviter 5% of the recharge
+// in dollars. Dollars live on the Share page; at $3 the inviter can
+// withdraw them to a coin seller / merchant, who then automatically
+// receives 11,000,000 coins per $1 into their SELLER wallet (role
+// wallet), never the normal user wallet. The sender gets nothing extra
+// for sending the dollars. All dollar amounts are integer US cents.
+export const REFERRAL_COMMISSION_RATE_BPS = 500;
+export const REFERRAL_COMMISSION_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+export const REFERRAL_WITHDRAWAL_MIN_USD_CENTS = 300;
+export const REFERRAL_WITHDRAWAL_COINS_PER_USD_CENT = 110_000;
 
 // Every newly successful invite gives the inviter a fixed one-time coin reward.
 // Ongoing commission is separate and only counts coins credited through
@@ -58,6 +70,52 @@ export async function ensureInviteRewardSchema(db) {
 
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_rewards_inviter_time
     ON invite_commission_rewards(inviter_user_id, created_at DESC)`).run();
+
+  // Referral dollars: one row per invitee recharge inside the window.
+  // source_purchase_token is the Play purchase token, UNIQUE so a verify
+  // retry or resume can never pay the same recharge twice.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS invite_dollar_commissions (
+    id TEXT PRIMARY KEY,
+    inviter_user_id TEXT NOT NULL,
+    invitee_user_id TEXT NOT NULL,
+    source_purchase_token TEXT NOT NULL UNIQUE,
+    recharge_usd_cents INTEGER NOT NULL CHECK(recharge_usd_cents > 0),
+    commission_usd_cents INTEGER NOT NULL CHECK(commission_usd_cents >= 0),
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','reversed')),
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(invitee_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_dollar_commissions_inviter
+    ON invite_dollar_commissions(inviter_user_id, created_at DESC)`).run();
+
+  // Spendable referral-dollar balance, integer US cents. Withdrawals
+  // debit it with a guarded relative UPDATE (balance >= amount).
+  await db.prepare(`CREATE TABLE IF NOT EXISTS invite_dollar_balances (
+    user_id TEXT PRIMARY KEY,
+    balance_usd_cents INTEGER NOT NULL DEFAULT 0 CHECK(balance_usd_cents >= 0),
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+
+  // One row per withdrawal. idempotency_key is UNIQUE: a retry of the
+  // same withdrawal returns the original result instead of paying twice.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS invite_dollar_withdrawals (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    provider_role TEXT NOT NULL CHECK(provider_role IN ('coin_seller','merchant')),
+    amount_usd_cents INTEGER NOT NULL CHECK(amount_usd_cents > 0),
+    coins_credited INTEGER NOT NULL CHECK(coins_credited >= 0),
+    idempotency_key TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(provider_user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_dollar_withdrawals_user
+    ON invite_dollar_withdrawals(user_id, created_at DESC)`).run();
 }
 
 function normalizeCode(value) {
@@ -174,7 +232,7 @@ export async function bindInvitationCode(db, {
   const ledgerId = crypto.randomUUID();
 
   // The binding and fixed invite reward are written together. invitee_user_id
-  // is unique in both tables, so retries cannot mint the 300,000 coin reward twice.
+  // is unique in both tables, so retries cannot mint the 800,000 coin reward twice.
   await db.batch([
     db.prepare(
       "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
@@ -253,6 +311,49 @@ export async function inviteRewardSummary(db, userId) {
      LIMIT 100
   `).bind(userId).all();
 
+  const dollarByInvitee = await db.prepare(`
+    SELECT invitee_user_id, COALESCE(SUM(commission_usd_cents),0) AS total
+      FROM invite_dollar_commissions
+     WHERE inviter_user_id=? AND status='active'
+     GROUP BY invitee_user_id
+  `).bind(userId).all();
+  const dollarByInviteeMap = new Map(
+    (dollarByInvitee.results ?? []).map((row) => [
+      String(row.invitee_user_id),
+      Number(row.total ?? 0),
+    ]),
+  );
+
+  const dollarBalance = await db.prepare(
+    "SELECT balance_usd_cents FROM invite_dollar_balances WHERE user_id=?"
+  ).bind(userId).first();
+
+  const dollarTotals = await db.prepare(
+    "SELECT COALESCE(SUM(commission_usd_cents),0) AS total FROM invite_dollar_commissions WHERE inviter_user_id=? AND status='active'"
+  ).bind(userId).first();
+
+  const dollarCommissions = await db.prepare(`
+    SELECT c.invitee_user_id,u.public_id,u.display_name,u.avatar_key,
+           c.recharge_usd_cents,c.commission_usd_cents,c.status,c.created_at
+      FROM invite_dollar_commissions c
+      LEFT JOIN users u ON u.id=c.invitee_user_id
+     WHERE c.inviter_user_id=?
+     ORDER BY c.created_at DESC
+     LIMIT 50
+  `).bind(userId).all();
+
+  const dollarWithdrawals = await db.prepare(`
+    SELECT w.provider_user_id,w.provider_role,w.amount_usd_cents,
+           w.coins_credited,w.created_at,
+           u.public_id AS provider_public_id,u.display_name AS provider_name,
+           u.avatar_key AS provider_avatar_key
+      FROM invite_dollar_withdrawals w
+      LEFT JOIN users u ON u.id=w.provider_user_id
+     WHERE w.user_id=?
+     ORDER BY w.created_at DESC
+     LIMIT 50
+  `).bind(userId).all();
+
   return {
     invitation_code: invitationCode,
     coins_per_usd: COINS_PER_USD,
@@ -263,6 +364,37 @@ export async function inviteRewardSummary(db, userId) {
     commission_usd: stats.rewardCoins / COINS_PER_USD,
     fixed_reward_per_successful_invite: SUCCESSFUL_INVITE_REWARD_COINS,
     successful_invite_reward_coins: Number(successRewardTotal?.reward_coins ?? 0),
+    // Referral dollars (Vinay, 2026-11-23): 5% of every invitee recharge
+    // within 90 days of binding, in US cents. Withdrawable at $3 to a
+    // coin seller / merchant, who then gets 11,000,000 coins per $1
+    // into their seller wallet.
+    referral_dollar_balance_usd_cents: Number(dollarBalance?.balance_usd_cents ?? 0),
+    referral_dollar_commission_usd_cents: Number(dollarTotals?.total ?? 0),
+    referral_commission_rate_bps: REFERRAL_COMMISSION_RATE_BPS,
+    referral_commission_rate_percent: REFERRAL_COMMISSION_RATE_BPS / 100,
+    referral_commission_window_days: 90,
+    referral_withdrawal_min_usd_cents: REFERRAL_WITHDRAWAL_MIN_USD_CENTS,
+    referral_withdrawal_coins_per_usd: REFERRAL_WITHDRAWAL_COINS_PER_USD_CENT * 100,
+    referral_dollar_commissions: (dollarCommissions.results ?? []).map((row) => ({
+      invitee_user_id: String(row.invitee_user_id),
+      public_id: String(row.public_id ?? ""),
+      display_name: String(row.display_name ?? ""),
+      avatar_key: String(row.avatar_key ?? ""),
+      recharge_usd_cents: Number(row.recharge_usd_cents ?? 0),
+      commission_usd_cents: Number(row.commission_usd_cents ?? 0),
+      status: String(row.status ?? "active"),
+      created_at: Number(row.created_at ?? 0),
+    })),
+    referral_dollar_withdrawals: (dollarWithdrawals.results ?? []).map((row) => ({
+      provider_user_id: String(row.provider_user_id),
+      provider_role: String(row.provider_role ?? ""),
+      provider_public_id: String(row.provider_public_id ?? ""),
+      provider_name: String(row.provider_name ?? ""),
+      provider_avatar_key: String(row.provider_avatar_key ?? ""),
+      amount_usd_cents: Number(row.amount_usd_cents ?? 0),
+      coins_credited: Number(row.coins_credited ?? 0),
+      created_at: Number(row.created_at ?? 0),
+    })),
     current_level: tier?.level ?? 0,
     current_rate_bps: tier?.rateBps ?? 0,
     current_rate_percent: (tier?.rateBps ?? 0) / 100,
@@ -289,6 +421,7 @@ export async function inviteRewardSummary(db, userId) {
       bound_at: Number(row.bound_at ?? 0),
       received_coins: Number(row.source_coins ?? 0),
       commission_coins: Number(row.reward_coins ?? 0),
+      referral_commission_usd_cents: dollarByInviteeMap.get(String(row.invitee_user_id)) ?? 0,
       fixed_reward_coins: Number(row.fixed_reward_coins ?? 0),
     })),
   };
@@ -412,5 +545,282 @@ export async function recordCoinSellerInviteCommission(db, {
     reward_coins: rewardCoins,
     inviter_balance_after: balanceAfter,
     level: tier.level,
+  };
+}
+
+// --- Referral dollars: 5% of every recharge, 3 months from bind ---
+
+// Record the 5% dollar commission for one Play recharge. Called from
+// verifyPlayPurchase AFTER the coins are granted, best-effort: a failure
+// here must never fail the purchase (the caller wraps it in try/catch).
+// Idempotent on the purchase token: a verify retry or resume returns the
+// stored commission instead of paying twice.
+export async function recordRechargeInviteCommission(db, {
+  inviteeUserId,
+  purchaseToken,
+  usdCents,
+  ts = Date.now(),
+}) {
+  await ensureInviteRewardSchema(db);
+  const token = String(purchaseToken ?? "").trim();
+  const amount = Number(usdCents);
+  if (!inviteeUserId || !token) {
+    throw new Error("invalid_referral_commission_source");
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error("invalid_referral_commission_source");
+  }
+
+  const existing = await db.prepare(
+    "SELECT id,inviter_user_id,commission_usd_cents FROM invite_dollar_commissions WHERE source_purchase_token=?"
+  ).bind(token).first();
+  if (existing) {
+    return {
+      applied: false,
+      duplicate: true,
+      inviter_user_id: String(existing.inviter_user_id ?? ""),
+      commission_usd_cents: Number(existing.commission_usd_cents ?? 0),
+      rate_bps: REFERRAL_COMMISSION_RATE_BPS,
+      rate_percent: REFERRAL_COMMISSION_RATE_BPS / 100,
+    };
+  }
+
+  const binding = await db.prepare(
+    "SELECT inviter_user_id,bound_at FROM invite_bindings WHERE invitee_user_id=?"
+  ).bind(inviteeUserId).first();
+  if (!binding?.inviter_user_id) {
+    return { applied: false, reason: "no_inviter" };
+  }
+  const inviterUserId = String(binding.inviter_user_id);
+  const boundAt = Number(binding.bound_at ?? 0);
+  if (ts - boundAt > REFERRAL_COMMISSION_WINDOW_MS) {
+    return { applied: false, reason: "window_expired" };
+  }
+
+  const commission = Math.floor((amount * REFERRAL_COMMISSION_RATE_BPS) / 10_000);
+  if (commission <= 0) {
+    return { applied: false, reason: "commission_rounds_to_zero" };
+  }
+
+  const commissionId = crypto.randomUUID();
+  // The balance row must exist before the batch: the batch's UPDATE is
+  // gated on the commission INSERT (changes()==1), so it cannot also
+  // create the row.
+  await db.prepare(
+    "INSERT OR IGNORE INTO invite_dollar_balances(user_id,balance_usd_cents,updated_at) VALUES(?,0,?)"
+  ).bind(inviterUserId, ts).run();
+
+  const batchResults = await db.batch([
+    db.prepare(
+      "INSERT OR IGNORE INTO invite_dollar_commissions(id,inviter_user_id,invitee_user_id,source_purchase_token,recharge_usd_cents,commission_usd_cents,status,created_at) VALUES(?,?,?,?,?,?, 'active',?)"
+    ).bind(
+      commissionId, inviterUserId, inviteeUserId, token,
+      amount, commission, ts,
+    ),
+    db.prepare(
+      "UPDATE invite_dollar_balances SET balance_usd_cents=balance_usd_cents+?,updated_at=? WHERE user_id=? AND changes()=1"
+    ).bind(commission, ts, inviterUserId),
+  ]);
+  if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
+    const raced = await db.prepare(
+      "SELECT inviter_user_id,commission_usd_cents FROM invite_dollar_commissions WHERE source_purchase_token=?"
+    ).bind(token).first();
+    return {
+      applied: false,
+      duplicate: true,
+      inviter_user_id: String(raced?.inviter_user_id ?? ""),
+      commission_usd_cents: Number(raced?.commission_usd_cents ?? 0),
+      rate_bps: REFERRAL_COMMISSION_RATE_BPS,
+      rate_percent: REFERRAL_COMMISSION_RATE_BPS / 100,
+    };
+  }
+  const balanceRow = await db.prepare(
+    "SELECT balance_usd_cents FROM invite_dollar_balances WHERE user_id=?"
+  ).bind(inviterUserId).first();
+
+  return {
+    applied: true,
+    inviter_user_id: inviterUserId,
+    invitee_user_id: inviteeUserId,
+    source_purchase_token: token,
+    recharge_usd_cents: amount,
+    commission_usd_cents: commission,
+    rate_bps: REFERRAL_COMMISSION_RATE_BPS,
+    rate_percent: REFERRAL_COMMISSION_RATE_BPS / 100,
+    inviter_balance_usd_cents_after: Number(balanceRow?.balance_usd_cents ?? 0),
+  };
+}
+
+// Reverse the dollar commission for one purchase (refund / RTDN revoke).
+// The inviter keeps whatever they already withdrew; only the balance
+// still held is clawed back, never below zero. The commission row is
+// marked reversed so it never pays again and never counts in totals.
+export async function reverseRechargeInviteCommission(db, {
+  purchaseToken,
+  ts = Date.now(),
+}) {
+  await ensureInviteRewardSchema(db);
+  const token = String(purchaseToken ?? "").trim();
+  if (!token) return { applied: false, reason: "invalid_purchase_token" };
+  const row = await db.prepare(
+    "SELECT id,inviter_user_id,commission_usd_cents,status FROM invite_dollar_commissions WHERE source_purchase_token=?"
+  ).bind(token).first();
+  if (!row) return { applied: false, reason: "no_commission" };
+  if (String(row.status ?? "") === "reversed") {
+    return { applied: false, duplicate: true, reason: "already_reversed" };
+  }
+  const inviterUserId = String(row.inviter_user_id);
+  const commission = Number(row.commission_usd_cents ?? 0);
+  const beforeRow = await db.prepare(
+    "SELECT balance_usd_cents FROM invite_dollar_balances WHERE user_id=?"
+  ).bind(inviterUserId).first();
+  const before = Number(beforeRow?.balance_usd_cents ?? 0);
+  const clawback = Math.min(before, commission);
+  await db.batch([
+    db.prepare(
+      "UPDATE invite_dollar_balances SET balance_usd_cents=CASE WHEN balance_usd_cents>=? THEN balance_usd_cents-? ELSE 0 END,updated_at=? WHERE user_id=?"
+    ).bind(commission, commission, ts, inviterUserId),
+    db.prepare(
+      "UPDATE invite_dollar_commissions SET status='reversed' WHERE id=? AND status='active'"
+    ).bind(String(row.id)),
+  ]);
+  return {
+    applied: true,
+    inviter_user_id: inviterUserId,
+    commission_usd_cents: commission,
+    clawed_back_usd_cents: clawback,
+    inviter_balance_usd_cents_after: Math.max(0, before - commission),
+  };
+}
+
+// Withdraw referral dollars to a coin seller / merchant. The provider
+// receives the dollars (recorded in the withdrawal row) and
+// automatically receives 11,000,000 coins per $1 into their SELLER
+// wallet (role wallet), never the normal user wallet. The sender gets
+// nothing extra for sending the dollars. Idempotent on idempotency_key:
+// a retry returns the original withdrawal instead of paying twice.
+export async function withdrawInviteDollars(db, {
+  userId,
+  providerUserId,
+  amountUsdCents,
+  idempotencyKey,
+  ts = Date.now(),
+}) {
+  await ensureInviteRewardSchema(db);
+  const sender = String(userId ?? "").trim();
+  const provider = String(providerUserId ?? "").trim();
+  const key = String(idempotencyKey ?? "").trim();
+  const amount = Number(amountUsdCents);
+  if (!sender || !provider || !key) {
+    throw new Error("invalid_withdrawal_request");
+  }
+  if (!Number.isSafeInteger(amount) || amount < REFERRAL_WITHDRAWAL_MIN_USD_CENTS) {
+    throw new Error("withdrawal_below_minimum");
+  }
+  if (provider === sender) {
+    throw new Error("cannot_withdraw_to_self");
+  }
+
+  const prior = await db.prepare(
+    "SELECT id,user_id,provider_user_id,provider_role,amount_usd_cents,coins_credited,created_at FROM invite_dollar_withdrawals WHERE idempotency_key=?"
+  ).bind(key).first();
+  if (prior) {
+    if (String(prior.user_id) !== sender) {
+      throw new Error("idempotency_key_conflict");
+    }
+    return {
+      ok: true,
+      duplicate: true,
+      withdrawal_id: String(prior.id),
+      user_id: sender,
+      provider_user_id: String(prior.provider_user_id),
+      provider_role: String(prior.provider_role),
+      amount_usd_cents: Number(prior.amount_usd_cents ?? 0),
+      coins_credited: Number(prior.coins_credited ?? 0),
+      created_at: Number(prior.created_at ?? 0),
+    };
+  }
+
+  const providerRow = await db.prepare(
+    "SELECT id,role FROM users WHERE id=?"
+  ).bind(provider).first();
+  if (!providerRow) throw new Error("provider_not_found");
+  const providerRole = String(providerRow.role ?? "");
+  if (providerRole !== "coin_seller" && providerRole !== "merchant") {
+    throw new Error("provider_not_seller_or_merchant");
+  }
+
+  const coins = amount * REFERRAL_WITHDRAWAL_COINS_PER_USD_CENT;
+  if (!Number.isSafeInteger(coins) || coins <= 0) {
+    throw new Error("invalid_withdrawal_amount");
+  }
+
+  // The provider's seller wallet must exist before the batch: the
+  // credit UPDATE inside it cannot create the row.
+  const { ensureRoleWallet } = await import("./role_wallets.js");
+  await ensureRoleWallet(db, provider, providerRole, ts);
+
+  const withdrawalId = crypto.randomUUID();
+  const batchResults = await db.batch([
+    // 1. Debit the inviter's dollar balance, guarded: only if they
+    // hold at least the amount. If this changes 0 rows, the rest of
+    // the batch is gated off by changes()==1 and nothing moves.
+    db.prepare(
+      "UPDATE invite_dollar_balances SET balance_usd_cents=balance_usd_cents-?,updated_at=? WHERE user_id=? AND balance_usd_cents>=?"
+    ).bind(amount, ts, sender, amount),
+    // 2. Record the withdrawal (only when the debit moved).
+    db.prepare(
+      "INSERT INTO invite_dollar_withdrawals(id,user_id,provider_user_id,provider_role,amount_usd_cents,coins_credited,idempotency_key,created_at) SELECT ?,?,?,?,?,?,?,? WHERE changes()=1"
+    ).bind(
+      withdrawalId, sender, provider, providerRole,
+      amount, coins, key, ts,
+    ),
+    // 3. Credit the provider's SELLER wallet (role wallet), guarded.
+    db.prepare(
+      "UPDATE role_wallets SET balance_coins=balance_coins+?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins+?>=0 AND changes()=1"
+    ).bind(coins, ts, provider, providerRole, coins),
+    // 4. Seller-wallet ledger row, gated on the credit.
+    db.prepare(
+      "INSERT INTO role_wallet_ledger(id,user_id,wallet_type,kind,coin_amount,coin_balance_after,counterparty_user_id,reference_id,created_at) SELECT ?,?,?, 'invite_dollar_withdrawal', ?, balance_coins, ?, ?, ? FROM role_wallets WHERE user_id=? AND wallet_type=? AND changes()=1"
+    ).bind(
+      crypto.randomUUID(), provider, providerRole,
+      coins, sender, withdrawalId, ts, provider, providerRole,
+    ),
+  ]);
+  if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
+    const raced = await db.prepare(
+      "SELECT id FROM invite_dollar_withdrawals WHERE idempotency_key=?"
+    ).bind(key).first();
+    if (raced) {
+      return withdrawInviteDollars(db, {
+        userId: sender,
+        providerUserId: provider,
+        amountUsdCents: amount,
+        idempotencyKey: key,
+        ts,
+      });
+    }
+    throw new Error("insufficient_referral_dollar_balance");
+  }
+
+  const balanceRow = await db.prepare(
+    "SELECT balance_usd_cents FROM invite_dollar_balances WHERE user_id=?"
+  ).bind(sender).first();
+  const sellerRow = await db.prepare(
+    "SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?"
+  ).bind(provider, providerRole).first();
+
+  return {
+    ok: true,
+    duplicate: false,
+    withdrawal_id: withdrawalId,
+    user_id: sender,
+    provider_user_id: provider,
+    provider_role: providerRole,
+    amount_usd_cents: amount,
+    coins_credited: coins,
+    dollar_balance_usd_cents_after: Number(balanceRow?.balance_usd_cents ?? 0),
+    provider_seller_wallet_balance_after: Number(sellerRow?.balance_coins ?? 0),
+    created_at: ts,
   };
 }
