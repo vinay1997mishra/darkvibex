@@ -217,6 +217,61 @@ function familyLevel(experience) {
   return { level, next_exp: next };
 }
 
+// Dollar level (Vinay, 2026-11-23): a level based on the user's total
+// recharge in US cents. L1-L10 are Vinay's numbers ($2, $5, $12, $20,
+// $40, $70, $110, $150, $190, $250); L100 is $11,000 and L200 is
+// $25,000 (Vinay, 2026-11-23). Between them the ladder is filled in
+// evenly: L11-L100 interpolate $250 → $11,000 in whole dollars,
+// L101-L200 add exactly $140 per level.
+// Milestones: L20 $1,444, L50 $5,028, L100 $11,000, L150 $18,000,
+// L200 $25,000.
+// The owner can override the whole ladder with the owner_settings key
+// `dollar_level_thresholds` (JSON array of cents).
+export function dollarLevelThresholdsCents() {
+  const thresholds = [200, 500, 1200, 2000, 4000, 7000, 11000, 15000, 19000, 25000];
+  for (let level = 11; level <= 100; level += 1) {
+    const dollars = Math.round(250 + (10750 * (level - 10)) / 90);
+    thresholds.push(dollars * 100);
+  }
+  for (let level = 101; level <= 200; level += 1) {
+    thresholds.push((11000 + 140 * (level - 100)) * 100);
+  }
+  return thresholds;
+}
+
+const COINS_PER_USD = 8_000_000;
+
+// Total recharge of a user in US cents: granted Play purchases (by
+// product, refunded/pending excluded) + coins received into the normal
+// wallet from a coin seller / merchant transfer, valued at the fixed
+// $1 = 8,000,000 coins rate. The VIP purchase bonus is free platform
+// coins, not a recharge, so vip_coins_bonus rows are not counted.
+export async function totalRechargedUsdCents(db, userId) {
+  let playCents = 0;
+  const hasPlay = await db.prepare(
+    "SELECT 1 AS yes FROM sqlite_master WHERE type='table' AND name='play_purchases'"
+  ).first();
+  if (hasPlay) {
+    const row = await db.prepare(`
+      SELECT COALESCE(SUM(CASE product_id
+        WHEN 'coins_8000000' THEN 100
+        WHEN 'coins_16000000' THEN 200
+        WHEN 'coins_40000000' THEN 500
+        WHEN 'coins_80000000' THEN 1000
+        ELSE 0 END),0) AS total
+        FROM play_purchases
+       WHERE user_id=? AND status='granted'
+    `).bind(userId).first();
+    playCents = Number(row?.total ?? 0);
+  }
+  const seller = await db.prepare(`
+    SELECT COALESCE(SUM(amount),0) AS total FROM wallet_ledger
+     WHERE user_id=? AND kind IN ('coin_seller_received','merchant_received')
+  `).bind(userId).first();
+  const sellerCents = Math.floor(Number(seller?.total ?? 0) * 100 / COINS_PER_USD);
+  return playCents + sellerCents;
+}
+
 export async function profileStats(db, userId) {
   await ensureTinniSocialSchema(db);
   const following = await db.prepare(
@@ -233,7 +288,8 @@ export async function profileStats(db, userId) {
   ).bind(userId).first();
   const sentCoins = Math.max(0, Number(sent?.total ?? 0));
   const receivedCoins = Math.max(0, Number(received?.total ?? 0));
-  const thresholdInfo = async (key, points) => {
+  const rechargedCents = await totalRechargedUsdCents(db, userId);
+  const thresholdInfo = async (key, points, fallback) => {
     let thresholds = [];
     try {
       const row = await db.prepare(
@@ -248,7 +304,7 @@ export async function profileStats(db, userId) {
       }
     } catch (_) {}
     if (thresholds.length === 0) {
-      thresholds = [
+      thresholds = fallback ?? [
         100000, 500000, 1000000, 5000000, 10000000,
         25000000, 50000000, 100000000, 250000000, 500000000,
       ];
@@ -270,8 +326,12 @@ export async function profileStats(db, userId) {
     followers_count: Number(followers?.total ?? 0),
     lifetime_sent_coins: sentCoins,
     lifetime_received_coins: receivedCoins,
+    total_recharged_usd_cents: rechargedCents,
     wealth: await thresholdInfo("wealth_level_thresholds", sentCoins),
     charm: await thresholdInfo("charm_level_thresholds", receivedCoins),
+    dollar_level: await thresholdInfo(
+      "dollar_level_thresholds", rechargedCents, dollarLevelThresholdsCents(),
+    ),
   };
 }
 
