@@ -31,4 +31,75 @@ void main() {
     expect(tracker.noteFetch(ok: false), isFalse);
     expect(tracker.noteFetch(ok: false), isTrue);
   });
+
+  test('decideRoomRemoval: a failed kick-status check means stay', () {
+    // The server could not be reached at all — nothing is known, so a
+    // failed poll must never throw the user out (Vinay, 2026-11-22).
+    expect(
+      decideRoomRemoval(kicked: null, joined: null),
+      RoomRemovalAction.stay,
+    );
+    expect(
+      decideRoomRemoval(kicked: null, joined: {'ok': true}),
+      RoomRemovalAction.stay,
+    );
+  });
+
+  test('decideRoomRemoval: a real kick exits with the removed dialog', () {
+    expect(
+      decideRoomRemoval(kicked: true, joined: null),
+      RoomRemovalAction.exitRemoved,
+    );
+  });
+
+  test('decideRoomRemoval: no kick marker + re-join ok means stay', () {
+    expect(
+      decideRoomRemoval(kicked: false, joined: {'ok': true}),
+      RoomRemovalAction.stay,
+    );
+  });
+
+  test('decideRoomRemoval: no kick marker + join call failed means stay', () {
+    expect(
+      decideRoomRemoval(kicked: false, joined: null),
+      RoomRemovalAction.stay,
+    );
+  });
+
+  test('decideRoomRemoval: a ban (re-join room_blocked) exits removed', () {
+    expect(
+      decideRoomRemoval(
+        kicked: false,
+        joined: {'ok': false, 'error': 'room_blocked'},
+      ),
+      RoomRemovalAction.exitRemoved,
+    );
+  });
+
+  test('decideRoomRemoval: a deleted room exits silently', () {
+    expect(
+      decideRoomRemoval(
+        kicked: false,
+        joined: {'ok': false, 'error': 'room_not_found'},
+      ),
+      RoomRemovalAction.exitSilently,
+    );
+  });
+
+  test('decideRoomRemoval: other re-join failures mean stay', () {
+    expect(
+      decideRoomRemoval(
+        kicked: false,
+        joined: {'ok': false, 'error': 'room_password_required'},
+      ),
+      RoomRemovalAction.stay,
+    );
+    expect(
+      decideRoomRemoval(
+        kicked: false,
+        joined: {'ok': false, 'error': 'room_country_mismatch'},
+      ),
+      RoomRemovalAction.stay,
+    );
+  });
 }

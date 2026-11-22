@@ -133,6 +133,10 @@ class _RoomScreenState extends State<RoomScreen>
   // never mistaken for a kick.
   final RoomKickTracker _kickTracker = RoomKickTracker();
   bool _leavingRoom = false;
+  // A removal confirmation is already running (kick-status + maybe a
+  // silent re-join): the 3s poll keeps firing while it runs, so a
+  // second confirmation must not start on top of it.
+  bool _confirmingRemoval = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
   // for all four resources multiplied Worker requests for every connected user.
   Timer? roomStateTimer;
@@ -368,11 +372,15 @@ class _RoomScreenState extends State<RoomScreen>
     final rows = await widget.state.backend.roomMembersOrNull(roomId: widget.room.id);
     if (rows == null) {
       // The members list failed — the worker 403s it when my own
-      // membership row is gone (kicked). One failure is transient; two
-      // in a row means I was removed.
+      // membership row is gone (kicked), but a network drop, a 500 or
+      // an exhausted free tier fail it exactly the same way. One
+      // failure is transient; two in a row confirm with the server
+      // (kick marker + silent re-join) instead of assuming a kick —
+      // a bare failure must never throw the user out on its own
+      // (Vinay, 2026-11-22).
       if (_leavingRoom) return;
       if (_kickTracker.noteFetch(ok: false)) {
-        await _handleKickedFromRoom();
+        await _handleFailedRoomFetch();
       }
       return;
     }
@@ -475,9 +483,12 @@ class _RoomScreenState extends State<RoomScreen>
       afterId: _giftEventCursorId,
     );
     if (state == null) {
+      // Same as _loadRoomMembers: a failed state fetch is not a kick
+      // by itself — confirm with the server (kick marker + silent
+      // re-join) before exiting (Vinay, 2026-11-22).
       if (_leavingRoom) return;
       if (_kickTracker.noteFetch(ok: false)) {
-        await _handleKickedFromRoom();
+        await _handleFailedRoomFetch();
       }
       return;
     }
@@ -5572,6 +5583,55 @@ class _RoomScreenState extends State<RoomScreen>
       await roomForegroundService.stop();
     } catch (_) {}
     roomForegroundServiceStarted = false;
+  }
+
+  /// A members/state fetch failed twice in a row. Never treat the
+  /// failure itself as a kick: a network drop, a 500 or an exhausted
+  /// free tier all look exactly like a kick to the poll, and that
+  /// false kick is what threw IDs out of rooms on their own (Vinay,
+  /// 2026-11-22 — "ye problem dubara nhi honi chahiye"). Confirm with
+  /// the server first — the kick marker, then a silent re-join — the
+  /// same answers the resume path uses. Returns true when the room was
+  /// exited (the exit itself already happened).
+  Future<bool> _handleFailedRoomFetch() async {
+    if (_leavingRoom || !mounted || _confirmingRemoval) return false;
+    _confirmingRemoval = true;
+    try {
+      bool? kicked;
+      try {
+        kicked = await widget.state.backend.roomKickStatus(
+          roomId: widget.room.id,
+          userId: widget.state.userId,
+        );
+      } catch (_) {
+        return false;
+      }
+      Map<String, dynamic>? joined;
+      if (kicked == false) {
+        try {
+          joined = await widget.state.backend.joinRoomResult(
+            roomId: widget.room.id,
+            userId: widget.state.userId,
+            displayName: widget.state.displayName,
+          );
+        } catch (_) {
+          joined = null;
+        }
+      }
+      switch (decideRoomRemoval(kicked: kicked, joined: joined)) {
+        case RoomRemovalAction.exitRemoved:
+          await _handleKickedFromRoom();
+          return true;
+        case RoomRemovalAction.exitSilently:
+          await _leaveRoom();
+          return true;
+        case RoomRemovalAction.stay:
+          _kickTracker.noteFetch(ok: true);
+          return false;
+      }
+    } finally {
+      _confirmingRemoval = false;
+    }
   }
 
   /// I was kicked out of the room: my membership row is gone, so the
