@@ -1654,6 +1654,26 @@ class BackendApi {
     return Map<String, dynamic>.from(value);
   }
 
+  /// Top-of-room banner feed (Vinay, 2026-11-22): the cross-room
+  /// banners every room's 2-line top banner shows — recent Rocket
+  /// launches, big gifts and Lucky wins from any room. Returns null
+  /// when the check itself fails (network/server error); the caller
+  /// keeps the current banner queue.
+  Future<List<Map<String, dynamic>>?> globalBanners() async {
+    try {
+      final value = await _json('GET', '/api/banners/global');
+      if (value == null) return null;
+      final items = value['items'];
+      if (items is! List) return <Map<String, dynamic>>[];
+      return items
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Whether the server recorded a kick marker for this user in this room.
   /// Returns null when the check itself fails (network/server error).
   /// (Room audit 2026-11-20 — distinguishes a real kick from a

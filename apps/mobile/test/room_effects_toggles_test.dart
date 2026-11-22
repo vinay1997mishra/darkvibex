@@ -98,22 +98,33 @@ void main() {
         ),
       );
 
-      // Game Banner (Vinay, 2026-11-22): the banner at the TOP of the
-      // room (VIP entry banner, top: 0) — NOT the effect inside the game
-      // screen. The Fruit Party round-end popup NEVER turns off, so the
-      // game screen must not reference the Game Banner pref at all.
+      // Game Banner (Vinay, 2026-11-22): the 2-line banner at the TOP
+      // of the room (gift, Lucky win, Rocket, VIP entry) — NOT the
+      // effect inside the game screen. The Fruit Party round-end popup
+      // NEVER turns off, so the game screen must not reference the
+      // Game Banner pref at all.
       expect(fruitSource, isNot(contains('_gameBannerEnabled')));
       expect(fruitSource, isNot(contains('dvx.room.effects.game_banner')));
+      // The VIP entry banner (full-width entry effect, top: 0) is the
+      // Vehicle Effect, NOT the Game Banner — Game Banner now gates
+      // the 2-line top banner (see top_room_banner_test.dart), so the
+      // entry banner gate must not reference gameBannerEnabled.
       expect(
         roomSource,
         contains(
           'if (arrivalEffectMember != null && effectsEnabled &&\n'
-          '              gameBannerEnabled &&',
+          '              (carEffectsEnabled ||',
         ),
       );
       expect(
         roomSource,
-        contains('Banner at the top of the room (VIP entry banner).'),
+        isNot(contains('gameBannerEnabled &&\n              (carEffectsEnabled')),
+      );
+      expect(
+        roomSource,
+        contains(
+          "'2-line banner at the top of the room (gift, Lucky win, Rocket, VIP entry).'",
+        ),
       );
     },
   );

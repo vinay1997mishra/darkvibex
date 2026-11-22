@@ -1214,6 +1214,141 @@ async function loadPricedGiftCatalog(db, userId) {
 // histories stay on /api/wallet/diamonds/history and /api/wallet/coins/history
 // (loaded once on open), so a 3s poll at Lucky-gift volume (5k–10k gifts
 // from one user) cannot balloon the payload.
+// Top-of-room banner feed (Vinay, 2026-11-22): the cross-room
+// banners every room's 2-line top banner shows. Three kinds, all
+// last-10-minutes, newest first, capped at 20 total:
+//   rocket — a Rocket launch (from rocket_launches, one row per
+//     room+level, recorded when a gift pushes the room past a stage
+//     target). Tapping it takes the user into that room.
+//   gift — a big gift (coin_cost >= 1,000,000) sent in any room.
+//   lucky — a Lucky gift win of 100x or more (Vinay, 2026-11-22:
+//     only 100x+ wins go cross-room; smaller wins stay in-room).
+//   game — a big game bet win of 30,000,000+ coins (Vinay,
+//     2026-11-22: e.g. "Ravi win 30M in Greedy Girl" — every user
+//     who wins 30M+ gets their banner in every room).
+// The rocket_launches table is created lazily by the medal grants,
+// so a database that never launched a rocket has no table — that
+// kind is skipped instead of failing the whole feed.
+const GLOBAL_BANNER_WINDOW_MS = 10 * 60 * 1000;
+const GLOBAL_BANNER_LIMIT = 20;
+const BIG_GIFT_COIN_THRESHOLD = 1_000_000;
+const LUCKY_WIN_CROSS_ROOM_MULTIPLIER = 100;
+const GAME_WIN_CROSS_ROOM_COINS = 30_000_000;
+async function globalBannerFeed(db, ts = now()) {
+  const since = ts - GLOBAL_BANNER_WINDOW_MS;
+  const items = [];
+  try {
+    const launches = await db.prepare(
+      `SELECT rl.room_id, rl.rocket_level, rl.launched_at, r.name AS room_name
+       FROM rocket_launches rl
+       JOIN rooms r ON r.id = rl.room_id
+       WHERE rl.launched_at >= ?
+       ORDER BY rl.launched_at DESC
+       LIMIT ?`
+    ).bind(since, GLOBAL_BANNER_LIMIT).all();
+    for (const row of launches.results ?? []) {
+      items.push({
+        kind: "rocket",
+        text: `🚀 Rocket Lv.${Number(row.rocket_level ?? 0)} launched in ${String(row.room_name ?? "a room")}! Come and watch!`,
+        room_id: String(row.room_id ?? ""),
+        room_name: String(row.room_name ?? ""),
+        rocket_level: Number(row.rocket_level ?? 0),
+        created_at: Number(row.launched_at ?? 0),
+      });
+    }
+  } catch (error) {
+    if (!/no such table/i.test(String(error?.message ?? error))) throw error;
+  }
+  const gifts = await db.prepare(
+    `SELECT g.id, g.room_id, g.coin_cost, g.lucky_multiplier, g.lucky_win_coins, g.created_at,
+            r.name AS room_name, s.display_name AS sender_name, v.display_name AS receiver_name,
+            g.gift_id
+     FROM gift_events g
+     JOIN rooms r ON r.id = g.room_id
+     LEFT JOIN users s ON s.id = g.sender_user_id
+     LEFT JOIN users v ON v.id = g.receiver_user_id
+     WHERE g.room_id IS NOT NULL AND g.created_at >= ?
+       AND (g.coin_cost >= ? OR g.lucky_multiplier >= ?)
+     ORDER BY g.created_at DESC
+     LIMIT ?`
+  ).bind(since, BIG_GIFT_COIN_THRESHOLD, LUCKY_WIN_CROSS_ROOM_MULTIPLIER, GLOBAL_BANNER_LIMIT).all();
+  const catalog = new Map(
+    (await effectiveGiftCatalog(db)).map((gift) => [String(gift.id), gift]),
+  );
+  for (const row of gifts.results ?? []) {
+    const giftName = String(catalog.get(String(row.gift_id ?? ""))?.name ?? "Gift");
+    const senderName = String(row.sender_name ?? "User");
+    const receiverName = String(row.receiver_name ?? "User");
+    const roomName = String(row.room_name ?? "");
+    const roomId = String(row.room_id ?? "");
+    const winCoins = Number(row.lucky_win_coins ?? 0);
+    const multiplier = Number(row.lucky_multiplier ?? 0);
+    // Cross-room Lucky wins are 100x+ only (Vinay, 2026-11-22) —
+    // smaller wins stay in the room where the gift was sent.
+    if (winCoins > 0 && multiplier >= LUCKY_WIN_CROSS_ROOM_MULTIPLIER) {
+      items.push({
+        kind: "lucky",
+        text: `🎉 ${senderName} won ${winCoins} coins on a Lucky ${giftName} (${multiplier}×) for ${receiverName} in ${roomName} (Room ID: ${roomId})!`,
+        room_id: roomId,
+        room_name: roomName,
+        created_at: Number(row.created_at ?? 0),
+      });
+    }
+    if (Number(row.coin_cost ?? 0) >= BIG_GIFT_COIN_THRESHOLD) {
+      items.push({
+        kind: "gift",
+        text: `🎁 ${senderName} sent ${giftName} to ${receiverName} in ${roomName}!`,
+        room_id: roomId,
+        room_name: roomName,
+        created_at: Number(row.created_at ?? 0),
+      });
+    }
+  }
+  // Big game bet wins (Vinay, 2026-11-22): every user who wins
+  // 30,000,000+ coins in a game round gets their banner in every
+  // room — e.g. "Ravi win 30M in Greedy Girl". Fruit Party and
+  // Greedy Girl store their top-3 winners (with winning_coins) as
+  // JSON in their results tables. A game win names no room (games
+  // are not tied to one room), so its banner is not tappable.
+  for (const [table, settledCol, gameName] of [
+    ["fruit_party_results", "settled_at", "Fruit Party"],
+    ["greedy_girl_results", "settled_at", "Greedy Girl"],
+  ]) {
+    try {
+      const rounds = await db.prepare(
+        `SELECT top_winners_json, ${settledCol} AS settled_at FROM ${table} WHERE ${settledCol} >= ? ORDER BY ${settledCol} DESC LIMIT ?`,
+      ).bind(since, GLOBAL_BANNER_LIMIT).all();
+      for (const round of rounds.results ?? []) {
+        let winners = [];
+        try {
+          winners = JSON.parse(String(round.top_winners_json ?? "[]"));
+        } catch (_) {
+          winners = [];
+        }
+        for (const winner of Array.isArray(winners) ? winners : []) {
+          const winningCoins = Number(winner.winning_coins ?? 0);
+          if (winningCoins < GAME_WIN_CROSS_ROOM_COINS) continue;
+          const winnerName = String(winner.display_name ?? winner.user_id ?? "User");
+          const compact = winningCoins >= 1_000_000
+            ? `${Math.floor(winningCoins / 1_000_000)}M`
+            : `${winningCoins}`;
+          items.push({
+            kind: "game",
+            text: `🏆 ${winnerName} win ${compact} in ${gameName}!`,
+            room_id: "",
+            room_name: "",
+            created_at: Number(round.settled_at ?? 0),
+          });
+        }
+      }
+    } catch (error) {
+      if (!/no such table/i.test(String(error?.message ?? error))) throw error;
+    }
+  }
+  items.sort((a, b) => b.created_at - a.created_at);
+  return { ok: true, items: items.slice(0, GLOBAL_BANNER_LIMIT) };
+}
+
 const GIFTS_COMBINED_HISTORY_LIMIT = 20;
 async function giftsCombinedState(db, userId, ts = now()) {
   const user = await ensureUser(db, userId);
@@ -10000,6 +10135,26 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
   // histories, so gift UIs, the Diamond received view and the coin balance
   // update together. Same pattern as the games state endpoints: the user is
   // the session user (session.sub), never a user_id from the request.
+  // Top-of-room banner feed (Vinay, 2026-11-22): the cross-room
+  // banners every room's top banner shows — recent Rocket launches
+  // and big gifts from ANY room, plus Lucky wins. The app polls this
+  // with its 3s room-state poll and rotates the items through the
+  // 2-line top banner (one at a time, not a scrolling marquee).
+  // A big gift is 1,000,000+ coins (200x the biggest glass gift).
+  // Items are last-10-minutes, newest first, capped at 20.
+  if (url.pathname === "/api/banners/global" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await globalBannerFeed(db, now()));
+  }
+
   if (url.pathname === "/api/gifts/combined" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;

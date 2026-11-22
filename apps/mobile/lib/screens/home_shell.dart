@@ -943,12 +943,20 @@ class _RoomsHomeState extends State<_RoomsHome> {
       MaterialPageRoute(
         builder: (_) => RoomScreen(state: state, room: room),
       ),
-    ).then((_) async {
+    ).then((result) async {
       try {
         await state.refreshRooms();
         await _loadFollowedRooms();
       } catch (_) {
         // Best-effort refresh after returning from a room.
+      }
+      // Top-of-room banner tap (Vinay, 2026-11-22): the room screen
+      // pops with the target room id when the user taps a Rocket /
+      // big-gift banner for another room — open that room now.
+      if (result is String && result.isNotEmpty && context.mounted) {
+        final targets =
+            state.rooms.where((r) => r.id == result).toList();
+        if (targets.isNotEmpty) _openRoom(targets.first);
       }
     });
   }
