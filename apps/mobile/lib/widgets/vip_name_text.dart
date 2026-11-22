@@ -52,13 +52,36 @@ class VipNameText extends StatelessWidget {
       );
     }
     final colour = VipPolicy.nameColourForLevel(vipLevel);
+    if (colour == null) {
+      return Text(
+        name,
+        key: textKey,
+        maxLines: maxLines,
+        overflow: overflow,
+        textAlign: textAlign,
+        style: style,
+      );
+    }
+    // Nickname Light Effect (VIP8-17): a soft glow in the level's own
+    // colour, layered under any readability shadow the caller passed.
+    // VIP18 keeps the gradient branch above (no glow — the shader would
+    // tint it); below VIP8 there is no light effect.
+    final bool lightEffect = vipLevel >= 8 && vipLevel <= 17;
     return Text(
       name,
       key: textKey,
       maxLines: maxLines,
       overflow: overflow,
       textAlign: textAlign,
-      style: colour == null ? style : style.copyWith(color: colour),
+      style: style.copyWith(
+        color: colour,
+        shadows: lightEffect
+            ? <Shadow>[
+                ...?style.shadows,
+                Shadow(color: colour, blurRadius: 10),
+              ]
+            : style.shadows,
+      ),
     );
   }
 }

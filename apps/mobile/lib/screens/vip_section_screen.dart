@@ -9,49 +9,32 @@
 // card highlights). No brown anywhere.
 //
 // VIP frame style (chosen by Vinay 2026-11-18, 3rd of 3 pics): super
-// premium golden dragon frame with purple fire glow — applied as a
-// dragon-frame Stack around the emblem in _Emblem, tiered by level
-// (see below).
-// VIP tags: real golden tag images per level (VIP5-18 only, animal +
-// "VIP<n>" on a transparent background) live in
-// workspace/darkvibex-vip-section/vip-tags/vip<n>-tag.png; _Emblem shows
-// the tag image below the emblem for VIP5-18 and the text plaque for
-// VIP1-4 (no tag exists for VIP1-4). Copy the PNGs to
-// apps/mobile/assets/vip_tags/ and add them to pubspec.yaml assets
-// before release; vipTagAsset() gives the app-side path.
-//
-// Replaces the plain list in apps/mobile/lib/screens/vip_screen.dart
-// (VipScreen). Drop this file into apps/mobile/lib/screens/ as
-// vip_section_screen.dart and route to VipSectionScreen instead of
-// VipScreen, or use it as the new body of VipScreen.
-//
-// Data: thresholds and privileges come from apps/mobile/lib/vip/vip_policy.dart
-// (VipPolicy.levels, VipPolicy.privileges). Known discrepancy, flagged in
-// README.md: the worker's VIP upgrade column (vip_policy.js) disagrees with
-// the Dart upgradeExp values by ~285x; this screen follows the Dart values,
-// exactly as the existing VipScreen does (progress = vipExpBalance / target).
-//
-// Placeholders, clearly marked:
-// - Animal emblems are large emoji text (e.g. Wolf, Phoenix) standing in
-//   for the real animal artwork / R2 video stills. Replace _animalEmoji
-//   with the real asset (e.g. the vehicle-entry MP4 still or an asset
-//   image) before release.
-// - The coins reward "x800,000" is the reference screenshot's value; no
-//   per-level coin reward exists in vip_policy.js / vip_policy.dart.
-// - Gift Banner / gift ribbon does NOT exist in the app yet (confirmed
-//   missing in the 2026-11-18 VIP audit). Its card is shown as "NEW —
-//   coming soon", not as an unlocked reward.
-// - "Exp 110% Speed up" and "More Profile Background" are reference-screen
-//   privileges with no matching entry in VipPolicy (exp_multiplier is 1.0).
-//   They are shown as locked / not in DarkVibeX and must be decided before
-//   they are ever shown as unlocked.
+// premium golden dragon frame with purple fire glow. The dragon-frame
+// style was NOT applied to the VIP section (Vinay, 2026-11-20, "Nhi") —
+// the per-level animal frames stay as they are. The emblem shows the
+// level's real animal frame still from R2 (frames/vip<N>-<animal>-
+// transparent.png) inside a gold-ring + purple-glow circle.
+// VIP tags: real golden tag images per level (VIP1-18, animal +
+// "VIP<n>" on a transparent background) live on R2 under vip-tags/ and
+// are shown with the VipTagImage widget (R2-based, works for all 18).
+// Gift Banner / gift ribbon EXISTS in the app now (gift_ribbon_banner.dart
+// + R2 gift-ribbons/, wired in room_screen.dart) — it is shown as an
+// unlocked reward, not "coming soon".
+// "Exp 110% Speed up" EXISTS (worker expBoostForLevel: 1.1x at VIP1,
+// 1.2x at VIP5, 1.4x at VIP11, 1.5x at VIP16). "More Profile Background"
+// has no matching entry and is NOT shown.
+// Coins bonus is the real purchase bonus from the VIP policy: +5% at
+// VIP5, +10% at VIP11, +20% at VIP16 (coinsBonusForPurchase).
 import 'package:flutter/material.dart';
 
 import '../vip/vip_policy.dart';
+import '../vip/vip_visual_assets.dart';
+import '../widgets/vip_tag_image.dart';
 
 /// One animal (or crown) emblem per VIP level, from the DarkVibeX
 /// vehicle-entry animal list. VIP1-4 have no animal vehicle, so they use
-/// a gold crown. Emoji is a placeholder for the real animal artwork.
+/// a gold crown. The emoji is only the fallback label — the emblem shows
+/// the level's real animal frame still from R2.
 class VipAnimal {
   const VipAnimal({
     required this.level,
@@ -179,15 +162,6 @@ class VipSectionColors {
     if (level >= 10) return 8;
     return 5;
   }
-}
-
-/// Golden VIP tag image for a level, or null when no tag exists.
-/// Tags exist only for VIP5-18 (one PNG per level, animal + "VIP<n>",
-/// transparent background). App-side path once the PNGs are copied to
-/// apps/mobile/assets/vip_tags/ and listed in pubspec.yaml.
-String? vipTagAsset(int level) {
-  if (level < 5 || level > 18) return null;
-  return 'assets/vip_tags/vip$level-tag.png';
 }
 
 /// Optional WIN banner (reference screenshot 3: "Lucky Gift won").
@@ -486,15 +460,18 @@ class _Emblem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Real animal artwork: the level's transparent frame still from R2
+    // (frames/vip<N>-<animal>-transparent.png). Falls back to the animal
+    // emoji only if the R2 image fails to load.
+    final String? frameStillUrl =
+        vipFrameStillUrlForVipLevel(selectedLevel);
     return Column(
       children: <Widget>[
         const SizedBox(height: 12),
-        // Dragon frame (Vinay's pick, 3rd frame pic): super premium
-        // golden dragon frame with purple fire glow. The outer gold
-        // ring + purple glow is the frame; the 🐉 ornaments at the top
-        // corners stand in for the coiled golden dragons of the frame
-        // artwork until that artwork is added as an asset. Tiered:
-        // glow strengthens at VIP10+ and peaks at VIP16-18.
+        // Gold ring + purple glow frame around the emblem, tiered by
+        // level: glow strengthens at VIP10+ and peaks at VIP16-18.
+        // (Vinay, 2026-11-20: the dragon-frame style is NOT applied —
+        // the per-level animal frames stay as they are.)
         Stack(
           alignment: Alignment.center,
           children: <Widget>[
@@ -537,33 +514,25 @@ class _Emblem extends StatelessWidget {
                 border: Border.all(color: VipSectionColors.gold, width: 3),
               ),
               alignment: Alignment.center,
-              child:
-                  Text(animal.emoji, style: const TextStyle(fontSize: 110)),
-            ),
-            const Positioned(
-              top: 4,
-              left: 14,
-              child: Text('🐉', style: TextStyle(fontSize: 30)),
-            ),
-            const Positioned(
-              top: 4,
-              right: 14,
-              child: Text('🐉', style: TextStyle(fontSize: 30)),
+              child: frameStillUrl != null
+                  ? ClipOval(
+                      child: Image.network(
+                        frameStillUrl,
+                        width: 220,
+                        height: 220,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Text(animal.emoji,
+                            style: const TextStyle(fontSize: 110)),
+                      ),
+                    )
+                  : Text(animal.emoji,
+                      style: const TextStyle(fontSize: 110)),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        // Golden VIP tag image for VIP5-18; text plaque for VIP1-4
-        // (no tag PNG exists for those levels).
-        if (vipTagAsset(selectedLevel) != null)
-          Image.asset(
-            vipTagAsset(selectedLevel)!,
-            width: 220,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _VipLevelPlaque(level: selectedLevel),
-          )
-        else
-          _VipLevelPlaque(level: selectedLevel),
+        // Golden VIP tag image for all 18 levels, loaded from R2.
+        VipTagImage(vipLevel: selectedLevel, fontSize: 20),
         const SizedBox(height: 8),
         Text(
           '${animal.name}  •  ${animal.category}  •  ${animal.rarity}',
@@ -585,35 +554,6 @@ class _Emblem extends StatelessWidget {
         ),
         const SizedBox(height: 18),
       ],
-    );
-  }
-}
-
-/// Text VIP plaque, used for VIP1-4 (no tag PNG) and as the fallback
-/// if a tag image fails to load.
-class _VipLevelPlaque extends StatelessWidget {
-  const _VipLevelPlaque({required this.level});
-
-  final int level;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
-      decoration: BoxDecoration(
-        color: VipSectionColors.surfaceRaised,
-        border: Border.all(color: VipSectionColors.gold, width: 2),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        'VIP$level',
-        style: const TextStyle(
-          color: VipSectionColors.gold,
-          fontSize: 26,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 2,
-        ),
-      ),
     );
   }
 }
@@ -782,55 +722,64 @@ class _IdentityItem {
   final bool isNew;
 }
 
-List<_IdentityItem> _identityItems(VipAnimal animal) => <_IdentityItem>[
-      // PLACEHOLDER: no per-level coin reward exists in the VIP policy;
-      // x800,000 is the reference screenshot's value.
-      const _IdentityItem(
-        label: 'Coins x800,000',
-        icon: Icons.monetization_on_rounded,
-        minLevel: 1,
-        note: 'Reference value',
-      ),
-      const _IdentityItem(
-        label: 'Label',
-        icon: Icons.label_rounded,
-        minLevel: 1,
-      ),
-      const _IdentityItem(
-        label: 'VIP Medal',
-        icon: Icons.military_tech_rounded,
-        minLevel: 1,
-      ),
-      const _IdentityItem(
-        label: 'Frame',
-        icon: Icons.filter_frames_rounded,
-        minLevel: 1,
-        note: 'Dragon frame',
-      ),
-      const _IdentityItem(
-        label: 'Profile Card',
-        icon: Icons.credit_card_rounded,
-        minLevel: 5,
-      ),
-      _IdentityItem(
-        label: 'Ride: ${animal.name}',
-        icon: Icons.directions_rounded,
-        minLevel: 5,
-      ),
-      const _IdentityItem(
-        label: 'Chat Bubble',
-        icon: Icons.chat_bubble_rounded,
-        minLevel: 2,
-      ),
-      // NEW / MISSING: gift banner / gift ribbon does not exist in the app.
-      const _IdentityItem(
-        label: 'Gift Banner',
-        icon: Icons.card_giftcard_rounded,
-        minLevel: 1,
-        note: 'Coming soon',
-        isNew: true,
-      ),
-    ];
+List<_IdentityItem> _identityItems(VipAnimal animal) {
+  // Real coins bonus from the VIP policy (coinsBonusForPurchase):
+  // +5% at VIP5, +10% at VIP11, +20% at VIP16.
+  final int coinsBonus = animal.level >= 16
+      ? 20
+      : animal.level >= 11
+          ? 10
+          : animal.level >= 5
+              ? 5
+              : 0;
+  return <_IdentityItem>[
+    _IdentityItem(
+      label: coinsBonus > 0 ? 'Coins Bonus +$coinsBonus%' : 'Coins Bonus',
+      icon: Icons.monetization_on_rounded,
+      minLevel: 5,
+      note: coinsBonus > 0 ? 'On every purchase' : 'From VIP5',
+    ),
+    const _IdentityItem(
+      label: 'Label',
+      icon: Icons.label_rounded,
+      minLevel: 1,
+    ),
+    const _IdentityItem(
+      label: 'VIP Medal',
+      icon: Icons.military_tech_rounded,
+      minLevel: 1,
+    ),
+    const _IdentityItem(
+      label: 'Frame',
+      icon: Icons.filter_frames_rounded,
+      minLevel: 1,
+      note: 'Animal frame',
+    ),
+    const _IdentityItem(
+      label: 'Profile Card',
+      icon: Icons.credit_card_rounded,
+      minLevel: 5,
+    ),
+    _IdentityItem(
+      label: 'Ride: ${animal.name}',
+      icon: Icons.directions_rounded,
+      minLevel: 5,
+    ),
+    const _IdentityItem(
+      label: 'Chat Bubble',
+      icon: Icons.chat_bubble_rounded,
+      minLevel: 2,
+    ),
+    // Gift banner / gift ribbon EXISTS in the app now
+    // (gift_ribbon_banner.dart + R2 gift-ribbons/).
+    const _IdentityItem(
+      label: 'Gift Banner',
+      icon: Icons.card_giftcard_rounded,
+      minLevel: 1,
+      isNew: true,
+    ),
+  ];
+}
 
 class _IdentityGrid extends StatelessWidget {
   const _IdentityGrid({
@@ -960,17 +909,14 @@ class _PrivilegeItem {
     required this.title,
     required this.icon,
     required this.minLevel,
-    this.existsInRepo = true,
   });
 
   final String title;
   final IconData icon;
   final int minLevel;
-  final bool existsInRepo;
 }
 
 // Privileges shown in the reference, mapped to real VipPolicy entries.
-// Two reference items have no matching privilege and are flagged.
 const List<_PrivilegeItem> _privilegeItems = <_PrivilegeItem>[
   _PrivilegeItem(
     title: 'View Visitor Record',
@@ -992,17 +938,13 @@ const List<_PrivilegeItem> _privilegeItems = <_PrivilegeItem>[
     icon: Icons.image_rounded,
     minLevel: 17,
   ),
+  // EXP boost EXISTS in DarkVibeX (worker expBoostForLevel: 1.1x at VIP1,
+  // 1.2x at VIP5, 1.4x at VIP11, 1.5x at VIP16). "More Profile Background"
+  // has no matching entry and is NOT shown.
   _PrivilegeItem(
     title: 'Exp 110% Speed up',
     icon: Icons.rocket_launch_rounded,
     minLevel: 1,
-    existsInRepo: false,
-  ),
-  _PrivilegeItem(
-    title: 'More Profile Background',
-    icon: Icons.collections_rounded,
-    minLevel: 1,
-    existsInRepo: false,
   ),
   _PrivilegeItem(
     title: 'Hide Visit Record',
@@ -1049,7 +991,7 @@ class _PrivilegesGrid extends StatelessWidget {
         itemBuilder: (context, index) {
           final item = _privilegeItems[index];
           final unlocked =
-              active && currentLevel >= item.minLevel && item.existsInRepo;
+              active && currentLevel >= item.minLevel;
           return Container(
             decoration: BoxDecoration(
               // Unlocked privileges get a purple tint; gold border kept.
@@ -1109,14 +1051,6 @@ class _PrivilegesGrid extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (!item.existsInRepo)
-                  const Text(
-                    'Not in DarkVibeX',
-                    style: TextStyle(
-                      color: VipSectionColors.goldDeep,
-                      fontSize: 10,
-                    ),
-                  ),
               ],
             ),
           );
@@ -1204,7 +1138,7 @@ class _RechargeBanner extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Monthly VIP Points: $monthlyPoints',
+                      'VIP Points: $monthlyPoints',
                       style: const TextStyle(
                         color: VipSectionColors.textDim,
                       ),

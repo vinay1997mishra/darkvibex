@@ -128,7 +128,10 @@ export function vipCapabilities(level, active){
     customer_service_enabled: active && level >= 9,
     seat_protection_enabled: active && level >= 13,
     kick_protection_enabled: active && level >= 14,
-    message_retention_days: active ? (level >= 12 ? 120 : level >= 8 ? 60 : level >= 5 ? 30 : 0) : 0,
+    // Capped at 45 days (Vinay, 2026-11-22: "Cap kar de 45 din per") —
+    // the VIP message-history promise never exceeds the 45-day server
+    // backup window. VIP8+ gets 45 days, VIP5-7 get 30 days.
+    message_retention_days: active ? (level >= 8 ? 45 : level >= 5 ? 30 : 0) : 0,
     show_id_style_level: !active || level < 5 ? 0 : Math.min(level,14),
     nickname_light_enabled: active && level >= 8 && level <= 17,
     entrance_vehicle_tier: active && level >= 5 ? Math.max(1,level-4) : 0,

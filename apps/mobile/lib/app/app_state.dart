@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../call/call_ringtone.dart';
 import '../i18n/darkvibex_localization.dart';
 import '../infra/backend_api.dart';
+import '../infra/local_message_cache.dart';
 import '../vip/vip_policy.dart';
 
 class RoomSummary {
@@ -907,6 +908,11 @@ class AppState extends ChangeNotifier {
         userId: userId, otherUserId: otherUserId);
     if (saved?['ok'] != true) return false;
     messages.removeWhere((item) => item.id == otherUserId);
+    // The conversation's local cache must go with it — otherwise the
+    // deleted messages would resurrect from the cache on reopen
+    // (Vinay, 2026-11-22: messages stay in the app, but a deleted
+    // conversation stays deleted).
+    await LocalMessageCache.clear(LocalMessageCache.dmKey(userId, otherUserId));
     await refreshInbox(notify: false);
     notifyListeners();
     return true;
@@ -1354,6 +1360,10 @@ class AppState extends ChangeNotifier {
           'Gender can only be changed 3 times.',
         'profile_change_conflict_retry' =>
           'Profile changed elsewhere. Reopen profile and try again.',
+        // Strong security (Vinay, 2026-11-22): the server blocks
+        // gaaliyan, porn, political content and other apps' names.
+        'content_blocked' =>
+          'Name or bio contains a blocked word. Please change it and try again.',
         _ => code.isEmpty
             ? 'Profile details could not be saved.'
             : code.replaceAll('_', ' '),

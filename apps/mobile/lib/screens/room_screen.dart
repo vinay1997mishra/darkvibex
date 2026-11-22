@@ -18,6 +18,7 @@ import '../background/room_foreground_service.dart';
 import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
 import '../infra/agora_rtc.dart';
+import '../infra/local_message_cache.dart';
 import '../infra/realtime.dart';
 import '../room/seat_layout.dart';
 import '../room/month_top_gifter.dart';
@@ -33,6 +34,7 @@ import '../widgets/level_medal.dart';
 import '../widgets/vip_tag_image.dart';
 import '../widgets/vip_name_text.dart';
 import '../widgets/vip_priority_message_banner.dart';
+import '../widgets/vip_show_id_text.dart';
 import '../widgets/profile_card_anim_background.dart';
 import '../ui/tinni_style.dart';
 import '../widgets/gift_media_preview.dart';
@@ -912,6 +914,13 @@ class _RoomScreenState extends State<RoomScreen>
   }
 
   Future<void> _loadRoomMessages() async {
+    // Local cache first (Vinay, 2026-11-22: "App se delete nhi hone
+    // chahiye") — the room history the user has already seen stays in
+    // the app even after the server's 45-day cleanup keeps only the
+    // last 100. Server rows merge in below via _applyRoomMessages.
+    final cached =
+        await LocalMessageCache.load(LocalMessageCache.roomKey(widget.room.id));
+    if (cached.isNotEmpty) _applyRoomMessages(cached);
     if (!widget.state.backendConnected) return;
     final rows = await widget.state.backend.roomMessages(roomId: widget.room.id);
     _applyRoomMessages(rows);
@@ -920,6 +929,9 @@ class _RoomScreenState extends State<RoomScreen>
   /// Applies a messages list to the same state fields [_loadRoomMessages]
   /// sets. Shared by the old messages loader and the combined state
   /// loader; the loader keeps the fetch, this keeps the rendering.
+  /// Incoming rows MERGE with the messages already on screen (local
+  /// cache + earlier polls) by id — they never replace them — so old
+  /// room messages survive the server keeping only the last 100.
   void _applyRoomMessages(List<Map<String, dynamic>> rows) {
     if (!mounted) return;
     if (rows.isEmpty &&
@@ -927,9 +939,18 @@ class _RoomScreenState extends State<RoomScreen>
         chat.first['text'] == 'Welcome to the room 👋') {
       return;
     }
-    final next = rows
-        .map((message) => Map<String, dynamic>.from(message))
+    // The welcome pseudo-message is display-only: it must not stick
+    // around forever once real messages arrive (it used to vanish
+    // when the poll replaced the list; merging keeps it otherwise).
+    final current = chat
+        .where((row) =>
+            (row['id']?.toString() ?? '').isNotEmpty ||
+            !(row['display_name'] == 'DarkVibeX' &&
+                row['text'] == 'Welcome to the room 👋'))
         .toList();
+    final next = LocalMessageCache.merge(current, rows
+        .map((message) => Map<String, dynamic>.from(message))
+        .toList());
     _syncSeatReactions(next);
     if (!mounted || next.toString() == chat.toString()) return;
     final previousMessageKeys = chat.map(_roomMessageEventKey).toSet();
@@ -942,6 +963,11 @@ class _RoomScreenState extends State<RoomScreen>
         ..clear()
         ..addAll(next);
     });
+    // Persist the merged history so it survives the server keeping
+    // only the last 100 room messages (Vinay, 2026-11-22).
+    unawaited(
+      LocalMessageCache.save(LocalMessageCache.roomKey(widget.room.id), next),
+    );
     _scrollChatToLatest();
     // Other room members learn about a gift through the existing room-chat
     // polling. Refresh totals only when a new gift event arrives, rather than
@@ -4081,8 +4107,9 @@ class _RoomScreenState extends State<RoomScreen>
                                         ? const Color(0xFF4789E7)
                                         : const Color(0xFFE868A7),
                                   ),
-                                Text(
-                                  'ID $shownId',
+                                VipShowIdText(
+                                  text: 'ID $shownId',
+                                  vipLevel: activeVipLevel,
                                   style: TextStyle(
                                     color: hasCardBackground
                                         ? Colors.white70
@@ -8986,11 +9013,18 @@ class _RoomScreenState extends State<RoomScreen>
           userId: widget.state.userId,
           text: value,
         );
-        if (result == null) {
+        if (result == null || result['ok'] != true) {
           if (mounted) {
+            // Strong security (Vinay, 2026-11-22): the server blocks
+            // gaaliyan, porn, political content and other apps' names.
+            final blocked = result?['error'] == 'content_blocked';
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Message was not sent. Check your connection.'),
+              SnackBar(
+                content: Text(
+                  blocked
+                      ? 'Ye message nahi bheja ja sakta — isme mana kiya hua shabd hai.'
+                      : 'Message was not sent. Check your connection.',
+                ),
               ),
             );
           }
@@ -9243,7 +9277,7 @@ class _RoomScreenState extends State<RoomScreen>
         userId: widget.state.userId,
         imageKey: key,
       );
-      if (result == null) throw StateError('send_failed');
+      if (result == null || result['ok'] != true) throw StateError('send_failed');
       if (!mounted) return;
       final serverMessage = result['message'];
       final message = serverMessage is Map
@@ -9927,10 +9961,28 @@ class _RoomScreenState extends State<RoomScreen>
                                         if (isMicBlocked || level <= 0) {
                                           return const SizedBox.shrink();
                                         }
-                                        return _LiveMicWaves(
-                                          level: level,
-                                          compact: compactSeats,
-                                          diameter: diameter,
+                                        // Exclusive Mic Emoticon (VIP9+):
+                                        // while speaking, a pulsing gold
+                                        // mic badge rides the speaking
+                                        // rings; VIP16+ also gets the
+                                        // gold rings (Exclusive Mic Effect).
+                                        return Stack(
+                                          children: <Widget>[
+                                            _LiveMicWaves(
+                                              level: level,
+                                              compact: compactSeats,
+                                              diameter: diameter,
+                                              premium: vipLevel >= 16,
+                                            ),
+                                            if (vipLevel >= 9)
+                                              Positioned(
+                                                right: compactSeats ? 2.0 : 4.0,
+                                                bottom: compactSeats ? 2.0 : 4.0,
+                                                child: _VipMicEmoteBadge(
+                                                  compact: compactSeats,
+                                                ),
+                                              ),
+                                          ],
                                         );
                                       },
                                     ),
@@ -10813,11 +10865,16 @@ class _LiveMicWaves extends StatefulWidget {
     required this.level,
     required this.compact,
     required this.diameter,
+    this.premium = false,
   });
 
   final double level;
   final bool compact;
   final double diameter;
+
+  /// Premium (gold) speaking rings for the Exclusive Mic Effect
+  /// (VIP16+). Standard rings are purple-to-teal.
+  final bool premium;
 
   @override
   State<_LiveMicWaves> createState() => _LiveMicWavesState();
@@ -10856,9 +10913,68 @@ class _LiveMicWavesState extends State<_LiveMicWaves>
             phase: _controller.value,
             compact: widget.compact,
             avatarDiameter: widget.diameter,
+            premium: widget.premium,
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pulsing gold mic badge for the Exclusive Mic Emoticon (VIP9+).
+/// Shown while the user is speaking, riding the speaking rings.
+class _VipMicEmoteBadge extends StatefulWidget {
+  const _VipMicEmoteBadge({required this.compact});
+
+  final bool compact;
+
+  @override
+  State<_VipMicEmoteBadge> createState() => _VipMicEmoteBadgeState();
+}
+
+class _VipMicEmoteBadgeState extends State<_VipMicEmoteBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double size = widget.compact ? 18 : 22;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final double scale = 1.0 + _controller.value * 0.18;
+        return Transform.scale(
+          scale: scale,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFD700),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.mic_rounded,
+              size: size * 0.62,
+              color: const Color(0xFF000000),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -10869,6 +10985,7 @@ class _LiveMicWavePainter extends CustomPainter {
     required this.phase,
     required this.compact,
     required this.avatarDiameter,
+    this.premium = false,
   });
 
   final double level;
@@ -10876,17 +10993,26 @@ class _LiveMicWavePainter extends CustomPainter {
   final bool compact;
   final double avatarDiameter;
 
+  /// Gold rings for the Exclusive Mic Effect (VIP16+).
+  final bool premium;
+
   @override
   void paint(Canvas canvas, Size size) {
     final normalized = level.clamp(0.0, 1.0).toDouble();
     final center = Offset(size.width / 2, size.height / 2);
     final outerPadding = compact ? 9.0 : 12.0;
     final baseRadius = avatarDiameter / 2 + (compact ? 1.2 : 1.8);
-    final liveColor = Color.lerp(
-      Color(0xFF8B7CFF),
-      const Color(0xFF56F2C2),
-      (.30 + normalized * .70).clamp(0.0, 1.0),
-    )!;
+    final liveColor = premium
+        ? Color.lerp(
+            const Color(0xFFFFD700),
+            const Color(0xFFFFB11B),
+            (.30 + normalized * .70).clamp(0.0, 1.0),
+          )!
+        : Color.lerp(
+            const Color(0xFF8B7CFF),
+            const Color(0xFF56F2C2),
+            (.30 + normalized * .70).clamp(0.0, 1.0),
+          )!;
 
     final edgePaint = Paint()
       ..color = liveColor.withValues(

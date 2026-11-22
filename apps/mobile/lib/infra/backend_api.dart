@@ -889,6 +889,12 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  /// Sends a room message and returns the raw server map, INCLUDING the
+  /// error body when the send is rejected (e.g. `error:
+  /// 'content_blocked' when the text trips the content filter). Null
+  /// only means no response reached the app (offline / transport).
+  /// Callers must check `result['ok'] == true` before reading
+  /// `result['message']`.
   Future<Map<String, dynamic>?> sendRoomMessageResult({
     required String roomId,
     required String userId,
@@ -905,8 +911,8 @@ class BackendApi {
       },
       returnErrorBody: true,
     );
-    if (value?['ok'] != true) return null;
-    return Map<String, dynamic>.from(value!);
+    if (value == null) return null;
+    return Map<String, dynamic>.from(value);
   }
 
   Future<bool> sendRoomMessage({
@@ -921,7 +927,7 @@ class BackendApi {
       text: text,
       imageKey: imageKey,
     );
-    return value != null;
+    return value?['ok'] == true;
   }
 
   Future<List<Map<String, dynamic>>> rechargeProviders() async {
@@ -990,7 +996,12 @@ class BackendApi {
         .toList();
   }
 
-  Future<bool> sendDirectMessage({
+  /// Sends a direct message and returns the raw server map, INCLUDING
+  /// the error body when the send is rejected (e.g. `error:
+  /// 'content_blocked' when the text trips the content filter). Null
+  /// only means no response reached the app (offline / transport).
+  /// Callers must check `result['ok'] == true`.
+  Future<Map<String, dynamic>?> sendDirectMessageResult({
     required String senderUserId,
     required String receiverUserId,
     required String text,
@@ -1005,6 +1016,23 @@ class BackendApi {
         'text': text,
         if (imageKey != null) 'image_key': imageKey,
       },
+      returnErrorBody: true,
+    );
+    if (value == null) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
+  Future<bool> sendDirectMessage({
+    required String senderUserId,
+    required String receiverUserId,
+    required String text,
+    String? imageKey,
+  }) async {
+    final value = await sendDirectMessageResult(
+      senderUserId: senderUserId,
+      receiverUserId: receiverUserId,
+      text: text,
+      imageKey: imageKey,
     );
     return value?['ok'] == true;
   }
@@ -1212,7 +1240,12 @@ class BackendApi {
         .toList(growable: false);
   }
 
-  Future<bool> sendGameRoomMessage({
+  /// Sends a game-room message and returns the raw server map,
+  /// INCLUDING the error body when the send is rejected (e.g. `error:
+  /// 'content_blocked' when the text trips the content filter). Null
+  /// only means no response reached the app (offline / transport).
+  /// Callers must check `result['ok'] == true`.
+  Future<Map<String, dynamic>?> sendGameRoomMessageResult({
     required String roomId,
     required String userId,
     required String text,
@@ -1225,6 +1258,20 @@ class BackendApi {
         'text': text,
       },
       returnErrorBody: true,
+    );
+    if (value == null) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
+  Future<bool> sendGameRoomMessage({
+    required String roomId,
+    required String userId,
+    required String text,
+  }) async {
+    final value = await sendGameRoomMessageResult(
+      roomId: roomId,
+      userId: userId,
+      text: text,
     );
     return value?['ok'] == true;
   }

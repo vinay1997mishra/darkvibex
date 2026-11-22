@@ -95,6 +95,11 @@ class _RankingScreenState extends State<RankingScreen> {
     }
     final userId = row['user_id']?.toString() ?? '';
     if (userId.isEmpty) return;
+    // Anonymous on Ranking (VIP11+) / Anonymous Everywhere (VIP18):
+    // tapping an anonymous row must not open the real profile.
+    final isAnonymous = row['is_anonymous'] == 1 ||
+        row['is_anonymous']?.toString() == '1';
+    if (isAnonymous) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => PublicProfileScreen(

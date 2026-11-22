@@ -76,14 +76,17 @@ void main() {
   });
 
   test('unlockedAt is cumulative: only the level own privileges show', () {
-    expect(VipPolicy.unlockedAt(1).length, 5);
+    // Card Background + Custom Avatar Frame are VIP1 (corrected 2026-11-22:
+    // both show for any active VIP, so their old 16/17 levels were wrong),
+    // so VIP1-6 each gain 2 over the old counts.
+    expect(VipPolicy.unlockedAt(1).length, 7);
     // Daily Rewards moved to VIP5 (Vinay, 2026-11-20): VIP2-4 no
     // longer see it, so their counts drop by one each.
-    expect(VipPolicy.unlockedAt(2).length, 7);
-    expect(VipPolicy.unlockedAt(3).length, 9);
-    expect(VipPolicy.unlockedAt(4).length, 10);
-    expect(VipPolicy.unlockedAt(5).length, 20);
-    expect(VipPolicy.unlockedAt(6).length, 21);
+    expect(VipPolicy.unlockedAt(2).length, 9);
+    expect(VipPolicy.unlockedAt(3).length, 11);
+    expect(VipPolicy.unlockedAt(4).length, 12);
+    expect(VipPolicy.unlockedAt(5).length, 22);
+    expect(VipPolicy.unlockedAt(6).length, 23);
     // 54, not 55: nickname_light is VIP8-17 only, so VIP18 does not
     // see it — every other privilege is unlocked at VIP18.
     expect(VipPolicy.unlockedAt(18).length, 54);
@@ -104,11 +107,12 @@ void main() {
     expect(nameColour.isUnlockedAt(4), false);
     expect(nameColour.isUnlockedAt(5), true);
     expect(nameColour.isUnlockedAt(18), true);
-    // VIP1 sees its own 5 privileges only.
+    // VIP1 sees its own 7 privileges only (card_background +
+    // custom_avatar_frame corrected to VIP1, 2026-11-22).
     final vip1Ids = VipPolicy.unlockedAt(1).map((p) => p.id).toSet();
     expect(
       vip1Ids,
-      {'vip_logo', 'headframe', 'display_front', 'view_visitors', 'exp_boost_1_1x'},
+      {'vip_logo', 'headframe', 'display_front', 'view_visitors', 'exp_boost_1_1x', 'custom_avatar_frame', 'card_background'},
     );
   });
 
@@ -179,10 +183,10 @@ void main() {
     expect(VipPolicy.friendLimit(3, active: true), isNull);
   });
 
-  test('message roaming tiers are 30, 60 and 120 days', () {
+  test('message roaming tiers are 30 and 45 days (capped at 45)', () {
     expect(VipPolicy.messageRetentionDays(5), 30);
-    expect(VipPolicy.messageRetentionDays(8), 60);
-    expect(VipPolicy.messageRetentionDays(12), 120);
+    expect(VipPolicy.messageRetentionDays(8), 45);
+    expect(VipPolicy.messageRetentionDays(12), 45);
   });
 
   test('removed incomplete privileges are not present', () {

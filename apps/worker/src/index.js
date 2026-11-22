@@ -14,6 +14,7 @@ import {
   userIdFileKeyBelongsTo,
 } from "./user_id_files_catalog.js";
 import { expireOldMessages } from "./message_retention.js";
+import { checkContent } from "./content_filter.js";
 import { expireOldGameData } from "./game_data_retention.js";
 import { expireOldD1SpaceData } from "./d1_space_retention.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
@@ -292,15 +293,23 @@ function istPeriodWindow(period, nowMs) {
 // when the caller passes ?period= (the ranking page polls with it).
 // A period with no sending returns an empty ranking. This room only.
 const roomGiftRankingSelect = `SELECT g.sender_user_id AS user_id,
-        CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
-        COALESCE(u.display_name,'User') AS display_name,
-        u.avatar_key,
+        CASE WHEN COALESCE(io.invisible_id,0)=1 OR COALESCE(anon.is_anon,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+        CASE WHEN COALESCE(anon.is_anon,0)=1 THEN 'Anonymous' ELSE COALESCE(u.display_name,'User') END AS display_name,
+        CASE WHEN COALESCE(anon.is_anon,0)=1 THEN NULL ELSE u.avatar_key END AS avatar_key,
+        COALESCE(anon.is_anon,0) AS is_anonymous,
         SUM(g.coin_cost) AS sent_coins,
         COUNT(*) AS gift_count
    FROM gift_events g
    LEFT JOIN users u ON u.id=g.sender_user_id
-   LEFT JOIN owner_user_overrides io ON io.user_id=g.sender_user_id`;
-const roomGiftRankingGroup = `GROUP BY g.sender_user_id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
+   LEFT JOIN owner_user_overrides io ON io.user_id=g.sender_user_id
+   LEFT JOIN (
+     SELECT user_id,
+            CASE WHEN (level >= 11 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_ranking') = 1)
+                      OR (level >= 18 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_everywhere') = 1)
+                 THEN 1 ELSE 0 END AS is_anon
+       FROM user_vip
+   ) anon ON anon.user_id=g.sender_user_id`;
+const roomGiftRankingGroup = `GROUP BY g.sender_user_id,u.public_id,u.display_name,u.avatar_key,io.invisible_id,anon.is_anon
   ORDER BY sent_coins DESC,gift_count DESC,g.sender_user_id ASC`;
 
 async function loadRoomGiftSummaryState(db, roomId, periodParam) {
@@ -311,7 +320,7 @@ async function loadRoomGiftSummaryState(db, roomId, periodParam) {
   const monthWindow = istPeriodWindow("month", now());
   const monthTop = await db.prepare(
     `${roomGiftRankingSelect} WHERE g.room_id=? AND g.created_at>=? AND g.created_at<? ${roomGiftRankingGroup} LIMIT 1`
-  ).bind(roomId, monthWindow.start, monthWindow.end).all();
+  ).bind(now(), now(), roomId, monthWindow.start, monthWindow.end).all();
   let ranking = [];
   if (period != null) {
     const windowArgs = [];
@@ -323,7 +332,7 @@ async function loadRoomGiftSummaryState(db, roomId, periodParam) {
     }
     const rows = await db.prepare(
       `${roomGiftRankingSelect} WHERE g.room_id=?${windowClause} ${roomGiftRankingGroup} LIMIT 99`
-    ).bind(roomId, ...windowArgs).all();
+    ).bind(now(), now(), roomId, ...windowArgs).all();
     ranking = rows.results ?? [];
   }
   return {
@@ -2198,6 +2207,11 @@ async function checkRoomMemberPresence(db, env, roomId, actorId) {
   return { ok: true, presenceCutoff };
 }
 
+// Display at the front (VIP privilege 'display_front', VIP1+): within
+// each tier (owner, then admin, then everyone else), members are ordered
+// by active VIP level descending, so VIPs sit at the front of the
+// online/member lists. The client preserves this server order verbatim
+// — do not re-sort it.
 async function loadRoomMemberRows(db, roomId, presenceCutoff) {
   const rows = await db.prepare(
     `SELECT m.user_id,
@@ -6386,6 +6400,12 @@ async function handleApi(request, env, url) {
     if (!userId) return json({ ok: false, error: "user_id_required" }, { status: 400 });
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+    // political content, and no other apps' names — in the display name.
+    const upsertNameHit = checkContent(String(body.display_name ?? "").trim());
+    if (upsertNameHit.blocked) {
+      return json({ ok: false, error: "content_blocked", category: upsertNameHit.category, field: "display_name" }, { status: 400 });
+    }
     const user = await ensureUser(db, userId, String(body.display_name ?? "").trim());
     await ensureUserAllowed(db, userId);
     return json({ ok: true, user });
@@ -6423,6 +6443,17 @@ async function handleApi(request, env, url) {
     }
     if (hasLanguage && !DARKVIBEX_SUPPORTED_LANGUAGES.has(language)) {
       return json({ ok:false,error:"unsupported_language" }, { status:400 });
+    }
+    // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+    // political content, and no other apps' names — in the display
+    // name or bio (shown on the DP / profile / ID background).
+    const nameHit = checkContent(displayName);
+    if (nameHit.blocked) {
+      return json({ ok:false,error:"content_blocked", category: nameHit.category, field:"display_name" }, { status:400 });
+    }
+    const bioHit = checkContent(bio);
+    if (bioHit.blocked) {
+      return json({ ok:false,error:"content_blocked", category: bioHit.category, field:"bio" }, { status:400 });
     }
 
     await ensureUsersSchema(db);
@@ -6611,6 +6642,13 @@ async function handleApi(request, env, url) {
     const userId = String(parts[2] ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
+    // View Visitors (VIP privilege 'view_visitors', VIP1+): only an
+    // active VIP can see who visited their profile. Visit *recording*
+    // is untouched — it stays open so visitors are still counted.
+    const vip = await getVipStatus(db, userId, now());
+    if (!vip.active || vip.level < 1) {
+      return json({ ok: false, error: "vip_required", required_level: 1 }, { status: 403 });
+    }
     const rows = await db.prepare(
       `SELECT v.visitor_user_id AS user_id,
               CASE WHEN av.level >= 18 AND av.active_until > ?
@@ -7316,6 +7354,13 @@ async function handleApi(request, env, url) {
       const name = String(body.name ?? "").trim().slice(0, 60);
       const assetKey = String(body.asset_key ?? "").trim();
       if (!name) return json({ ok:false,error:"theme_name_required" }, { status:400 });
+      // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+      // political content, and no other apps' names — in the room
+      // background theme name.
+      const themeNameHit = checkContent(name);
+      if (themeNameHit.blocked) {
+        return json({ ok:false,error:"content_blocked", category: themeNameHit.category }, { status:400 });
+      }
       if (body.policy_confirmed !== true) {
         return json({ ok:false,error:"theme_policy_confirmation_required" }, { status:400 });
       }
@@ -7450,6 +7495,17 @@ async function handleApi(request, env, url) {
       const announcement = actorIsOwner
         ? String(body.announcement ?? "").trim().slice(0, 500)
         : String(room.announcement ?? "").trim().slice(0, 500);
+      // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+      // political content, and no other apps' names — in the room
+      // name or the room announcement (shown at the top of the room).
+      const roomTextHit = checkContent(name);
+      if (roomTextHit.blocked) {
+        return json({ ok: false, error: "content_blocked", category: roomTextHit.category, field: "name" }, { status: 400 });
+      }
+      const announcementHit = checkContent(announcement);
+      if (announcementHit.blocked) {
+        return json({ ok: false, error: "content_blocked", category: announcementHit.category, field: "announcement" }, { status: 400 });
+      }
       const welcomeImageKey = actorIsOwner && Object.prototype.hasOwnProperty.call(body, "welcome_image_key")
         ? String(body.welcome_image_key ?? "").trim()
         : String(room.welcome_image_key ?? "");
@@ -7602,6 +7658,12 @@ async function handleApi(request, env, url) {
     }
     const roomMode = requestedRoomMode;
     if (!ownerId || !name) return json({ ok: false, error: "owner_and_name_required" }, { status: 400 });
+    // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+    // political content, and no other apps' names — in the room name.
+    const roomNameHit = checkContent(name);
+    if (roomNameHit.blocked) {
+      return json({ ok: false, error: "content_blocked", category: roomNameHit.category }, { status: 400 });
+    }
     if (!Number.isSafeInteger(requestedSeatCount) || requestedSeatCount < 8 || requestedSeatCount > 42) {
       return json({ ok: false, error: "invalid_seat_count" }, { status: 400 });
     }
@@ -8049,6 +8111,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       const textValue = String(body.text ?? "").trim().slice(0, 500);
       const imageKey = String(body.image_key ?? "").trim();
       if (!userId || (!textValue && !imageKey)) return json({ ok: false, error: "message_required" }, { status: 400 });
+      // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+      // political content, and no other apps' names — in room messages.
+      const contentHit = checkContent(textValue);
+      if (contentHit.blocked) {
+        return json({ ok: false, error: "content_blocked", category: contentHit.category }, { status: 400 });
+      }
       if (imageKey) {
         if (!imageKey.startsWith(`messages/${userId}/`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey)) {
           return json({ ok: false, error: "invalid_image_key" }, { status: 400 });
@@ -8779,6 +8847,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const imageKey = String(body.image_key ?? "").trim();
     if (!sender || !receiver || (!textValue && !imageKey)) {
       return json({ ok: false, error: "invalid_message" }, { status: 400 });
+    }
+    // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+    // political content, and no other apps' names — in DM text.
+    const contentHit = checkContent(textValue);
+    if (contentHit.blocked) {
+      return json({ ok: false, error: "content_blocked", category: contentHit.category }, { status: 400 });
     }
     if (imageKey && (!imageKey.startsWith(`messages/${sender}/`) || !/\.(jpg|jpeg|png|webp)$/i.test(imageKey))) {
       return json({ ok: false, error: "invalid_image_key" }, { status: 400 });
@@ -9581,6 +9655,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       const authError = await requireSession(request, env, userId);
       if (authError) return authError;
       if (!textValue) return json({ ok:false,error:"message_required" }, { status:400 });
+      // Strong security (Vinay, 2026-11-22): no gaaliyan, porn or
+      // political content, and no other apps' names — in game-room messages.
+      const contentHit = checkContent(textValue);
+      if (contentHit.blocked) {
+        return json({ ok:false,error:"content_blocked", category: contentHit.category }, { status:400 });
+      }
       const member = await db.prepare(
         "SELECT 1 AS active FROM game_room_members WHERE room_id=? AND user_id=? LIMIT 1"
       ).bind(roomId,userId).first();
@@ -10046,9 +10126,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         `SELECT r.id AS room_id,
                 r.name AS room_name,
                 r.owner_user_id,
-                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
-                COALESCE(u.display_name,'Owner') AS owner_name,
-                u.avatar_key,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 OR COALESCE(anon.is_anon,0)=1 THEN 'Hidden' ELSE u.public_id END AS display_id,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN 'Anonymous' ELSE COALESCE(u.display_name,'Owner') END AS owner_name,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN NULL ELSE u.avatar_key END AS avatar_key,
+                COALESCE(anon.is_anon,0) AS is_anonymous,
                 r.seat_count,
                 COALESCE((SELECT COUNT(*) FROM room_members m WHERE m.room_id=r.id),0) AS online,
                 COALESCE((SELECT SUM(g.coin_cost) FROM gift_events g WHERE g.room_id=r.id AND g.created_at>=?),0) AS score
@@ -10056,6 +10137,13 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
            LEFT JOIN users u ON u.id=r.owner_user_id
            LEFT JOIN owner_user_overrides io ON io.user_id=r.owner_user_id
            LEFT JOIN owner_room_controls rc ON rc.room_id=r.id
+           LEFT JOIN (
+             SELECT user_id,
+                    CASE WHEN (level >= 11 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_ranking') = 1)
+                              OR (level >= 18 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_everywhere') = 1)
+                         THEN 1 ELSE 0 END AS is_anon
+               FROM user_vip
+           ) anon ON anon.user_id=r.owner_user_id
           WHERE r.country_code=?
             AND COALESCE(rc.banned,0)=0
             AND EXISTS (
@@ -10064,56 +10152,89 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
             )
           ORDER BY score DESC, online DESC, r.updated_at DESC
           LIMIT 100`
-      ).bind(cutoff,viewerCountry).all();
+      ).bind(cutoff,now(),now(),viewerCountry).all();
     } else if (kind === "charm") {
+      // Hide Charm (VIP privilege 'hide_charm', VIP10+) and Anonymous
+      // on Ranking (VIP privilege 'anonymous_ranking', VIP11+; also
+      // 'anonymous_everywhere', VIP18): the anon subquery computes both
+      // flags once per user. hide_charm rows are EXCLUDED (the score
+      // IS the charm, so a blanked row would falsify ranks); anonymous
+      // rows show 'Anonymous' with no avatar and a hidden public ID.
       rows = await db.prepare(
         `SELECT u.id AS user_id,
-                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
-                COALESCE(u.display_name,'User') AS display_name,
-                u.avatar_key,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 OR COALESCE(anon.is_anon,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN 'Anonymous' ELSE COALESCE(u.display_name,'User') END AS display_name,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN NULL ELSE u.avatar_key END AS avatar_key,
+                COALESCE(anon.is_anon,0) AS is_anonymous,
                 COALESCE(SUM(g.coin_cost),0) AS score,
                 COUNT(*) AS gift_count
            FROM gift_events g
            JOIN users u ON u.id=g.receiver_user_id
            LEFT JOIN owner_user_overrides io ON io.user_id=u.id
+           LEFT JOIN (
+             SELECT user_id,
+                    CASE WHEN (level >= 11 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_ranking') = 1)
+                              OR (level >= 18 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_everywhere') = 1)
+                         THEN 1 ELSE 0 END AS is_anon,
+                    CASE WHEN (level >= 10 AND active_until > ? AND json_extract(preferences_json, '$.hide_charm') = 1)
+                         THEN 1 ELSE 0 END AS hide_charm_on
+               FROM user_vip
+           ) anon ON anon.user_id=u.id
           WHERE g.created_at>=?
-          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
+            AND COALESCE(anon.hide_charm_on,0)=0
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id,anon.is_anon
           ORDER BY score DESC,gift_count DESC
           LIMIT 100`
-      ).bind(cutoff).all();
+      ).bind(now(),now(),now(),cutoff).all();
     } else if (kind === "game") {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
-                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
-                COALESCE(u.display_name,'User') AS display_name,
-                u.avatar_key,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 OR COALESCE(anon.is_anon,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN 'Anonymous' ELSE COALESCE(u.display_name,'User') END AS display_name,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN NULL ELSE u.avatar_key END AS avatar_key,
+                COALESCE(anon.is_anon,0) AS is_anonymous,
                 COALESCE(SUM(b.payout),0) AS score,
                 COALESCE(SUM(b.stake),0) AS wagered,
                 COUNT(*) AS bet_count
            FROM game_bets b
            JOIN users u ON u.id=b.user_id
            LEFT JOIN owner_user_overrides io ON io.user_id=u.id
+           LEFT JOIN (
+             SELECT user_id,
+                    CASE WHEN (level >= 11 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_ranking') = 1)
+                              OR (level >= 18 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_everywhere') = 1)
+                         THEN 1 ELSE 0 END AS is_anon
+               FROM user_vip
+           ) anon ON anon.user_id=u.id
           WHERE b.created_at>=?
-          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id,anon.is_anon
           ORDER BY score DESC,bet_count DESC
           LIMIT 100`
-      ).bind(cutoff).all();
+      ).bind(now(),now(),cutoff).all();
     } else {
       rows = await db.prepare(
         `SELECT u.id AS user_id,
-                CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
-                COALESCE(u.display_name,'User') AS display_name,
-                u.avatar_key,
+                CASE WHEN COALESCE(io.invisible_id,0)=1 OR COALESCE(anon.is_anon,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN 'Anonymous' ELSE COALESCE(u.display_name,'User') END AS display_name,
+                CASE WHEN COALESCE(anon.is_anon,0)=1 THEN NULL ELSE u.avatar_key END AS avatar_key,
+                COALESCE(anon.is_anon,0) AS is_anonymous,
                 COALESCE(SUM(g.coin_cost),0) AS score,
                 COUNT(*) AS gift_count
            FROM gift_events g
            JOIN users u ON u.id=g.sender_user_id
            LEFT JOIN owner_user_overrides io ON io.user_id=u.id
+           LEFT JOIN (
+             SELECT user_id,
+                    CASE WHEN (level >= 11 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_ranking') = 1)
+                              OR (level >= 18 AND active_until > ? AND json_extract(preferences_json, '$.anonymous_everywhere') = 1)
+                         THEN 1 ELSE 0 END AS is_anon
+               FROM user_vip
+           ) anon ON anon.user_id=u.id
           WHERE g.created_at>=?
-          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id
+          GROUP BY u.id,u.public_id,u.display_name,u.avatar_key,io.invisible_id,anon.is_anon
           ORDER BY score DESC,gift_count DESC
           LIMIT 100`
-      ).bind(cutoff).all();
+      ).bind(now(),now(),cutoff).all();
     }
     return json({
       ok: true,

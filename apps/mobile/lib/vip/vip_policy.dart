@@ -91,7 +91,7 @@ class VipPolicy {
     VipPrivilege(id: 'fantasy_card', title: 'Fantasy Card', description: 'Premium profile/fantasy card that improves with level.', minLevel: 5),
     VipPrivilege(id: 'free_say_hi', title: 'Free Say Hi', description: '4 free Say Hi messages; each message is limited to 30 words.', minLevel: 5),
     VipPrivilege(id: 'picture_welcome', title: 'Picture Welcome', description: 'Set a picture in the room welcome message.', minLevel: 5),
-    VipPrivilege(id: 'message_roaming', title: 'Message Roaming', description: 'Cloud message history: VIP5-7 30 days, VIP8-11 60 days, VIP12+ 120 days.', minLevel: 5),
+    VipPrivilege(id: 'message_roaming', title: 'Message Roaming', description: 'Cloud message history: VIP5-7 30 days, VIP8+ 45 days.', minLevel: 5),
     VipPrivilege(id: 'show_id', title: 'Show ID', description: 'Decorative Show-ID skin. VIP14 style remains for VIP15-18.', minLevel: 5),
     VipPrivilege(id: 'exp_boost_1_2x', title: 'EXP Boost 1.2x', description: 'Earn 1.2x VIP EXP on every coin purchase.', minLevel: 5),
     VipPrivilege(id: 'coins_bonus_5', title: 'Coins Bonus +5%', description: 'Get 5% extra coins free on every coin purchase.', minLevel: 5),
@@ -123,9 +123,18 @@ class VipPolicy {
     VipPrivilege(id: 'unique_id', title: 'Unique ID', description: 'Unique ID customization unlocked from VIP15.', minLevel: 15),
     VipPrivilege(id: 'splash_recommend', title: 'Recommend on Splash', description: 'One-day featured recommendation on the splash surface.', minLevel: 15),
     VipPrivilege(id: 'privacy_protection', title: 'Privacy Protection', description: 'Protect profile/avatar media from ordinary save/screenshot flows where supported.', minLevel: 15),
-    VipPrivilege(id: 'custom_avatar_frame', title: 'Customized Avatar Frame', description: 'Use a premium customized avatar frame.', minLevel: 16),
+    // Custom Avatar Frame (was minLevel 16): the per-level avatar
+    // headframe is the same frame every VIP gets from level 1
+    // ('headframe', minLevel 1) — there is no separate VIP16 frame
+    // selection system. Gating this to 16 would hide a feature VIP1-15
+    // already have, so the level is corrected to 1.
+    VipPrivilege(id: 'custom_avatar_frame', title: 'Customized Avatar Frame', description: 'Use a premium customized avatar frame.', minLevel: 1),
     VipPrivilege(id: 'exclusive_mic_effect', title: 'Exclusive Mic Effect', description: 'Premium effect around your mic/avatar while speaking.', minLevel: 16),
-    VipPrivilege(id: 'card_background', title: 'Exclusive Card Background', description: 'Use an exclusive VIP profile-card background.', minLevel: 17),
+    // Card Background (was minLevel 17): the per-level profile-card
+    // background shows for ANY active VIP (room_screen.dart:
+    // hasCardBackground = activeVipLevel > 0). Gating it to 17 would
+    // REMOVE the feature from VIP1-16, so the level is corrected to 1.
+    VipPrivilege(id: 'card_background', title: 'Exclusive Card Background', description: 'Use an exclusive VIP profile-card background.', minLevel: 1),
     VipPrivilege(id: 'mic_chair', title: 'Mic Chair', description: 'Personal premium chair/effect while on mic.', minLevel: 18),
     VipPrivilege(id: 'anonymous_everywhere', title: 'Anonymous Everywhere', description: 'When enabled, hide your name on game wins, banners, room history and other public activity surfaces.', minLevel: 18),
     VipPrivilege(id: 'honorary_title', title: 'Honorary Title', description: 'Top-tier honorary VIP title.', minLevel: 18),
@@ -150,9 +159,11 @@ class VipPolicy {
 
   static int maxRoomSeats(int level) => 42;
 
+  // Capped at 45 days (Vinay, 2026-11-22: "Cap kar de 45 din per") —
+  // the VIP message-history promise never exceeds the 45-day server
+  // backup window. VIP8+ gets 45 days, VIP5-7 get 30 days.
   static int messageRetentionDays(int level) {
-    if (level >= 12) return 120;
-    if (level >= 8) return 60;
+    if (level >= 8) return 45;
     if (level >= 5) return 30;
     return 0;
   }

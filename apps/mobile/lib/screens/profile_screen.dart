@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
-import 'vip_screen.dart';
+import '../vip/vip_policy.dart';
+import 'vip_section_screen.dart';
 import 'app_settings_screen.dart';
 import 'invite_share_screen.dart';
 import 'recharge_screen.dart';
@@ -18,6 +19,7 @@ import 'room_screen.dart';
 import '../vip/vip_visual_assets.dart';
 import '../widgets/vip_animated_frame.dart';
 import '../widgets/vip_name_text.dart';
+import '../widgets/vip_show_id_text.dart';
 import '../widgets/vip_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
@@ -370,10 +372,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         const SizedBox(height: 3),
-                        Text(
-                          'ID: ${formatPublicUserId(state.publicId)}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        VipShowIdText(
+                          text:
+                              'ID: ${formatPublicUserId(state.publicId)}',
+                          vipLevel: state.vipIsActive ? state.vipLevel : 0,
                           style: const TextStyle(
                             color: TinniPalette.muted,
                             fontSize: 11,
@@ -447,33 +449,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   (socialStats['lifetime_received_coins'] ?? 0).toString(),
                   darkVibeXText(language, 'charm'),
                 ),
-                const _MineDivider(),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () => _showVisitors(context),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 5),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.visibility_rounded,
-                            color: TinniPalette.gold,
-                            size: 20,
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Visitors',
-                            style: TextStyle(
-                              color: TinniPalette.muted,
-                              fontSize: 10,
+                // View Visitors (VIP privilege 'view_visitors', VIP1+):
+                // the tile only shows for active VIPs.
+                if (state.hasVipPrivilege('view_visitors')) ...[
+                  const _MineDivider(),
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _showVisitors(context),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 5),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.visibility_rounded,
+                              color: TinniPalette.gold,
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            SizedBox(height: 2),
+                            Text(
+                              'Visitors',
+                              style: TextStyle(
+                                color: TinniPalette.muted,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
             const SizedBox(height: 13),
@@ -721,7 +727,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute<void>(
-                        builder: (_) => VipScreen(state: state),
+                        builder: (_) => VipSectionScreen(
+                          currentLevel: state.vipLevel
+                              .clamp(0, VipPolicy.maxLevel)
+                              .toInt(),
+                          active: state.vipActiveUntil == null ||
+                              state.vipActiveUntil!
+                                  .isAfter(DateTime.now()),
+                          vipExpBalance: state.vipExpBalance.toInt(),
+                          monthlyPoints: state.vipExpBalance.toInt(),
+                        ),
                       ),
                     ),
                   ),
@@ -1400,6 +1415,7 @@ class _VisitorsListScreen extends StatefulWidget {
 
 class _VisitorsListScreenState extends State<_VisitorsListScreen> {
   bool loading = true;
+  bool locked = false;
   List<Map<String, dynamic>> visitors = <Map<String, dynamic>>[];
 
   @override
@@ -1409,6 +1425,17 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
   }
 
   Future<void> _load() async {
+    // View Visitors is a VIP1+ privilege — the worker returns 403 for
+    // anyone else, and profileVisitors() yields an empty list on error,
+    // so the locked state is decided here, not from the empty list.
+    if (!widget.state.hasVipPrivilege('view_visitors')) {
+      if (!mounted) return;
+      setState(() {
+        locked = true;
+        loading = false;
+      });
+      return;
+    }
     final rows = await widget.state.backend.profileVisitors(
       userId: widget.state.userId,
     );
@@ -1480,14 +1507,22 @@ class _VisitorsListScreenState extends State<_VisitorsListScreen> {
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : visitors.isEmpty
+          : locked
               ? const Center(
                   child: Text(
-                    'No visitors yet',
+                    'Visitors is a VIP feature — get VIP1 to see who visited you',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.black54),
                   ),
                 )
-              : ListView.separated(
+              : visitors.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No visitors yet',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                    )
+                  : ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: visitors.length,
                   separatorBuilder: (_, __) => const Divider(

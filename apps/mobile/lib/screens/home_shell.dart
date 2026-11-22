@@ -14,7 +14,7 @@ import 'messages_screen.dart';
 import 'mine_social_screens.dart';
 import 'profile_screen.dart';
 import 'ranking_screen.dart';
-import 'vip_screen.dart';
+import 'vip_section_screen.dart';
 import 'room_screen.dart';
 import 'weekly_sign_in_dialog.dart';
 import 'vip_daily_reward_dialog.dart';
@@ -1536,7 +1536,14 @@ class _RoomsHomeState extends State<_RoomsHome> {
         () => Navigator.push(
           context,
           MaterialPageRoute<void>(
-            builder: (_) => VipScreen(state: state),
+            builder: (_) => VipSectionScreen(
+              currentLevel:
+                  state.vipLevel.clamp(0, VipPolicy.maxLevel).toInt(),
+              active: state.vipActiveUntil == null ||
+                  state.vipActiveUntil!.isAfter(DateTime.now()),
+              vipExpBalance: state.vipExpBalance.toInt(),
+              monthlyPoints: state.vipExpBalance.toInt(),
+            ),
           ),
         ),
       ),
