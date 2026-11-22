@@ -454,6 +454,89 @@ test("refund webhook revokes coins, permanently bans, and is idempotent", async 
   );
 });
 
+test("verify pays the inviter 5% of the recharge in referral dollars", async () => {
+  const fx = await fixture();
+  const inviter = makeUser(fx, "inviter-1");
+  makeUser(fx, "buyer-1");
+  // Invitee binds the inviter's code first (the invite link / prompt).
+  const bound = await fx.call("/api/invite/bind", {
+    method: "POST", userId: "buyer-1",
+    body: { user_id: "buyer-1", invitation_code: inviter.publicId },
+  });
+  assert.equal(bound.status, 200, JSON.stringify(bound.body));
+  assert.equal(bound.body.binding.fixed_reward_coins, 800000);
+
+  // $1 recharge: inviter earns $0.05; $10 recharge: $0.50.
+  const first = await fx.call("/api/play/verify", {
+    method: "POST", userId: "buyer-1",
+    body: { productId: "coins_8000000", purchaseToken: "tok-invite-1" },
+  });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const second = await fx.call("/api/play/verify", {
+    method: "POST", userId: "buyer-1",
+    body: { productId: "coins_80000000", purchaseToken: "tok-invite-2" },
+  });
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+
+  const summary = await fx.call(
+    `/api/invite/summary?user_id=inviter-1`, { userId: "inviter-1" },
+  );
+  assert.equal(summary.status, 200, JSON.stringify(summary.body));
+  assert.equal(summary.body.referral_dollar_balance_usd_cents, 55);
+  assert.equal(summary.body.referral_dollar_commission_usd_cents, 55);
+  assert.equal(summary.body.referral_dollar_commissions.length, 2);
+
+  // Duplicate verify of the same token pays the commission only once.
+  const again = await fx.call("/api/play/verify", {
+    method: "POST", userId: "buyer-1",
+    body: { productId: "coins_8000000", purchaseToken: "tok-invite-1" },
+  });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.equal(again.body.duplicate, true);
+  const resummary = await fx.call(
+    `/api/invite/summary?user_id=inviter-1`, { userId: "inviter-1" },
+  );
+  assert.equal(resummary.body.referral_dollar_balance_usd_cents, 55);
+});
+
+test("refund webhook reverses the referral dollars for that purchase", async () => {
+  const fx = await fixture();
+  const inviter = makeUser(fx, "inviter-1");
+  makeUser(fx, "buyer-1");
+  await fx.call("/api/invite/bind", {
+    method: "POST", userId: "buyer-1",
+    body: { user_id: "buyer-1", invitation_code: inviter.publicId },
+  });
+  const verified = await fx.call("/api/play/verify", {
+    method: "POST", userId: "buyer-1",
+    body: { productId: "coins_40000000", purchaseToken: "tok-invite-refund" },
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.body));
+  const before = await fx.call(
+    `/api/invite/summary?user_id=inviter-1`, { userId: "inviter-1" },
+  );
+  assert.equal(before.body.referral_dollar_balance_usd_cents, 25);
+
+  const cancelBody = rtdnBody({
+    version: "1.0",
+    packageName: "com.darkvibex.app",
+    eventTimeMillis: String(Date.now()),
+    oneTimeProductNotification: { version: "1.0", notificationType: 2, purchaseToken: "tok-invite-refund", sku: "coins_40000000" },
+  });
+  const refunded = await fx.call(WEBHOOK_PATH, {
+    method: "POST", body: cancelBody, headers: { authorization: OIDC_BEARER },
+  });
+  assert.equal(refunded.status, 200, JSON.stringify(refunded.body));
+  assert.equal(refunded.body.revoked, true);
+
+  const after = await fx.call(
+    `/api/invite/summary?user_id=inviter-1`, { userId: "inviter-1" },
+  );
+  assert.equal(after.body.referral_dollar_balance_usd_cents, 0);
+  assert.equal(after.body.referral_dollar_commission_usd_cents, 0);
+  assert.equal(after.body.referral_dollar_commissions[0].status, "reversed");
+});
+
 test("voided one-time purchase also revokes and bans", async () => {
   const fx = await fixture();
   makeUser(fx, "buyer-1");

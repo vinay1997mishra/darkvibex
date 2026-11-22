@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_state.dart';
@@ -43,6 +44,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final Set<int> visited = <int>{0};
   bool _weeklyDialogScheduled = false;
   bool _dailyRewardDialogScheduled = false;
+  bool _inviteCodePromptScheduled = false;
   Timer? _cpInvitePollTimer;
   bool _cpInviteChecking = false;
   /// True while any HomeShell dialog is open (CP invite, weekly
@@ -61,6 +63,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleWeeklySignIn();
       _scheduleVipDailyReward();
+      unawaited(_scheduleInviteCodePrompt());
       unawaited(_checkCpInvite());
     });
     // CP invite pop-up (Vinay, 2026-11-20): shows the moment an invite
@@ -169,6 +172,145 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       await showWeeklySignInDialog(context, state: widget.state);
     } finally {
       _anyDialogOpen = false;
+    }
+  }
+
+  // Invite-code prompt (Vinay, 2026-11-23): an invite link tapped
+  // inside WhatsApp often never reaches the app, and an APK install
+  // has no Play Install Referrer, so the code is lost and the inviter
+  // never gets the reward. Once per install, a user with no inviter
+  // bound is asked for the code right after login. Skipping (or
+  // joining) records the flag, so it never nags again; the code can
+  // still be entered later on the Share screen.
+  static const String _invitePromptFlag =
+      'darkvibex.invite_code_prompt_shown';
+
+  Future<void> _scheduleInviteCodePrompt() async {
+    if (!mounted || _inviteCodePromptScheduled) return;
+    if (!widget.state.isAuthenticated || !widget.state.backendConnected) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_invitePromptFlag) == true) return;
+    _inviteCodePromptScheduled = true;
+    final summary =
+        await widget.state.backend.inviteSummary(userId: widget.state.userId);
+    if (!mounted) return;
+    if (summary == null) {
+      // Server unreachable right now — retry on the next app open.
+      _inviteCodePromptScheduled = false;
+      return;
+    }
+    if (summary['bound_to'] != null) {
+      await prefs.setBool(_invitePromptFlag, true);
+      return;
+    }
+    if (_anyDialogOpen) {
+      _inviteCodePromptScheduled = false;
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) unawaited(_scheduleInviteCodePrompt());
+      });
+      return;
+    }
+    _anyDialogOpen = true;
+    try {
+      await _showInviteCodePrompt(prefs);
+    } finally {
+      _anyDialogOpen = false;
+    }
+  }
+
+  Future<void> _showInviteCodePrompt(SharedPreferences prefs) async {
+    final controller = TextEditingController();
+    String? error;
+    bool joining = false;
+    final joined = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Got an invitation code?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'If a friend invited you to DarkVibeX, enter their 7-digit invitation code. They earn 800,000 coins when you join.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                maxLength: 7,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: 'Invitation code',
+                  hintText: '7-digit user ID',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.link_rounded),
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Skip'),
+            ),
+            FilledButton(
+              onPressed: joining
+                  ? null
+                  : () async {
+                      final code = controller.text.trim();
+                      if (!RegExp(r'^\d{7}$').hasMatch(code)) {
+                        setDialogState(
+                          () => error = 'Enter a valid 7-digit code.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        joining = true;
+                        error = null;
+                      });
+                      final result =
+                          await widget.state.backend.bindInvitationCode(
+                        userId: widget.state.userId,
+                        invitationCode: code,
+                      );
+                      if (!context.mounted) return;
+                      setDialogState(() => joining = false);
+                      if (result?['ok'] == true) {
+                        Navigator.of(dialogContext).pop(true);
+                        return;
+                      }
+                      final code_error = result?['error']?.toString() ??
+                          'Unable to join invitation code.';
+                      setDialogState(
+                        () => error = code_error == 'cannot_invite_self'
+                            ? 'You cannot use your own invitation code.'
+                            : code_error.replaceAll('_', ' '),
+                      );
+                    },
+              child: Text(joining ? 'Joining...' : 'Join'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    await prefs.setBool(_invitePromptFlag, true);
+    if (!mounted) return;
+    if (joined == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invitation code joined successfully.')),
+      );
     }
   }
 

@@ -2706,5 +2706,26 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  /// Withdraw referral dollars to a coin seller / merchant (worker:
+  /// POST /api/invite/withdraw). One fresh idempotency key per attempt
+  /// so a retry of the same attempt returns the original withdrawal
+  /// instead of paying twice.
+  Future<Map<String, dynamic>?> withdrawInviteDollars({
+    required String userId,
+    required String providerUserId,
+    required int amountUsdCents,
+  }) =>
+      _json(
+        'POST',
+        '/api/invite/withdraw',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'provider_user_id': providerUserId,
+          'amount_usd_cents': amountUsdCents,
+          'idempotency_key': _idempotencyKey(),
+        },
+        returnErrorBody: true,
+      );
+
 
 }

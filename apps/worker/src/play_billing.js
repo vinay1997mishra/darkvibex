@@ -25,6 +25,32 @@
 // list; it must also be removed/archived in Play Console (Vinay's
 // side) before it stops being buyable in the store.
 import { awardSellerVipExp, createVipGrant, ensureVipSchema, getVipStatus } from "./vip_store.js";
+import {
+  recordRechargeInviteCommission,
+  reverseRechargeInviteCommission,
+} from "./invite_rewards.js";
+
+// Referral dollars (Vinay, 2026-11-23): 5% of every recharge, in
+// dollars, to the inviter for 3 months from the invite bind. Best
+// effort by design: a commission failure must never fail the purchase
+// (the verify is idempotent on the purchase token, so a later retry
+// re-attempts the commission).
+async function recordInviteRechargeCommission(db, userId, token, usdCents, ts) {
+  try {
+    await recordRechargeInviteCommission(db, {
+      inviteeUserId: userId,
+      purchaseToken: token,
+      usdCents,
+      ts,
+    });
+  } catch (error) {
+    console.error("DarkVibeX invite recharge commission failed", {
+      userId,
+      token,
+      error: String(error?.message ?? error),
+    });
+  }
+}
 
 export const PLAY_PACKAGE_NAME = "com.darkvibex.app";
 
@@ -283,6 +309,11 @@ export async function verifyPlayPurchase(db, env, userId, productId, purchaseTok
   if (String(row.user_id) !== String(userId)) throw new Error("purchase_token_owner_mismatch");
   if (row.status === "granted") {
     const vip = await getVipStatus(db, userId, ts);
+    // Crash-window recovery: if the first verify granted the coins but
+    // crashed before recording the referral commission, a duplicate
+    // verify re-attempts it here (dedupe on the purchase token makes
+    // this a no-op when it already exists).
+    await recordInviteRechargeCommission(db, userId, token, pack.usd_value * 100, ts);
     return {
       ok: true,
       duplicate: true,
@@ -356,6 +387,12 @@ export async function verifyPlayPurchase(db, env, userId, productId, purchaseTok
   if (isFirst) {
     await createVipGrant(db, userId, FIRST_RECHARGE_GRANT_LEVEL, FIRST_RECHARGE_GRANT_DAYS, "play_first_recharge", token, ts);
   }
+
+  // 6b. Referral dollars (Vinay, 2026-11-23): 5% of this recharge, in
+  // dollars, to the inviter — every recharge within 3 months of the
+  // invite bind. Best-effort; never fails the purchase.
+  await recordInviteRechargeCommission(db, userId, token, pack.usd_value * 100, ts);
+
   await db.prepare(
     "UPDATE play_purchases SET status='granted' WHERE purchase_token=? AND status='pending'"
   ).bind(token).run();
@@ -428,6 +465,18 @@ export async function revokePlayPurchase(db, purchaseToken, ts = Date.now()) {
         "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).bind(crypto.randomUUID(), userId, "play_refund_revoke", -deducted, Number(after?.coins ?? 0), token, ts).run();
     }
+  }
+  // Referral-dollar reversal (Vinay, 2026-11-23): a refund also claws
+  // back the 5% commission this purchase paid the inviter — only the
+  // balance still held, never below zero, and never what was already
+  // withdrawn. Best-effort; a failure here never breaks the revoke.
+  try {
+    await reverseRechargeInviteCommission(db, { purchaseToken: token, ts });
+  } catch (error) {
+    console.error("DarkVibeX invite commission reversal failed", {
+      token,
+      error: String(error?.message ?? error),
+    });
   }
   // Permanent ID ban (Vinay, 2026-11-20): refund lete hi ID permanent
   // ban. Same upsert shape as the owner moderation endpoint;

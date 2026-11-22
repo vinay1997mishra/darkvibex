@@ -48,6 +48,8 @@ import {
   bindInvitationCode,
   inviteRewardSummary,
   recordCoinSellerInviteCommission,
+  withdrawInviteDollars,
+  REFERRAL_WITHDRAWAL_MIN_USD_CENTS,
 } from "./invite_rewards.js";
 import {
   ensureTinniSocialSchema,
@@ -8855,6 +8857,38 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     }
   }
 
+  // Referral-dollar withdrawal (Vinay, 2026-11-23): at $3 the inviter
+  // sends their dollars to a coin seller / merchant of their choice.
+  // The provider receives the dollars and automatically gets 11,000,000
+  // coins per $1 into their seller wallet. The sender gets nothing
+  // extra for sending the dollars.
+  if (url.pathname === "/api/invite/withdraw" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const providerUserId = String(body.provider_user_id ?? "").trim();
+    const amountUsdCents = Number(body.amount_usd_cents ?? 0);
+    const idempotencyKey = String(body.idempotency_key ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    await ensureUserAllowed(db, userId);
+    try {
+      const withdrawal = await withdrawInviteDollars(db, {
+        userId,
+        providerUserId,
+        amountUsdCents,
+        idempotencyKey,
+        ts: now(),
+      });
+      return json({ ok: true, withdrawal });
+    } catch (error) {
+      const code = String(error?.message ?? error);
+      const status =
+        code === "insufficient_referral_dollar_balance" ? 409 :
+        code === "idempotency_key_conflict" ? 409 : 400;
+      return json({ ok: false, error: code }, { status });
+    }
+  }
+
   if (url.pathname === "/api/recharge-providers" && request.method === "GET") {
     const authError = await requireSession(request, env);
     if (authError) return authError;
@@ -11625,6 +11659,9 @@ export default {
         "intent://invite/" + invitationCode +
         "#Intent;scheme=darkvibex;package=com.darkvibex.app;S.browser_fallback_url=" +
         encodeURIComponent(playUrl) + ";end";
+      // Direct custom-scheme link: some in-app browsers (e.g. WhatsApp)
+      // do not follow intent:// URLs, but do open darkvibex:// links.
+      const directUrl = "darkvibex://invite/" + invitationCode;
       const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -11646,8 +11683,9 @@ small{display:block;color:#ffd7b0;margin-top:16px;line-height:1.45}
 <div>Invitation code</div>
 <div class="code">${invitationCode}</div>
 <a class="open" href="${intentUrl}">Open DarkVibeX</a>
+<a class="open" href="${directUrl}">Open in app (direct link)</a>
 <a class="store" href="${playUrl}">Download from Google Play</a>
-<small>If DarkVibeX is not installed, Google Play keeps this invitation code so it can be linked after signup.</small>
+<small>If the app does not open, copy the code above and paste it on the Share screen after signup — the inviter only gets the reward once the code is linked.</small>
 </div>
 <script>setTimeout(function(){window.location.href=${JSON.stringify(intentUrl)};},250);</script>
 </body>
