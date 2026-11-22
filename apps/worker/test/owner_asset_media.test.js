@@ -22,6 +22,18 @@ test("creator studio route is permanently removed", () => {
   assert.doesNotMatch(worker, /studioAssetUrl|assets\.local/);
 });
 
+test("creator-assets/ is no longer served by GET /api/files", () => {
+  // The allowlist regex gates every /api/files key. creator-assets/
+  // was the last Creator Studio residue in live code; it must not
+  // appear in the regex, while the other prefixes stay allowed.
+  const allowlist = worker.match(
+    /\/\^\(users\|rooms\|messages\|custom-gifts\|room-themes\|banners\|custom-assets[^)]*\)\\\//,
+  );
+  assert.ok(allowlist, "the /api/files allowlist regex is present");
+  assert.doesNotMatch(allowlist[0], /creator-assets/);
+  assert.match(allowlist[0], /users\|rooms\|messages\|custom-gifts\|room-themes\|banners\|custom-assets/);
+});
+
 test("Owner Panel custom asset uploads remain protected and validated", () => {
   assert.match(ownerApi, /handleAssetMediaUpload/);
   assert.match(ownerApi, /requirePermission\(actor, kind === "gift" \? "gifts\.save" : "assets\.save"\)/);
