@@ -807,6 +807,9 @@ async function treasuryAction(action){
   const amount=Number($("#treasuryAmount").value||0);
   if(!Number.isFinite(amount)||amount<=0)return toast("Enter a valid amount",false);
   const payload={action,amount,user_id:$("#treasuryUserId").value.trim(),note:$("#treasuryNote").value.trim()};
+  // Idempotency (Wallet audit H1, 2026-11-22): one key per send click,
+  // so a double-click / retry pays the user once, not twice.
+  if(action==="send")payload.idempotency_key=crypto.randomUUID?crypto.randomUUID():"treasury-"+Date.now()+"-"+Math.random().toString(36).slice(2);
   if(action==="send"&&!payload.user_id)return toast("Target user ID is required",false);
   await api("/api/owner/treasury",{method:"POST",body:JSON.stringify(payload)});
   $("#treasuryAmount").value="";

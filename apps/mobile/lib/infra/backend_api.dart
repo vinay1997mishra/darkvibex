@@ -1,9 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 class BackendApi {
   const BackendApi();
+
+  /// Idempotency key (Wallet audit H1, 2026-11-22): one key per money
+  /// attempt, so a retried transfer / gift send returns the original
+  /// result instead of moving the money twice. Generated per call;
+  /// callers that add their own retry must pass the SAME key again.
+  static String _idempotencyKey() =>
+      '${DateTime.now().millisecondsSinceEpoch}-'
+      '${math.Random().nextInt(1 << 32)}-${math.Random().nextInt(1 << 32)}';
 
   static String? sessionToken;
   static String? deviceKey;
@@ -1163,6 +1172,7 @@ class BackendApi {
           'receiver_user_id': receiverUserId,
           'coins': coins,
           'credential': credential,
+          'idempotency_key': _idempotencyKey(),
         },
         returnErrorBody: true,
       );
@@ -1371,6 +1381,7 @@ class BackendApi {
           'gift_id': giftId,
           'coin_cost': coinCost,
           'count': count,
+          'idempotency_key': _idempotencyKey(),
         },
       );
 
@@ -1513,6 +1524,7 @@ class BackendApi {
           'receiver_user_id': receiverUserId,
           'coins': coins,
           'pin': pin,
+          'idempotency_key': _idempotencyKey(),
         },
       );
 

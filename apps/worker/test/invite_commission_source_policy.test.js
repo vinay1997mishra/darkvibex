@@ -10,7 +10,12 @@ test("ongoing invite commission is restricted to Coin Seller received coins", ()
   assert.match(inviteRewards, /walletType !== "coin_seller"/);
   assert.match(inviteRewards, /reason: "ineligible_source"/);
   assert.doesNotMatch(inviteRewards, /\["coin_seller",\s*"merchant"\]/);
-  assert.match(worker, /if\(walletType==="coin_seller"\)\s*\{\s*try\s*\{\s*inviteCommission=await recordCoinSellerInviteCommission/);
+  // The commission call now lives in the shared awardTransferExtras
+  // helper (Wallet audit H1+H2, 2026-11-22): it runs only for
+  // coin_seller transfers, from both transfer routes.
+  assert.match(worker, /async function awardTransferExtras/);
+  assert.match(worker, /if \(walletType !== "coin_seller"\) \{\s*return \{ vipAward, inviteCommission, warnings \};/);
+  assert.match(worker, /inviteCommission = await recordCoinSellerInviteCommission\(db, \{/);
   assert.doesNotMatch(worker, /if\(walletType==="coin_seller" \|\| walletType==="merchant"\)/);
 });
 

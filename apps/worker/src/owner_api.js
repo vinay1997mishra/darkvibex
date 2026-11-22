@@ -462,6 +462,7 @@ async function ensureOwnerSchema(db) {
       count INTEGER NOT NULL DEFAULT 1 CHECK (count > 0),
       lucky_multiplier INTEGER NOT NULL DEFAULT 0,
       lucky_win_coins INTEGER NOT NULL DEFAULT 0,
+      idempotency_key TEXT,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (receiver_user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -602,6 +603,18 @@ async function ensureOwnerSchema(db) {
       created_at INTEGER NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_treasury_ledger_time ON owner_treasury_ledger(created_at DESC)"),
+    // Treasury send idempotency (Wallet audit H1, 2026-11-22): a
+    // double-click / retry of a treasury send used to pay the user
+    // twice. The owner panel sends one key per click; a retry with
+    // the same key returns the stored result instead of a second send.
+    db.prepare(`CREATE TABLE IF NOT EXISTS owner_treasury_idempotency (
+      idempotency_key TEXT PRIMARY KEY,
+      actor_id TEXT NOT NULL,
+      target_user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      result_json TEXT,
+      created_at INTEGER NOT NULL
+    )`),
     db.prepare("INSERT OR IGNORE INTO owner_treasury (id, balance, updated_at) VALUES ('main', 0, ?)").bind(now()),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_catalog_kind ON owner_catalog(kind, sort_order, updated_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_audit_time ON owner_audit(created_at DESC)"),
@@ -3020,25 +3033,63 @@ async function handleTreasury(request, db, actor) {
     // Conditional treasury debit + relative user credit (audit 2026-11-20:
     // the old absolute SETs from stale reads let two concurrent sends
     // debit the treasury once while crediting both users).
-    const debited = await db.prepare(
-      "UPDATE owner_treasury SET balance = balance - ?, updated_at = ? WHERE id = 'main' AND balance >= ?"
-    ).bind(amount, ts, amount).run();
-    if (Number(debited.meta?.changes ?? 0) !== 1) {
+    // Idempotency (Wallet audit H1, 2026-11-22): the owner panel
+    // sends one key per click. A retry with the same key returns the
+    // stored result instead of paying the user twice.
+    const idempotencyKey = String(body.idempotency_key ?? "").trim();
+    if (idempotencyKey) {
+      const prior = await db.prepare(
+        "SELECT result_json,created_at FROM owner_treasury_idempotency WHERE idempotency_key=?"
+      ).bind(idempotencyKey).first();
+      if (prior?.result_json) {
+        try { return json({ ok: true, duplicate: true, ...JSON.parse(String(prior.result_json)) }); } catch (_) {}
+      }
+      if (prior && ts - Number(prior.created_at ?? 0) < 60000) {
+        return json({ ok: false, error: "duplicate_treasury_send_in_progress" }, { status: 409 });
+      }
+      await db.prepare(
+        "INSERT OR REPLACE INTO owner_treasury_idempotency(idempotency_key,actor_id,target_user_id,amount,created_at) VALUES(?,?,?,?,?)"
+      ).bind(idempotencyKey, actor.id, userId, amount, ts).run();
+    }
+    // Atomicity (Wallet audit H4, 2026-11-22): the debit, the user
+    // credit and both ledger rows now ride ONE db.batch, so a crash
+    // can no longer leave the treasury debited with the user
+    // uncredited (or credited with no ledger row). Each step after
+    // the debit is gated on changes()=1, like the gift path.
+    const batchResults = await db.batch([
+      db.prepare(
+        "UPDATE owner_treasury SET balance = balance - ?, updated_at = ? WHERE id = 'main' AND balance >= ?"
+      ).bind(amount, ts, amount),
+      db.prepare(
+        "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ? AND changes()=1"
+      ).bind(amount, ts, userId),
+      db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+        "SELECT ?,u.id,'owner_treasury',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
+      ).bind(id(), amount, actor.id, ts, userId),
+      db.prepare(
+        "INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) " +
+        "SELECT ?,?,(SELECT balance FROM owner_treasury WHERE id='main'),'send_to_user',?,?,?,? WHERE changes()=1"
+      ).bind(id(), -amount, userId, actor.id, note, ts),
+    ]);
+    if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
+      if (idempotencyKey) {
+        await db.prepare("DELETE FROM owner_treasury_idempotency WHERE idempotency_key=?").bind(idempotencyKey).run();
+      }
       return json({ ok: false, error: "insufficient_treasury_balance" }, { status: 409 });
     }
-    await db.prepare(
-      "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
-    ).bind(amount, ts, userId).run();
     const treasuryRow = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
     const treasuryAfter = Number(treasuryRow?.balance ?? 0);
     const userRow = await db.prepare("SELECT coins FROM users WHERE id = ?").bind(userId).first();
     const userAfter = Number(userRow?.coins ?? 0);
-    await db.prepare("INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,'owner_treasury',?,?,?,?)")
-      .bind(id(), userId, amount, userAfter, actor.id, ts).run();
-    await db.prepare("INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) VALUES (?, ?, ?, 'send_to_user', ?, ?, ?, ?)")
-      .bind(id(), -amount, treasuryAfter, userId, actor.id, note, ts).run();
     await audit(db, actor, "treasury_send", "user", userId, `amount=${amount}`);
-    return json({ ok: true, balance: treasuryAfter, user_balance: userAfter });
+    const response = { balance: treasuryAfter, user_balance: userAfter };
+    if (idempotencyKey) {
+      await db.prepare(
+        "UPDATE owner_treasury_idempotency SET result_json=? WHERE idempotency_key=?"
+      ).bind(JSON.stringify(response), idempotencyKey).run();
+    }
+    return json({ ok: true, ...response });
   }
 
   return json({ ok: false, error: "invalid_treasury_action" }, { status: 400 });
