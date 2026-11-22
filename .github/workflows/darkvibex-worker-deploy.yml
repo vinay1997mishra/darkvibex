@@ -84,7 +84,7 @@ jobs:
           guest_code="$(curl --silent --show-error --output "$guest_tmp" --write-out '%{http_code}' --request POST "$base/api/session/guest" -H 'content-type: application/json' --data '{"user_id":"deploy_guest_probe","display_name":"Deploy Guest Probe"}')"
           guest_body="$(cat "$guest_tmp")"
           rm -f "$guest_tmp"
-          GUEST_BODY="$guest_body" GUEST_CODE="$guest_code" node -e 'const c=JSON.parse(process.env.GUEST_BODY||"{}");if(process.env.GUEST_CODE!=="403"||c.error!=="guest_login_disabled"){console.error("Guest login must stay disabled:",process.env.GUEST_CODE,c.error||"unknown_error");process.exit(1)}console.log("Guest login is disabled.")'
+          GUEST_BODY="$guest_body" GUEST_CODE="$guest_code" node -e 'const c=JSON.parse(process.env.GUEST_BODY||"{}");if(process.env.GUEST_CODE!=="404"||c.error!=="not_found"){console.error("Guest login endpoint must stay removed:",process.env.GUEST_CODE,c.error||"unknown_error");process.exit(1)}console.log("Guest login endpoint is removed.")'
 
           upsert_tmp="$(mktemp)"
           upsert_code="$(curl --silent --show-error --output "$upsert_tmp" --write-out '%{http_code}' --request POST "$base/api/users/upsert" -H 'content-type: application/json' --data '{"user_id":"deploy_upsert_probe","display_name":"Unauthenticated Probe"}')"
