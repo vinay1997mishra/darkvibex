@@ -109,7 +109,11 @@ export async function transferRoleCoins(db,{
 }){
   const amount=Number(coins);
   if(!Number.isSafeInteger(amount)||amount<=0) throw new Error("invalid_coin_amount");
-  if(!receiverUserId||receiverUserId===senderUserId) throw new Error("invalid_receiver");
+  // Self-transfer is ALLOWED (Vinay, 2026-11-23): a seller / merchant
+  // may move coins from their own seller wallet into their own normal
+  // wallet, and the receiver (themselves) still earns VIP EXP. Only a
+  // missing receiver is invalid now.
+  if(!receiverUserId) throw new Error("invalid_receiver");
   const wallet=await verifyRoleWalletCredential(
     db,senderUserId,walletType,credentialHash,ts,
   );
@@ -130,7 +134,11 @@ export async function transferRoleCoins(db,{
   // only while the VIP is active (active_until in the future) — an
   // expired VIP whose level has not been settled yet gets no bonus.
   let coinsBonus=0;
-  if(walletType==="coin_seller"){
+  // No bonus on a self-transfer (Vinay, 2026-11-23: only VIP EXP is
+  // earned on self-transfer): the bonus is free platform coins, and a
+  // seller moving their own coins to themselves would otherwise mint
+  // free coins out of their own balance.
+  if(walletType==="coin_seller" && receiverUserId!==senderUserId){
     try {
       const vipRow=await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id=?").bind(receiverUserId).first();
       const vipLevel=Number(vipRow?.level ?? 0);

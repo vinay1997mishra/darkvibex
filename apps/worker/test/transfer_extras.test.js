@@ -85,12 +85,12 @@ async function setupWallet(sqlite, request, walletType) {
   return credential;
 }
 
-function sendTransfer(request, walletType, credential, key) {
+function sendTransfer(request, walletType, credential, key, receiverUserId = "invitee") {
   return request("/api/wallet/role-coins/transfer", {
     method: "POST",
     body: {
       user_id: "seller",
-      receiver_user_id: "invitee",
+      receiver_user_id: receiverUserId,
       wallet_type: walletType,
       coins: 8000000,
       credential,
@@ -147,5 +147,51 @@ test("merchant transfer: same extras as coin seller, no VIP bonus", async () => 
   assert.equal(
     sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE user_id='invitee' AND kind='vip_coins_bonus'").get().n,
     0,
+  );
+});
+
+test("coin seller self-transfer: VIP EXP earned, no bonus, no dollars", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "coin_seller");
+  const result = await sendTransfer(request, "coin_seller", credential, "extras-self-1", "seller");
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.ok, true);
+  // VIP EXP is earned on self-transfer (Vinay, 2026-11-23): 150 EXP.
+  assert.equal(result.body.vip_award?.awarded_exp, 150);
+  // No VIP purchase bonus on self-transfer: the seller would otherwise
+  // mint free platform coins out of their own balance.
+  assert.equal(result.body.coins_bonus, 0);
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE user_id='seller' AND kind='vip_coins_bonus'").get().n,
+    0,
+  );
+  // The seller's own normal wallet got exactly the transferred coins,
+  // and the seller wallet was debited exactly the same amount.
+  assert.equal(
+    sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins,
+    8000000,
+  );
+  assert.equal(
+    sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='coin_seller'").get().balance_coins,
+    1000000000 - 8000000,
+  );
+  // No inviter can exist for a self-transfer (nobody can invite
+  // themselves), so no referral dollars are recorded.
+  assert.equal(result.body.invite_dollar_commission?.applied, false);
+  assert.equal(result.body.invite_dollar_commission?.reason, "no_inviter");
+});
+
+test("merchant self-transfer: VIP EXP earned", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "merchant");
+  const result = await sendTransfer(request, "merchant", credential, "extras-self-2", "seller");
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.vip_award?.awarded_exp, 150);
+  assert.equal(result.body.invite_dollar_commission?.applied, false);
+  assert.equal(result.body.invite_dollar_commission?.reason, "no_inviter");
+  assert.equal(
+    sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins,
+    8000000,
   );
 });
