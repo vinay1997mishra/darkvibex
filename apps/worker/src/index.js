@@ -28,7 +28,7 @@ import {
 import { changeVipUniqueId, consumeFreeSayHi, setVipPreference } from "./vip_actions.js";
 import { ensureUniqueIdStoreSchema, uniqueIdCatalog, purchaseUniqueId } from "./unique_id_store.js";
 import { ensureSupportSchema } from "./support_store.js";
-import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS, giftById } from "./gift_catalog.js";
+import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS, giftById, rollLuckyWinMultiplier } from "./gift_catalog.js";
 import {
   roleWalletDetail,
   setRoleWalletCredential,
@@ -2695,6 +2695,27 @@ async function ensureGiftEventsCountColumn(db) {
     ).run();
   } catch (_) {
     // Column already exists on databases created after the combo launch.
+  }
+}
+
+// Lucky win (Vinay, 2026-11-22): the win a Lucky gift paid its sender
+// (multiplier + coins) is recorded on the gift event, so the room can
+// announce it and the app can show it. Same try/catch migration pattern
+// as ensureGiftEventsCountColumn.
+async function ensureGiftEventsLuckyWinColumns(db) {
+  try {
+    await db.prepare(
+      "ALTER TABLE gift_events ADD COLUMN lucky_multiplier INTEGER NOT NULL DEFAULT 0"
+    ).run();
+  } catch (_) {
+    // Column already exists on databases created after the Lucky win launch.
+  }
+  try {
+    await db.prepare(
+      "ALTER TABLE gift_events ADD COLUMN lucky_win_coins INTEGER NOT NULL DEFAULT 0"
+    ).run();
+  } catch (_) {
+    // Column already exists on databases created after the Lucky win launch.
   }
 }
 
@@ -7804,8 +7825,9 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
   ).bind(roomId, viewerId).first();
   if (!member) return { ok: false, error: "room_membership_required", status: 403 };
   await ensureGiftEventsCountColumn(db);
+  await ensureGiftEventsLuckyWinColumns(db);
   const rows = await db.prepare(
-    `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.count,g.created_at,
+    `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.count,g.lucky_multiplier,g.lucky_win_coins,g.created_at,
             s.display_name AS sender_name,r.display_name AS receiver_name,
             COALESCE(s.vip_level,0) AS sender_vip_level
        FROM gift_events g
@@ -7830,6 +7852,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       emoji:String(gift.emoji ?? "🎁"),
       coin_cost:Number(row.coin_cost ?? 0),
       count:Number(row.count ?? 1),
+      // Lucky win (Vinay, 2026-11-22): the win this send paid its sender
+      // — 0/0 means no win. The room announces it from these fields.
+      lucky_multiplier:Number(row.lucky_multiplier ?? 0),
+      lucky_win_coins:Number(row.lucky_win_coins ?? 0),
       sender_vip_level:Number(row.sender_vip_level ?? 0),
       // Gift ribbon: the banner for the SENDER's VIP level (basic
       // Sleek Gold tier for VIP0/no-VIP), so the room shows the
@@ -10044,7 +10070,17 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     if (!Number.isSafeInteger(comboTotal) || comboTotal <= 0) {
       return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
     }
+    // Lucky win (Vinay, 2026-11-22): a Lucky gift may win the SENDER a
+    // multiple of the gift cost in in-app coins. ONE roll per gift event,
+    // on that event's TOTAL cost (unit cost x combo count) — the combo
+    // only sets the quantity, the win is a separate feature. The receiver
+    // still gets diamonds as usual. The roll happens before the batch so
+    // the win credit rides the same atomic commit as the debit.
+    const isLuckyGift = String(gift.category ?? "") === "lucky";
+    const luckyMultiplier = isLuckyGift ? rollLuckyWinMultiplier() : 0;
+    const luckyWinCoins = isLuckyGift ? comboTotal * luckyMultiplier : 0;
     await ensureGiftEventsCountColumn(db);
+    await ensureGiftEventsLuckyWinColumns(db);
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
@@ -10114,14 +10150,31 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         "SELECT ?,u.id,'gift_sent',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
       ).bind(id(), -comboTotal, eventId, giftCreatedAt, sender),
       db.prepare(
-        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,count,created_at) " +
-        "SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (" +
+        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,count,lucky_multiplier,lucky_win_coins,created_at) " +
+        "SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS (" +
         "SELECT 1 FROM wallet_ledger WHERE reference_id=? AND kind='gift_sent')"
-      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, comboTotal, comboCount, giftCreatedAt, eventId),
+      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, comboTotal, comboCount, luckyMultiplier, luckyWinCoins, giftCreatedAt, eventId),
       db.prepare(
         "UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ? AND EXISTS (" +
         "SELECT 1 FROM gift_events WHERE id=?)"
       ).bind(comboTotal, giftCreatedAt, receiver, eventId),
+      // Lucky win payout (Vinay, 2026-11-22): when the roll paid the
+      // sender, credit the win coins in the same atomic batch — gated on
+      // the gift event existing, so a failed debit pays nothing — and
+      // record it in the ledger as kind='lucky_win'. No win (multiplier
+      // 0) writes no credit and no ledger row.
+      ...(luckyWinCoins > 0
+          ? [
+              db.prepare(
+                "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ? AND EXISTS (" +
+                "SELECT 1 FROM gift_events WHERE id=?)"
+              ).bind(luckyWinCoins, giftCreatedAt, sender, eventId),
+              db.prepare(
+                "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+                "SELECT ?,u.id,'lucky_win',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
+              ).bind(id(), luckyWinCoins, eventId, giftCreatedAt, sender),
+            ]
+          : []),
       // DM gift (Vinay, 2026-11-21): a room-less gift also writes a
       // kind='gift' DM row — same pattern as the red-envelope DM row —
       // so the gift shows in the 1-to-1 thread and the inbox for both
@@ -10209,6 +10262,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       gift_total_cost: comboTotal,
       gift_list_price: listPrice,
       gift_discount: giftDiscount,
+      // Lucky win (Vinay, 2026-11-22): the roll for this send — 0 means
+      // no win, otherwise the sender won lucky_win_coins in-app coins.
+      lucky_multiplier: luckyMultiplier,
+      lucky_win_coins: luckyWinCoins,
       gift_name: String(gift.name ?? giftId),
       sender_name: String(senderRow?.display_name ?? "User"),
       receiver_name: String(receiverRow?.display_name ?? "User"),

@@ -934,6 +934,13 @@ class _RoomScreenState extends State<RoomScreen>
           receiverName: receiverName,
           giftName: gift['name']?.toString() ?? 'Gift',
         );
+        // Lucky win announcement (Vinay, 2026-11-22): a win on this
+        // gift is announced to the room when the gift plays.
+        _showLuckyWinAnnouncement(
+          event,
+          senderName,
+          gift['name']?.toString() ?? 'Gift',
+        );
       });
     }
   }
@@ -2375,6 +2382,13 @@ class _RoomScreenState extends State<RoomScreen>
         senderName: senderName,
         receiverName: receiverName,
         giftName: gift['name']?.toString() ?? 'Gift',
+      );
+      // Lucky win announcement (Vinay, 2026-11-22): a win on this
+      // gift is announced to the room when the gift plays.
+      _showLuckyWinAnnouncement(
+        verifiedEvent,
+        senderName,
+        gift['name']?.toString() ?? 'Gift',
       );
     });
   }
@@ -6801,6 +6815,31 @@ class _RoomScreenState extends State<RoomScreen>
     });
   }
 
+  // Lucky win announcement (Vinay, 2026-11-22): when a gift event paid
+  // its sender a win, everyone in the room sees this banner when the
+  // gift plays. The sender's own screen shows the win in the send
+  // snackbar and the room chat message instead, so this helper is only
+  // called for other users' gifts (the sender skips their own events).
+  void _showLuckyWinAnnouncement(
+    Map<String, dynamic> event,
+    String senderName,
+    String giftName,
+  ) {
+    if (!mounted) return;
+    final winCoins =
+        int.tryParse(event['lucky_win_coins']?.toString() ?? '') ?? 0;
+    if (winCoins <= 0) return;
+    final multiplier =
+        int.tryParse(event['lucky_multiplier']?.toString() ?? '') ?? 0;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '🎉 $senderName won $winCoins coins on a Lucky $giftName (${multiplier}×)!',
+        ),
+      ),
+    );
+  }
+
   Widget _buildSeatGiftImpactEffect(double seatDiameter) {
     final gift = activeGiftEffect;
     if (gift == null) return const SizedBox.shrink();
@@ -8188,6 +8227,13 @@ class _RoomScreenState extends State<RoomScreen>
       final displayGiftName = sentCount > 1
           ? '${gift['name'] ?? 'Gift'} x$sentCount'
           : (gift['name'] ?? 'Gift').toString();
+      // Lucky win (Vinay, 2026-11-22): the send response carries the
+      // roll for this send — 0 means no win, otherwise the sender won
+      // lucky_win_coins in-app coins on top of the gift.
+      final luckyMultiplier =
+          int.tryParse(result?['lucky_multiplier']?.toString() ?? '') ?? 0;
+      final luckyWinCoins =
+          int.tryParse(result?['lucky_win_coins']?.toString() ?? '') ?? 0;
       final displayGift = Map<String, dynamic>.from(gift)
         ..['count'] = sentCount
         ..['name'] = displayGiftName;
@@ -8236,10 +8282,16 @@ class _RoomScreenState extends State<RoomScreen>
           .toString();
       final giftName = displayGiftName;
       // Keep the gift visible in the room chat as a normal room event too.
+      // A Lucky win is announced in the same message, so the whole room
+      // sees it (the receiver's screen also shows a win banner when the
+      // gift plays).
+      final winSuffix = luckyWinCoins > 0
+          ? ' 🎉 Lucky win: +$luckyWinCoins coins (${luckyMultiplier}×)!'
+          : '';
       unawaited(widget.state.backend.sendRoomMessage(
         roomId: widget.room.id,
         userId: widget.state.userId,
-        text: '🎁 ${widget.state.displayName} sent $giftName to $receiverName',
+        text: '🎁 ${widget.state.displayName} sent $giftName to $receiverName$winSuffix',
       ));
       if (playEffect) {
         if (videoKey.isNotEmpty) {
@@ -8269,12 +8321,16 @@ class _RoomScreenState extends State<RoomScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            (gift['emoji']?.toString() ?? '🎁') +
-                ' ' +
-                displayGiftName +
-                ' sent • ' +
-                sentTotal.toString() +
-                ' coins',
+            // Lucky win (Vinay, 2026-11-22): the sender's win is the
+            // headline — it replaces the plain "sent" snackbar.
+            luckyWinCoins > 0
+                ? '🎉 Lucky win! You won $luckyWinCoins coins (${luckyMultiplier}×)!'
+                : (gift['emoji']?.toString() ?? '🎁') +
+                    ' ' +
+                    displayGiftName +
+                    ' sent • ' +
+                    sentTotal.toString() +
+                    ' coins',
           ),
         ),
       );

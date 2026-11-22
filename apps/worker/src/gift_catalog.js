@@ -1315,3 +1315,63 @@ export function giftById(id) {
 export function publicGiftCatalog() {
   return BASE_GIFT_CATALOG.map((gift) => ({ ...gift }));
 }
+
+// Lucky win (Vinay, 2026-11-22): ONE shared chance table for ALL Lucky
+// gifts. When a Lucky gift is sent, the SENDER may win a multiple of the
+// gift cost in in-app coins (the receiver still gets diamonds as usual).
+// 0x = no win (35%, Vinay), 1x = ~50% (Vinay), up to 1000x = 1 in 15,000
+// (Vinay). Expected return ~2.0x the gift cost, so users actually win
+// (Vinay: "User ki winning honi bhi chahiye", "Agar sirf loss hi hoga
+// to konsa user rukega"). Big jackpots (500x/1000x) are random awards,
+// never fixed to one person. Combo and Lucky Win are SEPARATE features:
+// the combo only sets how many copies are sent; the win is one roll per
+// gift event, on that event's total cost.
+export const LUCKY_WIN_TABLE = [
+  { multiplier: 0, chance: 0.35 },
+  { multiplier: 1, chance: 0.499712 },
+  { multiplier: 2, chance: 0.069358 },
+  { multiplier: 3, chance: 0.029725 },
+  { multiplier: 4, chance: 0.014862 },
+  { multiplier: 5, chance: 0.009908 },
+  { multiplier: 7, chance: 0.006936 },
+  { multiplier: 10, chance: 0.004954 },
+  { multiplier: 15, chance: 0.003468 },
+  { multiplier: 20, chance: 0.002477 },
+  { multiplier: 25, chance: 0.001783 },
+  { multiplier: 28, chance: 0.001387 },
+  { multiplier: 45, chance: 0.000991 },
+  { multiplier: 50, chance: 0.000793 },
+  { multiplier: 75, chance: 0.000594 },
+  { multiplier: 100, chance: 0.0005 },
+  { multiplier: 125, chance: 0.0004 },
+  { multiplier: 150, chance: 0.00035 },
+  { multiplier: 175, chance: 0.0003 },
+  { multiplier: 200, chance: 0.00025 },
+  { multiplier: 225, chance: 0.0002 },
+  { multiplier: 250, chance: 0.00018 },
+  { multiplier: 300, chance: 0.00015 },
+  { multiplier: 325, chance: 0.00013 },
+  { multiplier: 350, chance: 0.00012 },
+  { multiplier: 400, chance: 0.000115 },
+  { multiplier: 450, chance: 0.00011 },
+  { multiplier: 500, chance: 0.0001 },
+  { multiplier: 750, chance: 0.00008 },
+  { multiplier: 1000, chance: 0.00006667 },
+];
+
+// Weighted random roll over LUCKY_WIN_TABLE. randomFn defaults to
+// Math.random; tests pass a deterministic function. Returns a
+// multiplier (0 = no win). A roll past the table's total (the chances
+// sum to 0.99999967, a rounding hair under 1) falls through to the
+// rarest entry, so every roll returns a valid multiplier.
+export function rollLuckyWinMultiplier(randomFn = Math.random) {
+  let roll = randomFn();
+  if (!(roll >= 0)) roll = 0;
+  if (roll >= 1) roll = 0.999999999;
+  let cumulative = 0;
+  for (const entry of LUCKY_WIN_TABLE) {
+    cumulative += entry.chance;
+    if (roll < cumulative) return entry.multiplier;
+  }
+  return LUCKY_WIN_TABLE[LUCKY_WIN_TABLE.length - 1].multiplier;
+}
