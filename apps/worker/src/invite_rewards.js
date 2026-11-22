@@ -20,19 +20,10 @@ export const REFERRAL_WITHDRAWAL_COINS_PER_USD_CENT = 110_000;
 export const INVITE_BIND_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 // Every newly successful invite gives the inviter a fixed one-time coin reward.
-// Ongoing commission is separate and only counts coins credited through
-// Coin Seller transfers into the invited user's normal wallet. Merchant transfers,
-// gifts, game winnings, and other coin sources are excluded. No vehicle/cosmetic prize.
-
-// Direct-invite reward levels copied from the visible levels in the reference
-// flow. The last visible level is 5%; higher levels can be added without
-// changing stored invite/reward data.
-const DIRECT_INVITE_TIERS = Object.freeze([
-  { level: 1, minInvites: 1, minCoins: 0, rateBps: 300 },
-  { level: 2, minInvites: 10, minCoins: 16_000_000, rateBps: 400 },
-  { level: 3, minInvites: 20, minCoins: 48_000_000, rateBps: 450 },
-  { level: 4, minInvites: 50, minCoins: 160_000_000, rateBps: 500 },
-]);
+// The old per-recharge coin commission (3-5% of Coin Seller transfers, in
+// coins) was REMOVED (Vinay, 2026-11-23): the inviter gets coins only once
+// per invite (800,000 at bind) and on every recharge only 5% of the
+// recharge amount in dollars — never coins per recharge. No vehicle/cosmetic prize.
 
 export async function ensureInviteRewardSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS invite_bindings (
@@ -77,22 +68,6 @@ export async function ensureInviteRewardSchema(db) {
 
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_success_rewards_inviter
     ON invite_success_rewards(inviter_user_id, created_at DESC)`).run();
-
-  await db.prepare(`CREATE TABLE IF NOT EXISTS invite_commission_rewards (
-    id TEXT PRIMARY KEY,
-    inviter_user_id TEXT NOT NULL,
-    invitee_user_id TEXT NOT NULL,
-    source_transfer_id TEXT NOT NULL UNIQUE,
-    source_coins INTEGER NOT NULL CHECK(source_coins > 0),
-    rate_bps INTEGER NOT NULL CHECK(rate_bps >= 0),
-    reward_coins INTEGER NOT NULL CHECK(reward_coins >= 0),
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY(inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(invitee_user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`).run();
-
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_rewards_inviter_time
-    ON invite_commission_rewards(inviter_user_id, created_at DESC)`).run();
 
   // Referral dollars: one row per invitee recharge inside the window.
   // source_purchase_token is the Play purchase token, UNIQUE so a verify
@@ -144,36 +119,6 @@ export async function ensureInviteRewardSchema(db) {
 function normalizeCode(value) {
   const code = String(value ?? "").trim();
   return /^[1-9]\d{6}$/.test(code) ? code : "";
-}
-
-async function inviteStats(db, inviterUserId) {
-  const row = await db.prepare(`
-    SELECT
-      COUNT(DISTINCT b.invitee_user_id) AS invite_count,
-      COALESCE(SUM(r.source_coins), 0) AS source_coins,
-      COALESCE(SUM(r.reward_coins), 0) AS reward_coins
-    FROM invite_bindings b
-    LEFT JOIN invite_commission_rewards r
-      ON r.invitee_user_id = b.invitee_user_id
-     AND r.inviter_user_id = b.inviter_user_id
-    WHERE b.inviter_user_id = ?
-  `).bind(inviterUserId).first();
-
-  return {
-    inviteCount: Number(row?.invite_count ?? 0),
-    sourceCoins: Number(row?.source_coins ?? 0),
-    rewardCoins: Number(row?.reward_coins ?? 0),
-  };
-}
-
-function tierFor({ inviteCount, sourceCoins }) {
-  let active = null;
-  for (const tier of DIRECT_INVITE_TIERS) {
-    if (inviteCount >= tier.minInvites && sourceCoins >= tier.minCoins) {
-      active = tier;
-    }
-  }
-  return active;
 }
 
 async function backfillInviteSuccessRewards(db, inviterUserId, ts = Date.now()) {
@@ -316,8 +261,6 @@ export async function inviteRewardSummary(db, userId) {
   // Existing successful invites from before the fixed-reward launch are
   // credited once on first summary load. Unique invitee_user_id prevents repeats.
   await backfillInviteSuccessRewards(db, userId);
-  const stats = await inviteStats(db, userId);
-  const tier = tierFor(stats);
   const owner = await db.prepare(
     "SELECT public_id,created_at FROM users WHERE id=? LIMIT 1"
   ).bind(userId).first();
@@ -349,17 +292,12 @@ export async function inviteRewardSummary(db, userId) {
 
   const invited = await db.prepare(`
     SELECT b.invitee_user_id,u.public_id,u.display_name,u.avatar_key,b.bound_at,
-           COALESCE(SUM(r.source_coins),0) AS source_coins,
-           COALESCE(SUM(r.reward_coins),0) AS reward_coins,
            COALESCE(MAX(s.reward_coins),0) AS fixed_reward_coins
       FROM invite_bindings b
       LEFT JOIN users u ON u.id=b.invitee_user_id
       LEFT JOIN invite_success_rewards s
         ON s.invitee_user_id=b.invitee_user_id
        AND s.inviter_user_id=b.inviter_user_id
-      LEFT JOIN invite_commission_rewards r
-        ON r.invitee_user_id=b.invitee_user_id
-       AND r.inviter_user_id=b.inviter_user_id
      WHERE b.inviter_user_id=?
      GROUP BY b.invitee_user_id,u.public_id,u.display_name,u.avatar_key,b.bound_at
      ORDER BY b.bound_at DESC
@@ -458,7 +396,7 @@ export async function inviteRewardSummary(db, userId) {
   return {
     invitation_code: invitationCode,
     coins_per_usd: COINS_PER_USD,
-    invite_count: stats.inviteCount,
+    invite_count: (invited.results ?? []).length,
     // Unlimited invites (Vinay, 2026-11-23): no cap on how many people
     // one user can invite; the Share-page table shows 5 at a time and
     // the rest scroll. The enter-code option closes 48 hours after the
@@ -466,10 +404,6 @@ export async function inviteRewardSummary(db, userId) {
     invite_window_open: inviteWindowOpen,
     invite_window_ends_at: inviteWindowEndsAt,
     invite_window_hours: INVITE_BIND_WINDOW_MS / (60 * 60 * 1000),
-    invited_received_coins: stats.sourceCoins,
-    invited_received_usd: stats.sourceCoins / COINS_PER_USD,
-    commission_coins: stats.rewardCoins,
-    commission_usd: stats.rewardCoins / COINS_PER_USD,
     fixed_reward_per_successful_invite: SUCCESSFUL_INVITE_REWARD_COINS,
     successful_invite_reward_coins: Number(successRewardTotal?.reward_coins ?? 0),
     // Referral dollars (Vinay, 2026-11-23): 5% of every invitee recharge
@@ -503,9 +437,6 @@ export async function inviteRewardSummary(db, userId) {
       coins_credited: Number(row.coins_credited ?? 0),
       created_at: Number(row.created_at ?? 0),
     })),
-    current_level: tier?.level ?? 0,
-    current_rate_bps: tier?.rateBps ?? 0,
-    current_rate_percent: (tier?.rateBps ?? 0) / 100,
     bound_to: binding ? {
       inviter_user_id: String(binding.inviter_user_id),
       inviter_public_id: String(binding.inviter_public_id ?? binding.invitation_code ?? ""),
@@ -514,21 +445,12 @@ export async function inviteRewardSummary(db, userId) {
       invitation_code: String(binding.invitation_code),
       bound_at: Number(binding.bound_at ?? 0),
     } : null,
-    tiers: DIRECT_INVITE_TIERS.map((item) => ({
-      level: item.level,
-      min_invites: item.minInvites,
-      min_received_coins: item.minCoins,
-      rate_bps: item.rateBps,
-      rate_percent: item.rateBps / 100,
-    })),
     invited_users: (invited.results ?? []).map((row) => ({
       user_id: String(row.invitee_user_id),
       public_id: String(row.public_id ?? ""),
       display_name: String(row.display_name ?? ""),
       avatar_key: String(row.avatar_key ?? ""),
       bound_at: Number(row.bound_at ?? 0),
-      received_coins: Number(row.source_coins ?? 0),
-      commission_coins: Number(row.reward_coins ?? 0),
       referral_commission_usd_cents: dollarByInviteeMap.get(String(row.invitee_user_id)) ?? 0,
       // Play recharges (granted only) + seller-wallet transfers into the
       // normal wallet, the latter valued at $1 = 8,000,000 coins.
@@ -536,127 +458,6 @@ export async function inviteRewardSummary(db, userId) {
         Math.floor((sellerTransferByInviteeMap.get(String(row.invitee_user_id)) ?? 0) * 100 / COINS_PER_USD),
       fixed_reward_coins: Number(row.fixed_reward_coins ?? 0),
     })),
-  };
-}
-
-export async function recordCoinSellerInviteCommission(db, {
-  inviteeUserId,
-  sourceTransferId,
-  sourceCoins,
-  sourceWalletType = "coin_seller",
-  ts = Date.now(),
-}) {
-  await ensureInviteRewardSchema(db);
-  const amount = Number(sourceCoins);
-  const walletType = String(sourceWalletType ?? "").trim();
-  if (!inviteeUserId || !sourceTransferId) {
-    throw new Error("invalid_invite_commission_source");
-  }
-  // Commission volume is strictly Coin Seller received coins. Merchant
-  // transfers and other wallet sources must not earn invite commission.
-  if (walletType !== "coin_seller") {
-    return { applied: false, reason: "ineligible_source" };
-  }
-  if (!Number.isSafeInteger(amount) || amount <= 0) {
-    throw new Error("invalid_invite_commission_source");
-  }
-
-  const existing = await db.prepare(
-    "SELECT id,reward_coins,rate_bps FROM invite_commission_rewards WHERE source_transfer_id=?"
-  ).bind(sourceTransferId).first();
-  if (existing) {
-    return {
-      applied: false,
-      duplicate: true,
-      reward_coins: Number(existing.reward_coins ?? 0),
-      rate_bps: Number(existing.rate_bps ?? 0),
-    };
-  }
-
-  const binding = await db.prepare(
-    "SELECT inviter_user_id FROM invite_bindings WHERE invitee_user_id=?"
-  ).bind(inviteeUserId).first();
-  if (!binding?.inviter_user_id) {
-    return { applied: false, reason: "no_inviter" };
-  }
-
-  const inviterUserId = String(binding.inviter_user_id);
-  const statsBefore = await inviteStats(db, inviterUserId);
-  const statsForTier = {
-    inviteCount: statsBefore.inviteCount,
-    sourceCoins: statsBefore.sourceCoins + amount,
-  };
-  const tier = tierFor(statsForTier);
-  if (!tier || tier.rateBps <= 0) {
-    return { applied: false, reason: "tier_not_active" };
-  }
-
-  const rewardCoins = Math.floor((amount * tier.rateBps) / 10_000);
-  if (rewardCoins <= 0) {
-    return { applied: false, reason: "reward_rounds_to_zero" };
-  }
-
-  const inviter = await db.prepare(
-    "SELECT coins FROM users WHERE id=?"
-  ).bind(inviterUserId).first();
-  if (!inviter) return { applied: false, reason: "inviter_not_found" };
-
-  const rewardId = crypto.randomUUID();
-
-  // Relative, guarded credit (Wallet audit M3, 2026-11-22): the old
-  // code read the inviter's balance, then wrote it back absolutely,
-  // so two concurrent commissions overwrote each other and lost
-  // coins — and the check-then-insert on the commission row raced,
-  // so a concurrent duplicate ERRORED and the commission was lost
-  // (logged, safe direction, but lossy). The INSERT is now OR
-  // IGNORE on UNIQUE(source_transfer_id): a duplicate returns the
-  // existing commission instead of erroring, and the balance moves
-  // relatively with the ledger balance read inside the batch.
-  const batchResults = await db.batch([
-    db.prepare(
-      "INSERT OR IGNORE INTO invite_commission_rewards(id,inviter_user_id,invitee_user_id,source_transfer_id,source_coins,rate_bps,reward_coins,created_at) VALUES(?,?,?,?,?,?,?,?)"
-    ).bind(
-      rewardId, inviterUserId, inviteeUserId, sourceTransferId,
-      amount, tier.rateBps, rewardCoins, ts,
-    ),
-    db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND changes()=1")
-      .bind(rewardCoins, ts, inviterUserId),
-    db.prepare(
-      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
-      "SELECT ?,u.id,'invite_commission',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
-    ).bind(
-      crypto.randomUUID(), rewardCoins, sourceTransferId, ts, inviterUserId,
-    ),
-  ]);
-  if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
-    // A concurrent call for the same transfer already recorded the
-    // commission (the INSERT OR IGNORE was a no-op): return it
-    // instead of erroring, so the commission is never lost.
-    const raced = await db.prepare(
-      "SELECT reward_coins,rate_bps FROM invite_commission_rewards WHERE source_transfer_id=?"
-    ).bind(sourceTransferId).first();
-    return {
-      applied: false,
-      duplicate: true,
-      reward_coins: Number(raced?.reward_coins ?? 0),
-      rate_bps: Number(raced?.rate_bps ?? 0),
-    };
-  }
-  const afterRow = await db.prepare(
-    "SELECT coins FROM users WHERE id=?"
-  ).bind(inviterUserId).first();
-  const balanceAfter = Number(afterRow?.coins ?? 0);
-
-  return {
-    applied: true,
-    inviter_user_id: inviterUserId,
-    invitee_user_id: inviteeUserId,
-    source_coins: amount,
-    rate_bps: tier.rateBps,
-    rate_percent: tier.rateBps / 100,
-    reward_coins: rewardCoins,
-    inviter_balance_after: balanceAfter,
-    level: tier.level,
   };
 }
 

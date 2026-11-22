@@ -322,7 +322,7 @@ test("Coin Seller purchase at VIP0 earns no bonus and no boost", async () => {
   sqlite.close();
 });
 
-test("Merchant transfers earn no coins bonus even for a VIP", async () => {
+test("Merchant transfers earn VIP EXP like Coin Seller but no coins bonus even for a VIP", async () => {
   const { sqlite, request, setVipLevel } = await fixture();
   await setVipLevel("receiver", 5);
   const receiverCoinsBefore = sqlite.prepare("SELECT coins FROM users WHERE id='receiver'").get().coins;
@@ -333,7 +333,11 @@ test("Merchant transfers earn no coins bonus even for a VIP", async () => {
   assert.equal(result.status, 200);
   assert.equal(result.body.coins_bonus, 0);
   assert.equal(result.body.receiver_coin_balance, receiverCoinsBefore + 8000000);
-  assert.equal(result.body.vip_award, null);
+  // Merchant transfers count the same as Coin Seller (Vinay,
+  // 2026-11-23): VIP EXP at the 1.2x VIP5 boost = 180 EXP — but the
+  // coins bonus stays Coin Seller only.
+  approx(result.body.vip_award.awarded_exp, 180, "awarded EXP with 1.2x boost");
+  assert.equal(result.body.vip_award.exp_boost, 1.2);
   sqlite.close();
 });
 

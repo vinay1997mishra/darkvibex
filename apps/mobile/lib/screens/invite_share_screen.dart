@@ -356,32 +356,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
     );
   }
 
-  Widget _stat(String label, String value) => Expanded(
-        child: Column(
-          children: [
-            Text(
-              value,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: TinniPalette.gold,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: TinniPalette.cream,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
-
   Widget _goldButton({
     required String label,
     required VoidCallback onPressed,
@@ -404,13 +378,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
     final bound = data?['bound_to'];
     final boundMap =
         bound is Map ? Map<String, dynamic>.from(bound) : null;
-    final tiersRaw = data?['tiers'];
-    final tiers = tiersRaw is List
-        ? tiersRaw
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList(growable: false)
-        : const <Map<String, dynamic>>[];
     final invitedRaw = data?['invited_users'];
     final invited = invitedRaw is List
         ? invitedRaw
@@ -479,23 +446,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            _stat(
-                              'Current rate',
-                              '${_formatPercent(data?['current_rate_percent'])}%',
-                            ),
-                            _stat(
-                              'Rate basis',
-                              '1\$ = ${_formatCoins(data?['coins_per_usd'])}',
-                            ),
-                            _stat(
-                              'Level',
-                              'Lv${data?['current_level'] ?? 0}',
-                            ),
-                          ],
-                        ),
                         const SizedBox(height: 14),
                         _goldButton(
                           label: 'Get Coins',
@@ -519,16 +469,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         _recordRow(
                           'Friends Invite',
                           (data?['invite_count'] ?? 0).toString(),
-                        ),
-                        _divider(),
-                        _recordRow(
-                          'Invited users received',
-                          '${_formatCoins(data?['invited_received_coins'])} coins',
-                        ),
-                        _divider(),
-                        _recordRow(
-                          'My invite commission',
-                          '${_formatCoins(data?['commission_coins'])} coins',
                         ),
                         _divider(),
                         _recordRow(
@@ -722,7 +662,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ],
                         const SizedBox(height: 10),
                         const Text(
-                          "Each successful invite gives 800,000 coins once. Every recharge the invited friend makes within 3 months of joining also earns you 5% of that recharge in dollars, shown below. At \$3 you can withdraw the dollars to a coin seller or merchant — they receive the dollars and automatically get 11,000,000 coins per \$1 into their seller wallet. Only coins received through eligible Coin Seller transfers into the invited user's normal wallet count toward the coin commission. Merchant transfers, gifts, game winnings and other coin sources do not count.",
+                          "Each successful invite gives 800,000 coins once. Every recharge the invited friend makes within 3 months of joining also earns you 5% of that recharge in dollars, shown below. At \$3 you can withdraw the dollars to a coin seller or merchant — they receive the dollars and automatically get 11,000,000 coins per \$1 into their seller wallet.",
                           style: TextStyle(
                             color: TinniPalette.cream,
                             fontSize: 11,
@@ -804,11 +744,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                     ),
                   ],
                   const SizedBox(height: 12),
-                  _sectionTitle('Reward level'),
-                  for (final tier in tiers) ...[
-                    _tierCard(tier),
-                    const SizedBox(height: 8),
-                  ],
 
                 ],
               ),
@@ -913,11 +848,9 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                   0: FixedColumnWidth(190),
                   1: FixedColumnWidth(90),
                   2: FixedColumnWidth(145),
-                  3: FixedColumnWidth(155),
-                  4: FixedColumnWidth(135),
-                  5: FixedColumnWidth(120),
-                  6: FixedColumnWidth(110),
-                  7: FixedColumnWidth(110),
+                  3: FixedColumnWidth(120),
+                  4: FixedColumnWidth(110),
+                  5: FixedColumnWidth(110),
                 },
                 children: [
                   TableRow(
@@ -926,8 +859,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                       _inviteTableCell('DP / Name', header: true),
                       _inviteTableCell('8-digit ID', header: true),
                       _inviteTableCell('Invite Date & Time', header: true),
-                      _inviteTableCell('Coin Seller Coins', header: true),
-                      _inviteTableCell('Commission', header: true),
                       _inviteTableCell('Invite Reward', header: true),
                       _inviteTableCell('Referral \$', header: true),
                       _inviteTableCell('Recharge', header: true),
@@ -944,12 +875,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ),
                         _inviteTableCell(_formatDateTime(row['bound_at'])),
                         _inviteTableCell(
-                          '${_formatCoins(row['received_coins'])} coins',
-                        ),
-                        _inviteTableCell(
-                          '+${_formatCoins(row['commission_coins'])}',
-                        ),
-                        _inviteTableCell(
                           '+${_formatCoins(row['fixed_reward_coins'])}',
                         ),
                         _inviteTableCell(
@@ -965,63 +890,6 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _tierCard(Map<String, dynamic> tier) {
-    final level = tier['level'] ?? 0;
-    final minInvites = tier['min_invites'] ?? 0;
-    final minCoins = tier['min_received_coins'] ?? 0;
-    final percent = _formatPercent(tier['rate_percent']);
-    final active = (data?['current_level'] as num?)?.toInt() == (level as num?)?.toInt();
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFF8F1824) : const Color(0xFF65101B),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: active ? TinniPalette.gold : const Color(0x6650D8FF),
-          width: active ? 1.4 : 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: TinniPalette.brightGold,
-            foregroundColor: const Color(0xFF7A160C),
-            child: Text(
-              'L$level',
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              '${_formatCoins(minCoins)} received + $minInvites invite${minInvites == 1 ? '' : 's'}',
-              style: const TextStyle(
-                color: TinniPalette.cream,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: TinniPalette.brightGold,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '$percent% return',
-              style: const TextStyle(
-                color: Color(0xFF77120A),
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
