@@ -110,4 +110,37 @@ void main() {
     expect(source, contains("verifiedEvent['count']"));
     expect(source, contains('x\$giftCount'));
   });
+
+  test('the 5s ring cannot kill a combo whose send is still running', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    // The ring is wall-clock, but a multi-recipient send takes longer
+    // than 5s (two round trips per copy): the ring firing mid-send
+    // used to null the combo state, and the post-send timer restart
+    // could not resurrect the button — the combo died after one press
+    // (Vinay, 2026-11-22). The hide is now ignored while a send runs,
+    // and the send restarts the ring when it lands.
+    final hideStart = source.indexOf('void _hideGiftCombo()');
+    final hideEnd = source.indexOf('/// Gift combo', hideStart);
+    final hide = source.substring(hideStart, hideEnd);
+    expect(hide, contains('if (!mounted || _giftComboSending) return;'));
+
+    final sendStart = source.indexOf('Future<void> _sendGiftCombo() async {');
+    final sendEnd = source.indexOf('Future<void> _sendGift()', sendStart);
+    final send = source.substring(sendStart, sendEnd);
+    // A second tap while sending must not start a second loop (it
+    // would send — and charge — the batch twice).
+    expect(send, contains('if (_giftComboSending) return;'));
+    expect(send, contains('_giftComboSending = true;'));
+    // The flag always clears, even on the early returns (not
+    // connected, cannot afford, a copy failed, unmounted).
+    expect(send, contains('} finally {'));
+    expect(send, contains('_giftComboSending = false;'));
+    // A failed combo still hides (its ring already drained while the
+    // send ran, and the hide was ignored) instead of sitting there
+    // with a dead ring.
+    expect(send, contains('if (mounted && sentCopies == 0) _hideGiftCombo();'));
+    // A successful send still restarts the ring.
+    expect(send, contains('setState(() => _giftComboTotal += sentCopies);'));
+    expect(send, contains('_startGiftComboTimer();'));
+  });
 }
