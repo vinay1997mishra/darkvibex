@@ -931,66 +931,98 @@ class _RoleWalletDetailScreenState
     final receiver = TextEditingController();
     final amount = TextEditingController();
     final credential = TextEditingController();
+    // Merchant senders choose where the coins land: the receiver's
+    // normal wallet, or a Coin Seller's seller wallet (Vinay,
+    // 2026-11-23). Coin Sellers send only to a normal wallet.
+    String receiverWallet = 'normal';
     final data = await showDialog<List<String>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Send Coins'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: receiver,
-              decoration: const InputDecoration(
-                labelText: 'Receiver DarkVibeX ID',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Send Coins'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: receiver,
+                decoration: const InputDecoration(
+                  labelText: 'Receiver DarkVibeX ID',
+                ),
               ),
-            ),
-            TextField(
-              controller: amount,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration:
-                  const InputDecoration(labelText: 'Coin amount'),
-            ),
-            TextField(
-              controller: credential,
-              obscureText: true,
-              keyboardType: widget.walletType == 'coin_seller'
-                  ? TextInputType.number
-                  : TextInputType.text,
-              inputFormatters: widget.walletType == 'coin_seller'
-                  ? [FilteringTextInputFormatter.digitsOnly]
-                  : null,
-              maxLength: widget.walletType == 'coin_seller' ? 4 : 32,
-              decoration: const InputDecoration(
-                labelText: 'Wallet credential',
+              if (widget.walletType == 'merchant') ...[
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'normal',
+                      label: Text('Normal Wallet'),
+                    ),
+                    ButtonSegment(
+                      value: 'coin_seller',
+                      label: Text('Seller Wallet'),
+                    ),
+                  ],
+                  selected: {receiverWallet},
+                  onSelectionChanged: (selection) => setDialogState(
+                    () => receiverWallet = selection.first,
+                  ),
+                ),
+              ],
+              TextField(
+                controller: amount,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration:
+                    const InputDecoration(labelText: 'Coin amount'),
               ),
+              TextField(
+                controller: credential,
+                obscureText: true,
+                keyboardType: widget.walletType == 'coin_seller'
+                    ? TextInputType.number
+                    : TextInputType.text,
+                inputFormatters: widget.walletType == 'coin_seller'
+                    ? [FilteringTextInputFormatter.digitsOnly]
+                    : null,
+                maxLength: widget.walletType == 'coin_seller' ? 4 : 32,
+                decoration: const InputDecoration(
+                  labelText: 'Wallet credential',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                [
+                  receiver.text.trim(),
+                  amount.text.trim(),
+                  credential.text,
+                  receiverWallet,
+                ],
+              ),
+              child: const Text('Send'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              [receiver.text.trim(), amount.text.trim(), credential.text],
-            ),
-            child: const Text('Send'),
-          ),
-        ],
       ),
     );
     receiver.dispose();
     amount.dispose();
     credential.dispose();
-    if (data == null || data.length != 3 || !mounted) return;
+    if (data == null || data.length != 4 || !mounted) return;
     final coins = int.tryParse(data[1]) ?? 0;
     final result = await widget.state.backend.roleWalletCoinTransfer(
       userId: widget.state.userId,
       walletType: widget.walletType,
       receiverUserId: data[0],
+      receiverWalletType:
+          widget.walletType == 'merchant' ? data[3] : null,
       coins: coins,
       credential: data[2],
     );
@@ -1001,17 +1033,23 @@ class _RoleWalletDetailScreenState
           content: Text(
             widget.walletType == 'coin_seller'
                 ? 'Coins sent. Receiver VIP EXP was updated.'
-                : 'Coins sent from Merchant Wallet.',
+                : data[3] == 'coin_seller'
+                    ? 'Coins sent to the seller wallet.'
+                    : 'Coins sent from Merchant Wallet.',
           ),
         ),
       );
       await load();
     } else {
+      final error = result?['error']?.toString() ?? 'Transfer failed';
+      final message = error == 'invalid_receiver_wallet'
+          ? 'Coins cannot go to that wallet from here.'
+          : error == 'receiver_not_coin_seller'
+              ? 'That ID is not a Coin Seller.'
+              : error;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            result?['error']?.toString() ?? 'Transfer failed',
-          ),
+          content: Text(message),
         ),
       );
     }

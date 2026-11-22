@@ -9629,6 +9629,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
 
   async function runRoleTransfer({
     senderId, receiverId, walletType, credentialHash, amount,
+    receiverWalletType = "normal",
     idempotencyKey, ts,
   }) {
     const key = String(idempotencyKey ?? "").trim();
@@ -9642,6 +9643,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
           senderUserId: senderId,
           walletType,
           receiverUserId: receiverId,
+          receiverWalletType,
           coins: amount,
           credentialHash,
           idempotencyKey: key || null,
@@ -9668,12 +9670,16 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
             // Rebuilt from the ledger: the money moved but the
             // result was never stored, so EXP / commission may not
             // have run. Re-run them (both are idempotent on the
-            // stable transfer_id) and store the full response.
-            const extras = await awardTransferExtras({
-              receiverId, amount, walletType,
-              transferId: String(stored.transfer_id ?? error.existing.transfer_id ?? ""),
-              ts,
-            });
+            // stable transfer_id) and store the full response — unless
+            // the coins landed in a role wallet, which earns no extras
+            // (inventory, not a recharge).
+            const extras = receiverWalletType === "coin_seller"
+              ? { vipAward: null, dollarCommission: null, warnings: [] }
+              : await awardTransferExtras({
+                receiverId, amount, walletType,
+                transferId: String(stored.transfer_id ?? error.existing.transfer_id ?? ""),
+                ts,
+              });
             const response = {
               ok: true,
               duplicate: true,
@@ -9717,10 +9723,16 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     }
     if (!transferResult) throw new Error("transfer_failed");
     await clearPinFailures(db, senderId, walletType);
-    const extras = await awardTransferExtras({
-      receiverId, amount, walletType,
-      transferId: transferResult.transfer_id, ts,
-    });
+    // No extras when the coins landed in a role wallet (Vinay,
+    // 2026-11-23): a merchant-to-seller-wallet move is inventory, not
+    // a recharge — VIP EXP and the 5% dollars attach when those coins
+    // later reach a normal wallet, never twice for the same coins.
+    const extras = receiverWalletType === "coin_seller"
+      ? { vipAward: null, dollarCommission: null, warnings: [] }
+      : await awardTransferExtras({
+        receiverId, amount, walletType,
+        transferId: transferResult.transfer_id, ts,
+      });
     const response = {
       ok: true,
       ...transferResult,
@@ -9742,6 +9754,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const userId=String(body.user_id ?? "").trim();
     const receiverId=String(body.receiver_user_id ?? "").trim();
     const walletType=String(body.wallet_type ?? "").trim();
+    const receiverWalletType=String(body.receiver_wallet_type ?? "normal").trim();
     const credential=String(body.credential ?? "");
     const amount=Number(body.coins ?? 0);
     const idempotencyKey=String(body.idempotency_key ?? "").trim();
@@ -9757,6 +9770,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         senderId:userId,
         receiverId,
         walletType,
+        receiverWalletType,
         credentialHash:hash,
         amount,
         idempotencyKey,

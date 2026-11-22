@@ -59,9 +59,14 @@ async function fixture() {
     return { status: response.status, body: await response.json() };
   };
   const now = Date.now();
-  for (const [id, name] of [["inviter", "Inviter"], ["invitee", "Invitee"], ["seller", "Seller"]]) {
+  for (const [id, name] of [["inviter", "Inviter"], ["invitee", "Invitee"], ["seller", "Seller"], ["seller2", "Seller 2"], ["merchant2", "Merchant 2"]]) {
     sqlite.prepare("INSERT INTO users(id,display_name,created_at,updated_at) VALUES(?,?,?,?)").run(id, name, now, now);
   }
+  // seller2 is a Coin Seller (a merchant can send into their seller
+  // wallet); merchant2 is a Merchant (nobody can send into a merchant
+  // wallet).
+  sqlite.prepare("UPDATE users SET role='coin_seller' WHERE id='seller2'").run();
+  sqlite.prepare("UPDATE users SET role='merchant' WHERE id='merchant2'").run();
   sqlite.prepare(
     "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
   ).run("invitee", "inviter", "1234567", now);
@@ -95,13 +100,14 @@ async function setupWallet(sqlite, request, walletType) {
   return credential;
 }
 
-function sendTransfer(request, walletType, credential, key, receiverUserId = "invitee") {
+function sendTransfer(request, walletType, credential, key, receiverUserId = "invitee", receiverWalletType = "normal") {
   return request("/api/wallet/role-coins/transfer", {
     method: "POST",
     body: {
       user_id: "seller",
       receiver_user_id: receiverUserId,
       wallet_type: walletType,
+      receiver_wallet_type: receiverWalletType,
       coins: 8000000,
       credential,
       idempotency_key: key,
@@ -207,5 +213,94 @@ test("merchant self-transfer: VIP EXP earned", async () => {
   assert.equal(
     sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins,
     8000000,
+  );
+});
+
+test("merchant can send into a coin seller's seller wallet (inventory, no extras)", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "merchant");
+  const result = await sendTransfer(request, "merchant", credential, "extras-m2s-1", "seller2", "coin_seller");
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.receiver_wallet_type, "coin_seller");
+  assert.equal(result.body.receiver_role_coin_balance, 8000000);
+  // The merchant wallet was debited exactly 8,000,000 and the coin
+  // seller's seller wallet was credited exactly 8,000,000.
+  assert.equal(
+    sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='merchant'").get().balance_coins,
+    1000000000 - 8000000,
+  );
+  assert.equal(
+    sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller2' AND wallet_type='coin_seller'").get().balance_coins,
+    8000000,
+  );
+  // The coin seller's NORMAL wallet is untouched.
+  assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='seller2'").get().coins, 0);
+  // Inventory, not a recharge: no VIP EXP, no referral dollars, no
+  // bonus — those attach when the coins later reach a normal wallet,
+  // never twice for the same coins.
+  assert.equal(result.body.vip_award, null);
+  assert.equal(result.body.invite_dollar_commission, null);
+  assert.equal(result.body.coins_bonus, 0);
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM role_wallet_ledger WHERE user_id='seller2' AND wallet_type='coin_seller' AND kind='merchant_transfer_received' AND coin_amount=8000000").get().n,
+    1,
+  );
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM role_wallet_ledger WHERE user_id='seller' AND wallet_type='merchant' AND kind='coin_send' AND coin_amount=-8000000").get().n,
+    1,
+  );
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE user_id='seller2'").get().n,
+    0,
+  );
+});
+
+test("merchant cannot send into a merchant wallet", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "merchant");
+  const result = await sendTransfer(request, "merchant", credential, "extras-m2m-1", "merchant2", "merchant");
+  assert.equal(result.status, 400, JSON.stringify(result.body));
+  assert.equal(result.body.ok, false);
+  assert.equal(result.body.error, "invalid_receiver_wallet");
+  assert.equal(
+    sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='merchant'").get().balance_coins,
+    1000000000,
+  );
+});
+
+test("coin seller cannot send into a seller wallet", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "coin_seller");
+  const result = await sendTransfer(request, "coin_seller", credential, "extras-s2s-1", "seller2", "coin_seller");
+  assert.equal(result.status, 400, JSON.stringify(result.body));
+  assert.equal(result.body.ok, false);
+  assert.equal(result.body.error, "invalid_receiver_wallet");
+  assert.equal(
+    sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='coin_seller'").get().balance_coins,
+    1000000000,
+  );
+});
+
+test("coin seller cannot send into a merchant wallet", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "coin_seller");
+  const result = await sendTransfer(request, "coin_seller", credential, "extras-s2m-1", "merchant2", "merchant");
+  assert.equal(result.status, 400, JSON.stringify(result.body));
+  assert.equal(result.body.ok, false);
+  assert.equal(result.body.error, "invalid_receiver_wallet");
+});
+
+test("merchant cannot send into the seller wallet of a non-seller", async () => {
+  const { sqlite, request } = await fixture();
+  const credential = await setupWallet(sqlite, request, "merchant");
+  // invitee is a plain user, not a Coin Seller.
+  const result = await sendTransfer(request, "merchant", credential, "extras-m2s-2", "invitee", "coin_seller");
+  assert.equal(result.status, 400, JSON.stringify(result.body));
+  assert.equal(result.body.ok, false);
+  assert.equal(result.body.error, "receiver_not_coin_seller");
+  assert.equal(
+    sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='merchant'").get().balance_coins,
+    1000000000,
   );
 });
