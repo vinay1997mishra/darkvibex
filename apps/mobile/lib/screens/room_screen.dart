@@ -165,7 +165,12 @@ class _RoomScreenState extends State<RoomScreen>
   bool giftFlyInEnabled = true;
   bool carEffectsEnabled = true;
   bool giftBubbleEnabled = true;
-  bool rocketDrawNoticeEnabled = true;
+  bool rocketBannerEnabled = true;
+  // Per-effect toggles (Vinay, 2026-11-22): every animation has its own
+  // off switch. Each one is per-user (local prefs) — turning it off hides
+  // that effect only for this user; everyone else in the room still sees it.
+  bool giftBannerEnabled = true;
+  bool gameBannerEnabled = true;
   Map<String, dynamic>? activeGiftEffect;
   // Gift split (Vinay, 2026-11-22): one gift sent in a single go to N
   // users shows as ONE gift in the screen centre, then splits into N
@@ -1009,7 +1014,7 @@ class _RoomScreenState extends State<RoomScreen>
   }
 
   void _showRocketLaunch(int level) {
-    if (!mounted || !effectsEnabled || !rocketDrawNoticeEnabled) return;
+    if (!mounted || !effectsEnabled || !rocketBannerEnabled) return;
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
 
@@ -6530,8 +6535,12 @@ class _RoomScreenState extends State<RoomScreen>
       giftFlyInEnabled = prefs.getBool('dvx.room.effects.gift_fly_in') ?? true;
       carEffectsEnabled = prefs.getBool('dvx.room.effects.car') ?? true;
       giftBubbleEnabled = prefs.getBool('dvx.room.effects.gift_bubble') ?? true;
-      rocketDrawNoticeEnabled =
+      rocketBannerEnabled =
           prefs.getBool('dvx.room.effects.rocket_notice') ?? true;
+      giftBannerEnabled =
+          prefs.getBool('dvx.room.effects.gift_banner') ?? true;
+      gameBannerEnabled =
+          prefs.getBool('dvx.room.effects.game_banner') ?? true;
     });
   }
 
@@ -6641,8 +6650,8 @@ class _RoomScreenState extends State<RoomScreen>
                   },
                 ),
                 SwitchListTile(
-                  title: const Text('Car Effects'),
-                  subtitle: const Text('Vehicle/car room-entry animations.'),
+                  title: const Text('Vehicle Effect'),
+                  subtitle: const Text('Vehicle room-entry animations.'),
                   value: carEffectsEnabled,
                   onChanged: (value) {
                     setState(() => carEffectsEnabled = value);
@@ -6668,15 +6677,49 @@ class _RoomScreenState extends State<RoomScreen>
                   },
                 ),
                 SwitchListTile(
-                  title: const Text('Rocket Draw Notice'),
-                  subtitle: const Text('Show the room Rocket shortcut and notice.'),
-                  value: rocketDrawNoticeEnabled,
+                  title: const Text('Gift Banner'),
+                  subtitle: const Text(
+                    'Gift ribbon banner and Lucky win announcement.',
+                  ),
+                  value: giftBannerEnabled,
                   onChanged: (value) {
-                    setState(() => rocketDrawNoticeEnabled = value);
+                    setState(() => giftBannerEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.gift_banner',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Rocket Banner'),
+                  subtitle: const Text('Rocket launch animation in the room.'),
+                  value: rocketBannerEnabled,
+                  onChanged: (value) {
+                    setState(() => rocketBannerEnabled = value);
                     refresh(() {});
                     unawaited(
                       _setRoomEffectPreference(
                         'dvx.room.effects.rocket_notice',
+                        value,
+                      ),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Game Banner'),
+                  subtitle: const Text(
+                    'Game result banner (Fruit Party round result).',
+                  ),
+                  value: gameBannerEnabled,
+                  onChanged: (value) {
+                    setState(() => gameBannerEnabled = value);
+                    refresh(() {});
+                    unawaited(
+                      _setRoomEffectPreference(
+                        'dvx.room.effects.game_banner',
                         value,
                       ),
                     );
@@ -6795,7 +6838,7 @@ class _RoomScreenState extends State<RoomScreen>
     required String receiverName,
     required String giftName,
   }) {
-    if (!mounted || !effectsEnabled || !giftEffectsEnabled) return;
+    if (!mounted || !effectsEnabled || !giftBannerEnabled) return;
     final int vipLevel = giftRibbonVipLevelFromEvent(event);
     giftRibbonTimer?.cancel();
     setState(() {
@@ -6825,7 +6868,7 @@ class _RoomScreenState extends State<RoomScreen>
     String senderName,
     String giftName,
   ) {
-    if (!mounted) return;
+    if (!mounted || !effectsEnabled || !giftBannerEnabled) return;
     final winCoins =
         int.tryParse(event['lucky_win_coins']?.toString() ?? '') ?? 0;
     if (winCoins <= 0) return;
@@ -7911,7 +7954,10 @@ class _RoomScreenState extends State<RoomScreen>
     required String receiverId,
     required String glbKey,
   }) async {
-    if (!mounted || glbKey.trim().isEmpty) return;
+    // Video/GLB gifts respect the Gift Effects toggle (Vinay, 2026-11-22):
+    // with Gift Effects off, no gift animation plays for this user.
+    if (!mounted || !effectsEnabled || !giftEffectsEnabled) return;
+    if (glbKey.trim().isEmpty) return;
     final receiver = membersBySeat.values.firstWhere(
       (member) => member['user_id']?.toString() == receiverId,
       orElse: () => <String, dynamic>{},
@@ -8043,6 +8089,9 @@ class _RoomScreenState extends State<RoomScreen>
     required String videoKey,
     String? senderName,
   }) async {
+    // Video/GLB gifts respect the Gift Effects toggle (Vinay, 2026-11-22):
+    // with Gift Effects off, no gift animation plays for this user.
+    if (!mounted || !effectsEnabled || !giftEffectsEnabled) return;
     gift_video.VideoPlayerController? controller;
     VoidCallback? playbackListener;
     var listenerAttached = false;
@@ -9752,7 +9801,10 @@ class _RoomScreenState extends State<RoomScreen>
                 backgroundColor: const Color(0xFF5D1E65),
               ),
             ),
-          if (!typingMode && rocketDrawNoticeEnabled && effectsEnabled)
+          // Rocket/Game Center buttons are navigation, not a banner —
+          // the Rocket Banner toggle only hides the rocket launch
+          // animation, never these buttons (Vinay, 2026-11-22).
+          if (!typingMode && effectsEnabled)
             Positioned(
             key: const Key('room-game-floating-position'),
             right: 8,
@@ -9925,7 +9977,7 @@ class _RoomScreenState extends State<RoomScreen>
                 ],
               ),
             ),
-          if (activeGiftRibbon != null && effectsEnabled && giftEffectsEnabled)
+          if (activeGiftRibbon != null && effectsEnabled && giftBannerEnabled)
             Positioned(
               // Gift ribbon banner (sender's VIP tier): full-width
               // banner with the VIP level BIG and bold, sender ->

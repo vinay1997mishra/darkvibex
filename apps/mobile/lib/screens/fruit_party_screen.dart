@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/app_state.dart';
@@ -45,6 +46,10 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   int localTimeAtSync = 0;
   int _lightStep = 0;
   String? _popupDismissedRound;
+  // Game Banner toggle (Vinay, 2026-11-22): per-user room effect pref —
+  // with it off, this user does not see the round-end result popup; the
+  // result is still visible in the phase tab and results bar.
+  bool _gameBannerEnabled = true;
 
   static const _fallbackFruits = <Map<String, dynamic>>[
     {'key': 'lemon', 'emoji': '🍋', 'label': 'Lemon', 'multiplier': 5},
@@ -91,9 +96,19 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     return sorted;
   }
 
+  Future<void> _loadGameBannerPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _gameBannerEnabled =
+          prefs.getBool('dvx.room.effects.game_banner') ?? true;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    unawaited(_loadGameBannerPreference());
     unawaited(_load());
     // Combined game-state (Vinay, 2026-11-21): ONE worker call every 3s
     // carrying round + timer + config + wallet + my bets + history, so
@@ -736,6 +751,9 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   /// the × button; it returns for the next round. The winners strip
   /// below stays as well.
   Widget _resultPopup() {
+    // Game Banner off (Vinay, 2026-11-22): no round-end popup for this
+    // user; the result stays visible in the phase tab and results bar.
+    if (!_gameBannerEnabled) return const SizedBox.shrink();
     if (_round['phase']?.toString() != 'result_spin' || _history.isEmpty) {
       return const SizedBox.shrink();
     }
