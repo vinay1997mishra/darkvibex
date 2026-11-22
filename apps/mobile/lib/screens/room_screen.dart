@@ -426,6 +426,15 @@ class _RoomScreenState extends State<RoomScreen>
         amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
+    // Seat change (Agora audit 2026-11-22): the server mints
+    // listener-tier (join-only) tokens for seatless members and full
+    // tokens for seated members and the owner, so the token must
+    // follow the seat — however the seat was taken (direct tap, or an
+    // approved seat request arriving through the poll). A failed
+    // re-mint keeps the old token; the hourly renewal retries.
+    if (wasOnSeat != (mySeat != null)) {
+      unawaited(rtc?.refreshToken());
+    }
     // Moderator mute must silence the voice, not just the icon: if the
     // server says my seat is muted but my mic is still live, mute it now.
     // (Audit fix, Vinay 2026-11-20 — the mic-off icon flipped but the
@@ -2432,6 +2441,7 @@ class _RoomScreenState extends State<RoomScreen>
       candidate = AgoraRtcAdapter(
         apiBase: Uri.parse(BackendApi.origin),
         channelType: 'party',
+        deviceKey: BackendApi.deviceKey ?? '',
       );
     } else {
       candidate = LocalRtcAdapter();

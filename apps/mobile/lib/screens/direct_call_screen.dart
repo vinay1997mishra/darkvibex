@@ -92,7 +92,11 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
       return;
     }
     setState(() => joining = true);
-    final adapter = AgoraRtcAdapter(apiBase: Uri.parse(BackendApi.origin), channelType: 'call');
+    final adapter = AgoraRtcAdapter(
+      apiBase: Uri.parse(BackendApi.origin),
+      channelType: 'call',
+      deviceKey: BackendApi.deviceKey ?? '',
+    );
     try {
       await adapter.join(
         'call-${widget.callId}',

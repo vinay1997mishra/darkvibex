@@ -16,6 +16,10 @@ abstract interface class RtcAdapter {
   Future<void> leave();
   Future<void> setMicPublished(bool enabled);
   Future<void> setRemoteAudioEnabled(bool enabled);
+
+  /// Re-mint the voice token now (e.g. the user's seat changed, and
+  /// the server mints different privileges per seat).
+  Future<void> refreshToken();
 }
 
 class LocalRtcAdapter implements RtcAdapter {
@@ -63,6 +67,9 @@ class LocalRtcAdapter implements RtcAdapter {
 
   @override
   Future<void> setRemoteAudioEnabled(bool enabled) async {}
+
+  @override
+  Future<void> refreshToken() async {}
 
   void dispose() => _speakingLevels.dispose();
 }

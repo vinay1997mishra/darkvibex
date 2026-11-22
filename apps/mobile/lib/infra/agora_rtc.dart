@@ -13,11 +13,17 @@ class AgoraRtcAdapter implements RtcAdapter {
   AgoraRtcAdapter({
     required this.apiBase,
     this.channelType = 'party',
+    this.deviceKey = '',
     HttpClient? httpClient,
   }) : _httpClient = httpClient ?? HttpClient();
 
   final Uri apiBase;
   final String channelType;
+  // The device key the server's device-ban check needs (Agora audit
+  // 2026-11-22): the token fetch used to send no x-device-id, so the
+  // fetch-level device check never ran for it and a banned device
+  // could still mint voice tokens.
+  final String deviceKey;
   final HttpClient _httpClient;
   RtcEngine? _engine;
   String _channel = '';
@@ -264,6 +270,14 @@ class AgoraRtcAdapter implements RtcAdapter {
     });
   }
 
+  /// Re-mint the voice token now (seat changes): the server mints
+  /// listener-tier (join-only) tokens for seatless members and full
+  /// tokens for seated members and the owner, so the token must follow
+  /// the seat. A failed re-mint keeps the old token; the hourly
+  /// renewal retries (Agora audit 2026-11-22).
+  @override
+  Future<void> refreshToken() => _renewToken();
+
   Future<void> _renewToken() async {
     if (_state != RtcConnectionState.joined || _authToken.isEmpty) return;
     try {
@@ -290,6 +304,8 @@ class AgoraRtcAdapter implements RtcAdapter {
     );
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_authToken');
+    final device = deviceKey.trim();
+    if (device.isNotEmpty) request.headers.set('x-device-id', device);
     request.write(jsonEncode(<String, dynamic>{
       'room_id': roomId,
       'room_type': channelType,
