@@ -738,7 +738,7 @@ async function saveUserProfile(){
 }
 async function saveModeration(){if(!state.selectedUser)return;if(!can("users.moderation"))return toast("Moderation permission required",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
 async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim();if(!/^\d{8}$/.test(publicId)||Number(publicId)<10000001)return toast("Public ID must be between 10000001 and 99999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
-async function applyWallet(){if(!state.selectedUser)return;if(!can("users.wallet.adjust"))return toast("Wallet adjustment permission required",false);const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
+async function applyWallet(){if(!state.selectedUser)return;if(!can("users.wallet.adjust"))return toast("Wallet adjustment permission required",false);const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);try{await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});}catch(e){if(e.message==="insufficient_treasury_balance")return toast("Treasury balance is too low — top up the treasury first (Wallets / Treasury view)",false);throw e;}$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
 async function applyRoleWallet(){
   if(!state.selectedUser)return;
   const walletType=$("#roleWalletType").value;
@@ -811,7 +811,7 @@ async function treasuryAction(action){
   // so a double-click / retry pays the user once, not twice.
   if(action==="send")payload.idempotency_key=crypto.randomUUID?crypto.randomUUID():"treasury-"+Date.now()+"-"+Math.random().toString(36).slice(2);
   if(action==="send"&&!payload.user_id)return toast("Target user ID is required",false);
-  await api("/api/owner/treasury",{method:"POST",body:JSON.stringify(payload)});
+  try{await api("/api/owner/treasury",{method:"POST",body:JSON.stringify(payload)});}catch(e){if(e.message==="insufficient_treasury_balance")return toast("Treasury balance is too low — top up the treasury first",false);throw e;}
   $("#treasuryAmount").value="";
   if(action!=="send")$("#treasuryUserId").value="";
   toast(action==="send"?"Treasury coins sent":"Treasury updated");
@@ -1941,7 +1941,7 @@ async function loadPricingOverrides(){
     updatePricingFreeState();
   });
   $$("[data-pricing-delete-user]").forEach(b=>b.onclick=async()=>{
-    if(!can("policies.save"))return toast("Policies write permission required",false);
+    if(!can("pricing.delete"))return toast("Pricing delete permission required",false);
     if(!confirm("Remove this per-user pricing override?"))return;
     await api("/api/owner/pricing-overrides/"+encodeURIComponent(b.dataset.pricingDeleteUser)+"/"+encodeURIComponent(b.dataset.pricingDeleteKind)+"/"+encodeURIComponent(b.dataset.pricingDeleteItem),{method:"DELETE"});
     toast("Pricing override removed");
@@ -1949,7 +1949,7 @@ async function loadPricingOverrides(){
   });
 }
 async function savePricingOverride(){
-  if(!can("policies.save"))return toast("Policies write permission required",false);
+  if(!can("pricing.save"))return toast("Pricing save permission required",false);
   const userId=$("#pricingUserId").value.trim();
   const kind=$("#pricingKind").value.trim();
   const itemId=$("#pricingItemId").value.trim()||"*";

@@ -1825,11 +1825,40 @@ async function handleUsers(request, db, actor, url, parts) {
     }
     // Relative update guarded by the funds check (audit 2026-11-20: the
     // old absolute SET from a stale read lost concurrent adjustments).
-    const updated = await db.prepare(
-      "UPDATE users SET coins=coins+?,diamonds=diamonds+?,updated_at=? WHERE id=? AND coins+?>=0 AND diamonds+?>=0"
-    ).bind(rawCoinDelta,rawDiamondDelta,ts,userId,rawCoinDelta,rawDiamondDelta).run();
-    if (Number(updated.meta?.changes ?? 0) !== 1) {
-      return json({ok:false,error:"invalid_balance_change"},{status:400});
+    // Vinay, 2026-11-22: a POSITIVE coin adjustment is funded by the
+    // treasury — the owner cannot mint coins from nowhere via wallet
+    // adjust. The debit, the user credit and the treasury ledger row
+    // ride ONE batch (same pattern as treasury send): if the treasury
+    // cannot cover the amount, nothing moves (409). Negative coin
+    // adjustments (taking coins away) and diamond adjustments do NOT
+    // touch the treasury — diamonds have no treasury, and removed coins
+    // simply leave circulation.
+    let treasuryAfter = null;
+    if (rawCoinDelta > 0) {
+      const batchResults = await db.batch([
+        db.prepare(
+          "UPDATE owner_treasury SET balance = balance - ?, updated_at = ? WHERE id = 'main' AND balance >= ?"
+        ).bind(rawCoinDelta, ts, rawCoinDelta),
+        db.prepare(
+          "UPDATE users SET coins=coins+?,diamonds=diamonds+?,updated_at=? WHERE id=? AND coins+?>=0 AND diamonds+?>=0 AND changes()=1"
+        ).bind(rawCoinDelta,rawDiamondDelta,ts,userId,rawCoinDelta,rawDiamondDelta),
+        db.prepare(
+          "INSERT INTO owner_treasury_ledger (id, amount, balance_after, kind, target_user_id, actor_id, note, created_at) " +
+          "SELECT ?,?,(SELECT balance FROM owner_treasury WHERE id='main'),'wallet_adjust',?,?,?,? WHERE changes()=1"
+        ).bind(id(), -rawCoinDelta, userId, actor.id, "", ts),
+      ]);
+      if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
+        return json({ok:false,error:"insufficient_treasury_balance"},{status:409});
+      }
+      const treasuryRow = await db.prepare("SELECT balance FROM owner_treasury WHERE id = 'main'").first();
+      treasuryAfter = Number(treasuryRow?.balance ?? 0);
+    } else {
+      const updated = await db.prepare(
+        "UPDATE users SET coins=coins+?,diamonds=diamonds+?,updated_at=? WHERE id=? AND coins+?>=0 AND diamonds+?>=0"
+      ).bind(rawCoinDelta,rawDiamondDelta,ts,userId,rawCoinDelta,rawDiamondDelta).run();
+      if (Number(updated.meta?.changes ?? 0) !== 1) {
+        return json({ok:false,error:"invalid_balance_change"},{status:400});
+      }
     }
     const afterRow = await db.prepare("SELECT coins,diamonds FROM users WHERE id=?").bind(userId).first();
     const coinsAfter = Number(afterRow?.coins ?? 0);
@@ -1840,8 +1869,8 @@ async function handleUsers(request, db, actor, url, parts) {
       ).bind(id(),userId,rawCoinDelta,coinsAfter,actor.id,ts).run();
     }
     await audit(db,actor,"user_wallet_adjustment","user",userId,
-      `coins=${rawCoinDelta}; diamonds=${rawDiamondDelta}`);
-    return json({ok:true,coins:coinsAfter,diamonds:diamondsAfter});
+      `coins=${rawCoinDelta}; diamonds=${rawDiamondDelta}` + (treasuryAfter == null ? "" : `; treasury_after=${treasuryAfter}`));
+    return json({ok:true,coins:coinsAfter,diamonds:diamondsAfter, ...(treasuryAfter == null ? {} : {treasury_balance: treasuryAfter})});
   }
 
   if (parts[4] === "moderation" && request.method === "POST") {
