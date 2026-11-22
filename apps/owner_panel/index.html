@@ -247,7 +247,7 @@
 
         <section class="view" data-view-panel="messaging">
           <article class="panel">
-            <div class="panel-head"><div><h2>Official Messages & Tags</h2><p>Search users, select IDs, message selected/all users, and apply custom or V Official tags.</p></div></div>
+            <div class="panel-head"><div><h2>Official Messages & Tags</h2><p>Search users, select IDs, message selected/all users, and assign a role tag to an ID.</p></div></div>
             <div class="search-row"><input id="messageUserSearch" placeholder="User ID / name" /><button id="searchMessageUsers" class="primary">Search</button></div>
             <div id="messageUserResults" class="stack compact-stack"></div>
             <p id="selectedMessageUsers" class="muted">0 selected</p>
@@ -255,13 +255,19 @@
             <div class="action-row"><button id="sendOfficialSelected" class="primary">Send to Selected</button><button id="sendOfficialAll" class="secondary">Send to All Users</button></div>
             <hr />
             <div class="form-grid">
-              <label>Tag name<input id="ownerTagName" placeholder="Custom tag" /></label>
-              <label>Tag color<input id="ownerTagColor" type="color" value="#FFD54F" /></label>
-              <label>Designation<input id="ownerTagDesignation" placeholder="For V Official" /></label>
-              <label>Type<select id="ownerTagKind"><option value="custom">Custom Tag</option><option value="v_official">V Official</option></select></label>
+              <label>Public ID<input id="ownerTagPublicId" placeholder="7-digit ID" inputmode="numeric" /></label>
             </div>
-            <button id="applyOwnerTag" class="primary">Apply Tag to Selected</button>
-            <h3>V Officials / Tags</h3><div id="ownerTagList" class="stack"></div>
+            <p class="muted">Pick a tag, then Apply — it shows on that ID at once (room chat + profile). One tag per ID; applying a new one replaces the old.</p>
+            <div id="ownerRoleTagOptions" class="role-tag-options">
+              <button type="button" class="role-tag-option" data-role-tag="coin-seller" title="Coin Seller"><img src="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/role-coin-seller.png" alt="Coin Seller" /></button>
+              <button type="button" class="role-tag-option" data-role-tag="cs" title="CS"><img src="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/role-cs.png" alt="CS" /></button>
+              <button type="button" class="role-tag-option" data-role-tag="cs-leader" title="CS Leader"><img src="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/role-cs-leader.png" alt="CS Leader" /></button>
+              <button type="button" class="role-tag-option" data-role-tag="merchant" title="Merchant"><img src="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/role-merchant.png" alt="Merchant" /></button>
+              <button type="button" class="role-tag-option" data-role-tag="admin" title="Admin"><img src="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/role-admin.png" alt="Admin" /></button>
+              <button type="button" class="role-tag-option" data-role-tag="official" title="Official"><img src="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/role-official.png" alt="Official" /></button>
+            </div>
+            <button id="applyOwnerTag" class="primary">Apply Tag to ID</button>
+            <h3>Assigned Tags</h3><div id="ownerTagList" class="stack"></div>
           </article>
         </section>
 

@@ -18,7 +18,7 @@ class RoomChatSenderHeader extends StatelessWidget {
     this.avatarUrl,
     this.avatarHeaders,
     this.vipLevel = 0,
-    this.role,
+    this.roleTag,
     this.frameAssetUrl,
     this.frameVideoUrl,
     this.onAvatarTap,
@@ -36,9 +36,10 @@ class RoomChatSenderHeader extends StatelessWidget {
   /// (VIP5-18) next to the name and the frame level.
   final int vipLevel;
 
-  /// Sender's role string (users.role), e.g. 'coin_seller'. Drives the
-  /// role tag next to the name — hidden until Vinay says show.
-  final String? role;
+  /// The owner-assigned role-tag slug for the sender, e.g.
+  /// 'coin-seller' (from the message's `role_tag`). Drives the role
+  /// tag next to the name; null = no tag assigned to this ID.
+  final String? roleTag;
 
   /// Direct URL of the sender's frame image (already resolved to a
   /// direct R2 URL by the caller). Empty/null = no frame on the avatar.
@@ -243,9 +244,9 @@ class RoomChatSenderHeader extends StatelessWidget {
                 const SizedBox(width: 4),
                 VipTagImage(vipLevel: vipLevel, fontSize: 11),
               ],
-              // Role tag — hidden until Vinay says show.
+              // Role tag (owner-assigned), sized from the 11pt name text.
               const SizedBox(width: 4),
-              RoleTagImage(role: role, fontSize: 11),
+              RoleTagImage(roleTag: roleTag, fontSize: 11),
             ],
           ),
         ),

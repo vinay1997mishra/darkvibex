@@ -684,6 +684,10 @@ async function ensureOwnerSchema(db) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(user_id,tag_id)
     )`),
+    // Role tags only (Vinay, 2026-11-23): the old custom / V Official
+    // text tags are gone — the Owner Panel assigns one of the six
+    // role-tag images per ID. Drop any pre-existing non-role-tag rows.
+    db.prepare("DELETE FROM owner_user_tags WHERE kind <> 'role_tag'"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_owner_user_tags_kind ON owner_user_tags(kind,designation,updated_at DESC)"),
     db.prepare(`CREATE TRIGGER IF NOT EXISTS owner_wallet_freeze_guard
       BEFORE UPDATE OF coins ON users
@@ -2243,29 +2247,61 @@ async function handleMessaging(request, db, actor, url, parts) {
     await audit(db,actor,"official_message","users",body.all_users===true?"all":String(recipients.length),message.slice(0,120));
     return json({ok:true,sent:recipients.length});
   }
+  // Role tags only (Vinay, 2026-11-23): drop any pre-existing custom /
+  // V Official rows on every tags call — the one-shot schema wipe only
+  // runs once per worker isolate, so it cannot be relied on here.
+  if(parts[2]==="tags"){
+    await db.prepare("DELETE FROM owner_user_tags WHERE kind <> 'role_tag'").run();
+  }
   if(parts[2]==="tags" && request.method==="POST"){
     requirePermission(actor,"tags.apply");
     const body=await bodyJson(request);
-    const userIds=Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean).slice(0,1000):[];
-    const name=String(body.name ?? "").trim().slice(0,60);
-    if(!name||userIds.length===0) return json({ok:false,error:"name_and_users_required"},{status:400});
-    const kind=String(body.kind ?? "custom").trim().slice(0,40);
-    const designation=String(body.designation ?? "").trim().slice(0,80);
-    const color=String(body.color ?? "#FFD54F").trim().slice(0,20);
-    const background=String(body.background_color ?? color).trim().slice(0,20);
-    const rawId=kind==="v_official" ? "v-official-"+designation : name;
-    const tagId=String(body.tag_id ?? rawId.toLowerCase().replace(/[^a-z0-9]+/g,"-")).slice(0,100);
+    // Role tags only (Vinay, 2026-11-23): the Owner Panel shows just the
+    // six role-tag images — no name, colour, designation or type. The
+    // panel sends a public ID (or internal ids) plus the chosen tag.
+    const ROLE_TAGS={
+      "coin-seller":"Coin Seller",
+      "cs":"CS",
+      "cs-leader":"CS Leader",
+      "merchant":"Merchant",
+      "admin":"Admin",
+      "official":"Official",
+    };
+    const roleTag=String(body.role_tag ?? "").trim().toLowerCase();
+    if(!ROLE_TAGS[roleTag]) return json({ok:false,error:"invalid_role_tag"},{status:400});
+    const userIds=new Set(Array.isArray(body.user_ids)?body.user_ids.map(String).filter(Boolean):[]);
+    const publicIds=Array.isArray(body.public_ids)
+      ? body.public_ids.map((value)=>String(value).replace(/\D/g,"")).filter(Boolean)
+      : [];
+    if(publicIds.length){
+      const variants=new Set();
+      for(const raw of publicIds){
+        const stripped=String(Number(raw));
+        variants.add(stripped);
+        variants.add(stripped.padStart(8,"0"));
+      }
+      const values=[...variants];
+      const rows=await db.prepare(
+        `SELECT id FROM users WHERE public_id IN (${values.map(() => "?").join(",")})`
+      ).bind(...values).all();
+      for(const row of rows.results ?? []) userIds.add(String(row.id));
+    }
+    const ids=[...userIds].slice(0,1000);
+    if(!ids.length) return json({ok:false,error:"users_required"},{status:400});
+    const name=ROLE_TAGS[roleTag];
+    const tagId="role-"+roleTag;
     const ts=now();
-    for(const userId of userIds){
+    for(const userId of ids){
+      // One role tag per ID: applying a new one replaces the old.
+      await db.prepare("DELETE FROM owner_user_tags WHERE user_id=? AND kind='role_tag'").bind(userId).run();
       await db.prepare(
         `INSERT INTO owner_user_tags(user_id,tag_id,name,color,kind,designation,background_color,created_at,updated_at)
-         VALUES(?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(user_id,tag_id) DO UPDATE SET name=excluded.name,color=excluded.color,kind=excluded.kind,
-           designation=excluded.designation,background_color=excluded.background_color,updated_at=excluded.updated_at`
-      ).bind(userId,tagId,name,color,kind,designation,background,ts,ts).run();
+         VALUES(?,?,?,?, 'role_tag','','',?,?)
+         ON CONFLICT(user_id,tag_id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at`
+      ).bind(userId,tagId,name,"#FFD54F",ts,ts).run();
     }
-    await audit(db,actor,"tag_apply","users",String(userIds.length),name);
-    return json({ok:true,tagged:userIds.length,name,tag_id:tagId});
+    await audit(db,actor,"tag_apply","users",String(ids.length),name);
+    return json({ok:true,tagged:ids.length,name,tag_id:tagId,role_tag:roleTag});
   }
   if(parts[2]==="tags" && request.method==="GET"){
     requirePermission(actor,"tags.view");

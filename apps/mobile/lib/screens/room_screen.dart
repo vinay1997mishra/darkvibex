@@ -4151,11 +4151,12 @@ class _RoomScreenState extends State<RoomScreen>
                                     vipLevel: activeVipLevel,
                                     fontSize: 12,
                                   ),
-                                // Role tag — hidden until Vinay says show.
-                                // profile['role'] comes from /api/users/:id,
-                                // which already selects users.role.
+                                // Role tag — shows only when the owner
+                                // activated one for this ID in the Panel.
+                                // profile['role_tag'] comes from
+                                // /api/users/:id (owner_user_tags).
                                 RoleTagImage(
-                                  role: profile['role']?.toString(),
+                                  roleTag: profile['role_tag']?.toString(),
                                   fontSize: 12,
                                 ),
                                 Text(
@@ -10369,7 +10370,7 @@ class _RoomScreenState extends State<RoomScreen>
                                     tags: profileTags,
                                     medals: profileMedals,
                                     vipLevel: senderVipLevel,
-                                    role: message['role']?.toString(),
+                                    roleTag: message['role_tag']?.toString(),
                                     // Animal frame still (VIP5-18) with its
                                     // VAP alpha-video; the frame animates
                                     // once and then shows the still.

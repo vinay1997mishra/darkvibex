@@ -236,22 +236,52 @@ test("Notifications create, list, mark read and delete; staff is blocked", async
 
 // ---- Tags ----
 
-test("Tags apply to users, list and remove", async () => {
+test("Role tags apply by user id or public ID, replace per user, list and remove", async () => {
   const { db, call } = await setup();
   await makeUser(db, "u1");
   await makeUser(db, "u2");
+  await db.prepare("UPDATE users SET public_id=? WHERE id=?").bind("1234567", "u1").run();
+
+  // An old custom tag from before the role-tag switch must be wiped
+  // the first time the owner tags API runs (Vinay: old custom tags
+  // are gone).
+  await db.prepare(
+    "INSERT INTO owner_user_tags(user_id,tag_id,name,color,kind,designation,background_color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)"
+  ).bind("u1", "old-custom", "Old Custom", "#FFD54F", "custom", "", "", Date.now(), Date.now()).run();
+
+  const bad = await call("/api/owner/tags", {
+    method: "POST", token: OWNER_TOKEN,
+    body: { user_ids: ["u1"], role_tag: "super-admin" },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.error, "invalid_role_tag");
 
   const applied = await call("/api/owner/tags", {
     method: "POST", token: OWNER_TOKEN,
-    body: { user_ids: ["u1", "u2"], name: "VIP Tester", color: "#FFD54F", kind: "custom" },
+    body: { user_ids: ["u2"], public_ids: ["1234567"], role_tag: "coin-seller" },
   });
   assert.equal(applied.status, 200);
   assert.equal(applied.body.tagged, 2);
+  assert.equal(applied.body.tag_id, "role-coin-seller");
+  assert.equal(applied.body.role_tag, "coin-seller");
 
   const listed = await call("/api/owner/tags", { token: OWNER_TOKEN });
+  // The legacy custom row was wiped; only the two role tags remain.
   assert.equal(listed.body.tags.length, 2);
+  assert.ok(listed.body.tags.every((t) => t.kind === "role_tag"));
 
-  const removed = await call(`/api/owner/tags/u1/${applied.body.tag_id}`, {
+  // Applying a different tag to the same ID replaces the old one —
+  // one role tag per ID.
+  const replaced = await call("/api/owner/tags", {
+    method: "POST", token: OWNER_TOKEN,
+    body: { user_ids: ["u1"], role_tag: "official" },
+  });
+  assert.equal(replaced.status, 200);
+  const afterReplace = await call("/api/owner/tags", { token: OWNER_TOKEN });
+  assert.equal(afterReplace.body.tags.length, 2);
+  assert.equal(afterReplace.body.tags.find((t) => t.user_id === "u1").tag_id, "role-official");
+
+  const removed = await call("/api/owner/tags/u1/role-official", {
     method: "DELETE", token: OWNER_TOKEN,
   });
   assert.equal(removed.status, 200);
