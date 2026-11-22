@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svga/flutter_svga.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
@@ -985,6 +986,7 @@ class _RoomScreenState extends State<RoomScreen>
         'coin_cost': event['coin_cost'] ?? 0,
         'video_key': event['video_key']?.toString() ?? '',
         'glb_key': event['glb_key']?.toString() ?? '',
+        'svga_key': event['svga_key']?.toString() ?? '',
         'asset_key': event['asset_key']?.toString() ?? '',
       };
       final receiverId = event['receiver_user_id']?.toString() ?? '';
@@ -994,7 +996,17 @@ class _RoomScreenState extends State<RoomScreen>
         if (!mounted || receiverId.isEmpty) return;
         final videoKey = gift['video_key']?.toString() ?? '';
         final glbKey = gift['glb_key']?.toString() ?? '';
-        if (videoKey.isNotEmpty) {
+        final svgaKey = gift['svga_key']?.toString() ?? '';
+        // Dragon gifts skip the full-screen SVGA dialog (Vinay,
+        // 2026-11-22): they fly in the screen centre, then to the DP.
+        if (svgaKey.isNotEmpty && _isBigGift(gift) && !_isDragonGift(gift)) {
+          await _playGiftSvga(
+            gift,
+            receiverId: receiverId,
+            svgaKey: svgaKey,
+            senderName: senderName,
+          );
+        } else if (videoKey.isNotEmpty) {
           await _playGiftVideo(
             gift,
             receiverId: receiverId,
@@ -2462,6 +2474,7 @@ class _RoomScreenState extends State<RoomScreen>
       'count': giftCount,
       'video_key': verifiedEvent['video_key']?.toString() ?? '',
       'glb_key': verifiedEvent['glb_key']?.toString() ?? '',
+      'svga_key': verifiedEvent['svga_key']?.toString() ?? '',
       'asset_key': verifiedEvent['asset_key']?.toString() ?? '',
     };
     final senderName = verifiedEvent['sender_name']?.toString() ?? 'User';
@@ -2470,7 +2483,12 @@ class _RoomScreenState extends State<RoomScreen>
       if (!mounted) return;
       final videoKey = gift['video_key']?.toString() ?? '';
       final glbKey = gift['glb_key']?.toString() ?? '';
-      if (videoKey.isNotEmpty) {
+      final svgaKey = gift['svga_key']?.toString() ?? '';
+      // Dragon gifts skip the full-screen SVGA dialog (Vinay,
+      // 2026-11-22): they fly in the screen centre, then to the DP.
+      if (svgaKey.isNotEmpty && _isBigGift(gift) && !_isDragonGift(gift)) {
+        await _playGiftSvga(gift, receiverId: receiverId, svgaKey: svgaKey, senderName: senderName);
+      } else if (videoKey.isNotEmpty) {
         await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey, senderName: senderName);
       } else if (glbKey.isNotEmpty) {
         await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
@@ -6948,7 +6966,11 @@ class _RoomScreenState extends State<RoomScreen>
         giftEffectSequence++;
       });
     }
-    giftEffectTimer = Timer(const Duration(milliseconds: 2200), () {
+    // Dragon gifts (Vinay, 2026-11-22): the dragon flies in the
+    // centre for 2 seconds, then 1 second to the receiver's DP —
+    // the effect lives 3.2s in total, not 2.2s.
+    final dragonEffect = _isDragonGift(gift);
+    giftEffectTimer = Timer(Duration(milliseconds: dragonEffect ? 3200 : 2200), () {
       if (!mounted) return;
       setState(() {
         activeGiftEffect = null;
@@ -7081,23 +7103,59 @@ class _RoomScreenState extends State<RoomScreen>
     final assetKey = gift['asset_key']?.toString().trim() ?? '';
     final videoKey = gift['video_key']?.toString().trim() ?? '';
     final glbKey = gift['glb_key']?.toString().trim() ?? '';
+    final svgaKey = gift['svga_key']?.toString().trim() ?? '';
+    // Animation intensity (Vinay, 2026-11-22): gifts of 20,000 coins and
+    // above get the FULL animation effect (SVGA plays in the centre);
+    // gifts below 20,000 coins get only 20% animation — a small pop,
+    // no SVGA, static image only. Judged on the gift's UNIT price
+    // (coin_cost / count), not the combo total.
+    final giftCostTotal =
+        int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
+    final giftCount = int.tryParse(gift['count']?.toString() ?? '') ?? 1;
+    final giftCost = giftCount > 0 ? giftCostTotal ~/ giftCount : giftCostTotal;
+    final fullAnimation = giftCost >= 20000 && svgaKey.isNotEmpty;
+    // Dragon gifts (Vinay, 2026-11-22): BIG in the screen centre,
+    // wings flapping for 2 seconds, then flying to the receiver's DP.
+    final isDragon = _isDragonGift(gift);
     return IgnorePointer(
       child: TweenAnimationBuilder<double>(
         key: ValueKey<int>(giftEffectSequence),
         tween: Tween<double>(begin: 0, end: 1),
-        duration: const Duration(milliseconds: 1450),
+        duration: Duration(milliseconds: isDragon ? 3000 : 1450),
         curve: Curves.easeOutCubic,
         builder: (context, value, child) {
-          final fade = value < .72
+          // Small gifts (Vinay, 2026-11-22): the gift goes to the
+          // screen centre, STAYS there showing its animation, then
+          // flies to the receiver's DP. Hold phase = first 45% of the
+          // tween stays at the centre (pop-in only); flight starts
+          // after that. Dragons hold longer: 2 of the 3 seconds in
+          // the centre, wings flapping, then 1 second to the DP.
+          final holdEnd = isDragon ? 0.67 : 0.45;
+          final flight = value < holdEnd
+              ? 0.0
+              : ((value - holdEnd) / (1 - holdEnd))
+                  .clamp(0.0, 1.0)
+                  .toDouble();
+          final fade = flight < .72
               ? 1.0
-              : ((1 - value) / .28).clamp(0.0, 1.0).toDouble();
-          final scale = .38 + Curves.easeOutBack.transform(value) * .86;
-          final rise = math.sin(math.pi * value) * seatDiameter * .42;
+              : ((1 - flight) / .28).clamp(0.0, 1.0).toDouble();
+          // Full animation: the SVGA does its own pop-in, so the
+          // Flutter scale stays at 1.0 during the hold. Dragons
+          // (Vinay, 2026-11-22): shrink while flying to the DP —
+          // the dragon gets smaller as it goes to the receiver's DP.
+          // 20% animation: only a small pop (0.8 -> 1.0) instead of
+          // the full pop.
+          final scale = fullAnimation
+              ? (isDragon ? 1.0 - flight * 0.8 : 1.0)
+              : value < holdEnd
+                  ? .8 + Curves.easeOutBack.transform(value / holdEnd) * .2
+                  : 1.0;
+          final rise = math.sin(math.pi * flight) * seatDiameter * .42;
           final origin = _giftFlightOriginOffset(context);
           return Transform.translate(
             offset: Offset(
-              origin.dx * (1 - value),
-              origin.dy * (1 - value) - rise,
+              origin.dx * (1 - flight),
+              origin.dy * (1 - flight) - rise,
             ),
             child: Transform.scale(
               scale: scale,
@@ -7119,23 +7177,42 @@ class _RoomScreenState extends State<RoomScreen>
                       ),
                     ],
                   ),
-                  child: assetKey.isNotEmpty
+                  child: fullAnimation
                       ? SizedBox(
-                          width: seatDiameter * .62,
-                          height: seatDiameter * .62,
-                          child: GiftMediaPreview(
-                            backend: widget.state.backend,
-                            videoKey: videoKey,
-                            assetKey: assetKey,
-                            glbKey: glbKey,
-                            emoji: emoji,
-                            fit: BoxFit.contain,
+                          // Dragon: BIG in the centre (85% of screen
+                          // width), looping so the wings keep flapping
+                          // while it flies to the DP. Other gifts:
+                          // (Vinay, 2026-11-22: "20% bada kar de") —
+                          // seat-sized, 20% bigger than before
+                          // (0.62 -> 0.744), plays once.
+                          width: isDragon
+                              ? MediaQuery.of(context).size.width * .85
+                              : seatDiameter * .744,
+                          height: isDragon
+                              ? MediaQuery.of(context).size.width * .85
+                              : seatDiameter * .744,
+                          child: SVGAEasyPlayer(
+                            resUrl: widget.state.backend.fileUrl(svgaKey),
+                            loops: isDragon,
                           ),
                         )
-                      : Text(
-                          emoji,
-                          style: TextStyle(fontSize: seatDiameter * .56),
-                        ),
+                      : assetKey.isNotEmpty
+                          ? SizedBox(
+                              width: seatDiameter * .62,
+                              height: seatDiameter * .62,
+                              child: GiftMediaPreview(
+                                backend: widget.state.backend,
+                                videoKey: videoKey,
+                                assetKey: assetKey,
+                                glbKey: glbKey,
+                                emoji: emoji,
+                                fit: BoxFit.contain,
+                              ),
+                            )
+                          : Text(
+                              emoji,
+                              style: TextStyle(fontSize: seatDiameter * .56),
+                            ),
                 ),
               ),
             ),
@@ -8410,6 +8487,155 @@ class _RoomScreenState extends State<RoomScreen>
     }
   }
 
+  /// Big-gift threshold (Vinay, 2026-11-22): big gifts play full-screen
+  /// (SVGA / video / GLB dialog); small gifts play at the screen centre,
+  /// pause, then fly to the receiver's DP. 500,000 coins (5 lakh) —
+  /// gifts under 5 lakh are small, 5 lakh and above are big.
+  static const int _bigGiftCoinThreshold = 500000;
+
+  bool _isBigGift(Map<String, dynamic> gift) {
+    final cost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
+    return cost >= _bigGiftCoinThreshold;
+  }
+
+  /// Dragon gifts (Vinay, 2026-11-22): Fire Dragon and Cosmic Dragon
+  /// Palace do NOT play full-screen. They fly in the CENTRE of the
+  /// screen, wings flapping, for 2-3 seconds, then fly to the
+  /// receiver's DP — like a small gift, but BIG and with the wing-flap
+  /// SVGA animation. (Golden Dragon was REMOVED from the catalog by
+  /// Vinay, 2026-11-22: "Tu is dragon ko hta de ye rahega hi nhi".)
+  static const Set<String> _dragonGiftIds = <String>{
+    'fire-dragon',
+    'cosmic-dragon-palace',
+  };
+
+  bool _isDragonGift(Map<String, dynamic> gift) {
+    return _dragonGiftIds.contains(gift['id']?.toString());
+  }
+
+  /// Plays an SVGA gift animation (Vinay, 2026-11-22): SVGA files are
+  /// made from pictures + animation keyframes (scale, move, fade,
+  /// sparkle), NOT video files. The SVGA background is transparent, so
+  /// the dialog is transparent too — the room shows through behind the
+  /// gift, unlike the black video dialog. Plays once, then closes.
+  /// Falls back to the simple effect if the SVGA cannot load.
+  Future<void> _playGiftSvga(
+    Map<String, dynamic> gift, {
+    required String receiverId,
+    required String svgaKey,
+    String? senderName,
+  }) async {
+    // SVGA gifts respect the Gift Effects toggle (Vinay, 2026-11-22):
+    // with Gift Effects off, no gift animation plays for this user.
+    if (!mounted || !effectsEnabled || !giftEffectsEnabled) return;
+    try {
+      final receiver = membersBySeat.values.firstWhere(
+        (member) => member['user_id']?.toString() == receiverId,
+        orElse: () => <String, dynamic>{},
+      );
+      final receiverName = (receiver['display_name'] ??
+              receiver['name'] ??
+              receiver['nickname'] ??
+              (receiverId == widget.state.userId
+                  ? widget.state.displayName
+                  : receiverId))
+          .toString();
+      final giftName = (gift['name'] ?? 'Gift').toString();
+      final senderDisplayName = senderName?.trim().isNotEmpty == true
+          ? senderName!.trim()
+          : widget.state.displayName;
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        builder: (dialogContext) {
+          var closeTriggered = false;
+          return PopScope(
+            canPop: true,
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: SafeArea(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Dragon flies at the TOP of the screen (Vinay,
+                    // 2026-11-22: "Screen ke uper udega ye") — the
+                    // SVGA sits at the top, below the sender card,
+                    // instead of in the screen centre.
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 96),
+                        child: SVGAEasyPlayer(
+                          resUrl: widget.state.backend.fileUrl(svgaKey),
+                          loops: false,
+                          onFinished: () {
+                            if (!closeTriggered &&
+                                Navigator.of(dialogContext).canPop()) {
+                              closeTriggered = true;
+                              Navigator.of(dialogContext).pop();
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 14,
+                      left: 16,
+                      right: 16,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xB8000000),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$senderDisplayName sent $giftName',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 17,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'To: $receiverName',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        tooltip: 'Close gift animation',
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } catch (_) {
+      // Keep gift sending usable if SVGA playback is temporarily
+      // unavailable.
+      if (mounted) _playGiftEffect(gift, receiverId: receiverId);
+    }
+  }
+
   Future<bool> _sendGiftByDefinition(
     Map<String, dynamic> gift,
     String receiverId, {
@@ -8506,6 +8732,9 @@ class _RoomScreenState extends State<RoomScreen>
       final glbKey = (gift['glb_key'] ?? gift['glbKey'] ?? '')
           .toString()
           .trim();
+      final svgaKey = (gift['svga_key'] ?? gift['svgaKey'] ?? '')
+          .toString()
+          .trim();
       final receiver = membersBySeat.values.firstWhere(
         (member) => member['user_id']?.toString() == receiverId,
         orElse: () => <String, dynamic>{},
@@ -8531,7 +8760,11 @@ class _RoomScreenState extends State<RoomScreen>
         text: '🎁 ${widget.state.displayName} sent $giftName to $receiverName$winSuffix',
       ));
       if (playEffect) {
-        if (videoKey.isNotEmpty) {
+        // Dragon gifts skip the full-screen SVGA dialog (Vinay,
+        // 2026-11-22): they fly in the screen centre, then to the DP.
+        if (svgaKey.isNotEmpty && _isBigGift(displayGift) && !_isDragonGift(displayGift)) {
+          await _playGiftSvga(displayGift, receiverId: receiverId, svgaKey: svgaKey);
+        } else if (videoKey.isNotEmpty) {
           await _playGiftVideo(displayGift, receiverId: receiverId, videoKey: videoKey);
         } else if (glbKey.isNotEmpty) {
           await _playGiftGlb(displayGift, receiverId: receiverId, glbKey: glbKey);

@@ -7,15 +7,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🌹",
     "coin_cost": 100,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "crystal",
-    "name": "Crystal",
-    "emoji": "💎",
-    "coin_cost": 500,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "svga_key": "gifts/svga/rose.svga",
+    "asset_key": "gifts/normal-3d/rose.png"
   },
   {
     "id": "crown",
@@ -23,7 +17,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "👑",
     "coin_cost": 1000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/crown.png",
+    "svga_key": "gifts/svga/crown.svga"
   },
   {
     "id": "hot-biryani",
@@ -31,7 +27,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🍲",
     "coin_cost": 50000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/royal-biryani.png",
+    "svga_key": "gifts/svga/royal-biryani.svga"
   },
   {
     "id": "rose-bouquet",
@@ -39,7 +37,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "💐",
     "coin_cost": 150000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/rose-bouquet.png",
+    "svga_key": "gifts/svga/rose-bouquet.svga"
   },
   {
     "id": "steaming-dim-sum",
@@ -47,7 +47,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🥟",
     "coin_cost": 168000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/steaming-dim-sum.png",
+    "svga_key": "gifts/svga/steaming-dim-sum.svga"
   },
   {
     "id": "royal-saffron-feast",
@@ -55,7 +57,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🍛",
     "coin_cost": 208000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/royal-saffron-feast.png",
+    "svga_key": "gifts/svga/royal-saffron-feast.svga"
   },
   {
     "id": "chocolate-fountain",
@@ -63,7 +67,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🍫",
     "coin_cost": 263000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/chocolate-fountain.png",
+    "svga_key": "gifts/svga/chocolate-fountain.svga"
   },
   {
     "id": "sushi-palace",
@@ -71,7 +77,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🍣",
     "coin_cost": 332000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/sushi-palace.png",
+    "svga_key": "gifts/svga/sushi-palace.svga"
   },
   {
     "id": "royal-cake",
@@ -79,23 +87,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🎂",
     "coin_cost": 412000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "golden-dragon",
-    "name": "Golden Dragon",
-    "emoji": "🐉",
-    "coin_cost": 504000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "phoenix",
-    "name": "Phoenix",
-    "emoji": "🦅",
-    "coin_cost": 607000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/royal-cake.png",
+    "svga_key": "gifts/svga/royal-cake.svga"
   },
   {
     "id": "diamond-crown",
@@ -103,15 +97,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "👑",
     "coin_cost": 720000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "emerald-ring",
-    "name": "Emerald Ring",
-    "emoji": "💍",
-    "coin_cost": 842000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/diamond-crown.png",
+    "svga_key": "gifts/svga/diamond-crown.svga"
   },
   {
     "id": "crystal-swan",
@@ -119,15 +107,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🦢",
     "coin_cost": 973000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "royal-carriage",
-    "name": "Royal Carriage",
-    "emoji": "🎠",
-    "coin_cost": 1114000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/crystal-swan.png",
+    "svga_key": "gifts/svga/crystal-swan.svga"
   },
   {
     "id": "diamond-yacht",
@@ -135,7 +117,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🛥️",
     "coin_cost": 1262000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/diamond-yacht.png",
+    "svga_key": "gifts/svga/diamond-yacht.svga"
   },
   {
     "id": "luxury-jet",
@@ -143,7 +127,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "✈️",
     "coin_cost": 1420000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/luxury-jet.png",
+    "svga_key": "gifts/svga/luxury-jet.svga"
   },
   {
     "id": "star-castle",
@@ -151,31 +137,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🏰",
     "coin_cost": 1585000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "moon-palace",
-    "name": "Moon Palace",
-    "emoji": "🌙",
-    "coin_cost": 1758000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "rainbow-waterfall",
-    "name": "Rainbow Waterfall",
-    "emoji": "🌊",
-    "coin_cost": 1938000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "golden-peacock",
-    "name": "Golden Peacock",
-    "emoji": "🦚",
-    "coin_cost": 2126000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/star-castle.png",
+    "svga_key": "gifts/svga/star-castle.svga"
   },
   {
     "id": "aurora",
@@ -183,55 +147,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🌌",
     "coin_cost": 2322000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "galaxy-garden",
-    "name": "Galaxy Garden",
-    "emoji": "🌷",
-    "coin_cost": 2525000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "enchanted-forest",
-    "name": "Enchanted Forest",
-    "emoji": "🌳",
-    "coin_cost": 2734000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "ocean-pearl",
-    "name": "Ocean Pearl",
-    "emoji": "🦪",
-    "coin_cost": 2951000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "magic-butterfly",
-    "name": "Magic Butterfly",
-    "emoji": "🦋",
-    "coin_cost": 3174000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "royal-tiger",
-    "name": "Royal Tiger",
-    "emoji": "🐯",
-    "coin_cost": 3405000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "snow-leopard",
-    "name": "Snow Leopard",
-    "emoji": "🐆",
-    "coin_cost": 3641000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/aurora.png",
+    "svga_key": "gifts/svga/aurora.svga"
   },
   {
     "id": "golden-lion",
@@ -239,7 +157,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🦁",
     "coin_cost": 3885000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/golden-lion.png",
+    "svga_key": "gifts/svga/golden-lion.svga"
   },
   {
     "id": "fire-dragon",
@@ -247,159 +167,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🐲",
     "coin_cost": 4134000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "ice-dragon",
-    "name": "Ice Dragon",
-    "emoji": "🐉",
-    "coin_cost": 4390000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "celestial-horse",
-    "name": "Celestial Horse",
-    "emoji": "🐎",
-    "coin_cost": 4652000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "diamond-fountain",
-    "name": "Diamond Fountain",
-    "emoji": "⛲",
-    "coin_cost": 4921000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "royal-opera",
-    "name": "Royal Opera",
-    "emoji": "🎭",
-    "coin_cost": 5195000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "sky-lanterns",
-    "name": "Sky Lanterns",
-    "emoji": "🏮",
-    "coin_cost": 5476000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "meteor-shower",
-    "name": "Meteor Shower",
-    "emoji": "☄️",
-    "coin_cost": 5762000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "golden-temple",
-    "name": "Golden Temple",
-    "emoji": "🛕",
-    "coin_cost": 6055000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "rainbow-castle",
-    "name": "Rainbow Castle",
-    "emoji": "🏰",
-    "coin_cost": 6353000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "cloud-kingdom",
-    "name": "Cloud Kingdom",
-    "emoji": "☁️",
-    "coin_cost": 6657000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "space-shuttle",
-    "name": "Space Shuttle",
-    "emoji": "🚀",
-    "coin_cost": 6966000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "royal-ferrari",
-    "name": "Royal Ferrari",
-    "emoji": "🏎️",
-    "coin_cost": 7281000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "crystal-palace",
-    "name": "Crystal Palace",
-    "emoji": "🏛️",
-    "coin_cost": 7602000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "galaxy-whale",
-    "name": "Galaxy Whale",
-    "emoji": "🐋",
-    "coin_cost": 7928000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "solar-crown",
-    "name": "Solar Crown",
-    "emoji": "☀️",
-    "coin_cost": 8260000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "infinity-rose",
-    "name": "Infinity Rose",
-    "emoji": "🌹",
-    "coin_cost": 8598000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "diamond-universe",
-    "name": "Diamond Universe",
-    "emoji": "💎",
-    "coin_cost": 8940000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "phoenix-kingdom",
-    "name": "Phoenix Kingdom",
-    "emoji": "🦅",
-    "coin_cost": 9288000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "dragon-empire",
-    "name": "Dragon Empire",
-    "emoji": "🐲",
-    "coin_cost": 9641000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "ultimate-galaxy",
-    "name": "Ultimate Galaxy",
-    "emoji": "🌌",
-    "coin_cost": 10000000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/fire-dragon.png",
+    "svga_key": "gifts/svga/fire-dragon.svga"
   },
   {
     "id": "cp-heart",
@@ -554,20 +324,14 @@ export const BASE_GIFT_CATALOG = [
     "category": "cp"
   },
   {
-    "id": "marigold-garland",
-    "name": "Marigold Garland",
-    "emoji": "🌼",
-    "coin_cost": 200000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
     "id": "matar-paneer",
     "name": "Matar Paneer",
     "emoji": "🍲",
     "coin_cost": 300000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/matar-paneer.png",
+    "svga_key": "gifts/svga/matar-paneer.svga"
   },
   {
     "id": "royal-lantern",
@@ -575,23 +339,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🏮",
     "coin_cost": 500000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "garba-duet",
-    "name": "Garba Duet",
-    "emoji": "💃",
-    "coin_cost": 1200000,
-    "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "kebab-platter",
-    "name": "Kebab Platter",
-    "emoji": "🍢",
-    "coin_cost": 500000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/royal-lantern.png",
+    "svga_key": "gifts/svga/royal-lantern.svga"
   },
   {
     "id": "heart-crystal",
@@ -599,15 +349,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "💗",
     "coin_cost": 800000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "dandiya-night",
-    "name": "Dandiya Night",
-    "emoji": "🕺",
-    "coin_cost": 1500000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/heart-crystal.png",
+    "svga_key": "gifts/svga/heart-crystal.svga"
   },
   {
     "id": "diya-blessing",
@@ -615,15 +359,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🪔",
     "coin_cost": 250000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "royal-thali",
-    "name": "Royal Thali",
-    "emoji": "🍽️",
-    "coin_cost": 900000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/diya-blessing.png",
+    "svga_key": "gifts/svga/diya-blessing.svga"
   },
   {
     "id": "magic-lamp",
@@ -631,15 +369,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🪔",
     "coin_cost": 2000000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "rainbow-gemstones",
-    "name": "Rainbow Gemstones",
-    "emoji": "💎",
-    "coin_cost": 600000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/magic-lamp.png",
+    "svga_key": "gifts/svga/magic-lamp.svga"
   },
   {
     "id": "flower-swing",
@@ -647,15 +379,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🌺",
     "coin_cost": 1100000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "crown-shower",
-    "name": "Crown Shower",
-    "emoji": "👑",
-    "coin_cost": 2500000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/flower-swing.png",
+    "svga_key": "gifts/svga/flower-swing.svga"
   },
   {
     "id": "palace-feast",
@@ -663,15 +389,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🍛",
     "coin_cost": 3000000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "wedding-stage",
-    "name": "Wedding Stage",
-    "emoji": "💒",
-    "coin_cost": 4000000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/palace-feast.png",
+    "svga_key": "gifts/svga/palace-feast.svga"
   },
   {
     "id": "peacock-dance",
@@ -679,7 +399,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🦚",
     "coin_cost": 5000000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/peacock-dance.png",
+    "svga_key": "gifts/svga/peacock-dance.svga"
   },
   {
     "id": "royal-elephant",
@@ -687,7 +409,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🐘",
     "coin_cost": 6000000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/royal-elephant.png",
+    "svga_key": "gifts/svga/royal-elephant.svga"
   },
   {
     "id": "maharaja-carriage",
@@ -695,15 +419,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🎠",
     "coin_cost": 8000000,
     "vip_level": 0,
-    "category": "normal"
-  },
-  {
-    "id": "firework-celebration",
-    "name": "Firework Celebration",
-    "emoji": "🎆",
-    "coin_cost": 10000000,
-    "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/maharaja-carriage.png",
+    "svga_key": "gifts/svga/maharaja-carriage.svga"
   },
   {
     "id": "galaxy-celebration",
@@ -711,7 +429,9 @@ export const BASE_GIFT_CATALOG = [
     "emoji": "🌌",
     "coin_cost": 12000000,
     "vip_level": 0,
-    "category": "normal"
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/galaxy-celebration.png",
+    "svga_key": "gifts/svga/galaxy-celebration.svga"
   },
   {
     "id": "glass-cherry",
@@ -1297,6 +1017,56 @@ export const BASE_GIFT_CATALOG = [
     "vip_level": 0,
     "category": "lucky",
     "asset_key": "gifts/glass/phoenix.png"
+  },
+  {
+    "id": "royal-galaxy-castle",
+    "name": "Royal Galaxy Castle",
+    "emoji": "🏰",
+    "coin_cost": 15000000,
+    "vip_level": 0,
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/royal-galaxy-castle.png",
+    "svga_key": "gifts/svga/royal-galaxy-castle.svga"
+  },
+  {
+    "id": "diamond-universe-throne",
+    "name": "Diamond Universe Throne",
+    "emoji": "👑",
+    "coin_cost": 20000000,
+    "vip_level": 0,
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/diamond-universe-throne.png",
+    "svga_key": "gifts/svga/diamond-universe-throne.svga"
+  },
+  {
+    "id": "golden-phoenix-empire",
+    "name": "Golden Phoenix Empire",
+    "emoji": "🔥",
+    "coin_cost": 25000000,
+    "vip_level": 0,
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/golden-phoenix-empire.png",
+    "svga_key": "gifts/svga/golden-phoenix-empire.svga"
+  },
+  {
+    "id": "cosmic-dragon-palace",
+    "name": "Cosmic Dragon Palace",
+    "emoji": "🐉",
+    "coin_cost": 28000000,
+    "vip_level": 0,
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/cosmic-dragon-palace.png",
+    "svga_key": "gifts/svga/cosmic-dragon-palace.svga"
+  },
+  {
+    "id": "ultimate-royal-universe",
+    "name": "Ultimate Royal Universe",
+    "emoji": "🌌",
+    "coin_cost": 30000000,
+    "vip_level": 0,
+    "category": "normal",
+    "asset_key": "gifts/normal-3d/ultimate-royal-universe.png",
+    "svga_key": "gifts/svga/ultimate-royal-universe.svga"
   }
 ];
 
