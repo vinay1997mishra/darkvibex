@@ -229,7 +229,7 @@ const viewPermissionMap = {
   vip:["vip.view","vip.save","vip.reset"],
   gifts:["gifts.view","gifts.save","gifts.remove"],
   assets:["assets.view","assets.save","assets.remove"],
-  store:["store.view","store.save","store.remove"],
+  store:["store.view","assets.view","gifts.view","themes.global.view"],
   catalog:["catalog.view","catalog.save","catalog.remove"],
   settings:["settings.view","settings.feature.voice","settings.feature.gifts","settings.feature.games","settings.feature.messages","settings.feature.room_creation","settings.feature.aladdin_lamp","settings.feature.red_pocket","settings.feature.friends_call","settings.feature.visitors","settings.maintenance"],
   announcements:["announcements.view","announcements.save","announcements.delete"],
@@ -890,10 +890,28 @@ function clearStoreForm(){
   $("#storeDescription").value="";
   $("#storeEnabled").checked=true;
 }
+// Mirror of the server's storePermissionForKind (owner_api.js): the
+// Store view is one surface over several per-kind permissions, so the
+// panel must check the permission for the kind it is actually showing,
+// not a generic store.* permission (audit, 2026-11-22).
+function storePermissionForKind(kind,action){
+  const k=String(kind||"").trim();
+  if(k==="gift"||k==="gift_category")return "gifts."+action;
+  if(k==="theme")return "themes.global."+action;
+  if(["frame","vehicle","entry","ring","bubble","profile_card","profile_background","banner"].includes(k))return "assets."+action;
+  return "store."+action;
+}
+const STORE_KIND_FALLBACK=["frame","gift","theme","unique_id","gift_category","vehicle","entry","ring","bubble","profile_card","profile_background","banner"];
+function firstViewableStoreKind(){
+  return STORE_KIND_FALLBACK.find(k=>can(storePermissionForKind(k,"view")))||"";
+}
 async function loadStore(){
-  if(!can("store.view"))return;
-  const kind=$("#storeKind").value.trim();
-  if(!kind)return;
+  let kind=$("#storeKind").value.trim();
+  if(!kind||!can(storePermissionForKind(kind,"view"))){
+    kind=firstViewableStoreKind();
+    if(!kind){$("#storeList").innerHTML=empty("No store permission granted for this panel.");return;}
+    $("#storeKind").value=kind;
+  }
   const d=await api("/api/owner/store?kind="+encodeURIComponent(kind));
   state.storeItems=d.items||[];
   $("#storeList").innerHTML=state.storeItems.length?state.storeItems.map(item=>{
@@ -930,8 +948,8 @@ function editStoreItem(id){
   $("#storeId").scrollIntoView({behavior:"smooth",block:"center"});
 }
 async function saveStoreItem(){
-  if(!can("store.save"))return toast("Store save permission required",false);
   const kind=$("#storeKind").value.trim();
+  if(!can(storePermissionForKind(kind,"save")))return toast("Store save permission required",false);
   const itemId=$("#storeId").value.trim();
   const name=$("#storeName").value.trim()||itemId;
   if(!kind||!itemId||!name)return toast("Category, item ID and name are required",false);
@@ -960,8 +978,8 @@ async function saveStoreItem(){
   await loadStore();
 }
 async function removeStoreItem(id){
-  if(!can("store.remove"))return toast("Store remove permission required",false);
   const kind=$("#storeKind").value.trim();
+  if(!can(storePermissionForKind(kind,"remove")))return toast("Store remove permission required",false);
   if(!confirm("Remove this item from the app store?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});
   toast("Item removed from app store");
@@ -1078,10 +1096,11 @@ function renderGiftList(){
     const windowText=(data.starts_at||data.ends_at)?` · ${data.starts_at?time(data.starts_at):"now"} → ${data.ends_at?time(data.ends_at):"no end"}`:"";
     const category=state.giftCategories.find(c=>c.id===String(data.category||"normal"))?.name||String(data.category||"normal");
     const action=enabled
-      ? `<button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button>`
-      : `<button class="secondary mini" data-gift-restore="${esc(item.id)}">Restore</button>`;
+      ? `<button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="danger mini" data-gift-remove="${esc(item.id)}">Remove</button>`
+      : `<button class="secondary mini" data-gift-edit="${esc(item.id)}">Edit</button><button class="secondary mini" data-gift-restore="${esc(item.id)}">Restore</button>`;
     return `<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(item.name||item.id)} <span class="pill ${enabled?"active":"banned"}">${enabled?"Enabled":"Removed"}</span></div><div class="item-meta">ID ${esc(item.id)} · ${num(item.price_coins)} coins · VIP ${num(data.min_vip_level??data.vip_level??0)} · Section: ${esc(category)} · ${esc(item.source||"custom")}${windowText}<br>${esc(data.description||data.video_key||data.asset_key||data.emoji||"")}</div></div><div class="item-actions">${action}</div></div></div>`;
   }).join(""):empty(removed?"No removed gifts.":"No active gifts in this section. Add a gift using the form above.");
+  $$("[data-gift-edit]").forEach(b=>b.onclick=()=>editGift(b.dataset.giftEdit));
   $$("[data-gift-remove]").forEach(b=>b.onclick=()=>removeGift(b.dataset.giftRemove).catch(e=>toast(e.message,false)));
   $$("[data-gift-restore]").forEach(b=>b.onclick=()=>restoreGift(b.dataset.giftRestore).catch(e=>toast(e.message,false)));
 }
@@ -1440,8 +1459,9 @@ async function uploadAssetMedia(){
 }
 
 async function removeAsset(id){
-  if(!can("assets.remove"))return toast("Asset remove permission required",false);
-  const kind=$("#assetKind").value;if(!confirm("Remove this "+kind+" from the app?"))return;
+  const kind=$("#assetKind").value;
+  if(!can(kind==="gift"?"gifts.remove":"assets.remove"))return toast("Asset remove permission required",false);
+  if(!confirm("Remove this "+kind+" from the app?"))return;
   await api("/api/owner/store/"+encodeURIComponent(kind)+"/"+encodeURIComponent(id),{method:"DELETE"});toast("Asset removed");await loadAssets();
 }
 

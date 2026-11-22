@@ -530,8 +530,8 @@
                   <option value="profile_background"></option>
                   <option value="theme"></option>
                   <option value="banner"></option>
+                  <option value="gift_category"></option>
                   <option value="unique_id"></option>
-                  <option value="custom"></option>
                 </datalist>
               </label>
               <label>Item ID<input id="storeId" placeholder="Unique store item ID" /></label>
@@ -562,18 +562,17 @@
           <article class="panel">
             <div class="panel-head"><div><h2>VIP / Gifts / Assets / Games</h2><p>Tinni-style data-driven content controls adapted for DarkVibeX. Use the category shortcuts or selector below.</p></div></div>
             <div class="catalog-shortcuts">
-              <button class="secondary mini" data-catalog-shortcut="vip">VIP</button>
-              <button class="secondary mini" data-catalog-shortcut="vip_privilege">VIP Privileges</button>
               <button class="secondary mini" data-catalog-shortcut="gift">Gifts</button>
-              <button class="secondary mini" data-catalog-shortcut="tag">Tags / Posts</button>
               <button class="secondary mini" data-catalog-shortcut="frame">Frames</button>
               <button class="secondary mini" data-catalog-shortcut="vehicle">Vehicles / Entries</button>
+              <button class="secondary mini" data-catalog-shortcut="entry">Entry effects</button>
               <button class="secondary mini" data-catalog-shortcut="theme">Room Themes</button>
               <button class="secondary mini" data-catalog-shortcut="profile_background">Profile Backgrounds</button>
-              <button class="secondary mini" data-catalog-shortcut="game_config">Games</button>
+              <button class="secondary mini" data-catalog-shortcut="profile_card">Profile Cards</button>
+              <button class="secondary mini" data-catalog-shortcut="banner">Banners</button>
             </div>
             <div class="form-grid">
-              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="vip">VIP levels</option><option value="vip_privilege">VIP privileges / effects</option><option value="tag">Tags</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="vehicle">Vehicles / entry effects</option><option value="game_config">Game config</option><option value="custom">Custom module</option></select></label>
+              <label>Category<select id="catalogKind"><option value="gift">Gifts</option><option value="theme">Room themes</option><option value="frame">Frames</option><option value="ring">Rings</option><option value="bubble">Chat bubbles</option><option value="profile_background">Profile backgrounds</option><option value="profile_card">Profile cards</option><option value="vehicle">Vehicles / entry effects</option><option value="entry">Entry effects</option><option value="banner">Banners</option></select></label>
               <label>Item ID<input id="catalogId" placeholder="Optional; generated if blank" /></label>
               <label>Display name<input id="catalogName" /></label>
               <label>Price in coins<input id="catalogPrice" type="number" min="0" value="0" /></label>

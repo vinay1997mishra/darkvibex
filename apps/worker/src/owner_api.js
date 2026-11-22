@@ -3271,11 +3271,11 @@ export async function handleOwnerApi(request, env, url) {
     await ensureOwnerSchema(db);
     if (url.pathname === "/api/owner/login" && request.method === "POST") {
       const body = await bodyJson(request);
-      return loginStaffWithPassword(db, body);
+      return await loginStaffWithPassword(db, body);
     }
     if (url.pathname === "/api/owner/google-login" && request.method === "POST") {
       const body = await bodyJson(request);
-      return loginMainOwnerWithGoogle(db, env, body);
+      return await loginMainOwnerWithGoogle(db, env, body);
     }
     const actor = await authenticate(request, env, db);
     if (!actor) return json({ ok: false, error: "unauthorized" }, { status: 401 });
@@ -3284,7 +3284,7 @@ export async function handleOwnerApi(request, env, url) {
     if (url.pathname === "/api/owner/session" && request.method === "GET") {
       return json({ ok: true, actor: { type:actor.type, id: actor.id, name: actor.name, role: actor.role, permissions: actor.permissions } });
     }
-    if (url.pathname === "/api/owner/overview" && request.method === "GET") return handleOverview(db, actor);
+    if (url.pathname === "/api/owner/overview" && request.method === "GET") return await handleOverview(db, actor);
 
     let response = null;
     if (parts[2] === "theme-media") response = await handleThemeMediaUpload(request, env, db, actor);
