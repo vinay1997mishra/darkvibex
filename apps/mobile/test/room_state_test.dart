@@ -103,15 +103,38 @@ void main() {
     final start = source.indexOf('Future<void> _loadRoomState()');
     final end = source.indexOf('void didChangeAppLifecycleState', start);
     final loader = source.substring(start, end);
-    // Failure -> null -> one transient failure, two in a row = kicked.
+    // Failure -> null -> one transient failure, two in a row confirm
+    // with the server instead of assuming a kick: a network drop, a
+    // 500 or an exhausted free tier fail the poll exactly like a kick,
+    // and a bare failure must never throw the user out (Vinay,
+    // 2026-11-22).
     expect(loader, contains('if (state == null) {'));
     expect(loader, contains('if (_kickTracker.noteFetch(ok: false)) {'));
-    expect(loader, contains('await _handleKickedFromRoom();'));
+    expect(loader, contains('await _handleFailedRoomFetch();'));
+    expect(loader, isNot(contains('await _handleKickedFromRoom();')));
     expect(loader, contains('_kickTracker.noteFetch(ok: true);'));
     // An empty members list is a valid payload, not a kick: it is
     // applied when present, never checked for emptiness as a signal.
     expect(loader, contains('if (members is List) {'));
     expect(loader, isNot(contains('members.isEmpty')));
+  });
+
+  test('a failed fetch confirms the removal with the server before exiting', () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    final start = source.indexOf('Future<bool> _handleFailedRoomFetch()');
+    expect(start, isNot(-1));
+    final end = source.indexOf('/// I was kicked out of the room', start);
+    final helper = source.substring(start, end);
+    // Kick marker first; a silent re-join only when there is no
+    // marker; the decision lives in decideRoomRemoval.
+    expect(helper, contains('roomKickStatus('));
+    expect(helper, contains('joinRoomResult('));
+    expect(helper, contains('decideRoomRemoval(kicked: kicked, joined: joined)'));
+    expect(helper, contains('RoomRemovalAction.exitRemoved'));
+    expect(helper, contains('RoomRemovalAction.exitSilently'));
+    // Overlapping confirmations are guarded: the 3s poll keeps firing
+    // while one runs.
+    expect(helper, contains('_confirmingRemoval'));
   });
 
   test('the old loaders stay for immediate post-action refreshes', () {

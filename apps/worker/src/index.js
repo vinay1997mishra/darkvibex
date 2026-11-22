@@ -2200,9 +2200,16 @@ async function roomModeratorState(db, roomId, userId) {
 // failure returns { ok: false, error, status }.
 async function checkRoomMemberPresence(db, env, roomId, actorId) {
   const heartbeatTs = now();
-  await db.prepare(
-    "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
-  ).bind(heartbeatTs, roomId, actorId).run();
+  try {
+    await db.prepare(
+      "UPDATE room_members SET updated_at=? WHERE room_id=? AND user_id=?"
+    ).bind(heartbeatTs, roomId, actorId).run();
+  } catch (_) {
+    // Best-effort: a missed heartbeat only hides the member from the
+    // online list until their next poll — it never removes them, and
+    // it must never fail the state poll itself (a failed heartbeat
+    // used to 500 the whole poll, which the app read as a kick).
+  }
   const presenceCutoff = await refreshRoomPresence(db, heartbeatTs, env);
   // Membership is the row itself (Vinay, 2026-11-21): no freshness
   // check — a member whose heartbeat went stale is still in the room,
@@ -2721,7 +2728,14 @@ const ROOM_PRESENCE_TTL_MS = 30 * 1000;
 
 async function refreshRoomPresence(db, ts = now(), env = null) {
   const cutoff = Number(ts) - ROOM_PRESENCE_TTL_MS;
-  await wipeChatOfEmptyRooms(db, env);
+  try {
+    await wipeChatOfEmptyRooms(db, env);
+  } catch (_) {
+    // Best-effort: wiping an empty room's chat must never fail the
+    // caller's request (the room list, the 3s state poll). A failed
+    // wipe is retried on the next pass; the chat is only ever wiped
+    // for rooms with zero members, so no live room is affected.
+  }
   return cutoff;
 }
 
