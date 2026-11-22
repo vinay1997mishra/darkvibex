@@ -1769,7 +1769,8 @@ async function applyOwnerTag(){
   try{ user=(await api("/api/users/by-public-id?public_id="+encodeURIComponent(publicId))).user; }
   catch(e){ return toast(e.message==="user_not_found"?"No user with that ID":e.message,false); }
   const d=await api("/api/owner/tags",{method:"POST",body:JSON.stringify({user_ids:[user.user_id],role_tag:roleTag})});
-  toast(`${d.name||roleTag} applied to ID ${publicId}`);
+  const walletNote=d.wallet_added ? (d.role==="merchant" ? " — merchant wallet added" : " — seller wallet added") : "";
+  toast(`${d.name||roleTag} applied to ID ${publicId}${walletNote}`);
   $("#ownerTagPublicId").value="";
   await loadOwnerTags();
 }

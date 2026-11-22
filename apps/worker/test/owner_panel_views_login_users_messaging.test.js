@@ -265,6 +265,18 @@ test("Role tags apply by user id or public ID, replace per user, list and remove
   assert.equal(applied.body.tag_id, "role-coin-seller");
   assert.equal(applied.body.role_tag, "coin-seller");
 
+  // Tag lagte hi wallet automatic add hota hai: the coin-seller tag
+  // sets users.role and creates the seller wallet for both IDs.
+  assert.equal(applied.body.wallet_added, true);
+  assert.equal(applied.body.role, "coin_seller");
+  const u1 = await db.prepare("SELECT role FROM users WHERE id=?").bind("u1").first();
+  assert.equal(u1.role, "coin_seller");
+  const u1Wallet = await db.prepare("SELECT balance_coins,status FROM role_wallets WHERE user_id=? AND wallet_type=?").bind("u1", "coin_seller").first();
+  assert.equal(u1Wallet.balance_coins, 0);
+  assert.equal(u1Wallet.status, "active");
+  const u2Wallet = await db.prepare("SELECT balance_coins,status FROM role_wallets WHERE user_id=? AND wallet_type=?").bind("u2", "coin_seller").first();
+  assert.ok(u2Wallet);
+
   const listed = await call("/api/owner/tags", { token: OWNER_TOKEN });
   // The legacy custom row was wiped; only the two role tags remain.
   assert.equal(listed.body.tags.length, 2);
@@ -281,12 +293,53 @@ test("Role tags apply by user id or public ID, replace per user, list and remove
   assert.equal(afterReplace.body.tags.length, 2);
   assert.equal(afterReplace.body.tags.find((t) => t.user_id === "u1").tag_id, "role-official");
 
+  // Changing the tag to Official does NOT remove the wallet or the
+  // role — the wallet holds money.
+  const u1After = await db.prepare("SELECT role FROM users WHERE id=?").bind("u1").first();
+  assert.equal(u1After.role, "coin_seller");
+  const u1WalletAfter = await db.prepare("SELECT 1 AS one FROM role_wallets WHERE user_id=? AND wallet_type=?").bind("u1", "coin_seller").first();
+  assert.ok(u1WalletAfter);
+
+  // The merchant tag adds the merchant wallet the same way, and the
+  // old seller wallet row stays (dormant) — wallets are never removed.
+  const merchantApplied = await call("/api/owner/tags", {
+    method: "POST", token: OWNER_TOKEN,
+    body: { user_ids: ["u2"], role_tag: "merchant" },
+  });
+  assert.equal(merchantApplied.status, 200);
+  assert.equal(merchantApplied.body.wallet_added, true);
+  assert.equal(merchantApplied.body.role, "merchant");
+  const u2After = await db.prepare("SELECT role FROM users WHERE id=?").bind("u2").first();
+  assert.equal(u2After.role, "merchant");
+  const u2MerchantWallet = await db.prepare("SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?").bind("u2", "merchant").first();
+  assert.equal(u2MerchantWallet.balance_coins, 0);
+  const u2SellerWallet = await db.prepare("SELECT 1 AS one FROM role_wallets WHERE user_id=? AND wallet_type=?").bind("u2", "coin_seller").first();
+  assert.ok(u2SellerWallet);
+
   const removed = await call("/api/owner/tags/u1/role-official", {
     method: "DELETE", token: OWNER_TOKEN,
   });
   assert.equal(removed.status, 200);
   const after = await call("/api/owner/tags", { token: OWNER_TOKEN });
   assert.equal(after.body.tags.length, 1);
+});
+
+test("Staff with only tags.apply cannot mint a seller wallet via a tag", async () => {
+  const { db, call } = await setup();
+  await makeUser(db, "u1");
+  const staff = await makeStaff(db, "s1", ["tags.apply", "tags.view"]);
+  const denied = await call("/api/owner/tags", {
+    method: "POST", token: staff,
+    body: { user_ids: ["u1"], role_tag: "coin-seller" },
+  });
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.error, "users_role_edit_required");
+  // Nothing was applied — the role check runs before any tag row
+  // is written.
+  const listed = await call("/api/owner/tags", { token: OWNER_TOKEN });
+  assert.equal(listed.body.tags.length, 0);
+  const u1 = await db.prepare("SELECT role FROM users WHERE id=?").bind("u1").first();
+  assert.equal(u1.role, "user");
 });
 
 // ---- Messaging: send to selected ----

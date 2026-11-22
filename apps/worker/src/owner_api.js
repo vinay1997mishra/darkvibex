@@ -1,6 +1,6 @@
 import { normalizeRole } from "./role_policy.js";
 import { ensureSupportSchema } from "./support_store.js";
-import { adjustRoleWallet, roleWalletDetail } from "./role_wallets.js";
+import { adjustRoleWallet, ensureRoleWallet, roleWalletDetail } from "./role_wallets.js";
 import { COSMETIC_CATALOG } from "./cosmetics.js";
 import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
@@ -2291,6 +2291,18 @@ async function handleMessaging(request, db, actor, url, parts) {
     const name=ROLE_TAGS[roleTag];
     const tagId="role-"+roleTag;
     const ts=now();
+    // Tag lagte hi wallet automatic add hota hai (Vinay, 2026-11-23):
+    // a seller/merchant wallet only exists when users.role matches
+    // (ensureRoleWallet throws otherwise), and the app only shows it
+    // for that role — so the tag sets the role first, then creates
+    // the wallet. Granting a role needs users.role.edit, the same
+    // permission as the user-edit screen — checked up front so a
+    // tag is never half-applied. Removing a tag later never touches
+    // the wallet or the role: the wallet holds money.
+    const walletRole=roleTag==="coin-seller" ? "coin_seller" : roleTag==="merchant" ? "merchant" : null;
+    if(walletRole && !can(actor,"users.role.edit")){
+      return json({ok:false,error:"users_role_edit_required"},{status:403});
+    }
     for(const userId of ids){
       // One role tag per ID: applying a new one replaces the old.
       await db.prepare("DELETE FROM owner_user_tags WHERE user_id=? AND kind='role_tag'").bind(userId).run();
@@ -2299,9 +2311,15 @@ async function handleMessaging(request, db, actor, url, parts) {
          VALUES(?,?,?,?, 'role_tag','','',?,?)
          ON CONFLICT(user_id,tag_id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at`
       ).bind(userId,tagId,name,"#FFD54F",ts,ts).run();
+      if(walletRole){
+        const updated=await db.prepare("UPDATE users SET role=?, updated_at=? WHERE id=?").bind(walletRole,ts,userId).run();
+        if(Number(updated.meta?.changes ?? 0) > 0){
+          await ensureRoleWallet(db,userId,walletRole,ts);
+        }
+      }
     }
-    await audit(db,actor,"tag_apply","users",String(ids.length),name);
-    return json({ok:true,tagged:ids.length,name,tag_id:tagId,role_tag:roleTag});
+    await audit(db,actor,"tag_apply","users",String(ids.length),name+(walletRole ? " + "+walletRole+" wallet" : ""));
+    return json({ok:true,tagged:ids.length,name,tag_id:tagId,role_tag:roleTag,wallet_added:Boolean(walletRole),role:walletRole});
   }
   if(parts[2]==="tags" && request.method==="GET"){
     requirePermission(actor,"tags.view");
