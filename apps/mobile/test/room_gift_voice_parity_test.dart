@@ -196,4 +196,40 @@ void main() {
     expect(room, contains('receiverIds: recipientIds'));
     expect(room, contains('bool playEffect = true'));
   });
+
+  test('a Lucky gift win is announced to the sender and to the room', () {
+    // Lucky win (Vinay, 2026-11-22): a Lucky gift may win the sender a
+    // multiple of the gift cost in in-app coins. The sender sees the win
+    // in their send snackbar and the room chat message; everyone else
+    // sees a win banner when the gift plays. The win never inflates the
+    // Rocket total or ranking — those follow the gift cost only.
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+
+    // The sender reads the win from the send response.
+    final sendStart = room.indexOf('Future<bool> _sendGiftByDefinition(');
+    final sendEnd = room.indexOf('void _startGiftComboTimer', sendStart);
+    expect(sendStart, greaterThanOrEqualTo(0));
+    expect(sendEnd, greaterThan(sendStart));
+    final send = room.substring(sendStart, sendEnd);
+    expect(send, contains("result?['lucky_multiplier']"));
+    expect(send, contains("result?['lucky_win_coins']"));
+    // The room chat message carries the win, so the whole room sees it.
+    expect(send, contains('Lucky win: +\$luckyWinCoins coins'));
+    // The sender's win snackbar replaces the plain "sent" snackbar.
+    expect(send, contains('Lucky win! You won \$luckyWinCoins coins'));
+
+    // The win banner helper exists and is wired into both receiver
+    // paths (the 3s poll and the Agora live event), so every member
+    // sees the win when the gift plays.
+    expect(room, contains('void _showLuckyWinAnnouncement('));
+    expect(room, contains("event['lucky_win_coins']"));
+    expect(room, contains('won \$winCoins coins on a Lucky \$giftName'));
+    expect(room, contains('_showLuckyWinAnnouncement(\n          event,'));
+    expect(room, contains('_showLuckyWinAnnouncement(\n        verifiedEvent,'));
+
+    // A Lucky DM gift wins too — the sender sees the win snackbar.
+    final dm = File('lib/screens/conversation_screen.dart').readAsStringSync();
+    expect(dm, contains("result?['lucky_win_coins']"));
+    expect(dm, contains('Lucky win! You won \$dmWinCoins coins'));
+  });
 }

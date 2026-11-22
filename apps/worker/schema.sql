@@ -220,6 +220,8 @@ CREATE TABLE IF NOT EXISTS gift_events (
   gift_id TEXT NOT NULL,
   coin_cost INTEGER NOT NULL CHECK (coin_cost > 0),
   count INTEGER NOT NULL DEFAULT 1 CHECK (count > 0),
+  lucky_multiplier INTEGER NOT NULL DEFAULT 0,
+  lucky_win_coins INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (receiver_user_id) REFERENCES users(id) ON DELETE CASCADE

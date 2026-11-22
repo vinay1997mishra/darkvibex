@@ -546,6 +546,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
     await widget.state.refreshWallet();
     await _load();
     await widget.state.refreshInbox();
+    // Lucky win (Vinay, 2026-11-22): a Lucky DM gift can win the sender
+    // coins too — the win is in the send response.
+    final dmWinCoins =
+        int.tryParse(result?['lucky_win_coins']?.toString() ?? '') ?? 0;
+    if (dmWinCoins > 0 && mounted) {
+      final dmMultiplier =
+          int.tryParse(result?['lucky_multiplier']?.toString() ?? '') ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '🎉 Lucky win! You won $dmWinCoins coins (${dmMultiplier}×)!',
+          ),
+        ),
+      );
+    }
     if (mounted) setState(() {});
   }
 
