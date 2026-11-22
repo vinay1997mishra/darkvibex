@@ -5,8 +5,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
+import '../infra/backend_api.dart';
 import '../vip/vip_policy.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import '../widgets/gift_media_preview.dart';
 import '../widgets/vip_chat_bubble.dart';
 import 'direct_call_screen.dart';
 
@@ -478,6 +480,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         gifts: gifts,
         receiverName: widget.otherName,
         coins: widget.state.coins,
+        backend: widget.state.backend,
       ),
     );
     if (chosen == null || !mounted) return;
@@ -940,11 +943,13 @@ class _DmGiftPicker extends StatefulWidget {
     required this.gifts,
     required this.receiverName,
     required this.coins,
+    required this.backend,
   });
 
   final List<Map<String, dynamic>> gifts;
   final String receiverName;
   final int coins;
+  final BackendApi backend;
 
   @override
   State<_DmGiftPicker> createState() => _DmGiftPickerState();
@@ -1073,9 +1078,27 @@ class _DmGiftPickerState extends State<_DmGiftPicker> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    gift['emoji']?.toString() ?? '🎁',
-                                    style: const TextStyle(fontSize: 30),
+                                  // Glass gifts (Vinay, 2026-11-22): show
+                                  // the 3D glass image when the gift has
+                                  // one (asset_key); the emoji is only the
+                                  // fallback for gifts without an image.
+                                  SizedBox(
+                                    width: 44,
+                                    height: 44,
+                                    child: GiftMediaPreview(
+                                      backend: widget.backend,
+                                      videoKey: gift['video_key']
+                                              ?.toString() ??
+                                          '',
+                                      assetKey: gift['asset_key']
+                                              ?.toString() ??
+                                          '',
+                                      glbKey:
+                                          gift['glb_key']?.toString() ?? '',
+                                      emoji:
+                                          gift['emoji']?.toString() ?? '🎁',
+                                      fit: BoxFit.contain,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(

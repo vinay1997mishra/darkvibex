@@ -167,7 +167,15 @@ class _RoomScreenState extends State<RoomScreen>
   bool giftBubbleEnabled = true;
   bool rocketDrawNoticeEnabled = true;
   Map<String, dynamic>? activeGiftEffect;
-  String? activeGiftReceiverId;
+  // Gift split (Vinay, 2026-11-22): one gift sent in a single go to N
+  // users shows as ONE gift in the screen centre, then splits into N
+  // copies, one flying to each receiver's DP. All receivers of the same
+  // batch share one effect; the per-seat widgets all start at the same
+  // centre point, so they overlap as one gift and then diverge to their
+  // seats. Same for a combo send (the same batch re-sent).
+  Set<String> activeGiftReceiverIds = <String>{};
+  String? activeGiftSenderId;
+  DateTime? _giftEffectStartedAt;
   String? activeGiftReceiverAvatarKey;
   int giftEffectSequence = 0;
   Timer? giftEffectTimer;
@@ -912,7 +920,11 @@ class _RoomScreenState extends State<RoomScreen>
         } else if (glbKey.isNotEmpty) {
           await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
         } else {
-          _playGiftEffect(gift, receiverId: receiverId);
+          _playGiftEffect(
+            gift,
+            receiverId: receiverId,
+            senderId: event['sender_user_id']?.toString(),
+          );
         }
         // Gift ribbon banner (sender's VIP tier, basic for VIP0):
         // shown with the gift display, after any video/GLB dialog.
@@ -2354,7 +2366,7 @@ class _RoomScreenState extends State<RoomScreen>
       } else if (glbKey.isNotEmpty) {
         await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
       } else {
-        _playGiftEffect(gift, receiverId: receiverId);
+        _playGiftEffect(gift, receiverId: receiverId, senderId: senderIdentity);
       }
       // Gift ribbon banner (sender's VIP tier, basic for VIP0):
       // shown with the gift display, after any video/GLB dialog.
@@ -3393,13 +3405,68 @@ class _RoomScreenState extends State<RoomScreen>
       return;
     }
     var sentCopies = 0;
+    // Split send (Vinay, 2026-11-22): fly-effect gifts (no video, no
+    // GLB) do NOT play one effect per recipient here. The split effect
+    // for the whole batch plays once below: one gift in the centre that
+    // splits to every receiver's DP. Video/GLB gifts keep their
+    // per-recipient dialog (a full-screen dialog cannot split).
+    final flyGifts = <Map<String, dynamic>>[];
     for (final gift in selectedGifts) {
+      final isFlyGift =
+          (gift['video_key']?.toString().trim() ?? '').isEmpty &&
+              (gift['glb_key']?.toString().trim() ?? '').isEmpty;
       for (final id in recipientIds) {
         if (!mounted) return;
-        final sent = await _sendGiftByDefinition(gift, id, count: comboCount);
+        final sent = await _sendGiftByDefinition(
+          gift,
+          id,
+          count: comboCount,
+          playEffect: !isFlyGift,
+        );
         if (!sent) return;
         sentCopies += comboCount;
       }
+      if (isFlyGift) flyGifts.add(gift);
+    }
+    if (mounted && flyGifts.isNotEmpty && sentCopies > 0) {
+      for (final gift in flyGifts) {
+        final displayGift = Map<String, dynamic>.from(gift);
+        if (comboCount > 1) {
+          displayGift['name'] =
+              '${gift['name'] ?? 'Gift'} x$comboCount';
+          displayGift['count'] = comboCount;
+        }
+        _playGiftEffect(
+          displayGift,
+          receiverId: recipientIds.first,
+          receiverIds: recipientIds,
+          senderId: widget.state.userId,
+        );
+      }
+      final firstReceiver = membersBySeat.values.firstWhere(
+        (member) => member['user_id']?.toString() == recipientIds.first,
+        orElse: () => <String, dynamic>{},
+      );
+      final firstReceiverName = (firstReceiver['display_name'] ??
+              firstReceiver['name'] ??
+              firstReceiver['nickname'] ??
+              (recipientIds.first == widget.state.userId
+                  ? widget.state.displayName
+                  : recipientIds.first))
+          .toString();
+      final firstGift = flyGifts.first;
+      _showGiftRibbon(
+        event: <String, dynamic>{
+          'gift_name': comboCount > 1
+              ? '${firstGift['name'] ?? 'Gift'} x$comboCount'
+              : (firstGift['name'] ?? 'Gift').toString(),
+        },
+        senderName: widget.state.displayName,
+        receiverName: firstReceiverName,
+        giftName: comboCount > 1
+            ? '${firstGift['name'] ?? 'Gift'} x$comboCount'
+            : (firstGift['name'] ?? 'Gift').toString(),
+      );
     }
     // The whole bulk send landed: show the combo button so the same gift
     // can be sent again to the same users. It hides by itself after 5s
@@ -6640,28 +6707,64 @@ class _RoomScreenState extends State<RoomScreen>
   void _playGiftEffect(
     Map<String, dynamic> gift, {
     required String receiverId,
+    // Split send (Vinay, 2026-11-22): when one gift goes to several
+    // users in a single go, pass ALL their ids here. One gift appears
+    // in the screen centre and splits into one copy per receiver.
+    List<String>? receiverIds,
+    String? senderId,
   }) {
     if (!effectsEnabled || !giftEffectsEnabled) return;
-    giftEffectTimer?.cancel();
     if (giftSoundEnabled) {
       unawaited(SystemSound.play(SystemSoundType.click));
     }
-    if (giftFlyInEnabled || giftBubbleEnabled) {
+    if (!giftFlyInEnabled && !giftBubbleEnabled) return;
+    final ids = <String>{
+      ...?receiverIds,
+      receiverId,
+    }.where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return;
+    final now = DateTime.now();
+    // Coalesce: the same gift from the same sender, sent again within
+    // 600ms (the other copies of one multi-user batch arriving via the
+    // poll or the Agora live feed), joins the effect already playing
+    // instead of restarting it. The new receivers' seats start their
+    // own flight from the same centre point, so the single gift visibly
+    // splits. Existing flights are NOT restarted (giftEffectSequence is
+    // left alone), only the clear timer is pushed out so the last copy
+    // gets its full flight.
+    final sameBatch = activeGiftEffect != null &&
+        activeGiftEffect!['id']?.toString() == gift['id']?.toString() &&
+        senderId != null &&
+        activeGiftSenderId != null &&
+        activeGiftSenderId == senderId &&
+        _giftEffectStartedAt != null &&
+        now.difference(_giftEffectStartedAt!).inMilliseconds < 600;
+    giftEffectTimer?.cancel();
+    if (sameBatch) {
+      setState(() {
+        activeGiftReceiverIds.addAll(ids);
+        activeGiftReceiverAvatarKey ??= _giftReceiverAvatar(ids.first);
+      });
+    } else {
       setState(() {
         activeGiftEffect = Map<String, dynamic>.from(gift);
-        activeGiftReceiverId = receiverId;
-        activeGiftReceiverAvatarKey = _giftReceiverAvatar(receiverId);
+        activeGiftReceiverIds = ids;
+        activeGiftSenderId = senderId;
+        activeGiftReceiverAvatarKey = _giftReceiverAvatar(ids.first);
+        _giftEffectStartedAt = now;
         giftEffectSequence++;
       });
-      giftEffectTimer = Timer(const Duration(milliseconds: 2200), () {
-        if (!mounted) return;
-        setState(() {
-          activeGiftEffect = null;
-          activeGiftReceiverId = null;
-          activeGiftReceiverAvatarKey = null;
-        });
-      });
     }
+    giftEffectTimer = Timer(const Duration(milliseconds: 2200), () {
+      if (!mounted) return;
+      setState(() {
+        activeGiftEffect = null;
+        activeGiftReceiverIds = <String>{};
+        activeGiftSenderId = null;
+        _giftEffectStartedAt = null;
+        activeGiftReceiverAvatarKey = null;
+      });
+    });
   }
 
   /// Shows the VIP gift ribbon banner for a gift event, for a few
@@ -6702,6 +6805,12 @@ class _RoomScreenState extends State<RoomScreen>
     final gift = activeGiftEffect;
     if (gift == null) return const SizedBox.shrink();
     final emoji = gift['emoji']?.toString() ?? '🎁';
+    // Glass gifts (Vinay, 2026-11-22): when the gift has an R2 image
+    // (asset_key), the flying gift IS that 3D glass image, not the emoji.
+    // The emoji stays only as the fallback for gifts without an image.
+    final assetKey = gift['asset_key']?.toString().trim() ?? '';
+    final videoKey = gift['video_key']?.toString().trim() ?? '';
+    final glbKey = gift['glb_key']?.toString().trim() ?? '';
     return IgnorePointer(
       child: TweenAnimationBuilder<double>(
         key: ValueKey<int>(giftEffectSequence),
@@ -6740,10 +6849,23 @@ class _RoomScreenState extends State<RoomScreen>
                       ),
                     ],
                   ),
-                  child: Text(
-                    emoji,
-                    style: TextStyle(fontSize: seatDiameter * .56),
-                  ),
+                  child: assetKey.isNotEmpty
+                      ? SizedBox(
+                          width: seatDiameter * .62,
+                          height: seatDiameter * .62,
+                          child: GiftMediaPreview(
+                            backend: widget.state.backend,
+                            videoKey: videoKey,
+                            assetKey: assetKey,
+                            glbKey: glbKey,
+                            emoji: emoji,
+                            fit: BoxFit.contain,
+                          ),
+                        )
+                      : Text(
+                          emoji,
+                          style: TextStyle(fontSize: seatDiameter * .56),
+                        ),
                 ),
               ),
             ),
@@ -8016,6 +8138,11 @@ class _RoomScreenState extends State<RoomScreen>
     Map<String, dynamic> gift,
     String receiverId, {
     int count = 1,
+    // Split send (Vinay, 2026-11-22): a bulk send passes playEffect
+    // false so each copy does NOT play its own effect; the caller plays
+    // ONE split effect for the whole batch (one gift in the centre that
+    // splits to every receiver) after the loop.
+    bool playEffect = true,
   }) async {
     final giftId = gift['id']?.toString() ?? '';
     final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
@@ -8114,22 +8241,28 @@ class _RoomScreenState extends State<RoomScreen>
         userId: widget.state.userId,
         text: '🎁 ${widget.state.displayName} sent $giftName to $receiverName',
       ));
-      if (videoKey.isNotEmpty) {
-        await _playGiftVideo(displayGift, receiverId: receiverId, videoKey: videoKey);
-      } else if (glbKey.isNotEmpty) {
-        await _playGiftGlb(displayGift, receiverId: receiverId, glbKey: glbKey);
-      } else {
-        _playGiftEffect(displayGift, receiverId: receiverId);
+      if (playEffect) {
+        if (videoKey.isNotEmpty) {
+          await _playGiftVideo(displayGift, receiverId: receiverId, videoKey: videoKey);
+        } else if (glbKey.isNotEmpty) {
+          await _playGiftGlb(displayGift, receiverId: receiverId, glbKey: glbKey);
+        } else {
+          _playGiftEffect(
+            displayGift,
+            receiverId: receiverId,
+            senderId: widget.state.userId,
+          );
+        }
+        // Gift ribbon banner (sender's VIP tier from the send response,
+        // basic for VIP0): shown with the gift display, after any
+        // video/GLB dialog.
+        _showGiftRibbon(
+          event: result ?? <String, dynamic>{},
+          senderName: widget.state.displayName,
+          receiverName: receiverName,
+          giftName: giftName,
+        );
       }
-      // Gift ribbon banner (sender's VIP tier from the send response,
-      // basic for VIP0): shown with the gift display, after any
-      // video/GLB dialog.
-      _showGiftRibbon(
-        event: result ?? <String, dynamic>{},
-        senderName: widget.state.displayName,
-        receiverName: receiverName,
-        giftName: giftName,
-      );
       await widget.state.refreshIdLevel(notify: false);
       if (!mounted) return false;
       unawaited(_loadRoomGiftRanking());
@@ -8221,14 +8354,67 @@ class _RoomScreenState extends State<RoomScreen>
       return;
     }
     var sentCopies = 0;
+    // Split send (Vinay, 2026-11-22): same as the gift-box bulk send —
+    // fly-effect gifts play ONE split effect for the whole batch below
+    // (one gift in the centre that splits to every receiver's DP);
+    // video/GLB gifts keep their per-recipient dialog.
+    final flyGifts = <Map<String, dynamic>>[];
     for (final gift in gifts) {
+      final isFlyGift =
+          (gift['video_key']?.toString().trim() ?? '').isEmpty &&
+              (gift['glb_key']?.toString().trim() ?? '').isEmpty;
       for (final id in recipientIds) {
         if (!mounted) return;
-        final sent =
-            await _sendGiftByDefinition(gift, id, count: _giftComboCount);
+        final sent = await _sendGiftByDefinition(
+          gift,
+          id,
+          count: _giftComboCount,
+          playEffect: !isFlyGift,
+        );
         if (!sent) return;
         sentCopies += _giftComboCount;
       }
+      if (isFlyGift) flyGifts.add(gift);
+    }
+    if (mounted && flyGifts.isNotEmpty && sentCopies > 0) {
+      for (final gift in flyGifts) {
+        final displayGift = Map<String, dynamic>.from(gift);
+        if (_giftComboCount > 1) {
+          displayGift['name'] =
+              '${gift['name'] ?? 'Gift'} x$_giftComboCount';
+          displayGift['count'] = _giftComboCount;
+        }
+        _playGiftEffect(
+          displayGift,
+          receiverId: recipientIds.first,
+          receiverIds: recipientIds,
+          senderId: widget.state.userId,
+        );
+      }
+      final firstReceiver = membersBySeat.values.firstWhere(
+        (member) => member['user_id']?.toString() == recipientIds.first,
+        orElse: () => <String, dynamic>{},
+      );
+      final firstReceiverName = (firstReceiver['display_name'] ??
+              firstReceiver['name'] ??
+              firstReceiver['nickname'] ??
+              (recipientIds.first == widget.state.userId
+                  ? widget.state.displayName
+                  : recipientIds.first))
+          .toString();
+      final firstGift = flyGifts.first;
+      _showGiftRibbon(
+        event: <String, dynamic>{
+          'gift_name': _giftComboCount > 1
+              ? '${firstGift['name'] ?? 'Gift'} x$_giftComboCount'
+              : (firstGift['name'] ?? 'Gift').toString(),
+        },
+        senderName: widget.state.displayName,
+        receiverName: firstReceiverName,
+        giftName: _giftComboCount > 1
+            ? '${firstGift['name'] ?? 'Gift'} x$_giftComboCount'
+            : (firstGift['name'] ?? 'Gift').toString(),
+      );
     }
     if (mounted && sentCopies > 0) {
       setState(() => _giftComboTotal += sentCopies);
@@ -8976,7 +9162,7 @@ class _RoomScreenState extends State<RoomScreen>
                       ? muted
                       : (!micOn || roomMutedSeats.contains(seat));
                   final showGiftImpact = memberId.isNotEmpty &&
-                      activeGiftReceiverId == memberId &&
+                      activeGiftReceiverIds.contains(memberId) &&
                       activeGiftEffect != null &&
                       effectsEnabled &&
                       giftEffectsEnabled;

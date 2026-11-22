@@ -55,7 +55,7 @@ void main() {
     expect(categoryRow, greaterThanOrEqualTo(0));
     expect(recipientRow, greaterThan(categoryRow));
 
-    expect(source, contains('activeGiftReceiverId == memberId'));
+    expect(source, contains('activeGiftReceiverIds.contains(memberId)'));
     expect(source, contains('_buildSeatGiftImpactEffect'));
     expect(source, contains('activeGiftReceiverAvatarKey'));
     expect(source, contains('speakingLevelsListenable'));
@@ -104,7 +104,10 @@ void main() {
     expect(sendFlow, contains('_seenGiftEventIds.add(committedEventId)'));
     expect(sendFlow, contains('await _playGiftVideo(displayGift, receiverId: receiverId, videoKey: videoKey)'));
     expect(sendFlow, contains('await _playGiftGlb(displayGift, receiverId: receiverId, glbKey: glbKey)'));
-    expect(sendFlow, contains('_playGiftEffect(displayGift, receiverId: receiverId)'));
+    expect(
+      sendFlow,
+      contains('_playGiftEffect(\n            displayGift,\n            receiverId: receiverId,\n            senderId: widget.state.userId,\n          );'),
+    );
     expect(sendFlow, contains('sendRoomMessage('));
     expect(source, contains("if (event['sender_user_id']?.toString() == widget.state.userId) continue;"));
   });
@@ -133,5 +136,64 @@ void main() {
     expect(source, contains('onAudioVolumeIndication'));
     expect(source, contains('(speaker.volume ?? 0) / 255.0'));
     expect(source, contains('speakingLevelsListenable'));
+  });
+
+  test('glass gift send shows the 3D image flying, not the emoji', () {
+    // Glass gifts (Vinay, 2026-11-22): when a gift is sent, the thing
+    // that flies to the receiver's seat IS the 3D glass image
+    // (asset_key), not the emoji. The emoji is only the fallback for
+    // gifts without an image.
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+    final start = room.indexOf('Widget _buildSeatGiftImpactEffect');
+    final end = room.indexOf('Color get _seatThemeAccent', start);
+    expect(start, greaterThanOrEqualTo(0));
+    expect(end, greaterThan(start));
+    final effect = room.substring(start, end);
+    expect(effect, contains("gift['asset_key']"));
+    expect(effect, contains('GiftMediaPreview('));
+    expect(effect, contains('assetKey: assetKey'));
+    expect(effect, contains('fit: BoxFit.contain'));
+    // The emoji fallback is still there for image-less gifts.
+    expect(effect, contains("gift['emoji']"));
+
+    // The DM gift picker shows the same 3D image, not just the emoji.
+    final dm = File('lib/screens/conversation_screen.dart').readAsStringSync();
+    expect(dm, contains("import '../widgets/gift_media_preview.dart';"));
+    expect(dm, contains('GiftMediaPreview('));
+    expect(dm, contains("gift['asset_key']"));
+  });
+
+  test('one gift sent to many users splits from the centre to every DP', () {
+    // Split send (Vinay, 2026-11-22): one gift sent in a single go to
+    // N users shows as ONE gift in the screen centre, then splits into
+    // one copy per receiver, each flying to that receiver's DP. The
+    // same holds for a combo re-send of the same batch.
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+
+    // The effect tracks a SET of receivers, not one receiver.
+    expect(room, contains('Set<String> activeGiftReceiverIds'));
+    expect(room, isNot(contains('String? activeGiftReceiverId;')));
+    expect(room, contains('activeGiftReceiverIds.contains(memberId)'));
+
+    // _playGiftEffect takes all receiver ids + the sender, and
+    // coalesces the other copies of the same batch (same gift, same
+    // sender, within 600ms) into the effect already playing instead of
+    // restarting it.
+    final playStart = room.indexOf('void _playGiftEffect(');
+    final playEnd = room.indexOf('/// Shows the VIP gift ribbon', playStart);
+    expect(playStart, greaterThanOrEqualTo(0));
+    expect(playEnd, greaterThan(playStart));
+    final play = room.substring(playStart, playEnd);
+    expect(play, contains('List<String>? receiverIds'));
+    expect(play, contains('String? senderId'));
+    expect(play, contains('activeGiftReceiverIds.addAll(ids)'));
+    expect(play, contains('inMilliseconds < 600'));
+    expect(play, contains('activeGiftSenderId'));
+
+    // Bulk sends suppress the per-recipient effect and play ONE split
+    // effect for the whole batch (gift box + combo button).
+    expect(room, contains('playEffect: !isFlyGift'));
+    expect(room, contains('receiverIds: recipientIds'));
+    expect(room, contains('bool playEffect = true'));
   });
 }

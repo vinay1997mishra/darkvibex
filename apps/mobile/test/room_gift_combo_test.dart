@@ -48,7 +48,7 @@ void main() {
     expect(consumer, contains('recipientIds.length *\n        comboCount;'));
     expect(
       consumer,
-      contains('final sent = await _sendGiftByDefinition(gift, id, count: comboCount);'),
+      contains('final sent = await _sendGiftByDefinition(\n          gift,\n          id,\n          count: comboCount,\n          playEffect: !isFlyGift,\n        );'),
     );
     expect(consumer, contains('_giftComboGifts = selectedGifts'));
     expect(consumer, contains('_giftComboRecipientIds = List<String>.from(recipientIds)'));
@@ -77,7 +77,7 @@ void main() {
     expect(source, contains('Future<void> _sendGiftCombo() async {'));
     expect(
       source,
-      contains('final sent =\n            await _sendGiftByDefinition(gift, id, count: _giftComboCount);'),
+      contains('final sent = await _sendGiftByDefinition(\n          gift,\n          id,\n          count: _giftComboCount,\n          playEffect: !isFlyGift,\n        );'),
     );
     expect(source, contains('setState(() => _giftComboTotal += sentCopies);'));
 

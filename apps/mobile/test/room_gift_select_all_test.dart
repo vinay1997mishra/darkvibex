@@ -81,7 +81,7 @@ void main() {
     final consumer = source.substring(consumerStart, consumerEnd);
     expect(
       consumer,
-      contains('final sent = await _sendGiftByDefinition(gift, id, count: comboCount);'),
+      contains('final sent = await _sendGiftByDefinition(\n          gift,\n          id,\n          count: comboCount,\n          playEffect: !isFlyGift,\n        );'),
     );
     expect(consumer, contains('if (!sent) return;'));
   });
