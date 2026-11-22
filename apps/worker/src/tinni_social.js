@@ -391,19 +391,27 @@ export async function claimTask(db, userId, taskId) {
   if (task.claimed) throw new Error("task_already_claimed");
   const user = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
   if (!user) throw new Error("user_not_found");
-  const balance = Number(user.coins ?? 0) + Number(task.reward_coins);
   const createdAt = ts();
+  // Relative credit (Wallet audit H3, 2026-11-22): the old code read
+  // the balance, then wrote it back absolutely, so a concurrent
+  // credit to the same user overwrote it and lost coins. The claim
+  // itself is still guarded by PRIMARY KEY(user_id, task_id) on
+  // user_task_claims, so a concurrent double-claim fails the batch.
+  // The ledger balance is read inside the batch (post-credit).
   await db.batch([
     db.prepare(
-      "UPDATE users SET coins=?,updated_at=? WHERE id=?"
-    ).bind(balance, createdAt, userId),
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(Number(task.reward_coins), createdAt, userId),
     db.prepare(
       "INSERT INTO user_task_claims(user_id,task_id,reward_coins,claimed_at) VALUES(?,?,?,?)"
     ).bind(userId, task.id, task.reward_coins, createdAt),
     db.prepare(
-      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
-    ).bind(uid("task-"), userId, "task_reward", task.reward_coins, balance, task.id, createdAt),
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+      "SELECT ?,u.id,'task_reward',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
+    ).bind(uid("task-"), task.reward_coins, task.id, createdAt, userId),
   ]);
+  const afterRow = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+  const balance = Number(afterRow?.coins ?? 0);
   return { ok: true, task: { ...task, claimed: true }, tasks: await taskState(db, userId), coin_balance: balance };
 }
 

@@ -74,6 +74,14 @@ export async function ensureVipSchema(db){
   // user ever. The effective level is max(EXP level, active grant).
   await db.prepare("CREATE TABLE IF NOT EXISTS vip_grants (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, level INTEGER NOT NULL, granted_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, source TEXT NOT NULL, reference_id TEXT, created_at INTEGER NOT NULL, UNIQUE(user_id, source))").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_vip_grants_user ON vip_grants(user_id, expires_at)").run();
+  // EXP award records (Wallet audit H2 + H3, 2026-11-22): one row per
+  // money event that awarded EXP, keyed by the event's stable id —
+  // the Coin Seller transfer_id, or the Google Play purchase token.
+  // A retry / crash-resume that finds its row returns the stored
+  // award instead of awarding EXP a second time (Play M2: the old
+  // code awarded EXP, then persisted exp_awarded in a SEPARATE
+  // update, so a crash between the two re-awarded on resume).
+  await db.prepare("CREATE TABLE IF NOT EXISTS vip_exp_awards (reference_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, coins INTEGER NOT NULL, awarded_exp REAL NOT NULL, exp_boost REAL NOT NULL DEFAULT 1, level_before INTEGER NOT NULL, level_after INTEGER NOT NULL, created_at INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS profile_visitors (viewed_user_id TEXT NOT NULL, visitor_user_id TEXT NOT NULL, first_visited_at INTEGER NOT NULL, last_visited_at INTEGER NOT NULL, visit_count INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (viewed_user_id, visitor_user_id))").run();
 }
 
@@ -221,58 +229,127 @@ export async function createVipGrant(db,userId,level,days,source,referenceId=nul
   return {level:grantLevel,expires_at:expiresAt,source};
 }
 
-export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now()){
+export async function awardSellerVipExp(db,userId,coinAmount,ts=Date.now(),options={}){
   const coins=Number(coinAmount??0);
   if(!Number.isSafeInteger(coins)||coins<=0) throw new Error("invalid_coin_amount");
-  let row=await ensureRow(db,userId,ts);
-  row=await settle(db,row,ts);
-  let level=Number(row.level??0);
-  let exp=Number(row.exp_balance??0);
-  let total=Number(row.total_received_coins??0);
-  let until=row.active_until==null?null:Number(row.active_until);
-  const active=level>0&&until!=null&&until>ts;
-  // Purchase-only EXP (Vinay, 2026-11-18): 150 EXP per $1 of coins bought
-  // from a Coin Seller ($1 = 8,000,000 coins), i.e. 150 EXP per 8,000,000
-  // coins received. Computed as coins*3/160,000 so the numerator stays
-  // an exact integer; EXP can still be fractional for odd coin amounts
-  // (e.g. 1,000,000 coins = 18.75 EXP), so no flooring — fractions
-  // accumulate in exp_balance. Spending coins on gifts never calls this
-  // function, so it earns no EXP.
-  // EXP BOOST (Vinay, 2026-11-19): the awarded EXP is multiplied by
-  // the user's VIP level boost at purchase time (pre-award level):
-  // VIP1-4 1.1x, VIP5-10 1.2x, VIP11-15 1.4x, VIP16-18 1.5x, VIP0 1.0x.
-  // The base rate (150 per $1), the thresholds and the expiry/drop
-  // rules are unchanged — only the awarded amount grows.
-  const multiplier=3/160000;
-  const expBoost=expBoostForLevel(level);
-  const awarded=(coins*3)/160000*expBoost;
-  const before=level;
-  exp+=awarded;
-  total+=coins;
-  while(level<18){
-    const next=await vipRuleForDb(db,level+1);
-    if(!next||next.enabled===false||exp<next.upgrade) break;
-    // Excess EXP carries toward the next tier, so one large award can
-    // level up more than once (the old code reset exp to 0 and broke
-    // after a single level, discarding the excess).
-    exp-=next.upgrade;
-    level+=1;
-    until=ts+next.days*DAY_MS;
+  // Dedup key (Wallet audit H2 + H3, 2026-11-22): the Coin Seller
+  // transfer_id, or the Google Play purchase token. A retry /
+  // crash-resume with the same key returns the stored award instead
+  // of awarding EXP a second time.
+  const referenceId=String(options?.referenceId ?? "").trim() || crypto.randomUUID();
+  await ensureVipSchema(db);
+  const existingAward=await db.prepare(
+    "SELECT reference_id,user_id,coins,awarded_exp,exp_boost,level_before,level_after,created_at FROM vip_exp_awards WHERE reference_id=?"
+  ).bind(referenceId).first();
+  if (existingAward) {
+    const currentRow=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();
+    return {
+      vip:payload(currentRow,ts),
+      awarded_exp:Number(existingAward.awarded_exp ?? 0),
+      multiplier:3/160000,
+      exp_boost:Number(existingAward.exp_boost ?? 1),
+      level_up:Number(existingAward.level_after ?? 0)!==Number(existingAward.level_before ?? 0),
+      previous_level:Number(existingAward.level_before ?? 0),
+      new_level:Number(existingAward.level_after ?? 0),
+      duplicate:true,
+    };
   }
-  const changed=level!==before;
-  // The users.vip_level mirror tracks the EFFECTIVE level: if a temporary
-  // grant (e.g. Play first recharge VIP1) is active and higher than the
-  // EXP level, the mirror must not drop below it.
-  const grant=await activeVipGrant(db,userId,ts);
-  const mirrorLevel=Math.max(level,grant?Math.max(0,Math.min(18,Number(grant.level??0))):0);
-  await db.batch([
-    db.prepare("UPDATE user_vip SET level=?,exp_balance=?,total_received_coins=?,active_until=?,free_say_hi_used=CASE WHEN ? THEN 0 ELSE free_say_hi_used END,free_say_hi_cycle=CASE WHEN ? THEN ? ELSE free_say_hi_cycle END,updated_at=? WHERE user_id=?")
-      .bind(level,exp,total,until,changed?1:0,changed?1:0,String(until??""),ts,userId),
-    db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=?").bind(mirrorLevel,ts,userId),
-  ]);
-  await logEvent(db,userId,"coin_seller_received",coins,awarded,before,level,ts);
-  const updated=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();
-  return {vip:payload(updated,ts),awarded_exp:awarded,multiplier,exp_boost:expBoost,level_up:changed,previous_level:before,new_level:level};
+  // Optimistic locking (H3): the old code read the row, computed the
+  // new level / exp / total in JS, then wrote them back with absolute
+  // SETs — so two concurrent awards overwrote each other and lost
+  // EXP. The UPDATE is now a compare-and-swap on the pre-read
+  // (level, exp_balance) and the balances move relatively
+  // (exp_balance=exp_balance+delta, total_received_coins=+coins), so
+  // a concurrent award either retries (CAS miss) or composes
+  // correctly. The award record is written in the SAME batch, gated
+  // on the CAS having changed a row, so a crashed / retried award
+  // can never be applied without its record.
+  const multiplier=3/160000;
+  for (let attempt=0; attempt<3; attempt+=1) {
+    let row=await ensureRow(db,userId,ts);
+    row=await settle(db,row,ts);
+    let level=Number(row.level??0);
+    const expBefore=Number(row.exp_balance??0);
+    let exp=expBefore;
+    const until0=row.active_until==null?null:Number(row.active_until);
+    let until=until0;
+    // Purchase-only EXP (Vinay, 2026-11-18): 150 EXP per $1 of coins bought
+    // from a Coin Seller ($1 = 8,000,000 coins), i.e. 150 EXP per 8,000,000
+    // coins received. Computed as coins*3/160,000 so the numerator stays
+    // an exact integer; EXP can still be fractional for odd coin amounts
+    // (e.g. 1,000,000 coins = 18.75 EXP), so no flooring — fractions
+    // accumulate in exp_balance. Spending coins on gifts never calls this
+    // function, so it earns no EXP.
+    // EXP BOOST (Vinay, 2026-11-19): the awarded EXP is multiplied by
+    // the user's VIP level boost at purchase time (pre-award level):
+    // VIP1-4 1.1x, VIP5-10 1.2x, VIP11-15 1.4x, VIP16-18 1.5x, VIP0 1.0x.
+    // The base rate (150 per $1), the thresholds and the expiry/drop
+    // rules are unchanged — only the awarded amount grows.
+    const expBoost=expBoostForLevel(level);
+    const awarded=(coins*3)/160000*expBoost;
+    const before=level;
+    exp+=awarded;
+    let thresholdsCrossed=0;
+    while(level<18){
+      const next=await vipRuleForDb(db,level+1);
+      if(!next||next.enabled===false||exp<next.upgrade) break;
+      // Excess EXP carries toward the next tier, so one large award can
+      // level up more than once (the old code reset exp to 0 and broke
+      // after a single level, discarding the excess).
+      exp-=next.upgrade;
+      thresholdsCrossed+=next.upgrade;
+      level+=1;
+      until=ts+next.days*DAY_MS;
+    }
+    const changed=level!==before;
+    const expDelta=awarded-thresholdsCrossed;
+    // The users.vip_level mirror tracks the EFFECTIVE level: if a temporary
+    // grant (e.g. Play first recharge VIP1) is active and higher than the
+    // EXP level, the mirror must not drop below it.
+    const grant=await activeVipGrant(db,userId,ts);
+    const mirrorLevel=Math.max(level,grant?Math.max(0,Math.min(18,Number(grant.level??0))):0);
+    let batchResults;
+    try {
+      batchResults=await db.batch([
+        db.prepare("UPDATE user_vip SET level=?,exp_balance=exp_balance+?,total_received_coins=total_received_coins+?,active_until=?,free_say_hi_used=CASE WHEN ? THEN 0 ELSE free_say_hi_used END,free_say_hi_cycle=CASE WHEN ? THEN ? ELSE free_say_hi_cycle END,updated_at=? WHERE user_id=? AND level=? AND exp_balance=?")
+          .bind(level,expDelta,coins,until,changed?1:0,changed?1:0,String(until??""),ts,userId,before,expBefore),
+        db.prepare("INSERT INTO vip_exp_awards(reference_id,user_id,coins,awarded_exp,exp_boost,level_before,level_after,created_at) SELECT ?,?,?,?,?,?,?,? WHERE changes()=1")
+          .bind(referenceId,userId,coins,awarded,expBoost,before,level,ts),
+        db.prepare("UPDATE users SET vip_level=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM vip_exp_awards WHERE reference_id=?)").bind(mirrorLevel,ts,userId,referenceId),
+        db.prepare("INSERT INTO vip_events (id,user_id,kind,coin_amount,exp_delta,level_before,level_after,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM vip_exp_awards WHERE reference_id=?)")
+          .bind(crypto.randomUUID(),userId,"coin_seller_received",coins,awarded,before,level,ts,referenceId),
+      ]);
+    } catch (error) {
+      // The award record already exists (a concurrent call for the
+      // same reference won the race): return the stored award.
+      const raced=await db.prepare(
+        "SELECT reference_id,user_id,coins,awarded_exp,exp_boost,level_before,level_after,created_at FROM vip_exp_awards WHERE reference_id=?"
+      ).bind(referenceId).first();
+      if (raced) {
+        const currentRow=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();
+        return {
+          vip:payload(currentRow,ts),
+          awarded_exp:Number(raced.awarded_exp ?? 0),
+          multiplier,
+          exp_boost:Number(raced.exp_boost ?? 1),
+          level_up:Number(raced.level_after ?? 0)!==Number(raced.level_before ?? 0),
+          previous_level:Number(raced.level_before ?? 0),
+          new_level:Number(raced.level_after ?? 0),
+          duplicate:true,
+        };
+      }
+      throw error;
+    }
+    if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
+      // CAS miss: another award changed the row first. Re-read and
+      // recompute (the award record was not written — the INSERT is
+      // gated on the CAS — so the retry is safe).
+      continue;
+    }
+    const updated=await db.prepare("SELECT * FROM user_vip WHERE user_id=?").bind(userId).first();
+    return {vip:payload(updated,ts),awarded_exp:awarded,multiplier,exp_boost:expBoost,level_up:changed,previous_level:before,new_level:level};
+  }
+  throw new Error("vip_exp_award_conflict");
 }
 
 export async function readVipRow(db,userId,ts=Date.now()){

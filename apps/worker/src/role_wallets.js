@@ -1,4 +1,5 @@
 import { coinsBonusForPurchase } from "./vip_policy.js";
+import { claimTransferIdempotency } from "./transfer_idempotency.js";
 
 const allowedRoleWallets = new Set(["coin_seller","merchant"]);
 
@@ -96,6 +97,14 @@ export async function transferRoleCoins(db,{
   receiverUserId,
   coins,
   credentialHash,
+  // Idempotency (Wallet audit H1, 2026-11-22): a client-supplied key
+  // makes a retry return the SAME transfer instead of a second one.
+  // The key is claimed atomically before the money moves; the
+  // transfer_id is stable per key, which is also what makes the
+  // invite commission's UNIQUE(source_transfer_id) and the VIP EXP
+  // award record dedup across retries.
+  idempotencyKey=null,
+  transferId=null,
   ts=Date.now(),
 }){
   const amount=Number(coins);
@@ -131,21 +140,84 @@ export async function transferRoleCoins(db,{
       coinsBonus=0;
     }
   }
-  const reference=crypto.randomUUID();
+  const reference=String(transferId ?? "").trim() || crypto.randomUUID();
+  const key=String(idempotencyKey ?? "").trim();
+  // Claim the idempotency key BEFORE the money moves: the plain
+  // INSERT is the atomic guard — a concurrent duplicate loses the
+  // claim and the caller returns the stored result instead.
+  if (key) {
+    const claim = await claimTransferIdempotency(db, {
+      senderUserId, walletType, idempotencyKey: key, transferId: reference,
+      receiverUserId, coins: amount, ts,
+    });
+    if (!claim.claimed) {
+      const error = new Error("duplicate_transfer");
+      error.existing = claim.existing;
+      throw error;
+    }
+  }
   // Atomic, relative moves (audit 2026-11-20): the old batch SET absolute
   // balances from stale reads, so two concurrent sends to the same
   // receiver overwrote each other and lost coins — and in real D1 a
   // failed sender guard would not have stopped the receiver credit in
   // the same batch. Balances for the ledgers are re-read after the move.
-  const debited = await db.prepare(
-    "UPDATE role_wallets SET balance_coins=balance_coins-?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
-  ).bind(amount,ts,senderUserId,walletType,amount).run();
-  if (Number(debited.meta?.changes ?? 0) !== 1) {
+  //
+  // Atomicity (Wallet audit H4, 2026-11-22): the debit, the receiver
+  // credit and all three ledger rows now ride ONE db.batch, so a crash
+  // can no longer leave the seller debited with the receiver uncredited
+  // (or credited with no ledger row). Each step after the debit is
+  // gated on changes()=1 — the same gating the gift/diamond/game paths
+  // already use — so a failed debit makes the whole batch a no-op.
+  // The ledger balances are read from the tables inside the batch
+  // (subqueries), i.e. the post-debit / post-credit values.
+  const ledgerKind = walletType==="coin_seller" ? "coin_seller_received" : "merchant_received";
+  const batchResults = await db.batch([
+    db.prepare(
+      "UPDATE role_wallets SET balance_coins=balance_coins-?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
+    ).bind(amount,ts,senderUserId,walletType,amount),
+    db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND changes()=1"
+    ).bind(amount + coinsBonus, ts, receiverUserId),
+    db.prepare(
+      `INSERT INTO role_wallet_ledger(
+        id,user_id,wallet_type,kind,coin_amount,
+        coin_balance_after,counterparty_user_id,reference_id,created_at
+      ) SELECT ?,?,?,?,?,(SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?),?,?,? WHERE changes()=1`
+    ).bind(
+      crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,
+      senderUserId,walletType,receiverUserId,reference,ts,
+    ),
+    db.prepare(
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+      "SELECT ?,u.id,?,?,(SELECT coins FROM users WHERE id=?)-?, ?,? FROM users u WHERE u.id=? AND changes()=1"
+    ).bind(
+      crypto.randomUUID(),ledgerKind,amount,receiverUserId,coinsBonus,reference,ts,receiverUserId,
+    ),
+    ...(coinsBonus > 0 ? [
+      db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+        "SELECT ?,u.id,'vip_coins_bonus',?,u.coins,?,? FROM users u WHERE u.id=? AND EXISTS(SELECT 1 FROM wallet_ledger WHERE reference_id=? AND kind=?)"
+      ).bind(
+        crypto.randomUUID(),coinsBonus,reference,ts,receiverUserId,reference,ledgerKind,
+      ),
+    ] : []),
+  ]);
+  const debitedChanges = Number(batchResults?.[0]?.meta?.changes ?? -1);
+  // Belt and braces: the sender ledger row is the ground truth that
+  // the transfer happened. If it is missing and the debit changed
+  // nothing, the sender could not pay; if the debit did change a row
+  // but the ledger is missing, the gating misfired and the transfer
+  // is in an unknown state, so fail loudly instead of reporting
+  // success (the idempotency claim lets a retry resolve it).
+  const senderLedger = await db.prepare(
+    "SELECT 1 AS yes FROM role_wallet_ledger WHERE reference_id=? AND kind='coin_send' LIMIT 1"
+  ).bind(reference).first();
+  if (!senderLedger && debitedChanges === 0) {
     throw new Error("insufficient_role_wallet_coins");
   }
-  await db.prepare(
-    "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
-  ).bind(amount + coinsBonus, ts, receiverUserId).run();
+  if (!senderLedger) {
+    throw new Error("transfer_ledger_missing");
+  }
   const receiverRow = await db.prepare(
     "SELECT coins FROM users WHERE id=?"
   ).bind(receiverUserId).first();
@@ -154,27 +226,6 @@ export async function transferRoleCoins(db,{
     "SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?"
   ).bind(senderUserId,walletType).first();
   const senderBalance = Number(senderRow?.balance_coins ?? 0);
-  await db.prepare(
-    `INSERT INTO role_wallet_ledger(
-      id,user_id,wallet_type,kind,coin_amount,
-      coin_balance_after,counterparty_user_id,reference_id,created_at
-    ) VALUES(?,?,?,?,?,?,?,?,?)`
-  ).bind(
-    crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,senderBalance,
-    receiverUserId,reference,ts,
-  ).run();
-  await db.prepare(
-    "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
-  ).bind(
-    crypto.randomUUID(),receiverUserId,walletType==="coin_seller"?"coin_seller_received":"merchant_received",amount,receiverBalance - coinsBonus,reference,ts,
-  ).run();
-  if (coinsBonus > 0) {
-    await db.prepare(
-      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
-    ).bind(
-      crypto.randomUUID(),receiverUserId,"vip_coins_bonus",coinsBonus,receiverBalance,reference,ts,
-    ).run();
-  }
   return {
     transfer_id:reference,
     sender_role_coin_balance:senderBalance,

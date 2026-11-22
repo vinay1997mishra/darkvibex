@@ -226,16 +226,22 @@ async function creditPlayCoins(db, userId, amount, kind, referenceId) {
   const next = current + Number(amount);
   if (!Number.isSafeInteger(next) || next < 0) throw new Error("insufficient_coins");
   const ts = Date.now();
-  const updated = await db.prepare(
-    "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
-  ).bind(amount, ts, userId).run();
-  if (Number(updated.meta?.changes ?? 0) !== 1) throw new Error("user_not_found");
+  // Atomicity (Wallet audit H4, 2026-11-22): the credit and its
+  // ledger row now ride ONE db.batch, so a crash can no longer leave
+  // coins credited with no ledger row (or vice versa). The ledger
+  // balance is read inside the batch (post-credit).
+  const batchResults = await db.batch([
+    db.prepare(
+      "UPDATE users SET coins = coins + ?, updated_at = ? WHERE id = ?"
+    ).bind(amount, ts, userId),
+    db.prepare(
+      "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) " +
+      "SELECT ?,u.id,?,?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
+    ).bind(crypto.randomUUID(), kind, amount, referenceId, ts, userId),
+  ]);
+  if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) throw new Error("user_not_found");
   const after = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
-  const balanceAfter = Number(after?.coins ?? 0);
-  await db.prepare(
-    "INSERT INTO wallet_ledger (id, user_id, kind, amount, balance_after, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).bind(crypto.randomUUID(), userId, kind, amount, balanceAfter, referenceId, ts).run();
-  return balanceAfter;
+  return Number(after?.coins ?? 0);
 }
 
 export async function verifyPlayPurchase(db, env, userId, productId, purchaseToken, ts = Date.now()) {
@@ -332,7 +338,12 @@ export async function verifyPlayPurchase(db, env, userId, productId, purchaseTok
   // vip_policy.js is untouched — only this Play path passes the total.
   let expAwarded = Number(row.exp_awarded ?? 0);
   if (expAwarded <= 0) {
-    const vipResult = await awardSellerVipExp(db, userId, total, ts);
+    // The purchase token is the award's dedup key (Wallet audit M2,
+    // 2026-11-22): if the worker crashes between the award and the
+    // exp_awarded flag update below, the resume re-calls the award
+    // with the same token and gets the stored award instead of
+    // awarding EXP a second time.
+    const vipResult = await awardSellerVipExp(db, userId, total, ts, { referenceId: token });
     expAwarded = Number(vipResult.awarded_exp ?? 0);
     await db.prepare(
       "UPDATE play_purchases SET exp_awarded=? WHERE purchase_token=? AND status='pending'"

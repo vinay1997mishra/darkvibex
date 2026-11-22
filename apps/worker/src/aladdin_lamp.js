@@ -273,12 +273,17 @@ export async function claimLampTask(db, roomId, userId, taskId, ts = Date.now())
   try {
     const user = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
     if (!user) throw new Error("user_not_found");
-    const next = Number(user.coins ?? 0) + payout;
+    // Relative credit (Wallet audit H3, 2026-11-22): the old code
+    // read the balance, then wrote it back absolutely, so a
+    // concurrent credit to the same user overwrote it and lost coins.
+    // The ledger balance is read inside the batch (post-credit).
     await db.batch([
-      db.prepare("UPDATE users SET coins=?,updated_at=? WHERE id=?").bind(next, ts, userId),
-      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES (?,?,\'aladdin_lamp_reward\',?,?,?,?)")
-        .bind(crypto.randomUUID(), userId, payout, next, roomId + ":" + day + ":" + task.id, ts)
+      db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?").bind(payout, ts, userId),
+      db.prepare("INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) SELECT ?,u.id,'aladdin_lamp_reward',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1")
+        .bind(crypto.randomUUID(), payout, roomId + ":" + day + ":" + task.id, ts, userId)
     ]);
+    const afterRow = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+    const next = Number(afterRow?.coins ?? 0);
     return { task_id: task.id, reward_coins: task.reward_coins, bonus_coins: bonus, payout_coins: payout, coin_balance: next };
   } catch (error) {
     await db.prepare(

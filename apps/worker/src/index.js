@@ -37,6 +37,14 @@ import {
   transferRoleCoins,
 } from "./role_wallets.js";
 import {
+  checkPinLock,
+  clearPinFailures,
+  completeTransferIdempotency,
+  deleteTransferIdempotency,
+  recordPinFailure,
+  resolveDuplicateTransfer,
+} from "./transfer_idempotency.js";
+import {
   bindInvitationCode,
   inviteRewardSummary,
   recordCoinSellerInviteCommission,
@@ -2866,6 +2874,24 @@ async function ensureGiftEventsLuckyWinColumns(db) {
   } catch (_) {
     // Column already exists on databases created after the Lucky win launch.
   }
+}
+
+// Gift idempotency (Wallet audit H1, 2026-11-22): a retried gift send
+// used to debit the sender twice and pay diamonds twice. The app
+// sends one idempotency key per send attempt; the key is stored on
+// the gift event with a UNIQUE partial index, so a retry returns the
+// original event instead of a second gift.
+async function ensureGiftEventsIdempotencyColumn(db) {
+  try {
+    await db.prepare(
+      "ALTER TABLE gift_events ADD COLUMN idempotency_key TEXT"
+    ).run();
+  } catch (_) {
+    // Column already exists on databases created after this launch.
+  }
+  await db.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_gift_events_idempotency ON gift_events(idempotency_key) WHERE idempotency_key IS NOT NULL"
+  ).run();
 }
 
 const WEEKLY_SIGN_IN_REWARDS = Object.freeze([
@@ -8023,6 +8049,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
   if (!member) return { ok: false, error: "room_membership_required", status: 403 };
   await ensureGiftEventsCountColumn(db);
   await ensureGiftEventsLuckyWinColumns(db);
+  await ensureGiftEventsIdempotencyColumn(db);
   const rows = await db.prepare(
     `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.count,g.lucky_multiplier,g.lucky_win_coins,g.created_at,
             s.display_name AS sender_name,r.display_name AS receiver_name,
@@ -9424,6 +9451,171 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     }
   }
 
+  // Shared Coin Seller / Merchant transfer orchestration (Wallet audit
+  // H1 + H2, 2026-11-22). Used by both /api/wallet/role-coins/transfer
+  // and the legacy /api/wallet/coin-seller-transfer so the two routes
+  // cannot drift apart again.
+  //
+  // - The client passes an `idempotency_key` (one UUID per transfer
+  //   attempt, reused across retries of the SAME attempt). A retry
+  //   with the same key returns the original result instead of a
+  //   second transfer; the transfer_id is stable per key, which is
+  //   what makes the invite commission's UNIQUE(source_transfer_id)
+  //   and the VIP EXP award record dedup across retries.
+  // - EXP + invite commission run AFTER the money moves, but a
+  //   failure there no longer turns a completed transfer into an
+  //   error: the transfer is returned with ok:true plus a warning
+  //   (the money moved; the award is recovered by retrying the same
+  //   key, because both steps are idempotent on the stable
+  //   transfer_id).
+  // - A failed credential attempt is throttled (M6): 5 failures lock
+  //   the PIN for 15 minutes.
+  async function awardTransferExtras({ receiverId, amount, walletType, transferId, ts }) {
+    const warnings = [];
+    let vipAward = null;
+    let inviteCommission = null;
+    if (walletType !== "coin_seller") {
+      return { vipAward, inviteCommission, warnings };
+    }
+    try {
+      vipAward = await awardSellerVipExp(db, receiverId, amount, ts, {
+        referenceId: transferId,
+      });
+    } catch (error) {
+      warnings.push("vip_exp_failed");
+      console.error("DarkVibeX seller EXP award failed", {
+        receiverId, transferId,
+        error: String(error?.message ?? error),
+      });
+    }
+    try {
+      inviteCommission = await recordCoinSellerInviteCommission(db, {
+        inviteeUserId: receiverId,
+        sourceTransferId: transferId,
+        sourceCoins: amount,
+        sourceWalletType: walletType,
+        ts,
+      });
+    } catch (error) {
+      warnings.push("invite_commission_failed");
+      console.error("DarkVibeX invite commission failed", {
+        receiverId, transferId,
+        error: String(error?.message ?? error),
+      });
+    }
+    return { vipAward, inviteCommission, warnings };
+  }
+
+  async function runRoleTransfer({
+    senderId, receiverId, walletType, credentialHash, amount,
+    idempotencyKey, ts,
+  }) {
+    const key = String(idempotencyKey ?? "").trim();
+    // PIN lock (M6) — checked before the credential is even verified.
+    await checkPinLock(db, senderId, walletType, ts);
+    let transferId = crypto.randomUUID();
+    let transferResult = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        transferResult = await transferRoleCoins(db, {
+          senderUserId: senderId,
+          walletType,
+          receiverUserId: receiverId,
+          coins: amount,
+          credentialHash,
+          idempotencyKey: key || null,
+          transferId,
+          ts,
+        });
+        break;
+      } catch (error) {
+        const code = String(error?.message ?? error);
+        if (code === "invalid_wallet_credential") {
+          const pinResult = await recordPinFailure(db, senderId, walletType, ts);
+          if (pinResult.locked) throw new Error("wallet_credential_locked");
+          throw error;
+        }
+        if (code === "duplicate_transfer" && error.existing) {
+          const resolved = await resolveDuplicateTransfer(db, error.existing, ts);
+          if (resolved.status === "done") {
+            const stored = resolved.result ?? {};
+            if (stored && "vip_award" in stored) {
+              // The original run finished and stored the full
+              // response: return it verbatim.
+              return { ok: true, duplicate: true, ...stored };
+            }
+            // Rebuilt from the ledger: the money moved but the
+            // result was never stored, so EXP / commission may not
+            // have run. Re-run them (both are idempotent on the
+            // stable transfer_id) and store the full response.
+            const extras = await awardTransferExtras({
+              receiverId, amount, walletType,
+              transferId: String(stored.transfer_id ?? error.existing.transfer_id ?? ""),
+              ts,
+            });
+            const response = {
+              ok: true,
+              duplicate: true,
+              ...stored,
+              vip_award: extras.vipAward,
+              invite_commission: extras.inviteCommission,
+              ...(extras.warnings.length ? { warnings: extras.warnings } : {}),
+            };
+            if (key) {
+              await completeTransferIdempotency(db, {
+                senderUserId: senderId, walletType, idempotencyKey: key,
+                resultJson: JSON.stringify(response), ts,
+              });
+            }
+            return response;
+          }
+          if (resolved.status === "in_progress") {
+            throw new Error("duplicate_transfer_in_progress");
+          }
+          // 'abandoned': the original crashed before the money
+          // moved. Drop the stale claim and retry once with a
+          // fresh transfer_id.
+          await deleteTransferIdempotency(db, {
+            senderUserId: senderId, walletType, idempotencyKey: key,
+          });
+          transferId = crypto.randomUUID();
+          continue;
+        }
+        // Any other failure (insufficient funds, unknown receiver,
+        // ...): the money did not move, so drop this attempt's claim
+        // (if any) and let a retry with the same key start fresh.
+        if (key) {
+          try {
+            await deleteTransferIdempotency(db, {
+              senderUserId: senderId, walletType, idempotencyKey: key,
+            });
+          } catch (_) {}
+        }
+        throw error;
+      }
+    }
+    if (!transferResult) throw new Error("transfer_failed");
+    await clearPinFailures(db, senderId, walletType);
+    const extras = await awardTransferExtras({
+      receiverId, amount, walletType,
+      transferId: transferResult.transfer_id, ts,
+    });
+    const response = {
+      ok: true,
+      ...transferResult,
+      vip_award: extras.vipAward,
+      invite_commission: extras.inviteCommission,
+      ...(extras.warnings.length ? { warnings: extras.warnings } : {}),
+    };
+    if (key) {
+      await completeTransferIdempotency(db, {
+        senderUserId: senderId, walletType, idempotencyKey: key,
+        resultJson: JSON.stringify(response), ts,
+      });
+    }
+    return response;
+  }
+
   if (url.pathname === "/api/wallet/role-coins/transfer" && request.method === "POST") {
     const body=await bodyJson(request);
     const userId=String(body.user_id ?? "").trim();
@@ -9431,6 +9623,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const walletType=String(body.wallet_type ?? "").trim();
     const credential=String(body.credential ?? "");
     const amount=Number(body.coins ?? 0);
+    const idempotencyKey=String(body.idempotency_key ?? "").trim();
     const authError=await requireSession(request,env,userId);
     if(authError) return authError;
     await ensureUserAllowed(db,userId);
@@ -9439,41 +9632,19 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       String(env.SESSION_SECRET ?? "")+"|"+userId+"|"+walletType+"|"+credential
     );
     try{
-      const result=await transferRoleCoins(db,{
-        senderUserId:userId,
+      const result=await runRoleTransfer({
+        senderId:userId,
+        receiverId,
         walletType,
-        receiverUserId:receiverId,
-        coins:amount,
         credentialHash:hash,
+        amount,
+        idempotencyKey,
         ts:now(),
       });
-      let vipAward=null;
-      let inviteCommission=null;
-      if(walletType==="coin_seller"){
-        vipAward=await awardSellerVipExp(db,receiverId,amount,now());
-      }
-      if(walletType==="coin_seller"){
-        try {
-          inviteCommission=await recordCoinSellerInviteCommission(db,{
-            inviteeUserId:receiverId,
-            sourceTransferId:result.transfer_id,
-            sourceCoins:amount,
-            sourceWalletType:walletType,
-            ts:now(),
-          });
-        } catch (error) {
-          console.error("DarkVibeX invite commission failed", {
-            receiverId,
-            transferId: result.transfer_id,
-            walletType,
-            error: String(error?.message ?? error),
-          });
-        }
-      }
-      return json({ok:true,...result,vip_award:vipAward,invite_commission:inviteCommission});
+      return json(result);
     }catch(error){
       const code=String(error?.message ?? error);
-      const status=["invalid_wallet_credential","wallet_credential_not_set"].includes(code)?403:400;
+      const status=code==="duplicate_transfer_in_progress"?409:["invalid_wallet_credential","wallet_credential_not_set","pin_locked","wallet_credential_locked"].includes(code)?403:400;
       return json({ok:false,error:code},{status});
     }
   }
@@ -9483,8 +9654,14 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const sellerId=String(body.seller_user_id ?? "").trim();
     const receiverId=String(body.receiver_user_id ?? "").trim();
     const pin=String(body.pin ?? "");
+    const idempotencyKey=String(body.idempotency_key ?? "").trim();
     const authError=await requireSession(request,env,sellerId);
     if(authError) return authError;
+    // H5 (Wallet audit, 2026-11-22): the legacy route skipped the ban
+    // check — a banned seller could still move coins. Both sides are
+    // now checked, like the newer route.
+    await ensureUserAllowed(db,sellerId);
+    await ensureUserAllowed(db,receiverId);
     if(!/^\d{4}$/.test(pin)){
       return json({ok:false,error:"coin_seller_pin_required"},{status:403});
     }
@@ -9492,36 +9669,20 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       String(env.SESSION_SECRET ?? "")+"|"+sellerId+"|coin_seller|"+pin
     );
     try{
-      const result=await transferRoleCoins(db,{
-        senderUserId:sellerId,
+      const result=await runRoleTransfer({
+        senderId:sellerId,
+        receiverId,
         walletType:"coin_seller",
-        receiverUserId:receiverId,
-        coins:Number(body.coins ?? 0),
         credentialHash:hash,
+        amount:Number(body.coins ?? 0),
+        idempotencyKey,
         ts:now(),
       });
-      const sellerCoins=Number(body.coins ?? 0);
-      const vipAward=await awardSellerVipExp(db,receiverId,sellerCoins,now());
-      let inviteCommission=null;
-      try {
-        inviteCommission=await recordCoinSellerInviteCommission(db,{
-          inviteeUserId:receiverId,
-          sourceTransferId:result.transfer_id,
-          sourceCoins:sellerCoins,
-          sourceWalletType:"coin_seller",
-          ts:now(),
-        });
-      } catch (error) {
-        console.error("DarkVibeX invite commission failed", {
-          receiverId,
-          transferId: result.transfer_id,
-          error: String(error?.message ?? error),
-        });
-      }
-      return json({ok:true,...result,vip_award:vipAward,invite_commission:inviteCommission});
+      return json(result);
     }catch(error){
       const code=String(error?.message ?? error);
-      return json({ok:false,error:code},{status:400});
+      const status=code==="duplicate_transfer_in_progress"?409:["invalid_wallet_credential","wallet_credential_not_set","pin_locked","wallet_credential_locked"].includes(code)?403:400;
+      return json({ok:false,error:code},{status});
     }
   }
 
@@ -10358,6 +10519,41 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const luckyWinCoins = isLuckyGift ? comboTotal * luckyMultiplier : 0;
     await ensureGiftEventsCountColumn(db);
     await ensureGiftEventsLuckyWinColumns(db);
+    await ensureGiftEventsIdempotencyColumn(db);
+    // Idempotency (Wallet audit H1, 2026-11-22): the app sends one
+    // key per send attempt. A retry with the same key returns the
+    // original event instead of a second gift (second debit + second
+    // diamonds). The key is stored on the gift event with a UNIQUE
+    // partial index, so a concurrent duplicate is caught by the
+    // batch below as well.
+    const giftIdempotencyKey = String(body.idempotency_key ?? "").trim();
+    const duplicateGiftResponse = async (priorGift) => {
+      const priorSenderWallet = await db.prepare(
+        "SELECT coins FROM users WHERE id=? LIMIT 1"
+      ).bind(sender).first();
+      const priorReceiverWallet = await db.prepare(
+        "SELECT diamonds FROM users WHERE id=? LIMIT 1"
+      ).bind(receiver).first();
+      return json({
+        ok: true,
+        duplicate: true,
+        event_id: priorGift.id,
+        gift_cost: cost,
+        gift_count: Number(priorGift.count ?? 1),
+        gift_total_cost: Number(priorGift.coin_cost ?? 0),
+        lucky_multiplier: Number(priorGift.lucky_multiplier ?? 0),
+        lucky_win_coins: Number(priorGift.lucky_win_coins ?? 0),
+        gift_name: String(gift.name ?? giftId),
+        sender_coin_balance: Number(priorSenderWallet?.coins ?? 0),
+        receiver_diamond_balance: Number(priorReceiverWallet?.diamonds ?? 0),
+      });
+    };
+    if (giftIdempotencyKey) {
+      const priorGift = await db.prepare(
+        "SELECT id,coin_cost,count,lucky_multiplier,lucky_win_coins FROM gift_events WHERE idempotency_key=? LIMIT 1"
+      ).bind(giftIdempotencyKey).first();
+      if (priorGift) return duplicateGiftResponse(priorGift);
+    }
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
@@ -10418,6 +10614,8 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     // Commit the debit, sender ledger, gift receipt and receiver diamond credit
     // as one D1 batch. The conditional UPDATE prevents concurrent sends from
     // spending the same balance, and changes() gates all follow-up writes.
+    let giftBatchError = null;
+    try {
     await db.batch([
       db.prepare(
         "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
@@ -10427,10 +10625,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         "SELECT ?,u.id,'gift_sent',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
       ).bind(id(), -comboTotal, eventId, giftCreatedAt, sender),
       db.prepare(
-        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,count,lucky_multiplier,lucky_win_coins,created_at) " +
-        "SELECT ?,?,?,?,?,?,?,?,?,? WHERE EXISTS (" +
+        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,count,lucky_multiplier,lucky_win_coins,idempotency_key,created_at) " +
+        "SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (" +
         "SELECT 1 FROM wallet_ledger WHERE reference_id=? AND kind='gift_sent')"
-      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, comboTotal, comboCount, luckyMultiplier, luckyWinCoins, giftCreatedAt, eventId),
+      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, comboTotal, comboCount, luckyMultiplier, luckyWinCoins, giftIdempotencyKey || null, giftCreatedAt, eventId),
       db.prepare(
         "UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ? AND EXISTS (" +
         "SELECT 1 FROM gift_events WHERE id=?)"
@@ -10474,6 +10672,20 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
             ]
           : []),
     ]);
+    } catch (error) {
+      giftBatchError = error;
+    }
+    if (giftBatchError) {
+      // A concurrent retry with the same idempotency key won the
+      // race: return the original event instead of erroring.
+      if (giftIdempotencyKey && /UNIQUE/i.test(String(giftBatchError?.message ?? giftBatchError))) {
+        const racedGift = await db.prepare(
+          "SELECT id,coin_cost,count,lucky_multiplier,lucky_win_coins FROM gift_events WHERE idempotency_key=? LIMIT 1"
+        ).bind(giftIdempotencyKey).first();
+        if (racedGift) return duplicateGiftResponse(racedGift);
+      }
+      throw giftBatchError;
+    }
 
     const committedGift = await db.prepare(
       "SELECT id FROM gift_events WHERE id=? LIMIT 1"

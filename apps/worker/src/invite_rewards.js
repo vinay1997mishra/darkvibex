@@ -356,25 +356,51 @@ export async function recordCoinSellerInviteCommission(db, {
   ).bind(inviterUserId).first();
   if (!inviter) return { applied: false, reason: "inviter_not_found" };
 
-  const balanceAfter = Number(inviter.coins ?? 0) + rewardCoins;
   const rewardId = crypto.randomUUID();
 
-  await db.batch([
+  // Relative, guarded credit (Wallet audit M3, 2026-11-22): the old
+  // code read the inviter's balance, then wrote it back absolutely,
+  // so two concurrent commissions overwrote each other and lost
+  // coins — and the check-then-insert on the commission row raced,
+  // so a concurrent duplicate ERRORED and the commission was lost
+  // (logged, safe direction, but lossy). The INSERT is now OR
+  // IGNORE on UNIQUE(source_transfer_id): a duplicate returns the
+  // existing commission instead of erroring, and the balance moves
+  // relatively with the ledger balance read inside the batch.
+  const batchResults = await db.batch([
     db.prepare(
-      "INSERT INTO invite_commission_rewards(id,inviter_user_id,invitee_user_id,source_transfer_id,source_coins,rate_bps,reward_coins,created_at) VALUES(?,?,?,?,?,?,?,?)"
+      "INSERT OR IGNORE INTO invite_commission_rewards(id,inviter_user_id,invitee_user_id,source_transfer_id,source_coins,rate_bps,reward_coins,created_at) VALUES(?,?,?,?,?,?,?,?)"
     ).bind(
       rewardId, inviterUserId, inviteeUserId, sourceTransferId,
       amount, tier.rateBps, rewardCoins, ts,
     ),
-    db.prepare("UPDATE users SET coins=?,updated_at=? WHERE id=?")
-      .bind(balanceAfter, ts, inviterUserId),
+    db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND changes()=1")
+      .bind(rewardCoins, ts, inviterUserId),
     db.prepare(
-      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+      "SELECT ?,u.id,'invite_commission',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
     ).bind(
-      crypto.randomUUID(), inviterUserId, "invite_commission",
-      rewardCoins, balanceAfter, sourceTransferId, ts,
+      crypto.randomUUID(), rewardCoins, sourceTransferId, ts, inviterUserId,
     ),
   ]);
+  if (Number(batchResults?.[0]?.meta?.changes ?? 0) !== 1) {
+    // A concurrent call for the same transfer already recorded the
+    // commission (the INSERT OR IGNORE was a no-op): return it
+    // instead of erroring, so the commission is never lost.
+    const raced = await db.prepare(
+      "SELECT reward_coins,rate_bps FROM invite_commission_rewards WHERE source_transfer_id=?"
+    ).bind(sourceTransferId).first();
+    return {
+      applied: false,
+      duplicate: true,
+      reward_coins: Number(raced?.reward_coins ?? 0),
+      rate_bps: Number(raced?.rate_bps ?? 0),
+    };
+  }
+  const afterRow = await db.prepare(
+    "SELECT coins FROM users WHERE id=?"
+  ).bind(inviterUserId).first();
+  const balanceAfter = Number(afterRow?.coins ?? 0);
 
   return {
     applied: true,
