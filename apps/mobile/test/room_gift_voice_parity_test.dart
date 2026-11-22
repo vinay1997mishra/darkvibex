@@ -134,4 +134,29 @@ void main() {
     expect(source, contains('(speaker.volume ?? 0) / 255.0'));
     expect(source, contains('speakingLevelsListenable'));
   });
+
+  test('glass gift send shows the 3D image flying, not the emoji', () {
+    // Glass gifts (Vinay, 2026-11-22): when a gift is sent, the thing
+    // that flies to the receiver's seat IS the 3D glass image
+    // (asset_key), not the emoji. The emoji is only the fallback for
+    // gifts without an image.
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+    final start = room.indexOf('Widget _buildSeatGiftImpactEffect');
+    final end = room.indexOf('Color get _seatThemeAccent', start);
+    expect(start, greaterThanOrEqualTo(0));
+    expect(end, greaterThan(start));
+    final effect = room.substring(start, end);
+    expect(effect, contains("gift['asset_key']"));
+    expect(effect, contains('GiftMediaPreview('));
+    expect(effect, contains('assetKey: assetKey'));
+    expect(effect, contains('fit: BoxFit.contain'));
+    // The emoji fallback is still there for image-less gifts.
+    expect(effect, contains("gift['emoji']"));
+
+    // The DM gift picker shows the same 3D image, not just the emoji.
+    final dm = File('lib/screens/conversation_screen.dart').readAsStringSync();
+    expect(dm, contains("import '../widgets/gift_media_preview.dart';"));
+    expect(dm, contains('GiftMediaPreview('));
+    expect(dm, contains("gift['asset_key']"));
+  });
 }

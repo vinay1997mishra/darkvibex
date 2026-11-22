@@ -6702,6 +6702,12 @@ class _RoomScreenState extends State<RoomScreen>
     final gift = activeGiftEffect;
     if (gift == null) return const SizedBox.shrink();
     final emoji = gift['emoji']?.toString() ?? '🎁';
+    // Glass gifts (Vinay, 2026-11-22): when the gift has an R2 image
+    // (asset_key), the flying gift IS that 3D glass image, not the emoji.
+    // The emoji stays only as the fallback for gifts without an image.
+    final assetKey = gift['asset_key']?.toString().trim() ?? '';
+    final videoKey = gift['video_key']?.toString().trim() ?? '';
+    final glbKey = gift['glb_key']?.toString().trim() ?? '';
     return IgnorePointer(
       child: TweenAnimationBuilder<double>(
         key: ValueKey<int>(giftEffectSequence),
@@ -6740,10 +6746,23 @@ class _RoomScreenState extends State<RoomScreen>
                       ),
                     ],
                   ),
-                  child: Text(
-                    emoji,
-                    style: TextStyle(fontSize: seatDiameter * .56),
-                  ),
+                  child: assetKey.isNotEmpty
+                      ? SizedBox(
+                          width: seatDiameter * .62,
+                          height: seatDiameter * .62,
+                          child: GiftMediaPreview(
+                            backend: widget.state.backend,
+                            videoKey: videoKey,
+                            assetKey: assetKey,
+                            glbKey: glbKey,
+                            emoji: emoji,
+                            fit: BoxFit.contain,
+                          ),
+                        )
+                      : Text(
+                          emoji,
+                          style: TextStyle(fontSize: seatDiameter * .56),
+                        ),
                 ),
               ),
             ),
