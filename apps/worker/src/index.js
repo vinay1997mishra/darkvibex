@@ -7998,6 +7998,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       gift_ribbon:giftRibbonForVipLevel(Number(row.sender_vip_level ?? 0)),
       video_key:String(gift.video_key ?? gift.videoKey ?? ""),
       glb_key:String(gift.glb_key ?? gift.glbKey ?? ""),
+      svga_key:String(gift.svga_key ?? gift.svgaKey ?? ""),
       asset_key:String(gift.asset_key ?? gift.asset ?? ""),
       created_at:Number(row.created_at ?? 0),
     };
