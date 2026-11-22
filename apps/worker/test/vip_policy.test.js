@@ -70,8 +70,10 @@ test("expired VIP capabilities return to base limits", () => {
   assert.equal(vipCapabilities(9, true).exclusive_mic_emoticon_enabled, true);
   assert.equal(vipCapabilities(18, true).honorary_title_enabled, true);
   assert.equal(expired.message_retention_days, 0);
-  assert.equal(vipCapabilities(8, true).message_retention_days, 60);
-  assert.equal(vipCapabilities(12, true).message_retention_days, 120);
+  // Capped at 45 days (Vinay, 2026-11-22: "Cap kar de 45 din per").
+  assert.equal(vipCapabilities(5, true).message_retention_days, 30);
+  assert.equal(vipCapabilities(8, true).message_retention_days, 45);
+  assert.equal(vipCapabilities(12, true).message_retention_days, 45);
   assert.equal(expired.show_id_style_level, 0);
   assert.equal(expired.entrance_vehicle_tier, 0);
   assert.equal(expired.exp_multiplier, 1);

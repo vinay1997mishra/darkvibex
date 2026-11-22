@@ -8,6 +8,7 @@ import '../utils/public_user_id.dart';
 import '../background/room_permission_bridge.dart';
 import '../infra/backend_api.dart';
 import '../infra/agora_rtc.dart';
+import '../infra/local_message_cache.dart';
 import '../ui/tinni_style.dart';
 import 'fruit_party_screen.dart';
 import 'greedy_girl_screen.dart';
@@ -370,6 +371,20 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
   }
 
   Future<void> _refresh() async {
+    // Local cache first (Vinay, 2026-11-22: "App se delete nhi hone
+    // chahiye") — game-room history the user has already seen stays
+    // in the app even after the server's 45-day cleanup keeps only
+    // the last 100.
+    if (chat.isEmpty) {
+      final cached = await LocalMessageCache.load(
+        LocalMessageCache.gameRoomKey(widget.roomId),
+      );
+      if (cached.isNotEmpty && mounted) {
+        setState(() {
+          chat = cached;
+        });
+      }
+    }
     final result = await widget.state.backend.gameRoom(
       roomId: widget.roomId,
       userId: widget.state.userId,
@@ -380,9 +395,16 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
     );
     if (!mounted) return;
     if (result?['ok'] == true) {
+      final merged = LocalMessageCache.merge(chat, rows);
+      unawaited(
+        LocalMessageCache.save(
+          LocalMessageCache.gameRoomKey(widget.roomId),
+          merged,
+        ),
+      );
       setState(() {
         data = result;
-        chat = rows;
+        chat = merged;
       });
     }
   }
@@ -392,18 +414,27 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
     final value = chatController.text.trim();
     if (value.isEmpty) return;
     setState(() => sendingChat = true);
-    final ok = await widget.state.backend.sendGameRoomMessage(
+    final result = await widget.state.backend.sendGameRoomMessageResult(
       roomId: widget.roomId,
       userId: widget.state.userId,
       text: value,
     );
+    final ok = result?['ok'] == true;
     if (!mounted) return;
     if (ok) {
       chatController.clear();
       await _refresh();
     } else {
+      // Strong security (Vinay, 2026-11-22): the server blocks
+      // gaaliyan, porn, political content and other apps' names.
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Message was not sent.')),
+        SnackBar(
+          content: Text(
+            result?['error'] == 'content_blocked'
+                ? 'Ye message nahi bheja ja sakta — isme mana kiya hua shabd hai.'
+                : 'Message was not sent.',
+          ),
+        ),
       );
     }
     if (mounted) setState(() => sendingChat = false);

@@ -1,12 +1,9 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
-import '../vip/vip_policy.dart';
+import '../infra/local_message_cache.dart';
 import '../widgets/cosmetic_store_previews.dart';
 import '../widgets/gift_media_preview.dart';
 import '../widgets/vip_chat_bubble.dart';
@@ -62,53 +59,32 @@ class _ConversationScreenState extends State<ConversationScreen> {
     super.dispose();
   }
 
-  String get _cacheKey => 'dvx_messages_${widget.state.userId}_${widget.otherUserId}';
+  String get _cacheKey =>
+      LocalMessageCache.dmKey(widget.state.userId, widget.otherUserId);
 
   Future<void> _persistMessages() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_cacheKey, jsonEncode(messages));
+    await LocalMessageCache.save(_cacheKey, messages);
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final cachedText = prefs.getString(_cacheKey);
-    if (cachedText != null) {
-      try {
-        final cached = jsonDecode(cachedText);
-        if (cached is List) {
-          messages
-            ..clear()
-            ..addAll(cached.whereType<Map>().map((row) => Map<String, dynamic>.from(row)));
-        }
-      } catch (_) {}
-    }
+    final cached = await LocalMessageCache.load(_cacheKey);
+    messages
+      ..clear()
+      ..addAll(cached);
     if (widget.state.backendConnected) {
       final rows = await widget.state.backend.messageThread(
         userId: widget.state.userId,
         otherUserId: widget.otherUserId,
       );
-      final byId = <String, Map<String, dynamic>>{};
-      for (final row in [...messages, ...rows]) {
-        final id = row['id']?.toString();
-        if (id != null && id.isNotEmpty) {
-          byId[id] = row;
-        } else {
-          final key = '${row['sender_user_id']}|${row['receiver_user_id']}|${row['created_at']}|${row['text']}|${row['image_key']}';
-          byId[key] = row;
-        }
-      }
+      // Local cache + server rows merged by id (server wins). The
+      // cache is what keeps old messages visible: the server only
+      // keeps the last 100 per thread past 45 days. Nothing here
+      // prunes by age (Vinay, 2026-11-22: "App se delete nhi hone
+      // chahiye") — the old VIP retention-days prune that deleted
+      // messages from the app is gone.
       messages
         ..clear()
-        ..addAll(byId.values)
-        ..sort((a, b) => (int.tryParse(a['created_at']?.toString() ?? '') ?? 0)
-            .compareTo(int.tryParse(b['created_at']?.toString() ?? '') ?? 0));
-      final days = widget.state.vipIsActive && widget.state.vipLevel >= 5
-          ? VipPolicy.messageRetentionDays(widget.state.vipLevel)
-          : 0;
-      if (days > 0) {
-        final cutoff = DateTime.now().millisecondsSinceEpoch - days * 86400000;
-        messages.removeWhere((row) => (int.tryParse(row['created_at']?.toString() ?? '') ?? 0) < cutoff);
-      }
+        ..addAll(LocalMessageCache.merge(messages, rows));
       final envelopeRows = await widget.state.backend.inboxRedEnvelopes(
         userId: widget.state.userId,
         otherUserId: widget.otherUserId,
@@ -332,19 +308,30 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return;
     }
     bool ok;
+    String? sendError;
     try {
-      ok = await widget.state.backend.sendDirectMessage(
+      final result = await widget.state.backend.sendDirectMessageResult(
         senderUserId: widget.state.userId,
         receiverUserId: widget.otherUserId,
         text: text,
       );
+      ok = result?['ok'] == true;
+      sendError = result?['error']?.toString();
     } catch (_) {
       ok = false;
     }
     if (!ok) {
       if (!mounted) return;
+      // Strong security (Vinay, 2026-11-22): the server blocks
+      // gaaliyan, porn, political content and other apps' names.
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Message could not be sent')),
+        SnackBar(
+          content: Text(
+            sendError == 'content_blocked'
+                ? 'Ye message nahi bheja ja sakta — isme mana kiya hua shabd hai.'
+                : 'Message could not be sent',
+          ),
+        ),
       );
       return;
     }

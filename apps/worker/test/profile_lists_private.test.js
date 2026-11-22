@@ -113,7 +113,7 @@ test("another user cannot list someone else's followers or following", async () 
   assert.equal(following.body.error, "forbidden");
 });
 
-test("another user cannot list someone else's visitors", async () => {
+test("another user cannot list someone else's visitors; the owner needs VIP1+ to see their own", async () => {
   const fx = await fixture();
   const a = await makeUser(fx, "list-visitors-a");
   const b = await makeUser(fx, "list-visitors-b");
@@ -127,6 +127,16 @@ test("another user cannot list someone else's visitors", async () => {
   assert.equal(visitors.status, 403, JSON.stringify(visitors.body));
   assert.equal(visitors.body.error, "forbidden");
 
+  // View Visitors is a VIP1+ privilege: the owner (VIP0) is blocked too.
+  const ownVisitorsBlocked = await fx.request(`/api/users/${b}/visitors`, { userId: b });
+  assert.equal(ownVisitorsBlocked.status, 403, JSON.stringify(ownVisitorsBlocked.body));
+  assert.equal(ownVisitorsBlocked.body.error, "vip_required");
+
+  // Once the owner is an active VIP1, their own visitors list opens.
+  // (The earlier visitors call already created B's user_vip row via
+  // getVipStatus, so this is an UPDATE, not an INSERT.)
+  fx.sqlite.prepare("UPDATE user_vip SET level=1,active_until=? WHERE user_id=?")
+    .run(Date.now() + 86400000, b);
   const ownVisitors = await fx.request(`/api/users/${b}/visitors`, { userId: b });
   assert.equal(ownVisitors.status, 200, JSON.stringify(ownVisitors.body));
   assert.equal(ownVisitors.body.ok, true);
