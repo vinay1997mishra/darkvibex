@@ -576,14 +576,25 @@ test("summary shows each invitee's total recharge in dollars; refunded and pendi
   insert.run("tok-4", "invitee-1", "coins_16000000", 16000000, "pending", now);
   insert.run("tok-5", "invitee-1", "coins_unknown", 0, "granted", now);
 
+  // Seller-wallet transfers into the normal wallet also count as
+  // recharge (Vinay, 2026-11-23), valued at $1 = 8,000,000 coins.
+  // The VIP purchase bonus is free platform coins, not a recharge.
+  const ledger = fx.sqlite.prepare(
+    "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+  );
+  ledger.run(crypto.randomUUID(), "invitee-1", "coin_seller_received", 8000000, 8000000, "ref-1", now);
+  ledger.run(crypto.randomUUID(), "invitee-1", "merchant_received", 4000000, 12000000, "ref-2", now);
+  ledger.run(crypto.randomUUID(), "invitee-1", "vip_coins_bonus", 400000, 12400000, "ref-1", now);
+
   const result = await summary(fx, "inviter-1");
   assert.equal(result.status, 200, JSON.stringify(result.body));
   const users = result.body.invited_users;
   assert.equal(users.length, 2);
   const first = users.find((u) => u.user_id === "invitee-1");
   // $1 + $10 granted = 1100 cents; the refunded $5, pending $2 and the
-  // unknown product count for nothing.
-  assert.equal(first.total_recharge_usd_cents, 1100);
+  // unknown product count for nothing. Seller transfers add $1.00 +
+  // $0.50 = 150 cents; the 400,000-coin VIP bonus is not a recharge.
+  assert.equal(first.total_recharge_usd_cents, 1250);
   const second = users.find((u) => u.user_id === "invitee-2");
   assert.equal(second.total_recharge_usd_cents, 0);
 });

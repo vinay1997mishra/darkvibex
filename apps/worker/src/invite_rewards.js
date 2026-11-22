@@ -407,6 +407,24 @@ export async function inviteRewardSummary(db, userId) {
     );
   }
 
+  // Coins bought from a coin seller / merchant (Vinay, 2026-11-23):
+  // a seller-wallet transfer lands in the invitee's normal wallet, so
+  // it counts as recharge too, valued at the fixed $1 = 8,000,000
+  // coins rate. The VIP purchase bonus is free platform coins, not a
+  // recharge, so the vip_coins_bonus rows are not counted here.
+  const sellerTransfer = await db.prepare(`
+    SELECT user_id, COALESCE(SUM(amount),0) AS total
+      FROM wallet_ledger
+     WHERE kind IN ('coin_seller_received','merchant_received')
+     GROUP BY user_id
+  `).all();
+  const sellerTransferByInviteeMap = new Map(
+    (sellerTransfer.results ?? []).map((row) => [
+      String(row.user_id),
+      Number(row.total ?? 0),
+    ]),
+  );
+
   const dollarBalance = await db.prepare(
     "SELECT balance_usd_cents FROM invite_dollar_balances WHERE user_id=?"
   ).bind(userId).first();
@@ -512,7 +530,10 @@ export async function inviteRewardSummary(db, userId) {
       received_coins: Number(row.source_coins ?? 0),
       commission_coins: Number(row.reward_coins ?? 0),
       referral_commission_usd_cents: dollarByInviteeMap.get(String(row.invitee_user_id)) ?? 0,
-      total_recharge_usd_cents: rechargeByInviteeMap.get(String(row.invitee_user_id)) ?? 0,
+      // Play recharges (granted only) + seller-wallet transfers into the
+      // normal wallet, the latter valued at $1 = 8,000,000 coins.
+      total_recharge_usd_cents: (rechargeByInviteeMap.get(String(row.invitee_user_id)) ?? 0) +
+        Math.floor((sellerTransferByInviteeMap.get(String(row.invitee_user_id)) ?? 0) * 100 / COINS_PER_USD),
       fixed_reward_coins: Number(row.fixed_reward_coins ?? 0),
     })),
   };
