@@ -8840,6 +8840,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const body = await bodyJson(request);
     const userId = String(body.user_id ?? "").trim();
     const invitationCode = String(body.invitation_code ?? "").trim();
+    const deviceKey = String(body.device_key ?? "").trim();
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     await ensureUserAllowed(db, userId);
@@ -8847,12 +8848,13 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       const binding = await bindInvitationCode(db, {
         inviteeUserId: userId,
         invitationCode,
+        deviceKey,
         ts: now(),
       });
       return json({ ok: true, binding });
     } catch (error) {
       const code = String(error?.message ?? error);
-      const status = ["invitation_code_not_found","cannot_invite_self"].includes(code) ? 400 : 409;
+      const status = ["invitation_code_not_found","cannot_invite_self","invite_window_expired","device_already_used_invite"].includes(code) ? 400 : 409;
       return json({ ok: false, error: code }, { status });
     }
   }

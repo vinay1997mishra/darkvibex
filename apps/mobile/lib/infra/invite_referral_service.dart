@@ -80,7 +80,9 @@ class InviteReferralService {
       final error = result?['error']?.toString() ?? '';
       if (result?['ok'] == true ||
           error == 'cannot_invite_self' ||
-          error == 'invitation_code_not_found') {
+          error == 'invitation_code_not_found' ||
+          error == 'invite_window_expired' ||
+          error == 'device_already_used_invite') {
         await prefs.remove(_pendingKey);
       }
     } catch (error) {

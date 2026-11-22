@@ -205,6 +205,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       await prefs.setBool(_invitePromptFlag, true);
       return;
     }
+    // The enter-code option closes 48 hours after the ID is created
+    // (Vinay, 2026-11-23): never prompt once the window has closed.
+    if (summary['invite_window_open'] == false) {
+      await prefs.setBool(_invitePromptFlag, true);
+      return;
+    }
     if (_anyDialogOpen) {
       _inviteCodePromptScheduled = false;
       Future.delayed(const Duration(seconds: 5), () {
@@ -295,7 +301,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       setDialogState(
                         () => error = code_error == 'cannot_invite_self'
                             ? 'You cannot use your own invitation code.'
-                            : code_error.replaceAll('_', ' '),
+                            : code_error == 'invite_window_expired'
+                                ? 'Invite codes can only be entered within 48 hours of creating your ID.'
+                                : code_error == 'device_already_used_invite'
+                                    ? 'This device has already used an invite code.'
+                                    : code_error.replaceAll('_', ' '),
                       );
                     },
               child: Text(joining ? 'Joining...' : 'Join'),

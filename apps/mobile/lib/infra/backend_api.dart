@@ -2702,6 +2702,10 @@ class BackendApi {
         body: <String, dynamic>{
           'user_id': userId,
           'invitation_code': invitationCode,
+          // One device, one ID uses an invite code (Vinay, 2026-11-23):
+          // the server rejects a second account binding from this device.
+          if ((deviceKey?.trim() ?? '').isNotEmpty)
+            'device_key': deviceKey!.trim(),
         },
         returnErrorBody: true,
       );

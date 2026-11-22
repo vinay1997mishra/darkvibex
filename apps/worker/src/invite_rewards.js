@@ -13,6 +13,12 @@ export const REFERRAL_COMMISSION_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 export const REFERRAL_WITHDRAWAL_MIN_USD_CENTS = 300;
 export const REFERRAL_WITHDRAWAL_COINS_PER_USD_CENT = 110_000;
 
+// Invite-code rules (Vinay, 2026-11-23): the code must be entered within
+// 48 hours of the ID being created — after that the option disappears.
+// And one device can use an invite code for one ID only, so a single
+// phone cannot farm the 800,000-coin reward with account after account.
+export const INVITE_BIND_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 // Every newly successful invite gives the inviter a fixed one-time coin reward.
 // Ongoing commission is separate and only counts coins credited through
 // Coin Seller transfers into the invited user's normal wallet. Merchant transfers,
@@ -34,13 +40,30 @@ export async function ensureInviteRewardSchema(db) {
     inviter_user_id TEXT NOT NULL,
     invitation_code TEXT NOT NULL,
     bound_at INTEGER NOT NULL,
+    device_key TEXT,
     CHECK(invitee_user_id <> inviter_user_id),
     FOREIGN KEY(invitee_user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(inviter_user_id) REFERENCES users(id) ON DELETE CASCADE
   )`).run();
 
+  // One device, one ID uses an invite code (Vinay, 2026-11-23): older
+  // databases were created without the column, so add it when missing.
+  const bindingInfo = await db.prepare(
+    "PRAGMA table_info(invite_bindings)"
+  ).all();
+  const hasDeviceKey = (bindingInfo.results ?? []).some(
+    (column) => String(column.name ?? "") === "device_key",
+  );
+  if (!hasDeviceKey) {
+    await db.prepare(
+      "ALTER TABLE invite_bindings ADD COLUMN device_key TEXT"
+    ).run();
+  }
+
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_bindings_inviter
     ON invite_bindings(inviter_user_id, bound_at DESC)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_invite_bindings_device
+    ON invite_bindings(device_key)`).run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS invite_success_rewards (
     id TEXT PRIMARY KEY,
@@ -199,6 +222,7 @@ async function backfillInviteSuccessRewards(db, inviterUserId, ts = Date.now()) 
 export async function bindInvitationCode(db, {
   inviteeUserId,
   invitationCode,
+  deviceKey,
   ts = Date.now(),
 }) {
   await ensureInviteRewardSchema(db);
@@ -227,6 +251,28 @@ export async function bindInvitationCode(db, {
     throw new Error("cannot_invite_self");
   }
 
+  // The invite code must be entered within 48 hours of the ID being
+  // created (Vinay, 2026-11-23). A missing created_at cannot prove the
+  // account is old, so legacy rows stay bindable.
+  const invitee = await db.prepare(
+    "SELECT created_at FROM users WHERE id=? LIMIT 1"
+  ).bind(inviteeUserId).first();
+  const createdAt = Number(invitee?.created_at ?? 0);
+  if (createdAt > 0 && ts - createdAt > INVITE_BIND_WINDOW_MS) {
+    throw new Error("invite_window_expired");
+  }
+
+  // One device, one ID: a device that already used an invite code for
+  // another account cannot use one again (Vinay, 2026-11-23). Old
+  // clients send no device key, so the check only runs when one arrives.
+  const device = String(deviceKey ?? "").trim();
+  if (device !== "") {
+    const other = await db.prepare(
+      "SELECT invitee_user_id FROM invite_bindings WHERE device_key=? AND invitee_user_id<>? LIMIT 1"
+    ).bind(device, inviteeUserId).first();
+    if (other) throw new Error("device_already_used_invite");
+  }
+
   const inviterUserId = String(inviter.id);
   const rewardId = crypto.randomUUID();
   const ledgerId = crypto.randomUUID();
@@ -235,8 +281,8 @@ export async function bindInvitationCode(db, {
   // is unique in both tables, so retries cannot mint the 800,000 coin reward twice.
   await db.batch([
     db.prepare(
-      "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
-    ).bind(inviteeUserId, inviterUserId, code, ts),
+      "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at,device_key) VALUES(?,?,?,?,?)"
+    ).bind(inviteeUserId, inviterUserId, code, ts, device !== "" ? device : null),
     db.prepare(
       "INSERT INTO invite_success_rewards(id,inviter_user_id,invitee_user_id,reward_coins,created_at) VALUES(?,?,?,?,?)"
     ).bind(
@@ -273,12 +319,21 @@ export async function inviteRewardSummary(db, userId) {
   const stats = await inviteStats(db, userId);
   const tier = tierFor(stats);
   const owner = await db.prepare(
-    "SELECT public_id FROM users WHERE id=? LIMIT 1"
+    "SELECT public_id,created_at FROM users WHERE id=? LIMIT 1"
   ).bind(userId).first();
   const invitationCode = String(owner?.public_id ?? "").trim();
   if (!/^[1-9]\d{6}$/.test(invitationCode)) {
     throw new Error("public_invitation_id_missing");
   }
+  // The enter-code option lives only within 48 hours of the ID being
+  // created (Vinay, 2026-11-23). The app hides the box and the
+  // one-time prompt once the window closes; the server enforces it.
+  const accountCreatedAt = Number(owner?.created_at ?? 0);
+  const inviteWindowEndsAt = accountCreatedAt > 0
+    ? accountCreatedAt + INVITE_BIND_WINDOW_MS
+    : 0;
+  const inviteWindowOpen = accountCreatedAt <= 0 ||
+    Date.now() < inviteWindowEndsAt;
   const binding = await db.prepare(`
     SELECT b.inviter_user_id,b.invitation_code,b.bound_at,
            u.public_id AS inviter_public_id,
@@ -308,7 +363,6 @@ export async function inviteRewardSummary(db, userId) {
      WHERE b.inviter_user_id=?
      GROUP BY b.invitee_user_id,u.public_id,u.display_name,u.avatar_key,b.bound_at
      ORDER BY b.bound_at DESC
-     LIMIT 100
   `).bind(userId).all();
 
   const dollarByInvitee = await db.prepare(`
@@ -323,6 +377,35 @@ export async function inviteRewardSummary(db, userId) {
       Number(row.total ?? 0),
     ]),
   );
+
+  // Total Play recharge per invitee, in US cents (Vinay, 2026-11-23):
+  // granted purchases only, so a refunded recharge stops counting.
+  // The pack cents mirror PLAY_PACKS in play_billing.js. The table is
+  // created lazily by the Play endpoints, so a summary read before any
+  // purchase must not fail on the missing table.
+  let rechargeByInviteeMap = new Map();
+  const rechargeTable = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='play_purchases'"
+  ).first();
+  if (rechargeTable) {
+    const rechargeByInvitee = await db.prepare(`
+      SELECT user_id, COALESCE(SUM(CASE product_id
+        WHEN 'coins_8000000' THEN 100
+        WHEN 'coins_16000000' THEN 200
+        WHEN 'coins_40000000' THEN 500
+        WHEN 'coins_80000000' THEN 1000
+        ELSE 0 END), 0) AS total
+        FROM play_purchases
+       WHERE status='granted'
+       GROUP BY user_id
+    `).all();
+    rechargeByInviteeMap = new Map(
+      (rechargeByInvitee.results ?? []).map((row) => [
+        String(row.user_id),
+        Number(row.total ?? 0),
+      ]),
+    );
+  }
 
   const dollarBalance = await db.prepare(
     "SELECT balance_usd_cents FROM invite_dollar_balances WHERE user_id=?"
@@ -358,6 +441,13 @@ export async function inviteRewardSummary(db, userId) {
     invitation_code: invitationCode,
     coins_per_usd: COINS_PER_USD,
     invite_count: stats.inviteCount,
+    // Unlimited invites (Vinay, 2026-11-23): no cap on how many people
+    // one user can invite; the Share-page table shows 5 at a time and
+    // the rest scroll. The enter-code option closes 48 hours after the
+    // ID is created.
+    invite_window_open: inviteWindowOpen,
+    invite_window_ends_at: inviteWindowEndsAt,
+    invite_window_hours: INVITE_BIND_WINDOW_MS / (60 * 60 * 1000),
     invited_received_coins: stats.sourceCoins,
     invited_received_usd: stats.sourceCoins / COINS_PER_USD,
     commission_coins: stats.rewardCoins,
@@ -422,6 +512,7 @@ export async function inviteRewardSummary(db, userId) {
       received_coins: Number(row.source_coins ?? 0),
       commission_coins: Number(row.reward_coins ?? 0),
       referral_commission_usd_cents: dollarByInviteeMap.get(String(row.invitee_user_id)) ?? 0,
+      total_recharge_usd_cents: rechargeByInviteeMap.get(String(row.invitee_user_id)) ?? 0,
       fixed_reward_coins: Number(row.fixed_reward_coins ?? 0),
     })),
   };
