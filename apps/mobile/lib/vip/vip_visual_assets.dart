@@ -8,7 +8,7 @@
 //   https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev
 // The Worker's /api/files endpoint REJECTS these prefixes (400
 // invalid_file_key) — its allowlist is only users/rooms/messages/
-// custom-gifts/room-themes/banners/custom-assets/creator-assets. So the
+// custom-gifts/room-themes/banners/custom-assets. So the
 // app must NEVER pass a frames/, entry-effects/, vip-tags/, vehicles/ or
 // vap/ key through backend.fileUrl(); use resolveVipVisualAssetUrl()
 // instead, which builds the direct R2 URL for those prefixes and falls

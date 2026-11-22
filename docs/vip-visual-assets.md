@@ -72,7 +72,7 @@ The VIP3 entry banner says "VIP ENTRY", not "VIP 3" (generator text).
 ## Direct R2 URLs — never through the Worker
 
 The Worker's `GET /api/files` allowlist is only
-`users|rooms|messages|custom-gifts|room-themes|banners|custom-assets|creator-assets`
+`users|rooms|messages|custom-gifts|room-themes|banners|custom-assets`
 — `frames/`, `entry-effects/`, `vip-tags/`, `vehicles/` and `vap/`
 return 400 `invalid_file_key`. So the app must NEVER pass those keys
 through `backend.fileUrl()`. Use `resolveVipVisualAssetUrl(key, backend.fileUrl)`
