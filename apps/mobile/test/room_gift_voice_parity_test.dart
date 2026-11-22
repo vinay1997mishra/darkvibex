@@ -98,13 +98,13 @@ void main() {
 
   test('gift sender sees their own gift immediately without duplicate polling playback', () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
-    final sendStart = source.indexOf('Future<void> _sendGiftByDefinition');
+    final sendStart = source.indexOf('Future<bool> _sendGiftByDefinition');
     final sendEnd = source.indexOf('Future<void> ', sendStart + 20);
     final sendFlow = source.substring(sendStart, sendEnd);
     expect(sendFlow, contains('_seenGiftEventIds.add(committedEventId)'));
-    expect(sendFlow, contains('await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey)'));
-    expect(sendFlow, contains('await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey)'));
-    expect(sendFlow, contains('_playGiftEffect(gift, receiverId: receiverId)'));
+    expect(sendFlow, contains('await _playGiftVideo(displayGift, receiverId: receiverId, videoKey: videoKey)'));
+    expect(sendFlow, contains('await _playGiftGlb(displayGift, receiverId: receiverId, glbKey: glbKey)'));
+    expect(sendFlow, contains('_playGiftEffect(displayGift, receiverId: receiverId)'));
     expect(sendFlow, contains('sendRoomMessage('));
     expect(source, contains("if (event['sender_user_id']?.toString() == widget.state.userId) continue;"));
   });

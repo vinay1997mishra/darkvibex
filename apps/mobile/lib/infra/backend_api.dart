@@ -1310,6 +1310,7 @@ class BackendApi {
     required String receiverUserId,
     required String giftId,
     required int coinCost,
+    int count = 1,
   }) =>
       _json(
         'POST',
@@ -1322,6 +1323,7 @@ class BackendApi {
           'receiver_user_id': receiverUserId,
           'gift_id': giftId,
           'coin_cost': coinCost,
+          'count': count,
         },
       );
 
