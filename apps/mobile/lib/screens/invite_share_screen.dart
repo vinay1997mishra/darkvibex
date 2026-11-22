@@ -722,7 +722,7 @@ class _InviteShareScreenState extends State<InviteShareScreen> {
                         ],
                         const SizedBox(height: 10),
                         const Text(
-                          "Each successful invite gives 800,000 coins once. Every recharge the invited friend makes within 3 months of joining also earns you 5% of that recharge in dollars, shown below. At \$3 you can withdraw the dollars to a coin seller or merchant — they receive the dollars and automatically get 11,000,000 coins per \$1 into their seller wallet. Only coins received through eligible Coin Seller transfers into the invited user's normal wallet count toward the coin commission. Merchant transfers, gifts, game winnings and other coin sources do not count.",
+                          "Each successful invite gives 800,000 coins once. Every recharge the invited friend makes within 3 months of joining also earns you 5% of that recharge in dollars, shown below. At \$3 you can withdraw the dollars to a coin seller or merchant — they receive the dollars and automatically get 11,000,000 coins per \$1 into their seller wallet. Only coins received through eligible Coin Seller or Merchant transfers into the invited user's normal wallet count toward the coin commission. Gifts, game winnings and other coin sources do not count.",
                           style: TextStyle(
                             color: TinniPalette.cream,
                             fontSize: 11,

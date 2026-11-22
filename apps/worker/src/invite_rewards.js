@@ -552,9 +552,11 @@ export async function recordCoinSellerInviteCommission(db, {
   if (!inviteeUserId || !sourceTransferId) {
     throw new Error("invalid_invite_commission_source");
   }
-  // Commission volume is strictly Coin Seller received coins. Merchant
-  // transfers and other wallet sources must not earn invite commission.
-  if (walletType !== "coin_seller") {
+  // Commission volume is Coin Seller / Merchant received coins
+  // (Vinay, 2026-11-23: merchant transfers count the same as coin
+  // seller transfers). Gifts, game winnings and other wallet sources
+  // must not earn invite commission.
+  if (walletType !== "coin_seller" && walletType !== "merchant") {
     return { applied: false, reason: "ineligible_source" };
   }
   if (!Number.isSafeInteger(amount) || amount <= 0) {
