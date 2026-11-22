@@ -445,7 +445,7 @@ function agoraBase64(bytes) {
   return btoa(binary);
 }
 
-async function buildAgoraRtcToken({ appId, appCertificate, channelName, account, expireSeconds = 3600 }) {
+async function buildAgoraRtcToken({ appId, appCertificate, channelName, account, expireSeconds = 3600, privileges = [1, 2, 3, 4] }) {
   const normalizedAppId = String(appId ?? "").trim();
   const certificate = String(appCertificate ?? "").trim();
   const normalizedChannel = String(channelName ?? "").trim();
@@ -466,13 +466,18 @@ async function buildAgoraRtcToken({ appId, appCertificate, channelName, account,
 
   // RTC service type 1; privileges: join=1, publish audio=2,
   // publish video=3, publish data=4. Privilege values are durations.
-  const privilegeMap = concatUint8Arrays([
-    agoraPackUint16(4),
-    agoraPackUint16(1), agoraPackUint32(expiry),
-    agoraPackUint16(2), agoraPackUint32(expiry),
-    agoraPackUint16(3), agoraPackUint32(expiry),
-    agoraPackUint16(4), agoraPackUint32(expiry),
-  ]);
+  // The default is all four (the old behaviour); callers pass a
+  // smaller set for listener-tier and audio-only tokens (Agora audit
+  // 2026-11-22: a seatless listener or a modified client must not be
+  // able to publish audio/video with an over-privileged token).
+  const wanted = (Array.isArray(privileges) && privileges.length > 0 ? privileges : [1, 2, 3, 4])
+    .map((p) => Number(p))
+    .filter((p) => [1, 2, 3, 4].includes(p));
+  const privilegeParts = [agoraPackUint16(wanted.length)];
+  for (const privilege of wanted) {
+    privilegeParts.push(agoraPackUint16(privilege), agoraPackUint32(expiry));
+  }
+  const privilegeMap = concatUint8Arrays(privilegeParts);
   const rtcService = concatUint8Arrays([
     agoraPackUint16(1),
     privilegeMap,
@@ -522,6 +527,14 @@ async function handleAgoraToken(request, env) {
   if (voiceFeature.enabled === false) {
     return json({ ok: false, error: "voice_disabled" }, { status: 403 });
   }
+  // Maintenance mode (Agora audit 2026-11-22): /agora/token is routed
+  // in the top-level fetch before handleApi, so it bypassed the
+  // maintenance gate every other endpoint honours. Voice mints stop
+  // while maintenance is on, with the same 503 answer.
+  const maintenance = await ownerSetting(db, "maintenance", { enabled: false, message: "" });
+  if (maintenance.enabled === true) {
+    return json({ ok: false, error: "maintenance", message: String(maintenance.message ?? "") }, { status: 503 });
+  }
 
   const body = await bodyJson(request);
   const roomId = String(body.room_id ?? "").trim().slice(0, 100);
@@ -534,11 +547,27 @@ async function handleAgoraToken(request, env) {
   const actorId = String(session.sub);
   await ensureUserAllowed(db, actorId);
   let membership = null;
+  // Least-privilege tokens (Agora audit 2026-11-22): the old token
+  // carried all four RTC privileges for everyone. A seatless listener
+  // gets join-only, and a direct call — audio-only in the app — gets
+  // join + publish audio, never video or data.
+  let tokenPrivileges = [1, 2, 3, 4];
   if (roomType === "party") {
     await ensureRoomCoreSchema(db);
     membership = await db.prepare(
-      "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=? LIMIT 1",
-    ).bind(roomId, actorId).first();
+      `SELECT m.seat_index,
+              CASE WHEN r.owner_user_id = ? THEN 1 ELSE 0 END AS is_owner
+         FROM room_members m
+         JOIN rooms r ON r.id = m.room_id
+        WHERE m.room_id = ? AND m.user_id = ? LIMIT 1`,
+    ).bind(actorId, roomId, actorId).first();
+    if (membership != null && membership.seat_index == null && Number(membership.is_owner ?? 0) !== 1) {
+      // The room owner is the host and speaks without a seat, so the
+      // owner keeps the full token; everyone else re-mints with full
+      // privileges the moment they take a seat (the app refreshes its
+      // token on seat changes).
+      tokenPrivileges = [1];
+    }
   } else if (roomType === "game") {
     await db.prepare(
       "CREATE TABLE IF NOT EXISTS game_room_members (room_id TEXT NOT NULL, user_id TEXT NOT NULL, seat_index INTEGER NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(room_id,user_id), UNIQUE(room_id,seat_index))",
@@ -554,6 +583,9 @@ async function handleAgoraToken(request, env) {
         WHERE id=? AND state IN ('ringing','active')
           AND (caller_user_id=? OR receiver_user_id=?) LIMIT 1`,
     ).bind(callId, actorId, actorId).first();
+    // Direct calls are audio-only in the app: join + publish audio,
+    // never publish video or data.
+    tokenPrivileges = [1, 2];
   }
   if (!membership) {
     return json({ ok: false, error: "room_membership_required" }, { status: 403 });
@@ -568,6 +600,7 @@ async function handleAgoraToken(request, env) {
     channelName,
     account: actorId,
     expireSeconds: 3600,
+    privileges: tokenPrivileges,
   });
   return json({
     ok: true,

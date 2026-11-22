@@ -300,6 +300,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
     final adapter = AgoraRtcAdapter(
       apiBase: Uri.parse(BackendApi.origin),
       channelType: 'game',
+      deviceKey: BackendApi.deviceKey ?? '',
     );
     try {
       await adapter.join(

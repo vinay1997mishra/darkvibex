@@ -140,10 +140,29 @@ class _MessagesScreenState extends State<MessagesScreen> {
     // rings while the incoming call waits. Muted calls never reach
     // here — the server refuses them before any ringing call exists.
     unawaited(_ringtonePlayer.start(state.callRingtoneId));
+    // Ring deadline (Agora audit 2026-11-22): the server expires a
+    // ringing call after 45s, but this dialog used to wait forever —
+    // barrierDismissible: false, no timer, ringtone looping, and
+    // incomingCallOpen blocking every later check. The dialog now
+    // auto-refuses when the server's ring window ends (remaining time
+    // from the call's created_at, so a late poll doesn't overrun it).
+    final createdAtMs = int.tryParse(call['created_at']?.toString() ?? '');
+    final elapsedMs = createdAtMs == null
+        ? 0
+        : DateTime.now().millisecondsSinceEpoch - createdAtMs;
+    final remainingMs = (45000 - elapsedMs).clamp(5000, 45000);
+    var dialogOpen = true;
+    Timer? ringTimer;
     final accept = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) {
+        ringTimer ??= Timer(Duration(milliseconds: remainingMs), () {
+          if (dialogOpen && mounted) {
+            Navigator.pop(dialogContext, false);
+          }
+        });
+        return AlertDialog(
         title: const Row(
           children: [
             Icon(Icons.call_rounded, color: TinniPalette.gold),
@@ -164,8 +183,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
             label: const Text('Accept'),
           ),
         ],
-      ),
+      );
+      },
     );
+    ringTimer?.cancel();
+    dialogOpen = false;
     await _ringtonePlayer.stop();
     if (!mounted) {
       incomingCallOpen = false;
