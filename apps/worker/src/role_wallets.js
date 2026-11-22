@@ -97,6 +97,11 @@ export async function transferRoleCoins(db,{
   receiverUserId,
   coins,
   credentialHash,
+  // Where the coins land (Vinay, 2026-11-23): "normal" (a user's
+  // normal wallet) or "coin_seller" (a coin seller's seller wallet).
+  // A seller wallet sends only to a normal wallet; a merchant wallet
+  // sends to a normal wallet or to a coin seller's seller wallet.
+  receiverWalletType="normal",
   // Idempotency (Wallet audit H1, 2026-11-22): a client-supplied key
   // makes a retry return the SAME transfer instead of a second one.
   // The key is claimed atomically before the money moves; the
@@ -109,12 +114,30 @@ export async function transferRoleCoins(db,{
 }){
   const amount=Number(coins);
   if(!Number.isSafeInteger(amount)||amount<=0) throw new Error("invalid_coin_amount");
-  if(!receiverUserId||receiverUserId===senderUserId) throw new Error("invalid_receiver");
+  // Self-transfer is ALLOWED (Vinay, 2026-11-23): a seller / merchant
+  // may move coins from their own seller wallet into their own normal
+  // wallet, and the receiver (themselves) still earns VIP EXP — and
+  // the VIP purchase bonus too. Only a missing receiver is invalid now.
+  if(!receiverUserId) throw new Error("invalid_receiver");
+  // Where the coins may land (Vinay, 2026-11-23): a seller wallet sends
+  // only to a normal wallet — never to a merchant wallet or another
+  // seller wallet. A merchant wallet sends to a normal wallet or to a
+  // coin seller's seller wallet — never to another merchant wallet.
+  // A normal wallet sends to nothing at all (there is no endpoint for
+  // it). A role-wallet receipt is inventory, not a recharge.
+  const receiverWallet=String(receiverWalletType ?? "normal");
+  if(receiverWallet!=="normal" && receiverWallet!=="coin_seller") throw new Error("invalid_receiver_wallet");
+  if(receiverWallet==="coin_seller" && walletType!=="merchant") throw new Error("invalid_receiver_wallet");
   const wallet=await verifyRoleWalletCredential(
     db,senderUserId,walletType,credentialHash,ts,
   );
-  const receiver=await db.prepare("SELECT coins FROM users WHERE id=?").bind(receiverUserId).first();
+  const receiver=await db.prepare("SELECT coins,role FROM users WHERE id=?").bind(receiverUserId).first();
   if(!receiver) throw new Error("receiver_not_found");
+  if(receiverWallet==="coin_seller"){
+    if(String(receiver.role)!=="coin_seller") throw new Error("receiver_not_coin_seller");
+    // Create the seller wallet row if the coin seller never had one.
+    await ensureRoleWallet(db,receiverUserId,"coin_seller",ts);
+  }
   if(Number(wallet.balance_coins ?? 0)<amount) {
     throw new Error("insufficient_role_wallet_coins");
   }
@@ -130,7 +153,9 @@ export async function transferRoleCoins(db,{
   // only while the VIP is active (active_until in the future) — an
   // expired VIP whose level has not been settled yet gets no bonus.
   let coinsBonus=0;
-  if(walletType==="coin_seller"){
+  // The VIP purchase bonus applies only when the coins land in a
+  // normal wallet: a role-wallet receipt is inventory, not a purchase.
+  if(walletType==="coin_seller" && receiverWallet==="normal"){
     try {
       const vipRow=await db.prepare("SELECT level, active_until FROM user_vip WHERE user_id=?").bind(receiverUserId).first();
       const vipLevel=Number(vipRow?.level ?? 0);
@@ -171,22 +196,29 @@ export async function transferRoleCoins(db,{
   // The ledger balances are read from the tables inside the batch
   // (subqueries), i.e. the post-debit / post-credit values.
   const ledgerKind = walletType==="coin_seller" ? "coin_seller_received" : "merchant_received";
-  const batchResults = await db.batch([
+  // The receiver credit rides the same atomic batch: a normal wallet
+  // is credited in users.coins (with its wallet_ledger row), a seller
+  // wallet in role_wallets (with its role_wallet_ledger row).
+  const receiverCredit = receiverWallet==="coin_seller" ? [
     db.prepare(
-      "UPDATE role_wallets SET balance_coins=balance_coins-?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
-    ).bind(amount,ts,senderUserId,walletType,amount),
+      "UPDATE role_wallets SET balance_coins=balance_coins+?,updated_at=? WHERE user_id=? AND wallet_type='coin_seller' AND changes()=1"
+    ).bind(amount,ts,receiverUserId),
+  ] : [
     db.prepare(
       "UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND changes()=1"
     ).bind(amount + coinsBonus, ts, receiverUserId),
+  ];
+  const receiverLedger = receiverWallet==="coin_seller" ? [
     db.prepare(
       `INSERT INTO role_wallet_ledger(
         id,user_id,wallet_type,kind,coin_amount,
         coin_balance_after,counterparty_user_id,reference_id,created_at
-      ) SELECT ?,?,?,?,?,(SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?),?,?,? WHERE changes()=1`
+      ) SELECT ?,?,?,?,?,(SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type='coin_seller'),?,?,? WHERE changes()=1`
     ).bind(
-      crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,
-      senderUserId,walletType,receiverUserId,reference,ts,
+      crypto.randomUUID(),receiverUserId,"coin_seller","merchant_transfer_received",amount,
+      receiverUserId,senderUserId,reference,ts,
     ),
+  ] : [
     db.prepare(
       "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) " +
       "SELECT ?,u.id,?,?,(SELECT coins FROM users WHERE id=?)-?, ?,? FROM users u WHERE u.id=? AND changes()=1"
@@ -201,6 +233,22 @@ export async function transferRoleCoins(db,{
         crypto.randomUUID(),coinsBonus,reference,ts,receiverUserId,reference,ledgerKind,
       ),
     ] : []),
+  ];
+  const batchResults = await db.batch([
+    db.prepare(
+      "UPDATE role_wallets SET balance_coins=balance_coins-?,updated_at=? WHERE user_id=? AND wallet_type=? AND balance_coins>=?"
+    ).bind(amount,ts,senderUserId,walletType,amount),
+    ...receiverCredit,
+    db.prepare(
+      `INSERT INTO role_wallet_ledger(
+        id,user_id,wallet_type,kind,coin_amount,
+        coin_balance_after,counterparty_user_id,reference_id,created_at
+      ) SELECT ?,?,?,?,?,(SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?),?,?,? WHERE changes()=1`
+    ).bind(
+      crypto.randomUUID(),senderUserId,walletType,"coin_send",-amount,
+      senderUserId,walletType,receiverUserId,reference,ts,
+    ),
+    ...receiverLedger,
   ]);
   const debitedChanges = Number(batchResults?.[0]?.meta?.changes ?? -1);
   // Belt and braces: the sender ledger row is the ground truth that
@@ -218,10 +266,18 @@ export async function transferRoleCoins(db,{
   if (!senderLedger) {
     throw new Error("transfer_ledger_missing");
   }
-  const receiverRow = await db.prepare(
-    "SELECT coins FROM users WHERE id=?"
-  ).bind(receiverUserId).first();
-  const receiverBalance = Number(receiverRow?.coins ?? 0);
+  const receiverRow = receiverWallet==="coin_seller"
+    ? await db.prepare(
+      "SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type='coin_seller'"
+    ).bind(receiverUserId).first()
+    : await db.prepare(
+      "SELECT coins FROM users WHERE id=?"
+    ).bind(receiverUserId).first();
+  const receiverBalance = Number(
+    receiverWallet==="coin_seller"
+      ? receiverRow?.balance_coins ?? 0
+      : receiverRow?.coins ?? 0,
+  );
   const senderRow = await db.prepare(
     "SELECT balance_coins FROM role_wallets WHERE user_id=? AND wallet_type=?"
   ).bind(senderUserId,walletType).first();
@@ -229,7 +285,10 @@ export async function transferRoleCoins(db,{
   return {
     transfer_id:reference,
     sender_role_coin_balance:senderBalance,
-    receiver_coin_balance:receiverBalance,
+    receiver_wallet_type:receiverWallet,
+    ...(receiverWallet==="coin_seller"
+      ? {receiver_role_coin_balance:receiverBalance}
+      : {receiver_coin_balance:receiverBalance}),
     coins_bonus:coinsBonus,
   };
 }

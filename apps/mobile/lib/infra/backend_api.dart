@@ -1160,6 +1160,7 @@ class BackendApi {
     required String userId,
     required String walletType,
     required String receiverUserId,
+    String? receiverWalletType,
     required int coins,
     required String credential,
   }) =>
@@ -1170,6 +1171,8 @@ class BackendApi {
           'user_id': userId,
           'wallet_type': walletType,
           'receiver_user_id': receiverUserId,
+          if (receiverWalletType != null)
+            'receiver_wallet_type': receiverWalletType,
           'coins': coins,
           'credential': credential,
           'idempotency_key': _idempotencyKey(),

@@ -166,6 +166,27 @@ test("bind pays the inviter 800,000 coins once, with a ledger row", async () => 
   assert.equal(rewards[0].reward_coins, 800000);
 });
 
+test("nobody can use their own invite code, on any phone", async () => {
+  const fx = await fixture();
+  const user = makeUser(fx, "self-user");
+
+  // The user's own public ID is their own invitation code: entering it
+  // must fail (Vinay, 2026-11-23) — no binding, no reward, for any user.
+  const result = await bind(fx, "self-user", user.publicId);
+  assert.equal(result.status, 400, JSON.stringify(result.body));
+  assert.equal(result.body.ok, false);
+  assert.equal(result.body.error, "cannot_invite_self");
+  assert.equal(
+    fx.sqlite.prepare("SELECT COUNT(*) AS n FROM invite_bindings").get().n,
+    0,
+  );
+  assert.equal(
+    fx.sqlite.prepare("SELECT COUNT(*) AS n FROM invite_success_rewards").get().n,
+    0,
+  );
+  assert.equal(userCoins(fx, "self-user"), 0);
+});
+
 test("binding twice pays only once (already_bound, no second reward)", async () => {
   const fx = await fixture();
   const inviter = makeUser(fx, "inviter-1");
