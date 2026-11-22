@@ -35,3 +35,24 @@ test("room sender header stays above the bubble and message content excludes sen
   assert.match(header, /_tagChip/);
   assert.match(header, /_medalChip/);
 });
+
+test("room messages carry the owner-assigned role tag so the chat header "
+    + "can show the tag image", () => {
+  // The tag comes from owner_user_tags (kind 'role_tag'), NOT from
+  // users.role — the Owner Panel assigns one tag per ID, and the room
+  // poll carries it live. The room-messages SELECT must not read
+  // users.role for this any more.
+  assert.doesNotMatch(worker, /u\.avatar_key,\s*\n\s*u\.role,/);
+  assert.match(worker, /String\(tag\.kind \?\? ""\) === "role_tag"/);
+  assert.match(worker, /roleTagByUser\.set\(userId, String\(tag\.tag_id \?\? ""\)\.replace\(\/\^role-\/, ""\)\)/);
+  assert.match(worker, /role_tag: anonymous \? null : \(roleTagByUser\.get\(userId\) \?\? null\)/);
+  // The profile endpoint serves the same assigned tag, so the room
+  // profile card and the user's own profile show it without a new APK.
+  assert.match(worker, /user\.role_tag=ownerIdentity\.role_tag;/);
+  assert.match(worker, /role_tag: roleTagRow \? String\(roleTagRow\.tag_id \?\? ""\)\.replace\(\/\^role-\/,""\) : null,/);
+  // The app feeds that slug into the sender header, which renders the
+  // role tag image next to the VIP tag.
+  assert.match(room, /roleTag: message\['role_tag'\]\?\.toString\(\)/);
+  assert.match(header, /final String\? roleTag;/);
+  assert.match(header, /RoleTagImage\(roleTag: roleTag, fontSize: 11\)/);
+});

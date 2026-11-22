@@ -185,9 +185,17 @@ async function decorateRoomChatProfileMetadata(db, messages) {
   // rocket launch): they show with the name in chat profile popups.
   const rocketMedalsByAuthor = await rocketMedalsByUser(db, userIds);
 
+  // Owner-assigned role tags ride separately from the text profile tags:
+  // one tag per ID, rendered as the tag image next to the name. Role-tag
+  // rows never render as text chips.
   const tagsByUser = new Map();
+  const roleTagByUser = new Map();
   for (const tag of tagsResult.results ?? []) {
     const userId = String(tag.user_id ?? "");
+    if (String(tag.kind ?? "") === "role_tag") {
+      roleTagByUser.set(userId, String(tag.tag_id ?? "").replace(/^role-/, ""));
+      continue;
+    }
     if (!tagsByUser.has(userId)) tagsByUser.set(userId, []);
     tagsByUser.get(userId).push({
       id: String(tag.tag_id ?? ""),
@@ -261,6 +269,7 @@ async function decorateRoomChatProfileMetadata(db, messages) {
       // owner-assigned tags/medals through room chat metadata.
       avatar_key: anonymous ? "" : String(message.avatar_key ?? ""),
       profile_tags: anonymous ? [] : profileTags,
+      role_tag: anonymous ? null : (roleTagByUser.get(userId) ?? null),
       medals: anonymous ? [] : (medalsByUser.get(userId) ?? []),
     };
   });
@@ -874,6 +883,10 @@ async function initializeOwnerControlSchema(db) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(user_id,tag_id)
     )`),
+    // Role tags only (Vinay, 2026-11-23): the old custom / V Official
+    // text tags are gone — the Owner Panel assigns one of the six
+    // role-tag images per ID. Drop any pre-existing non-role-tag rows.
+    db.prepare("DELETE FROM owner_user_tags WHERE kind <> 'role_tag'"),
     db.prepare(`CREATE TABLE IF NOT EXISTS owner_user_price_overrides (
       user_id TEXT NOT NULL,
       kind TEXT NOT NULL,
@@ -982,12 +995,14 @@ async function ownerIdentityMeta(db,userId) {
     db.prepare("SELECT invisible_id,locked_room_bypass,wallet_frozen,wallet_banned FROM owner_user_overrides WHERE user_id=? LIMIT 1").bind(userId).first(),
     db.prepare("SELECT tag_id,name,color,kind,designation,background_color,created_at,updated_at FROM owner_user_tags WHERE user_id=? ORDER BY updated_at DESC").bind(userId).all(),
   ]);
+  const roleTagRow=(tags.results ?? []).find((tag)=>String(tag.kind ?? "")==="role_tag");
   return {
     invisible_id:Number(override?.invisible_id ?? 0)===1,
     locked_room_bypass:Number(override?.locked_room_bypass ?? 0)===1,
     wallet_frozen:Number(override?.wallet_frozen ?? 0)===1,
     wallet_banned:Number(override?.wallet_banned ?? 0)===1,
     tags:tags.results ?? [],
+    role_tag: roleTagRow ? String(roleTagRow.tag_id ?? "").replace(/^role-/,"") : null,
   };
 }
 
@@ -6814,6 +6829,7 @@ async function handleApi(request, env, url) {
       const ownerIdentity=await ownerIdentityMeta(db,viewedUserId);
       user.owner_tags=ownerIdentity.tags;
       user.tags=ownerIdentity.tags;
+      user.role_tag=ownerIdentity.role_tag;
       user.invisible_id=ownerIdentity.invisible_id;
       user.wallet_frozen=ownerIdentity.wallet_frozen;
       if(ownerIdentity.invisible_id && viewerId !== viewedUserId){

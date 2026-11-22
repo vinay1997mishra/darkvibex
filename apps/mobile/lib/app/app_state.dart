@@ -123,6 +123,10 @@ class AppState extends ChangeNotifier {
   String publicId = '9100001';
   String displayName = 'DarkVibeX User';
   String userRole = 'user';
+  /// Role-tag slug the owner assigned to this ID in the Owner Panel
+  /// (e.g. 'coin-seller'), from the profile endpoint's `role_tag`.
+  /// Null = no tag assigned; the tag shows only when this is set.
+  String? userRoleTag;
   String? avatarKey;
   String? dateOfBirth;
   String countryCode = '';
@@ -667,6 +671,7 @@ class AppState extends ChangeNotifier {
     }
     displayName = user['display_name']?.toString() ?? displayName;
     userRole = user['role']?.toString() ?? userRole;
+    userRoleTag = user['role_tag']?.toString();
     avatarKey = user['avatar_key']?.toString();
     dateOfBirth = user['date_of_birth']?.toString();
     countryCode = user['country_code']?.toString().trim() ?? '';
@@ -937,6 +942,7 @@ class AppState extends ChangeNotifier {
     publicId = '9100001';
     displayName = 'DarkVibeX User';
     userRole = 'user';
+    userRoleTag = null;
     avatarKey = null;
     dateOfBirth = null;
     countryCode = '';

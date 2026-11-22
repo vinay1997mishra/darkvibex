@@ -95,8 +95,26 @@ test("game controls and scheduled global themes affect app-facing routes", () =>
 test("owner tags and invisible ID reach the user profile response", () => {
   assert.match(worker, /user\.owner_tags=ownerIdentity\.tags/);
   assert.match(worker, /user\.tags=ownerIdentity\.tags/);
+  assert.match(worker, /user\.role_tag=ownerIdentity\.role_tag/);
   assert.match(worker, /user\.invisible_id=ownerIdentity\.invisible_id/);
   assert.match(worker, /user\.public_id=null/);
+});
+
+test("owner panel tags section is ID + six role-tag options only", () => {
+  // No name / colour / designation / type fields any more (Vinay,
+  // 2026-11-23): only the public-ID box and the six tag options.
+  assert.doesNotMatch(panelHtml, /id="ownerTagName"/);
+  assert.doesNotMatch(panelHtml, /id="ownerTagColor"/);
+  assert.doesNotMatch(panelHtml, /id="ownerTagDesignation"/);
+  assert.doesNotMatch(panelHtml, /id="ownerTagKind"/);
+  assert.match(panelHtml, /id="ownerTagPublicId"/);
+  for (const slug of ["coin-seller", "cs", "cs-leader", "merchant", "admin", "official"]) {
+    assert.match(panelHtml, new RegExp(`data-role-tag="${slug}"`));
+    assert.match(panelHtml, new RegExp(`tags/role-${slug}\\.png`));
+  }
+  // The apply flow resolves the typed ID, then posts the chosen tag.
+  assert.match(panelApp, /\/api\/users\/by-public-id\?public_id=/);
+  assert.match(panelApp, /role_tag:roleTag/);
 });
 
 

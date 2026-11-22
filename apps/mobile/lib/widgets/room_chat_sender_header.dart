@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'vip_animated_frame.dart';
 import 'vip_name_text.dart';
 import 'vip_tag_image.dart';
+import 'role_tag_image.dart';
 
 /// Sender identity shown above each room chat bubble.
 ///
@@ -17,6 +18,7 @@ class RoomChatSenderHeader extends StatelessWidget {
     this.avatarUrl,
     this.avatarHeaders,
     this.vipLevel = 0,
+    this.roleTag,
     this.frameAssetUrl,
     this.frameVideoUrl,
     this.onAvatarTap,
@@ -33,6 +35,11 @@ class RoomChatSenderHeader extends StatelessWidget {
   /// Sender's active VIP level (0 = none). Drives the golden tag
   /// (VIP5-18) next to the name and the frame level.
   final int vipLevel;
+
+  /// The owner-assigned role-tag slug for the sender, e.g.
+  /// 'coin-seller' (from the message's `role_tag`). Drives the role
+  /// tag next to the name; null = no tag assigned to this ID.
+  final String? roleTag;
 
   /// Direct URL of the sender's frame image (already resolved to a
   /// direct R2 URL by the caller). Empty/null = no frame on the avatar.
@@ -237,6 +244,9 @@ class RoomChatSenderHeader extends StatelessWidget {
                 const SizedBox(width: 4),
                 VipTagImage(vipLevel: vipLevel, fontSize: 11),
               ],
+              // Role tag (owner-assigned), sized from the 11pt name text.
+              const SizedBox(width: 4),
+              RoleTagImage(roleTag: roleTag, fontSize: 11),
             ],
           ),
         ),

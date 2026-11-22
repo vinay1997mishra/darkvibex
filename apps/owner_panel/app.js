@@ -101,9 +101,9 @@ const staffPermissionOptions = [
   ["messaging.view","Official messaging · open page"],
   ["messaging.send.selected","Official messaging · send to selected users"],
   ["messaging.send.all","Official messaging · send to all users"],
-  ["tags.view","Tags / V Official · view"],
-  ["tags.apply","Tags / V Official · apply"],
-  ["tags.remove","Tags / V Official · remove"],
+  ["tags.view","Role tags · view"],
+  ["tags.apply","Role tags · apply"],
+  ["tags.remove","Role tags · remove"],
 
   ["rooms.view","Rooms · search/list"],
   ["rooms.edit","Rooms · edit name/seats"],
@@ -264,7 +264,7 @@ const selectorPermissionRules = [
 
   ["#messageUserSearch",["users.search"],"self"],["#searchMessageUsers",["users.search"],"self"],
   ["#officialMessageBody",["messaging.send.selected","messaging.send.all"],"label"],["#sendOfficialSelected",["messaging.send.selected"],"self"],["#sendOfficialAll",["messaging.send.all"],"self"],
-  ["#ownerTagName",["tags.apply"],"label"],["#ownerTagColor",["tags.apply"],"label"],["#ownerTagDesignation",["tags.apply"],"label"],["#ownerTagKind",["tags.apply"],"label"],["#applyOwnerTag",["tags.apply"],"self"],
+  ["#ownerTagPublicId",["tags.apply"],"label"],["[data-role-tag]",["tags.apply"],"self"],["#applyOwnerTag",["tags.apply"],"self"],
 
   ["#rolePostKind",["roles.view","roles.save","roles.delete"],"label"],["#rolePostId",["roles.save"],"label"],["#rolePostName",["roles.save"],"label"],
   ["#rolePostOrder",["roles.save"],"label"],["#rolePostEnabled",["roles.save"],"label"],["#rolePostDetails",["roles.save"],"label"],["#saveRolePost",["roles.save"],"self"],["#reloadRolesPosts",["roles.view"],"self"],
@@ -1730,11 +1730,13 @@ async function searchMessagingUsers(){
     renderSelectedMessageUsers();
   });
 }
+const ROLE_TAG_IMG_BASE="https://pub-0577c2bbe5f6499eb0dd9e44ec5cae8a.r2.dev/tags/";
+function roleTagImg(tagId){return ROLE_TAG_IMG_BASE+encodeURIComponent(String(tagId||""))+".png";}
 async function loadOwnerTags(){
   if(!can("tags.view"))return;
   const d=await api("/api/owner/tags");
   const rows=d.tags||[];
-  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.name)}${t.designation?" · "+esc(t.designation):""}</div><div class="item-meta">${esc(t.kind)} · ${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.remove")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No custom tags / V Officials");
+  $("#ownerTagList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title"><img class="role-tag-thumb" src="${roleTagImg(t.tag_id)}" alt="${esc(t.name)}" /> ${esc(t.name)}</div><div class="item-meta">${esc(t.display_name||t.user_id)} · Public ID ${esc(t.public_id||"—")} · ${time(t.updated_at)}</div></div>${can("tags.remove")?`<button class="danger mini" data-tag-user="${esc(t.user_id)}" data-tag-id="${esc(t.tag_id)}">Remove</button>`:""}</div></div>`).join(""):empty("No tags assigned");
   $$("[data-tag-user]").forEach(b=>b.onclick=async()=>{if(!can("tags.remove"))return toast("Tag remove permission required",false);await api("/api/owner/tags/"+encodeURIComponent(b.dataset.tagUser)+"/"+encodeURIComponent(b.dataset.tagId),{method:"DELETE"});toast("Tag removed");await loadOwnerTags();});
 }
 async function loadMessaging(){
@@ -1758,17 +1760,18 @@ async function sendOfficialMessage(allUsers=false){
 }
 async function applyOwnerTag(){
   if(!can("tags.apply"))return toast("Tags write permission required",false);
-  const ids=[...state.messageSelected.keys()];
-  if(!ids.length)return toast("Select at least one user",false);
-  const kind=$("#ownerTagKind").value;
-  const designation=$("#ownerTagDesignation").value.trim();
-  let name=$("#ownerTagName").value.trim();
-  if(kind==="v_official"&&!designation)return toast("V Official designation is required",false);
-  if(kind==="v_official"&&!name)name="V Official";
-  if(!name)return toast("Tag name is required",false);
-  const color=$("#ownerTagColor").value;
-  const d=await api("/api/owner/tags",{method:"POST",body:JSON.stringify({user_ids:ids,name,color,kind,designation,background_color:color})});
-  toast(`${d.name||name} applied to ${num(d.tagged||0)} users`);
+  const publicId=$("#ownerTagPublicId").value.trim().replace(/\D/g,"");
+  if(!publicId)return toast("Enter a Public ID first",false);
+  const selected=document.querySelector("[data-role-tag].selected");
+  if(!selected)return toast("Pick a tag first",false);
+  const roleTag=selected.dataset.roleTag;
+  let user;
+  try{ user=(await api("/api/users/by-public-id?public_id="+encodeURIComponent(publicId))).user; }
+  catch(e){ return toast(e.message==="user_not_found"?"No user with that ID":e.message,false); }
+  const d=await api("/api/owner/tags",{method:"POST",body:JSON.stringify({user_ids:[user.user_id],role_tag:roleTag})});
+  const walletNote=d.wallet_added ? (d.role==="merchant" ? " — merchant wallet added" : " — seller wallet added") : "";
+  toast(`${d.name||roleTag} applied to ID ${publicId}${walletNote}`);
+  $("#ownerTagPublicId").value="";
   await loadOwnerTags();
 }
 
@@ -2255,7 +2258,7 @@ $("#loadOwnerMessageInbox").onclick=()=>loadOwnerMessageInbox().catch(e=>toast(e
 $("#closeOwnerMessageThread").onclick=()=>{$("#ownerMessageThreadPanel").hidden=true;state.ownerMessageThreadOtherId=null;};
 $("#reloadNotifications").onclick=()=>loadNotifications().catch(e=>toast(e.message,false));
 $("#searchMessageUsers").onclick=()=>searchMessagingUsers().catch(e=>toast(e.message,false));$("#messageUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchMessagingUsers().catch(x=>toast(x.message,false));});
-$("#sendOfficialSelected").onclick=()=>sendOfficialMessage(false).catch(e=>toast(e.message,false));$("#sendOfficialAll").onclick=()=>sendOfficialMessage(true).catch(e=>toast(e.message,false));$("#applyOwnerTag").onclick=()=>applyOwnerTag().catch(e=>toast(e.message,false));
+$("#sendOfficialSelected").onclick=()=>sendOfficialMessage(false).catch(e=>toast(e.message,false));$("#sendOfficialAll").onclick=()=>sendOfficialMessage(true).catch(e=>toast(e.message,false));$$("[data-role-tag]").forEach(b=>b.onclick=()=>{$$("[data-role-tag]").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");});$("#applyOwnerTag").onclick=()=>applyOwnerTag().catch(e=>toast(e.message,false));
 
 $("#closeUser").onclick=()=>{$("#userEditor").hidden=true;state.selectedUser=null;};$("#saveUserProfile").onclick=()=>saveUserProfile().catch(e=>toast(e.message,false));$("#saveModeration").onclick=()=>saveModeration().catch(e=>toast(e.message,false));$("#savePublicId").onclick=()=>savePublicId().catch(e=>toast(e.message,false));$("#applyWallet").onclick=()=>applyWallet().catch(e=>toast(e.message,false));$("#applyRoleWallet").onclick=()=>applyRoleWallet().catch(e=>toast(e.message,false));$("#roleWalletType").onchange=()=>{$("#roleWalletBalance").textContent="Selected "+($("#roleWalletType").value||"role")+" wallet. Enter a coin change or change ban status and apply.";$("#roleWalletBanned").checked=false;};
 $("#searchRooms").onclick=()=>loadRooms().catch(e=>toast(e.message,false));$("#roomSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadRooms().catch(x=>toast(x.message,false));});

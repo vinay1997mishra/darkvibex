@@ -21,6 +21,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../widgets/vip_name_text.dart';
 import '../widgets/vip_show_id_text.dart';
 import '../widgets/vip_tag_image.dart';
+import '../widgets/role_tag_image.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -391,6 +392,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             // Golden VIP tag (VIP5-18), sized to the tag chip (~21px).
                             if (state.vipLevel >= 5)
                               VipTagImage(vipLevel: state.vipLevel, fontSize: 12),
+                            // Role tag the owner assigned to this ID —
+                            // shows only when activated in the Owner Panel.
+                            RoleTagImage(roleTag: state.userRoleTag, fontSize: 12),
                             if (state.hasVipPrivilege('honorary_title'))
                               _mineTag('King of VIP'),
                           ],
@@ -1784,7 +1788,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   List<Widget> _ownerTagWidgets(Map<String, dynamic> value) {
     final raw = value['owner_tags'] ?? value['tags'];
     if (raw is! List) return const <Widget>[];
-    return raw.whereType<Map>().map((item) {
+    // Role tags render as the image badge next to the name, never as a
+    // text chip (Vinay, 2026-11-23: old custom tags are gone).
+    return raw
+        .whereType<Map>()
+        .where((item) => item['kind']?.toString() != 'role_tag')
+        .map((item) {
       final tag = Map<String, dynamic>.from(item);
       final kind = tag['kind']?.toString() ?? 'custom';
       final label = (tag['designation']?.toString().trim().isNotEmpty == true
