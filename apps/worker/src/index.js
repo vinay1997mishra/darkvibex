@@ -47,7 +47,6 @@ import {
 import {
   bindInvitationCode,
   inviteRewardSummary,
-  recordCoinSellerInviteCommission,
   recordRechargeInviteCommission,
   withdrawInviteDollars,
   REFERRAL_WITHDRAWAL_MIN_USD_CENTS,
@@ -9581,13 +9580,15 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
   async function awardTransferExtras({ receiverId, amount, walletType, transferId, ts }) {
     const warnings = [];
     let vipAward = null;
-    let inviteCommission = null;
     let dollarCommission = null;
     // Extras run for Coin Seller AND Merchant transfers (Vinay,
     // 2026-11-23: merchant counts the same as coin seller). Any other
-    // wallet type earns nothing.
+    // wallet type earns nothing. The inviter earns NO coins per
+    // recharge (Vinay, 2026-11-23): coins come only once per invite
+    // (800,000 at bind); on every recharge the inviter gets only 5%
+    // of the recharge amount in dollars.
     if (walletType !== "coin_seller" && walletType !== "merchant") {
-      return { vipAward, inviteCommission, dollarCommission, warnings };
+      return { vipAward, dollarCommission, warnings };
     }
     try {
       vipAward = await awardSellerVipExp(db, receiverId, amount, ts, {
@@ -9601,27 +9602,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       });
     }
     try {
-      inviteCommission = await recordCoinSellerInviteCommission(db, {
-        inviteeUserId: receiverId,
-        sourceTransferId: transferId,
-        sourceCoins: amount,
-        sourceWalletType: walletType,
-        ts,
-      });
-    } catch (error) {
-      warnings.push("invite_commission_failed");
-      console.error("DarkVibeX invite commission failed", {
-        receiverId, transferId,
-        error: String(error?.message ?? error),
-      });
-    }
-    try {
       // 5% of the transfer in dollars (Vinay, 2026-11-23): a seller
       // transfer counts as a recharge, so the inviter earns the same
-      // referral dollars as on a Play recharge — on top of the coin
-      // commission. Valued at $1 = 8,000,000 coins; the transfer id
-      // is the dedup key, so a retry never pays twice. Transfers
-      // under 80,000 coins round to $0 and earn no dollars.
+      // referral dollars as on a Play recharge. Valued at $1 =
+      // 8,000,000 coins; the transfer id is the dedup key, so a retry
+      // never pays twice. Transfers under 80,000 coins round to $0
+      // and earn no dollars.
       const dollarCents = Math.floor(Number(amount ?? 0) * 100 / 8_000_000);
       if (dollarCents > 0) {
         dollarCommission = await recordRechargeInviteCommission(db, {
@@ -9638,7 +9624,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         error: String(error?.message ?? error),
       });
     }
-    return { vipAward, inviteCommission, dollarCommission, warnings };
+    return { vipAward, dollarCommission, warnings };
   }
 
   async function runRoleTransfer({
@@ -9693,7 +9679,6 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
               duplicate: true,
               ...stored,
               vip_award: extras.vipAward,
-              invite_commission: extras.inviteCommission,
               invite_dollar_commission: extras.dollarCommission,
               ...(extras.warnings.length ? { warnings: extras.warnings } : {}),
             };
@@ -9740,7 +9725,6 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       ok: true,
       ...transferResult,
       vip_award: extras.vipAward,
-      invite_commission: extras.inviteCommission,
       invite_dollar_commission: extras.dollarCommission,
       ...(extras.warnings.length ? { warnings: extras.warnings } : {}),
     };

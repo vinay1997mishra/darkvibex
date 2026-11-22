@@ -6,27 +6,32 @@ const inviteRewards = readFileSync(new URL("../src/invite_rewards.js", import.me
 const worker = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
 const inviteScreen = readFileSync(new URL("../../mobile/lib/screens/invite_share_screen.dart", import.meta.url), "utf8");
 
-// Invite extras policy (Vinay, 2026-11-23): a seller-wallet transfer
-// counts as a recharge everywhere. Merchant transfers earn the same
-// extras as Coin Seller transfers — VIP EXP, the coin commission AND
-// the 5% referral dollars on top — and the inviter's dollar
-// commission is recorded with the transfer id as its dedup key.
-test("transfer extras run for Coin Seller and Merchant transfers", () => {
-  assert.match(inviteRewards, /walletType !== "coin_seller" && walletType !== "merchant"/);
-  assert.match(inviteRewards, /reason: "ineligible_source"/);
-  assert.doesNotMatch(inviteRewards, /Commission volume is strictly Coin Seller received coins/);
-  // The extras live in the shared awardTransferExtras helper: it runs
-  // for both seller wallet types, from both transfer routes, and
-  // records the 5% referral dollars with the transfer id.
+// Invite reward rule (Vinay, 2026-11-23): the inviter gets coins only
+// ONCE per invite — 800,000 when the invite succeeds. On every recharge
+// the inviter gets NO coins, only 5% of the recharge amount in dollars.
+// The old per-recharge coin commission (3-5% tiers) was removed entirely.
+test("no per-recharge coin commission remains anywhere", () => {
+  assert.doesNotMatch(inviteRewards, /recordCoinSellerInviteCommission/);
+  assert.doesNotMatch(inviteRewards, /invite_commission_rewards/);
+  assert.doesNotMatch(inviteRewards, /DIRECT_INVITE_TIERS/);
+  assert.doesNotMatch(inviteRewards, /tierFor/);
+  assert.doesNotMatch(inviteRewards, /commission_coins/);
+  assert.doesNotMatch(inviteRewards, /current_rate/);
+  // The transfer extras helper awards VIP EXP + the 5% referral
+  // dollars only — no coin commission call, no invite_commission field.
   assert.match(worker, /async function awardTransferExtras/);
-  assert.match(worker, /if \(walletType !== "coin_seller" && walletType !== "merchant"\) \{\s*return \{ vipAward, inviteCommission, dollarCommission, warnings \};/);
-  assert.match(worker, /inviteCommission = await recordCoinSellerInviteCommission\(db, \{/);
   assert.match(worker, /dollarCommission = await recordRechargeInviteCommission\(db, \{/);
-  assert.match(worker, /purchaseToken: transferId,/);
+  assert.doesNotMatch(worker, /recordCoinSellerInviteCommission/);
+  assert.doesNotMatch(worker, /invite_commission:/);
+  assert.doesNotMatch(worker, /inviteCommission/);
 });
 
-test("invite UI explains eligible sources include Merchant transfers", () => {
-  assert.match(inviteScreen, /Only coins received through eligible Coin Seller or Merchant transfers/);
-  assert.match(inviteScreen, /Gifts, game winnings and other coin sources do not count/);
-  assert.doesNotMatch(inviteScreen, /Merchant transfers, gifts, game winnings and other coin sources do not count/);
+test("invite UI shows no coin commission anywhere", () => {
+  assert.match(inviteScreen, /800,000 coins per successful invite, plus 5% of every recharge/);
+  assert.doesNotMatch(inviteScreen, /coin commission/i);
+  assert.doesNotMatch(inviteScreen, /current_rate_percent/);
+  assert.doesNotMatch(inviteScreen, /commission_coins/);
+  assert.doesNotMatch(inviteScreen, /Coin Seller Coins/);
+  assert.doesNotMatch(inviteScreen, /Reward level/);
+  assert.doesNotMatch(inviteScreen, /_tierCard/);
 });

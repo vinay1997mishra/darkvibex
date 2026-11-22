@@ -258,9 +258,11 @@ test("H3: no absolute-SET balance write remains in the fixed paths", () => {
   assert.match(vipStore, /exp_balance=exp_balance\+\?,total_received_coins=total_received_coins\+\?/);
   assert.match(vipStore, /WHERE user_id=\? AND level=\? AND exp_balance=\?/);
   assert.match(vipStore, /INSERT INTO vip_exp_awards\(reference_id/);
-  // Invite commission: INSERT OR IGNORE + relative credit.
-  assert.match(inviteRewards, /INSERT OR IGNORE INTO invite_commission_rewards/);
-  assert.match(inviteRewards, /UPDATE users SET coins=coins\+\?,updated_at=\? WHERE id=\? AND changes\(\)=1/);
+  // Invite rewards: the 800,000-coin fixed reward still credits
+  // relatively (backfill, line 152) and the dollar balance moves
+  // relatively. The old per-recharge coin commission was REMOVED
+  // (Vinay, 2026-11-23) — no invite_commission_rewards table remains.
+  assert.match(inviteRewards, /UPDATE users SET coins=coins\+\?/);
   // Aladdin lamp + task claim: relative credits.
   assert.match(aladdinLamp, /UPDATE users SET coins=coins\+\?,updated_at=\? WHERE id=\?/);
   assert.match(tinniSocial, /UPDATE users SET coins=coins\+\?,updated_at=\? WHERE id=\?/);

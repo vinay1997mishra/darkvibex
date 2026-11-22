@@ -1,9 +1,9 @@
 // Transfer extras (Vinay, 2026-11-23): a seller-wallet transfer counts
 // as a recharge everywhere. Merchant transfers earn the same extras as
-// Coin Seller transfers — VIP EXP for the receiver, the coin commission
-// AND the 5% referral dollars for the inviter, on top of each other —
-// and the 800,000-coin invite reward is untouched (it is paid once at
-// bind, not per transfer). End-to-end through the real worker fetch.
+// Coin Seller transfers — VIP EXP for the receiver and the 5% referral
+// dollars for the inviter. The inviter earns NO coins per recharge: coins
+// come only once per invite (800,000 at bind); the old per-recharge coin
+// commission was removed. End-to-end through the real worker fetch.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -100,7 +100,7 @@ function sendTransfer(request, walletType, credential, key) {
   });
 }
 
-test("coin seller transfer: VIP EXP + coin commission + 5% dollars, no double-pay on retry", async () => {
+test("coin seller transfer: VIP EXP + 5% dollars, no coins per recharge, no double-pay on retry", async () => {
   const { sqlite, request } = await fixture();
   const credential = await setupWallet(sqlite, request, "coin_seller");
   const result = await sendTransfer(request, "coin_seller", credential, "extras-key-1");
@@ -108,11 +108,10 @@ test("coin seller transfer: VIP EXP + coin commission + 5% dollars, no double-pa
   assert.equal(result.body.ok, true);
   // 8,000,000 coins = $1: 150 VIP EXP for the receiver.
   assert.equal(result.body.vip_award?.awarded_exp, 150);
-  // Coin commission tier 1 (3%): 240,000 coins for the inviter.
-  assert.equal(result.body.invite_commission?.applied, true);
-  assert.equal(result.body.invite_commission?.reward_coins, 240000);
-  assert.equal(result.body.invite_commission?.rate_bps, 300);
-  // 5% referral dollars on top: 5 cents on the $1 transfer.
+  // No coins per recharge (Vinay, 2026-11-23): the old coin commission
+  // is gone — the response carries no invite_commission at all.
+  assert.equal(result.body.invite_commission, undefined);
+  // 5% referral dollars: 5 cents on the $1 transfer.
   assert.equal(result.body.invite_dollar_commission?.applied, true);
   assert.equal(result.body.invite_dollar_commission?.recharge_usd_cents, 100);
   assert.equal(result.body.invite_dollar_commission?.commission_usd_cents, 5);
@@ -127,10 +126,6 @@ test("coin seller transfer: VIP EXP + coin commission + 5% dollars, no double-pa
     sqlite.prepare("SELECT COUNT(*) AS n FROM invite_dollar_commissions").get().n,
     1,
   );
-  assert.equal(
-    sqlite.prepare("SELECT COUNT(*) AS n FROM invite_commission_rewards").get().n,
-    1,
-  );
 });
 
 test("merchant transfer: same extras as coin seller, no VIP bonus", async () => {
@@ -140,8 +135,7 @@ test("merchant transfer: same extras as coin seller, no VIP bonus", async () => 
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.ok, true);
   assert.equal(result.body.vip_award?.awarded_exp, 150);
-  assert.equal(result.body.invite_commission?.applied, true);
-  assert.equal(result.body.invite_commission?.reward_coins, 240000);
+  assert.equal(result.body.invite_commission, undefined);
   assert.equal(result.body.invite_dollar_commission?.applied, true);
   assert.equal(result.body.invite_dollar_commission?.commission_usd_cents, 5);
   // The receiver got exactly the transferred coins — the VIP purchase
