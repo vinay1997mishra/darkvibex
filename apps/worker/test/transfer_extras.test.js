@@ -65,7 +65,17 @@ async function fixture() {
   sqlite.prepare(
     "INSERT INTO invite_bindings(invitee_user_id,inviter_user_id,invitation_code,bound_at) VALUES(?,?,?,?)"
   ).run("invitee", "inviter", "1234567", now);
-  return { sqlite, DB, request };
+  const setVipLevel = async (userId, level) => {
+    // The first read creates the user_vip schema/row; only then can the
+    // level be set and settled (same pattern as vip_boosts.test.js).
+    await request(`/api/vip/${userId}`, { userId });
+    sqlite.prepare("DELETE FROM user_vip WHERE user_id=?").run(userId);
+    sqlite.prepare("UPDATE users SET vip_level=? WHERE id=?").run(level, userId);
+    const response = await request(`/api/vip/${userId}`, { userId });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.vip.level, level);
+  };
+  return { sqlite, DB, request, setVipLevel };
 }
 
 async function setupWallet(sqlite, request, walletType) {
@@ -150,26 +160,30 @@ test("merchant transfer: same extras as coin seller, no VIP bonus", async () => 
   );
 });
 
-test("coin seller self-transfer: VIP EXP earned, no bonus, no dollars", async () => {
-  const { sqlite, request } = await fixture();
+test("coin seller self-transfer: VIP EXP + VIP bonus earned, no dollars", async () => {
+  const { sqlite, request, setVipLevel } = await fixture();
   const credential = await setupWallet(sqlite, request, "coin_seller");
+  // VIP5: 1.2x EXP boost and a 5% purchase bonus on Coin Seller buys.
+  await setVipLevel("seller", 5);
   const result = await sendTransfer(request, "coin_seller", credential, "extras-self-1", "seller");
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.ok, true);
-  // VIP EXP is earned on self-transfer (Vinay, 2026-11-23): 150 EXP.
-  assert.equal(result.body.vip_award?.awarded_exp, 150);
-  // No VIP purchase bonus on self-transfer: the seller would otherwise
-  // mint free platform coins out of their own balance.
-  assert.equal(result.body.coins_bonus, 0);
+  // VIP EXP is earned on self-transfer (Vinay, 2026-11-23): 150 EXP at
+  // the 1.2x VIP5 boost = 180 EXP.
+  assert.equal(result.body.vip_award?.awarded_exp, 180);
+  assert.equal(result.body.vip_award?.exp_boost, 1.2);
+  // VIP bonus is earned on self-transfer too (Vinay, 2026-11-23): 5%
+  // of 8,000,000 = 400,000 free platform coins on top.
+  assert.equal(result.body.coins_bonus, 400000);
   assert.equal(
-    sqlite.prepare("SELECT COUNT(*) AS n FROM wallet_ledger WHERE user_id='seller' AND kind='vip_coins_bonus'").get().n,
-    0,
+    sqlite.prepare("SELECT amount FROM wallet_ledger WHERE user_id='seller' AND kind='vip_coins_bonus'").get().amount,
+    400000,
   );
-  // The seller's own normal wallet got exactly the transferred coins,
-  // and the seller wallet was debited exactly the same amount.
+  // The seller's own normal wallet got the transferred coins + bonus,
+  // and the seller wallet was debited exactly the purchased amount.
   assert.equal(
     sqlite.prepare("SELECT coins FROM users WHERE id='seller'").get().coins,
-    8000000,
+    8400000,
   );
   assert.equal(
     sqlite.prepare("SELECT balance_coins FROM role_wallets WHERE user_id='seller' AND wallet_type='coin_seller'").get().balance_coins,
