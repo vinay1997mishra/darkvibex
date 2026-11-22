@@ -177,6 +177,19 @@ class _RoomScreenState extends State<RoomScreen>
   // timer so it also shows after a gift video/GLB dialog closes.
   Map<String, dynamic>? activeGiftRibbon;
   Timer? giftRibbonTimer;
+  // Gift combo (Vinay, 2026-11-21): after a gift-box send, a combo button
+  // appears below the Rocket so the same gift can be sent again to the
+  // same users. _giftComboTotal counts every copy sent in this combo
+  // (4 users x combo 7 = 28 per send). The button hides by itself after
+  // 5s without a touch; every touch restarts the 5s timer.
+  List<Map<String, dynamic>>? _giftComboGifts;
+  List<String>? _giftComboRecipientIds;
+  int _giftComboCount = 1;
+  int _giftComboTotal = 0;
+  // Combo timer (Vinay, 2026-11-21): the ring around the button drains
+  // over 5s; a new key restarts it. Changing the key rebuilds the ring
+  // animation from full — no periodic timer, no whole-screen rebuild.
+  int _giftComboTimerKey = 0;
   final Map<String, String> activeSeatReactions = <String, String>{};
   final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
   final Set<String> seenSeatReactionMessageIds = <String>{};
@@ -2313,11 +2326,19 @@ class _RoomScreenState extends State<RoomScreen>
     final verifiedEvent = verified;
     final receiverId = verifiedEvent['receiver_user_id']?.toString() ?? '';
     if (receiverId.isEmpty) return;
+    // Gift combo (Vinay, 2026-11-21): a counted event shows "xN" for
+    // everyone in the room, not just the sender.
+    final giftCount =
+        (int.tryParse(verifiedEvent['count']?.toString() ?? '') ?? 1)
+            .clamp(1, 7777);
     final gift = <String, dynamic>{
       'id': verifiedEvent['gift_id']?.toString() ?? '',
-      'name': verifiedEvent['gift_name']?.toString() ?? 'Gift',
+      'name': giftCount > 1
+          ? '${verifiedEvent['gift_name']?.toString() ?? 'Gift'} x$giftCount'
+          : (verifiedEvent['gift_name']?.toString() ?? 'Gift'),
       'emoji': verifiedEvent['emoji']?.toString() ?? '🎁',
       'coin_cost': verifiedEvent['coin_cost'] ?? 0,
+      'count': giftCount,
       'video_key': verifiedEvent['video_key']?.toString() ?? '',
       'glb_key': verifiedEvent['glb_key']?.toString() ?? '',
       'asset_key': verifiedEvent['asset_key']?.toString() ?? '',
@@ -2616,6 +2637,9 @@ class _RoomScreenState extends State<RoomScreen>
       builder: (sheetContext) {
         final sheetHeight = MediaQuery.sizeOf(sheetContext).height * .58;
         var selectedGiftCategory = 'Normal';
+        // Gift combo (Vinay, 2026-11-21): how many copies of the gift go to
+        // each selected user in one send (1/7/77/177/777/7777).
+        var selectedComboCount = 1;
         final selectedReceiverIds = receiverId.trim().isEmpty
             ? <String>{}
             : <String>{receiverId};
@@ -2704,7 +2728,25 @@ class _RoomScreenState extends State<RoomScreen>
                   0,
                   (total, item) => total + giftCost(item),
                 ) *
-                selectedReceiverIds.length;
+                selectedReceiverIds.length *
+                selectedComboCount;
+
+            // Select All (Vinay, 2026-11-21): every seat user's DP,
+            // including yourself (you are already in the recipients list).
+            final allRecipientIds = recipients
+                .map((row) => row['user_id']?.toString() ?? '')
+                .where((id) => id.isNotEmpty)
+                .toSet();
+            final allRecipientsSelected = allRecipientIds.isNotEmpty &&
+                allRecipientIds.every(selectedReceiverIds.contains);
+            // Recipient DPs (Vinay, 2026-11-21): only 7 DPs show in one
+            // row, at the biggest size that still fits 7 across. The rest
+            // are reached by sliding right. The DP stays small but big
+            // enough to be visible.
+            final recipientItemWidth =
+                ((MediaQuery.sizeOf(sheetContext).width - 30) / 7)
+                    .clamp(44.0, 64.0);
+            final recipientAvatarSize = recipientItemWidth - 6;
 
             return Container(
               height: sheetHeight,
@@ -2796,6 +2838,51 @@ class _RoomScreenState extends State<RoomScreen>
                       ),
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(15, 0, 15, 2),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'To',
+                          style: TextStyle(
+                            color: Color(0xFFC4C9D5),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          key: const Key('room-gift-select-all'),
+                          onPressed: () => setSheetState(() {
+                            // Select All (Vinay, 2026-11-21): one tap selects
+                            // every seat user's DP, including yourself.
+                            // Tapping again clears the selection.
+                            if (allRecipientsSelected) {
+                              selectedReceiverIds.clear();
+                            } else {
+                              selectedReceiverIds.addAll(allRecipientIds);
+                            }
+                          }),
+                          style: TextButton.styleFrom(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            allRecipientsSelected
+                                ? 'Deselect All'
+                                : 'Select All',
+                            style: const TextStyle(
+                              color: Color(0xFFB77BE5),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   SizedBox(
                     height: 79,
                     child: ListView(
@@ -2826,12 +2913,12 @@ class _RoomScreenState extends State<RoomScreen>
                                   }
                                 }),
                                 child: SizedBox(
-                                  width: 66,
+                                  width: recipientItemWidth,
                                   child: Column(
                                     children: [
                                       Container(
-                                        width: 49,
-                                        height: 49,
+                                        width: recipientAvatarSize,
+                                        height: recipientAvatarSize,
                                         padding: const EdgeInsets.all(2),
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
@@ -3093,6 +3180,57 @@ class _RoomScreenState extends State<RoomScreen>
                             },
                           ),
                   ),
+                  // Gift combo (Vinay, 2026-11-21): the copy count for the
+                  // gift, at the bottom right of the gift box. The number
+                  // is how many copies go to EACH selected user in one
+                  // send (4 users x combo 7 = 28 sends in one go).
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(15, 4, 15, 2),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Combo',
+                          style: TextStyle(
+                            color: Color(0xFFC4C9D5),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        for (final count in const <int>[1, 7, 77, 177, 777, 7777])
+                          Padding(
+                            padding: const EdgeInsets.only(left: 5),
+                            child: ChoiceChip(
+                              key: Key('room-gift-combo-$count'),
+                              label: Text(count.toString()),
+                              selected: selectedComboCount == count,
+                              onSelected: (_) => setSheetState(
+                                () => selectedComboCount = count,
+                              ),
+                              showCheckmark: false,
+                              selectedColor: const Color(0xFFB77BE5),
+                              backgroundColor: const Color(0xFF1A263B),
+                              side: BorderSide(
+                                color: selectedComboCount == count
+                                    ? const Color(0xFFB77BE5)
+                                    : const Color(0xFF43516B),
+                                width: 1,
+                              ),
+                              labelStyle: TextStyle(
+                                color: selectedComboCount == count
+                                    ? const Color(0xFF1A1022)
+                                    : const Color(0xFFE8EAF2),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   Container(
                     decoration: const BoxDecoration(
                       color: Color(0xFF10192D),
@@ -3166,6 +3304,8 @@ class _RoomScreenState extends State<RoomScreen>
                                                   ),
                                                 )
                                                 .toList(growable: false),
+                                            '_selected_combo_count':
+                                                selectedComboCount,
                                           },
                                         ),
                                 style: FilledButton.styleFrom(
@@ -3221,11 +3361,59 @@ class _RoomScreenState extends State<RoomScreen>
         <Map<String, dynamic>>[];
 
     if (recipientIds.isEmpty || selectedGifts.isEmpty) return;
+    // Gift combo (Vinay, 2026-11-21): the combo number is how many copies
+    // of the gift go to EACH selected user in one send (4 users x combo 7
+    // = 28 sends in one go). The total is gift cost x users x combo.
+    final comboCount = (int.tryParse(
+              selection['_selected_combo_count']?.toString() ?? '',
+            ) ??
+            1)
+        .clamp(1, 7777);
+    // Bulk send (Vinay, 2026-11-21): the gift goes to every selected
+    // recipient at once ONLY if the wallet can afford the whole total.
+    // Never start a bulk send the wallet cannot cover. The total uses
+    // the catalog cost, which is the most the server can charge (the
+    // VIP discount can only lower it), so this check is conservative.
+    final totalCost = selectedGifts.fold<int>(
+          0,
+          (total, gift) =>
+              total + (int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0),
+        ) *
+        recipientIds.length *
+        comboCount;
+    if (widget.state.coins < totalCost) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Not enough coins — need $totalCost, you have ${widget.state.coins}.',
+          ),
+        ),
+      );
+      return;
+    }
+    var sentCopies = 0;
     for (final gift in selectedGifts) {
       for (final id in recipientIds) {
         if (!mounted) return;
-        await _sendGiftByDefinition(gift, id);
+        final sent = await _sendGiftByDefinition(gift, id, count: comboCount);
+        if (!sent) return;
+        sentCopies += comboCount;
       }
+    }
+    // The whole bulk send landed: show the combo button so the same gift
+    // can be sent again to the same users. It hides by itself after 5s
+    // without a touch, and every touch restarts the 5s timer.
+    if (mounted) {
+      setState(() {
+        _giftComboGifts = selectedGifts
+            .map((gift) => Map<String, dynamic>.from(gift))
+            .toList(growable: false);
+        _giftComboRecipientIds = List<String>.from(recipientIds);
+        _giftComboCount = comboCount;
+        _giftComboTotal = sentCopies;
+      });
+      _startGiftComboTimer();
     }
   }
 
@@ -7824,13 +8012,14 @@ class _RoomScreenState extends State<RoomScreen>
     }
   }
 
-  Future<void> _sendGiftByDefinition(
+  Future<bool> _sendGiftByDefinition(
     Map<String, dynamic> gift,
-    String receiverId,
-  ) async {
+    String receiverId, {
+    int count = 1,
+  }) async {
     final giftId = gift['id']?.toString() ?? '';
     final giftCost = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
-    if (giftId.isEmpty || giftCost <= 0 || receiverId.isEmpty) return;
+    if (giftId.isEmpty || giftCost <= 0 || receiverId.isEmpty) return false;
     Map<String, dynamic>? result;
     try {
       result = await widget.state.backend.sendGift(
@@ -7839,6 +8028,7 @@ class _RoomScreenState extends State<RoomScreen>
         receiverUserId: receiverId,
         giftId: giftId,
         coinCost: giftCost,
+        count: count,
       );
     } catch (_) {
       // _json throws on a network drop; a failed send must show a
@@ -7848,7 +8038,7 @@ class _RoomScreenState extends State<RoomScreen>
           const SnackBar(content: Text('Gift could not be sent. Check your connection and try again.')),
         );
       }
-      return;
+      return false;
     }
     final remoteBalance =
         int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
@@ -7860,6 +8050,20 @@ class _RoomScreenState extends State<RoomScreen>
       widget.state.setDiamondBalance(receiverDiamondBalance);
     }
     if (remoteBalance != null) {
+      // Gift combo (Vinay, 2026-11-21): the server confirms how many
+      // copies were sent and the total charged; the room shows "xN".
+      final sentCount =
+          (int.tryParse(result?['gift_count']?.toString() ?? '') ?? count)
+              .clamp(1, 7777);
+      final sentTotal =
+          int.tryParse(result?['gift_total_cost']?.toString() ?? '') ??
+              (giftCost * sentCount);
+      final displayGiftName = sentCount > 1
+          ? '${gift['name'] ?? 'Gift'} x$sentCount'
+          : (gift['name'] ?? 'Gift').toString();
+      final displayGift = Map<String, dynamic>.from(gift)
+        ..['count'] = sentCount
+        ..['name'] = displayGiftName;
       final committedEventId = result?['event_id']?.toString() ?? '';
       if (committedEventId.isNotEmpty) {
         _seenGiftEventIds.add(committedEventId);
@@ -7872,9 +8076,10 @@ class _RoomScreenState extends State<RoomScreen>
             'receiver_user_id': receiverId,
             'sender_name': widget.state.displayName,
             'gift_id': giftId,
-            'gift_name': gift['name']?.toString() ?? 'Gift',
+            'gift_name': displayGiftName,
             'emoji': gift['emoji']?.toString() ?? '🎁',
-            'coin_cost': giftCost,
+            'coin_cost': sentTotal,
+            'count': sentCount,
             'video_key': (gift['video_key'] ?? gift['videoKey'] ?? '').toString(),
             'glb_key': (gift['glb_key'] ?? gift['glbKey'] ?? '').toString(),
             'asset_key': (gift['asset_key'] ?? gift['asset'] ?? '').toString(),
@@ -7902,7 +8107,7 @@ class _RoomScreenState extends State<RoomScreen>
                   ? widget.state.displayName
                   : receiverId))
           .toString();
-      final giftName = (gift['name'] ?? 'Gift').toString();
+      final giftName = displayGiftName;
       // Keep the gift visible in the room chat as a normal room event too.
       unawaited(widget.state.backend.sendRoomMessage(
         roomId: widget.room.id,
@@ -7910,11 +8115,11 @@ class _RoomScreenState extends State<RoomScreen>
         text: '🎁 ${widget.state.displayName} sent $giftName to $receiverName',
       ));
       if (videoKey.isNotEmpty) {
-        await _playGiftVideo(gift, receiverId: receiverId, videoKey: videoKey);
+        await _playGiftVideo(displayGift, receiverId: receiverId, videoKey: videoKey);
       } else if (glbKey.isNotEmpty) {
-        await _playGiftGlb(gift, receiverId: receiverId, glbKey: glbKey);
+        await _playGiftGlb(displayGift, receiverId: receiverId, glbKey: glbKey);
       } else {
-        _playGiftEffect(gift, receiverId: receiverId);
+        _playGiftEffect(displayGift, receiverId: receiverId);
       }
       // Gift ribbon banner (sender's VIP tier from the send response,
       // basic for VIP0): shown with the gift display, after any
@@ -7926,23 +8131,23 @@ class _RoomScreenState extends State<RoomScreen>
         giftName: giftName,
       );
       await widget.state.refreshIdLevel(notify: false);
-      if (!mounted) return;
+      if (!mounted) return false;
       unawaited(_loadRoomGiftRanking());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             (gift['emoji']?.toString() ?? '🎁') +
                 ' ' +
-                (gift['name']?.toString() ?? 'Gift') +
+                displayGiftName +
                 ' sent • ' +
-                giftCost.toString() +
+                sentTotal.toString() +
                 ' coins',
           ),
         ),
       );
-      return;
+      return true;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     final error = result?['error']?.toString() ?? '';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -7953,6 +8158,82 @@ class _RoomScreenState extends State<RoomScreen>
         ),
       ),
     );
+    return false;
+  }
+
+  void _startGiftComboTimer() {
+    // Combo (Vinay, 2026-11-21): a new key restarts the 5s ring around
+    // the button. If the button is not touched again within 5s, the
+    // ring drains to zero and the bubble disappears (onEnd below).
+    if (!mounted) return;
+    setState(() => _giftComboTimerKey++);
+  }
+
+  void _hideGiftCombo() {
+    if (!mounted) return;
+    setState(() {
+      _giftComboGifts = null;
+      _giftComboRecipientIds = null;
+      _giftComboTotal = 0;
+    });
+  }
+
+  /// Gift combo (Vinay, 2026-11-21): re-sends the last gift-box gift to
+  /// the same users, as many times as the user wants, inside the 5s
+  /// window. Each press sends the same batch again (users x combo
+  /// count) and restarts the 5s timer. To change users, re-select from
+  /// the gift box (a new gift-box send replaces this combo).
+  Future<void> _sendGiftCombo() async {
+    final gifts = _giftComboGifts;
+    final recipientIds = _giftComboRecipientIds;
+    if (gifts == null ||
+        gifts.isEmpty ||
+        recipientIds == null ||
+        recipientIds.isEmpty) {
+      return;
+    }
+    // Touching the combo button restarts the 5s timer, whether or not
+    // this press can afford the send.
+    _startGiftComboTimer();
+    if (!widget.state.backendConnected) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connect to the server to send a gift')),
+      );
+      return;
+    }
+    final totalCost = gifts.fold<int>(
+          0,
+          (total, gift) =>
+              total + (int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0),
+        ) *
+        recipientIds.length *
+        _giftComboCount;
+    if (widget.state.coins < totalCost) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Not enough coins — need $totalCost, you have ${widget.state.coins}.',
+          ),
+        ),
+      );
+      return;
+    }
+    var sentCopies = 0;
+    for (final gift in gifts) {
+      for (final id in recipientIds) {
+        if (!mounted) return;
+        final sent =
+            await _sendGiftByDefinition(gift, id, count: _giftComboCount);
+        if (!sent) return;
+        sentCopies += _giftComboCount;
+      }
+    }
+    if (mounted && sentCopies > 0) {
+      setState(() => _giftComboTotal += sentCopies);
+      _startGiftComboTimer();
+    }
   }
 
   Future<void> _sendGift() async {
@@ -9283,6 +9564,125 @@ class _RoomScreenState extends State<RoomScreen>
               ],
             ),
           ),
+          if (_giftComboGifts != null &&
+              _giftComboGifts!.isNotEmpty &&
+              _giftComboRecipientIds != null &&
+              _giftComboRecipientIds!.isNotEmpty)
+            Positioned(
+              // Gift combo (Vinay, 2026-11-21; Bigo reference): below the
+              // Rocket, slightly to the right, a BIG prominent button —
+              // Bigo's is a large red "Combo" button pressed again and
+              // again while the multiplier climbs. The count above the
+              // button shows how many copies were sent in this combo.
+              // The gold ring drains over 5s; untouched for 5s and the
+              // bubble disappears. Every touch restarts the ring.
+              right: 2,
+              bottom: 34,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    key: const Key('room-gift-combo-count'),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xCC1A1022),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: TinniPalette.brightGold),
+                    ),
+                    child: Text(
+                      'x$_giftComboTotal',
+                      style: const TextStyle(
+                        color: TinniPalette.brightGold,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey<int>(_giftComboTimerKey),
+                    tween: Tween<double>(begin: 1, end: 0),
+                    duration: const Duration(seconds: 5),
+                    onEnd: _hideGiftCombo,
+                    builder: (context, value, child) {
+                      return SizedBox(
+                        width: 76,
+                        height: 76,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SizedBox(
+                              width: 76,
+                              height: 76,
+                              child: CircularProgressIndicator(
+                                value: value,
+                                strokeWidth: 3,
+                                color: TinniPalette.brightGold,
+                                backgroundColor: const Color(0x33FFFFFF),
+                              ),
+                            ),
+                            child!,
+                          ],
+                        ),
+                      );
+                    },
+                    child: Semantics(
+                      button: true,
+                      label: 'Gift combo',
+                      child: InkResponse(
+                        key: const Key('room-gift-combo-button'),
+                        radius: 36,
+                        onTap: _sendGiftCombo,
+                        child: Container(
+                          width: 68,
+                          height: 68,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: <Color>[
+                                Color(0xFFFF5252),
+                                Color(0xFFFFB300),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            border: Border.all(
+                              color: TinniPalette.brightGold,
+                              width: 2,
+                            ),
+                            boxShadow: const <BoxShadow>[
+                              BoxShadow(
+                                color: Color(0x88FF5252),
+                                blurRadius: 14,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _giftComboGifts!.first['emoji']?.toString() ??
+                                    '🎁',
+                                style: const TextStyle(fontSize: 24),
+                              ),
+                              const Text(
+                                'Combo',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (activeGiftRibbon != null && effectsEnabled && giftEffectsEnabled)
             Positioned(
               // Gift ribbon banner (sender's VIP tier): full-width

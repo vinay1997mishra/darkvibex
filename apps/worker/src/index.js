@@ -2685,6 +2685,19 @@ async function ensureCustomGiftSchema(db) {
   ]);
 }
 
+// Gift combo (Vinay, 2026-11-21): gift_events carries the copy count of a
+// combo send (1 for a plain send). Databases created before the combo
+// launch get the column via ALTER; the CREATE TABLE above already has it.
+async function ensureGiftEventsCountColumn(db) {
+  try {
+    await db.prepare(
+      "ALTER TABLE gift_events ADD COLUMN count INTEGER NOT NULL DEFAULT 1"
+    ).run();
+  } catch (_) {
+    // Column already exists on databases created after the combo launch.
+  }
+}
+
 const WEEKLY_SIGN_IN_REWARDS = Object.freeze([
   70000,
   90000,
@@ -7790,8 +7803,9 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?"
   ).bind(roomId, viewerId).first();
   if (!member) return { ok: false, error: "room_membership_required", status: 403 };
+  await ensureGiftEventsCountColumn(db);
   const rows = await db.prepare(
-    `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.created_at,
+    `SELECT g.id,g.sender_user_id,g.receiver_user_id,g.gift_id,g.coin_cost,g.count,g.created_at,
             s.display_name AS sender_name,r.display_name AS receiver_name,
             COALESCE(s.vip_level,0) AS sender_vip_level
        FROM gift_events g
@@ -7815,6 +7829,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       gift_name:String(gift.name ?? "Gift"),
       emoji:String(gift.emoji ?? "🎁"),
       coin_cost:Number(row.coin_cost ?? 0),
+      count:Number(row.count ?? 1),
       sender_vip_level:Number(row.sender_vip_level ?? 0),
       // Gift ribbon: the banner for the SENDER's VIP level (basic
       // Sleek Gold tier for VIP0/no-VIP), so the room shows the
@@ -10016,6 +10031,20 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     if (!Number.isSafeInteger(cost) || cost <= 0) {
       return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
     }
+    // Gift combo (Vinay, 2026-11-21): the gift box offers 1/7/77/177/777/7777
+    // copies in one send. The server debits the total (unit cost x count)
+    // and records ONE gift event with coin_cost = total and count = count,
+    // so the Rocket total, ranking and diamonds all follow the total while
+    // the room plays a single "xN" animation.
+    const comboCount = Math.min(
+      7777,
+      Math.max(1, Math.floor(Number(body.count ?? 1) || 1)),
+    );
+    const comboTotal = cost * comboCount;
+    if (!Number.isSafeInteger(comboTotal) || comboTotal <= 0) {
+      return json({ ok: false, error: "invalid_gift_cost" }, { status: 400 });
+    }
+    await ensureGiftEventsCountColumn(db);
     await ensureUser(db, sender);
     await ensureUser(db, receiver);
     await ensureUserAllowed(db, sender);
@@ -10079,20 +10108,20 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     await db.batch([
       db.prepare(
         "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
-      ).bind(cost, giftCreatedAt, sender, cost),
+      ).bind(comboTotal, giftCreatedAt, sender, comboTotal),
       db.prepare(
         "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) " +
         "SELECT ?,u.id,'gift_sent',?,u.coins,?,? FROM users u WHERE u.id=? AND changes()=1"
-      ).bind(id(), -cost, eventId, giftCreatedAt, sender),
+      ).bind(id(), -comboTotal, eventId, giftCreatedAt, sender),
       db.prepare(
-        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,created_at) " +
-        "SELECT ?,?,?,?,?,?,? WHERE EXISTS (" +
+        "INSERT INTO gift_events (id,room_id,sender_user_id,receiver_user_id,gift_id,coin_cost,count,created_at) " +
+        "SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (" +
         "SELECT 1 FROM wallet_ledger WHERE reference_id=? AND kind='gift_sent')"
-      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, cost, giftCreatedAt, eventId),
+      ).bind(eventId, body.room_id ?? null, sender, receiver, giftId, comboTotal, comboCount, giftCreatedAt, eventId),
       db.prepare(
         "UPDATE users SET diamonds = diamonds + ?, updated_at = ? WHERE id = ? AND EXISTS (" +
         "SELECT 1 FROM gift_events WHERE id=?)"
-      ).bind(cost, giftCreatedAt, receiver, eventId),
+      ).bind(comboTotal, giftCreatedAt, receiver, eventId),
       // DM gift (Vinay, 2026-11-21): a room-less gift also writes a
       // kind='gift' DM row — same pattern as the red-envelope DM row —
       // so the gift shows in the 1-to-1 thread and the inbox for both
@@ -10108,7 +10137,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
                 id(),
                 sender,
                 receiver,
-                `🎁 ${[gift.emoji, gift.name ?? giftId].filter((part) => String(part ?? "").trim()).join(" ")} · ${cost} coins`,
+                `🎁 ${[gift.emoji, gift.name ?? giftId].filter((part) => String(part ?? "").trim()).join(" ")} · ${comboTotal} coins${comboCount > 1 ? ` · x${comboCount}` : ""}`,
                 giftCreatedAt,
                 eventId,
               ),
@@ -10148,9 +10177,9 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     let cpProgress = null;
     let progressPending = false;
     try {
-      await awardIdLevelGift(db, sender, cost, eventId, giftCreatedAt);
+      await awardIdLevelGift(db, sender, comboTotal, eventId, giftCreatedAt);
       await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, giftCreatedAt);
-      cpProgress = await recordCpGiftProgress(db, sender, receiver, cost, eventId);
+      cpProgress = await recordCpGiftProgress(db, sender, receiver, comboTotal, eventId);
     } catch (error) {
       progressPending = true;
       console.error("gift_post_commit_processing_failed", {
@@ -10176,6 +10205,8 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       ok: true,
       event_id: eventId,
       gift_cost: cost,
+      gift_count: comboCount,
+      gift_total_cost: comboTotal,
       gift_list_price: listPrice,
       gift_discount: giftDiscount,
       gift_name: String(gift.name ?? giftId),
