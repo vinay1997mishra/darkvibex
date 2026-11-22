@@ -220,21 +220,34 @@ class MainActivity : FlutterActivity() {
         inviteReferralMethodChannel?.invokeMethod("inviteCode", code)
     }
 
+    // Voice permissions only (Android 12+ Bluetooth lives here).
+    // POST_NOTIFICATIONS is NOT bundled: it has its own flow on the
+    // push channel (MessagePushService.requestPermission), so the
+    // voice check must not re-prompt for it.
     private fun voiceRoomPermissions(): Array<String> {
         val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
         return permissions.toTypedArray()
+    }
+
+    // BLUETOOTH_CONNECT, checked on its own (Android audit 2026-11-22):
+    // on Android 12+ Agora routes Bluetooth headsets only with this
+    // permission, and the old hasVoiceRoomPermissions() never looked
+    // at it — a user who granted the mic long ago was never
+    // re-prompted for Bluetooth, so headset audio silently failed.
+    private fun hasBluetoothConnectPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        return checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
+            PackageManager.PERMISSION_GRANTED
     }
 
     private fun hasVoiceRoomPermissions(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
         return checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+            PackageManager.PERMISSION_GRANTED &&
+            hasBluetoothConnectPermission()
     }
 
     private fun requestVoiceRoomPermissions(result: MethodChannel.Result) {
@@ -255,7 +268,19 @@ class MainActivity : FlutterActivity() {
             return
         }
         pendingPermissionResult = result
-        requestPermissions(voiceRoomPermissions(), voicePermissionRequest)
+        // Request only the permissions still missing. The old code
+        // requested the whole bundle every time, but early-returned
+        // on the mic alone — so a user who granted the mic earlier
+        // was never prompted for BLUETOOTH_CONNECT on Android 12+.
+        val missing = voiceRoomPermissions().filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            pendingPermissionResult = null
+            result.success(hasVoiceRoomPermissions())
+            return
+        }
+        requestPermissions(missing.toTypedArray(), voicePermissionRequest)
     }
 
     private fun hasMessageNotificationPermission(): Boolean {
