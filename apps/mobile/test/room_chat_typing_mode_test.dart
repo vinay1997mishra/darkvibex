@@ -18,7 +18,7 @@ void main() {
     expect(
       source,
       contains(
-        'if (!typingMode && rocketDrawNoticeEnabled && effectsEnabled)',
+        'if (!typingMode && effectsEnabled)',
       ),
     );
   });
