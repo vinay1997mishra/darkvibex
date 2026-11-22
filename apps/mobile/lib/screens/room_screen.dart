@@ -27,6 +27,7 @@ import '../widgets/vip_animated_frame.dart';
 import '../widgets/seat_panda_emote.dart';
 import '../widgets/vip_entry_effect_banner.dart';
 import '../widgets/gift_ribbon_banner.dart';
+import '../widgets/top_room_banner.dart';
 import '../widgets/level_medal.dart';
 import '../widgets/vip_tag_image.dart';
 import '../widgets/vip_name_text.dart';
@@ -190,6 +191,18 @@ class _RoomScreenState extends State<RoomScreen>
   // timer so it also shows after a gift video/GLB dialog closes.
   Map<String, dynamic>? activeGiftRibbon;
   Timer? giftRibbonTimer;
+  // Top-of-room banner (Vinay, 2026-11-22): ONE 2-line banner at the
+  // top, gift-banner style, for every event — gift sends (incl. Lucky
+  // Bag), Lucky wins, big gifts, Rocket launches, VIP entries,
+  // event/ranking announcements. One message at a time (NOT a
+  // continuously scrolling marquee): the queue rotates every 4s, and
+  // the banner hides when the queue is empty. A message that names
+  // another room (a Rocket launch or big gift elsewhere) carries that
+  // room's id, so tapping it takes the user into that room.
+  final List<Map<String, dynamic>> _topBannerQueue = [];
+  Map<String, dynamic>? _currentTopBanner;
+  Timer? _topBannerTimer;
+  final Set<String> _seenTopBannerKeys = <String>{};
   // Gift combo (Vinay, 2026-11-21): after a gift-box send, a combo button
   // appears below the Rocket so the same gift can be sent again to the
   // same users. _giftComboTotal counts every copy sent in this combo
@@ -534,6 +547,50 @@ class _RoomScreenState extends State<RoomScreen>
         roomMonthTopGifter = nextTop;
       });
     }
+    // Cross-room banners (Vinay, 2026-11-22): Rocket launches, big
+    // gifts and Lucky wins from ANY room ride the same 3s poll.
+    // They join the top banner queue with their room id, so tapping
+    // one takes the user into that room. A failed fetch keeps the
+    // current queue — never a crash and never a stale clear.
+    unawaited(_applyGlobalBanners());
+  }
+
+  Future<void> _applyGlobalBanners() async {
+    if (!mounted || !widget.state.backendConnected) return;
+    final items = await widget.state.backend.globalBanners();
+    if (items == null || !mounted) return;
+    for (final item in items) {
+      final roomId = item['room_id']?.toString() ?? '';
+      final text = item['text']?.toString() ?? '';
+      final kind = item['kind']?.toString() ?? '';
+      final createdAt = item['created_at']?.toString() ?? '';
+      // Game wins name no room (games are global) — they still show
+      // in every room, but with no room to enter (not tappable).
+      final isGameWin = kind == 'game';
+      if (text.isEmpty || (roomId.isEmpty && !isGameWin)) continue;
+      // Skip this room's own events — they already arrive via the
+      // room's gift events / Rocket launch / VIP entry paths.
+      if (roomId == widget.room.id) continue;
+      final bannerKind = switch (kind) {
+        'rocket' => TopBannerKind.rocket,
+        'gift' => TopBannerKind.gift,
+        'lucky' => TopBannerKind.lucky,
+        'game' => TopBannerKind.game,
+        _ => TopBannerKind.event,
+      };
+      // Every rocket level has its own banner design (Vinay,
+      // 2026-11-22) — the level rides the feed item.
+      final rocketLevel = kind == 'rocket'
+          ? int.tryParse(item['rocket_level']?.toString() ?? '')
+          : null;
+      _enqueueTopBanner(
+        text: text,
+        roomId: isGameWin ? null : roomId,
+        key: 'global:$kind:$roomId:$createdAt',
+        kind: bannerKind,
+        rocketLevel: rocketLevel,
+      );
+    }
   }
 
   @override
@@ -652,6 +709,28 @@ class _RoomScreenState extends State<RoomScreen>
     arrivalEffectTimer?.cancel();
     if (!mounted) return;
     setState(() => arrivalEffectMember = Map<String, dynamic>.from(member));
+    // Top-of-room banner (Vinay, 2026-11-22): a VIP entry joins the
+    // top banner queue (in-room only — the entry banner itself is the
+    // Vehicle Effect, this message is the Game Banner).
+    final entryVipLevel =
+        int.tryParse(member['active_vip_level']?.toString() ?? '') ?? 0;
+    if (entryVipLevel >= 5) {
+      final entryName =
+          (member['display_name']?.toString().trim().isNotEmpty == true)
+              ? member['display_name'].toString()
+              : 'User';
+      // Entry effect banner (Vinay, 2026-11-22): the entering user's
+      // DP shows in the banner with their name.
+      final entryAvatarKey = member['avatar_key']?.toString().trim() ?? '';
+      _enqueueTopBanner(
+        text: '👑 $entryName (VIP$entryVipLevel) entered the room!',
+        key: 'vip-entry:${member['user_id']?.toString() ?? ''}:${DateTime.now().millisecondsSinceEpoch}',
+        kind: TopBannerKind.vip,
+        avatarUrl: entryAvatarKey.isEmpty
+            ? null
+            : widget.state.backend.fileUrl(entryAvatarKey),
+      );
+    }
     final hasCustomMedia = [
       member['active_entry_video_key'], member['active_entry_glb_key'],
       member['active_vehicle_video_key'], member['active_vehicle_glb_key'],
@@ -939,12 +1018,21 @@ class _RoomScreenState extends State<RoomScreen>
           receiverName: receiverName,
           giftName: gift['name']?.toString() ?? 'Gift',
         );
+        // Top-of-room banner (Vinay, 2026-11-22): every gift send
+        // joins the top banner queue (Lucky Bag too — same banner).
+        _enqueueTopBanner(
+          text:
+              '🎁 $senderName sent ${gift['name']?.toString() ?? 'Gift'} to $receiverName',
+          key: 'gift:$eventId',
+          kind: TopBannerKind.gift,
+        );
         // Lucky win announcement (Vinay, 2026-11-22): a win on this
         // gift is announced to the room when the gift plays.
         _showLuckyWinAnnouncement(
           event,
           senderName,
           gift['name']?.toString() ?? 'Gift',
+          receiverName,
         );
       });
     }
@@ -1015,6 +1103,15 @@ class _RoomScreenState extends State<RoomScreen>
 
   void _showRocketLaunch(int level) {
     if (!mounted || !effectsEnabled || !rocketBannerEnabled) return;
+    // Top-of-room banner (Vinay, 2026-11-22): the Rocket launch joins
+    // the top banner queue (in-room — tapping is for other rooms'
+    // launches, which arrive via the global banner feed).
+    _enqueueTopBanner(
+      text: '🚀 Rocket Lv.$level launched in ${widget.room.name}! Come and watch!',
+      key: 'rocket:${widget.room.id}:$level',
+      kind: TopBannerKind.rocket,
+      rocketLevel: level,
+    );
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
 
@@ -2394,6 +2491,7 @@ class _RoomScreenState extends State<RoomScreen>
         verifiedEvent,
         senderName,
         gift['name']?.toString() ?? 'Gift',
+        receiverName,
       );
     });
   }
@@ -2473,6 +2571,7 @@ class _RoomScreenState extends State<RoomScreen>
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
     giftRibbonTimer?.cancel();
+    _topBannerTimer?.cancel();
     for (final timer in seatReactionTimers.values) {
       timer.cancel();
     }
@@ -5535,6 +5634,43 @@ class _RoomScreenState extends State<RoomScreen>
     }
   }
 
+  /// Top-of-room banner tap (Vinay, 2026-11-22): a banner that names
+  /// another room (a Rocket launch or big gift elsewhere) takes the
+  /// user into that room. The current room is left first (same
+  /// teardown as _leaveRoom), then this screen pops with the target
+  /// room id — the home shell opens that room on return. Tapping a
+  /// banner for the room the user is already in does nothing.
+  /// (Oyaar video, Vinay 2026-11-22: tapping a cross-room banner
+  /// first asks "Enter this room?" — Cancel / Confirm — and only
+  /// Confirm enters the room.)
+  Future<void> _onTopBannerTap(String roomId) async {
+    if (!mounted || roomId.isEmpty || roomId == widget.room.id) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enter this room?'),
+        content: const Text(
+          'Tip: Swipe left on the floating panel to close it quickly',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.state.clearMinimizedRoom(roomId: widget.room.id);
+    await _leaveServerMembership();
+    await _disconnectRoomRuntime();
+    if (mounted) Navigator.of(context).pop(roomId);
+  }
+
   Future<void> _leaveRoom() async {
     // Exit always tears down the local room first-class resources. The server
     // membership request is retried, but a transient network error must never
@@ -6711,7 +6847,7 @@ class _RoomScreenState extends State<RoomScreen>
                 SwitchListTile(
                   title: const Text('Game Banner'),
                   subtitle: const Text(
-                    'Banner at the top of the room (VIP entry banner).',
+                    '2-line banner at the top of the room (gift, Lucky win, Rocket, VIP entry).',
                   ),
                   value: gameBannerEnabled,
                   onChanged: (value) {
@@ -6832,6 +6968,47 @@ class _RoomScreenState extends State<RoomScreen>
   /// server ribbon (gift_ribbon.url) is preferred; without it the local
   /// mapping by sender VIP level is used. It has its own timer so it
   /// also shows after a gift video/GLB dialog closes.
+  // Top-of-room banner queue (Vinay, 2026-11-22): every banner event
+  // — gift, Lucky win, Rocket launch, VIP entry — joins this queue,
+  // and the banner shows one message at a time for 4s each, then
+  // rotates to the next. Deduped by a key so the same event (arriving
+  // via the poll and the live event, or re-polled) shows once. The
+  // queue is capped so a gift storm cannot grow it without bound.
+  void _enqueueTopBanner({
+    required String text,
+    String? roomId,
+    required String key,
+    TopBannerKind kind = TopBannerKind.event,
+    int? rocketLevel,
+    String? avatarUrl,
+  }) {
+    if (!mounted) return;
+    if (!_seenTopBannerKeys.add(key)) return;
+    _topBannerQueue.add({
+      'text': text,
+      'room_id': roomId,
+      'kind': kind,
+      'rocket_level': rocketLevel,
+      'avatar_url': avatarUrl,
+    });
+    if (_topBannerQueue.length > 10) _topBannerQueue.removeAt(0);
+    if (_currentTopBanner == null) _showNextTopBanner();
+  }
+
+  void _showNextTopBanner() {
+    if (!mounted) return;
+    _topBannerTimer?.cancel();
+    if (_topBannerQueue.isEmpty) {
+      setState(() => _currentTopBanner = null);
+      return;
+    }
+    setState(() => _currentTopBanner = _topBannerQueue.removeAt(0));
+    _topBannerTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      _showNextTopBanner();
+    });
+  }
+
   void _showGiftRibbon({
     required Map<String, dynamic> event,
     required String senderName,
@@ -6867,6 +7044,7 @@ class _RoomScreenState extends State<RoomScreen>
     Map<String, dynamic> event,
     String senderName,
     String giftName,
+    String receiverName,
   ) {
     if (!mounted || !effectsEnabled || !giftBannerEnabled) return;
     final winCoins =
@@ -6874,11 +7052,21 @@ class _RoomScreenState extends State<RoomScreen>
     if (winCoins <= 0) return;
     final multiplier =
         int.tryParse(event['lucky_multiplier']?.toString() ?? '') ?? 0;
+    // Top-of-room banner (Vinay, 2026-11-22): the Lucky win shows in
+    // the same gift banner as the gift itself, not a separate banner.
+    // The banner names the room ID and who received the gift (Vinay,
+    // 2026-11-22 13:38 IST: "Lucky gift per room id aur kisko mile ye
+    // kyu nhi likha").
+    final luckyText =
+        '🎉 $senderName won $winCoins coins on a Lucky $giftName (${multiplier}×) for $receiverName in ${widget.room.name} (Room ID: ${widget.room.id})!';
+    _enqueueTopBanner(
+      text: luckyText,
+      key: 'lucky:${event['id']?.toString() ?? ''}',
+      kind: TopBannerKind.lucky,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          '🎉 $senderName won $winCoins coins on a Lucky $giftName (${multiplier}×)!',
-        ),
+        content: Text(luckyText),
       ),
     );
   }
@@ -9191,6 +9379,42 @@ class _RoomScreenState extends State<RoomScreen>
               ],
             ),
           ),
+          // Top-of-room banner (Vinay, 2026-11-22): the 2-line banner
+          // for every event (gift, Lucky win, Rocket, VIP entry). One
+          // message at a time, rotating; hidden when the queue is
+          // empty. Gated by the Game Banner toggle (top-of-room banner).
+          if (effectsEnabled &&
+              gameBannerEnabled &&
+              _currentTopBanner != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+              // Slide animation (Oyaar video, Vinay 2026-11-22): the
+              // banner slides in from the right and out to the left.
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                transitionBuilder: (child, animation) {
+                  final offset = Tween<Offset>(
+                    begin: const Offset(1, 0),
+                    end: Offset.zero,
+                  ).animate(animation);
+                  return SlideTransition(position: offset, child: child);
+                },
+                child: TopRoomBanner(
+                  key: ValueKey(_currentTopBanner!['text']?.toString() ?? ''),
+                  text: _currentTopBanner!['text']?.toString() ?? '',
+                  kind: _currentTopBanner!['kind'] as TopBannerKind? ??
+                      TopBannerKind.event,
+                  rocketLevel: _currentTopBanner!['rocket_level'] as int?,
+                  avatarUrl: _currentTopBanner!['avatar_url']?.toString(),
+                  onTap: _currentTopBanner!['room_id']?.toString().isNotEmpty ==
+                          true
+                      ? () => _onTopBannerTap(
+                            _currentTopBanner!['room_id'].toString(),
+                          )
+                      : null,
+                ),
+              ),
+            ),
           _videoStage(),
           Expanded(
             key: const Key('darkvibex-seat-grid'),
@@ -10105,8 +10329,11 @@ class _RoomScreenState extends State<RoomScreen>
                 ),
               ),
             ),
+          // VIP entry banner (entry effect, Vehicle Effect toggle):
+          // the Game Banner toggle controls the 2-line top banner,
+          // not this entry effect — it is gated by the vehicle
+          // effect (or the built-in VIP entrance effect) only.
           if (arrivalEffectMember != null && effectsEnabled &&
-              gameBannerEnabled &&
               (carEffectsEnabled ||
                   (arrivalEffectMember?['active_entry_id']?.toString() ?? '')
                       .startsWith('entrance-vip-')) &&
