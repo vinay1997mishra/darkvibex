@@ -74,6 +74,9 @@ const state = {
 };
 const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gift Box / Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
+// Vinay, 2026-11-22: coin-sending permissions are owner-only — staff
+// never send coins, so they are not offered here and never show in the
+// staff panel. Only what the owner grants here appears in the staff panel.
 const staffPermissionOptions = [
   ["dashboard.view","Dashboard · view"],
 
@@ -84,8 +87,6 @@ const staffPermissionOptions = [
   ["users.vip.edit","Users · change VIP level"],
   ["users.public_id.change","Users · change 8-digit Public ID"],
   ["users.moderation","Users · ban/suspend/moderation"],
-  ["users.wallet.adjust","Users · normal wallet coin/diamond adjustment"],
-  ["users.role_wallet.adjust","Users · Coin Seller/Merchant wallet balance"],
   ["users.role_wallet.ban","Users · Coin Seller/Merchant wallet ban/unban"],
   ["users.override.invisible","Users · Invisible ID"],
   ["users.override.lock_bypass","Users · locked-room bypass"],
@@ -94,7 +95,6 @@ const staffPermissionOptions = [
   ["users.device.ban","Users · device ban/unban"],
 
   ["treasury.view","Treasury · view balance/ledger"],
-  ["treasury.send","Treasury · send coins to user"],
   ["economy.view","Economy · view coin rate"],
   ["economy.coin_rate.edit","Economy · change coin rate"],
 

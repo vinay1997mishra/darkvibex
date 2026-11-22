@@ -197,12 +197,18 @@ function clampInt(value, min, max, fallback = min) {
   return Math.max(min, Math.min(max, Math.trunc(parsed)));
 }
 
+// Vinay, 2026-11-22: staff NEVER send coins. users.wallet.adjust,
+// users.role_wallet.adjust and treasury.send are owner-only on purpose
+// and are deliberately NOT in this set — so the owner cannot grant them
+// to staff, and any legacy grant is filtered out at session load
+// (authenticate keeps only set members), which also hides the coin-send
+// controls in the staff panel (the panel hides everything ungranted).
 const STAFF_ASSIGNABLE_PERMISSIONS = new Set([
   "dashboard.view",
   "users.search","users.detail","users.name.edit","users.role.edit","users.vip.edit","users.public_id.change",
-  "users.moderation","users.wallet.adjust","users.role_wallet.adjust","users.role_wallet.ban",
+  "users.moderation","users.role_wallet.ban",
   "users.override.invisible","users.override.lock_bypass","users.wallet.ban","users.wallet.freeze","users.device.ban",
-  "treasury.view","treasury.send",
+  "treasury.view",
   "economy.view","economy.coin_rate.edit",
   "messaging.view","messaging.send.selected","messaging.send.all",
   "tags.view","tags.apply","tags.remove",
@@ -1670,6 +1676,13 @@ async function handleUsers(request, db, actor, url, parts) {
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
     const name = body.display_name == null ? current.display_name : String(body.display_name).trim().slice(0, 60);
     const role = body.role == null ? current.role : normalizeRole(body.role);
+    // Audit F2 (2026-11-22): platform_owner is an in-app economic
+    // perk (free 10,000,000-coin room-theme uploads, permanent
+    // themes), not panel access — staff holding users.role.edit must
+    // not be able to grant it. Only the platform owner may assign it.
+    if (body.role != null && role === "platform_owner" && actor.type !== "owner") {
+      return json({ ok: false, error: "platform_owner_requires_owner" }, { status: 403 });
+    }
     const vip = body.vip_level == null ? Number(current.vip_level ?? 0) : clampInt(body.vip_level, 0, 18, Number(current.vip_level ?? 0));
     const changedAt = now();
     const vipChanged=body.vip_level != null && vip !== Number(current.vip_level ?? 0);
@@ -2489,7 +2502,7 @@ async function handlePoliciesOwner(request, db, actor, parts) {
   if(request.method==="GET"){
     requirePermission(actor,"policies.view");
     const rows=await db.prepare(
-      "SELECT key,value_json,updated_at FROM owner_settings WHERE key LIKE 'policy.%' OR key LIKE 'economy.%' ORDER BY key"
+      "SELECT key,value_json,updated_at FROM owner_settings WHERE key LIKE 'policy.%' ORDER BY key"
     ).all();
     return json({ok:true,policies:(rows.results ?? []).map(r=>({key:r.key,value:safeParse(r.value_json,{}),updated_at:r.updated_at}))});
   }
@@ -2500,7 +2513,16 @@ async function handlePoliciesOwner(request, db, actor, parts) {
     if(!key || /agency|\bbd\b|host|guardian|verification/i.test(key)){
       return json({ok:false,error:"invalid_or_excluded_policy"},{status:400});
     }
-    const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
+    // Audit F1 (2026-11-22): policies.save must never write economy.*
+    // keys. A staffer holding only policies.save could otherwise POST
+    // {"key":"economy.coin_rate"} and rewrite the coin rate, which is
+    // protected behind economy.coin_rate.edit on the dedicated
+    // /api/owner/economy endpoint. economy.* keys are rejected here
+    // for every actor; the owner uses the economy endpoint instead.
+    if(key.startsWith("economy.")){
+      return json({ok:false,error:"invalid_or_excluded_policy"},{status:400});
+    }
+    const fullKey=key.startsWith("policy.")?key:"policy."+key;
     const value=body.value&&typeof body.value==="object"&&!Array.isArray(body.value)?body.value:{value:body.value};
     await db.prepare(
       "INSERT INTO owner_settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at"
@@ -2511,7 +2533,13 @@ async function handlePoliciesOwner(request, db, actor, parts) {
   const key=decodeURIComponent(parts[3] ?? "");
   if(key && request.method==="DELETE"){
     requirePermission(actor,"policies.delete");
-    const fullKey=key.startsWith("policy.")||key.startsWith("economy.")?key:"policy."+key;
+    // Audit F1: economy.* keys cannot be deleted through the policies
+    // endpoint either (deleting economy.coin_rate would silently fall
+    // back to the 8,000,000 default).
+    if(key.startsWith("economy.")){
+      return json({ok:false,error:"invalid_or_excluded_policy"},{status:400});
+    }
+    const fullKey=key.startsWith("policy.")?key:"policy."+key;
     await db.prepare("DELETE FROM owner_settings WHERE key=?").bind(fullKey).run();
     await audit(db,actor,"policy_delete","policy",fullKey,"deleted");
     return json({ok:true});
@@ -2914,6 +2942,22 @@ async function handleStaff(request, db, actor, parts) {
     ).bind(staffId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
 
+    // Audit F4 (2026-11-22): staff hierarchy guard. sanitizeStaffPermissions
+    // already caps what a staffer may GRANT, but nothing stopped a staffer
+    // from rewriting, disabling or deleting a MORE privileged staff row.
+    // A non-owner actor may not touch their own row, nor any row holding a
+    // permission the actor does not hold. The platform owner is exempt.
+    if (actor.type !== "owner") {
+      if (actor.id === staffId) {
+        return json({ ok: false, error: "cannot_edit_own_staff_row" }, { status: 403 });
+      }
+      const targetPermissions = safeParse(current.permissions_json, []).map(String);
+      const aboveActor = targetPermissions.filter((permission) => !can(actor, permission));
+      if (aboveActor.length) {
+        return json({ ok: false, error: "cannot_edit_more_privileged_staff" }, { status: 403 });
+      }
+    }
+
     const displayName = body.display_name == null
       ? current.display_name
       : String(body.display_name).trim().slice(0, 80) || current.display_name;
@@ -2969,6 +3013,18 @@ async function handleStaff(request, db, actor, parts) {
     requirePermission(actor, "staff.delete");
     if (actor.type === "staff" && actor.id === staffId) {
       return json({ ok: false, error: "cannot_delete_current_staff" }, { status: 400 });
+    }
+    // Audit F4: same hierarchy guard as the staff edit path — a
+    // staffer may not delete a more-privileged staff row.
+    if (actor.type !== "owner") {
+      const target = await db.prepare("SELECT permissions_json FROM owner_staff WHERE id = ?").bind(staffId).first();
+      if (target) {
+        const targetPermissions = safeParse(target.permissions_json, []).map(String);
+        const aboveActor = targetPermissions.filter((permission) => !can(actor, permission));
+        if (aboveActor.length) {
+          return json({ ok: false, error: "cannot_delete_more_privileged_staff" }, { status: 403 });
+        }
+      }
     }
     await db.prepare("DELETE FROM owner_staff_sessions WHERE staff_id=?").bind(staffId).run();
     await db.prepare("DELETE FROM owner_staff WHERE id = ?").bind(staffId).run();
