@@ -98,17 +98,22 @@ void main() {
         ),
       );
 
-      // Game Banner gates the Fruit Party round-end result popup.
-      expect(fruitSource, contains('bool _gameBannerEnabled = true;'));
+      // Game Banner (Vinay, 2026-11-22): the banner at the TOP of the
+      // room (VIP entry banner, top: 0) — NOT the effect inside the game
+      // screen. The Fruit Party round-end popup NEVER turns off, so the
+      // game screen must not reference the Game Banner pref at all.
+      expect(fruitSource, isNot(contains('_gameBannerEnabled')));
+      expect(fruitSource, isNot(contains('dvx.room.effects.game_banner')));
       expect(
-        fruitSource,
-        contains("'dvx.room.effects.game_banner'"),
+        roomSource,
+        contains(
+          'if (arrivalEffectMember != null && effectsEnabled &&\n'
+          '              gameBannerEnabled &&',
+        ),
       );
       expect(
-        fruitSource,
-        contains(
-          'if (!_gameBannerEnabled) return const SizedBox.shrink();',
-        ),
+        roomSource,
+        contains('Banner at the top of the room (VIP entry banner).'),
       );
     },
   );

@@ -6711,7 +6711,7 @@ class _RoomScreenState extends State<RoomScreen>
                 SwitchListTile(
                   title: const Text('Game Banner'),
                   subtitle: const Text(
-                    'Game result banner (Fruit Party round result).',
+                    'Banner at the top of the room (VIP entry banner).',
                   ),
                   value: gameBannerEnabled,
                   onChanged: (value) {
@@ -10106,6 +10106,7 @@ class _RoomScreenState extends State<RoomScreen>
               ),
             ),
           if (arrivalEffectMember != null && effectsEnabled &&
+              gameBannerEnabled &&
               (carEffectsEnabled ||
                   (arrivalEffectMember?['active_entry_id']?.toString() ?? '')
                       .startsWith('entrance-vip-')) &&
