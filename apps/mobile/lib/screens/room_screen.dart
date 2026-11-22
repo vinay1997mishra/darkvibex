@@ -219,6 +219,12 @@ class _RoomScreenState extends State<RoomScreen>
   // over 5s; a new key restarts it. Changing the key rebuilds the ring
   // animation from full — no periodic timer, no whole-screen rebuild.
   int _giftComboTimerKey = 0;
+  // A combo send is in flight (Vinay, 2026-11-22): the 5s ring is
+  // wall-clock, but a multi-recipient send takes longer than 5s, so the
+  // ring firing mid-send must not hide the button — and a second tap
+  // must not start a second loop (it would send, and charge, the batch
+  // twice).
+  bool _giftComboSending = false;
   final Map<String, String> activeSeatReactions = <String, String>{};
   final Map<String, String> activeSeatReactionMessageIds = <String, String>{};
   final Set<String> seenSeatReactionMessageIds = <String>{};
@@ -8856,7 +8862,13 @@ class _RoomScreenState extends State<RoomScreen>
   }
 
   void _hideGiftCombo() {
-    if (!mounted) return;
+    // The 5s ring is wall-clock: on a slow connection a multi-
+    // recipient combo send takes longer than 5s, and the ring firing
+    // mid-send used to null the combo state — the post-send timer
+    // restart could not resurrect the button, so the combo died after
+    // one press (Vinay, 2026-11-22). Ignore the ring while a send is
+    // running; the send restarts the ring when it lands.
+    if (!mounted || _giftComboSending) return;
     setState(() {
       _giftComboGifts = null;
       _giftComboRecipientIds = null;
@@ -8878,6 +8890,12 @@ class _RoomScreenState extends State<RoomScreen>
         recipientIds.isEmpty) {
       return;
     }
+    // A second tap while a send is still running must not start a
+    // second loop (it would send — and charge — the batch twice).
+    if (_giftComboSending) return;
+    _giftComboSending = true;
+    var sentCopies = 0;
+    try {
     // Touching the combo button restarts the 5s timer, whether or not
     // this press can afford the send.
     _startGiftComboTimer();
@@ -8906,7 +8924,6 @@ class _RoomScreenState extends State<RoomScreen>
       );
       return;
     }
-    var sentCopies = 0;
     // Split send (Vinay, 2026-11-22): same as the gift-box bulk send —
     // fly-effect gifts play ONE split effect for the whole batch below
     // (one gift in the centre that splits to every receiver's DP);
@@ -8972,6 +8989,14 @@ class _RoomScreenState extends State<RoomScreen>
     if (mounted && sentCopies > 0) {
       setState(() => _giftComboTotal += sentCopies);
       _startGiftComboTimer();
+    }
+    } finally {
+      _giftComboSending = false;
+      // Nothing was sent and the ring already drained while the send
+      // was running (its hide was ignored — see _hideGiftCombo), so
+      // the button would otherwise sit there with a dead ring. A
+      // failed combo hides, as it did before.
+      if (mounted && sentCopies == 0) _hideGiftCombo();
     }
   }
 
