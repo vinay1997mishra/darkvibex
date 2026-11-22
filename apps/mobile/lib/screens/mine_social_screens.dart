@@ -241,6 +241,8 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
     return value.toString();
   }
 
+  String _dollars(int cents) => '\$${(cents / 100).toStringAsFixed(2)}';
+
   @override
   Widget build(BuildContext context) {
     final wealth = stats['wealth'] is Map
@@ -249,6 +251,14 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
     final level = int.tryParse(wealth['level']?.toString() ?? '') ?? 0;
     final sent = int.tryParse(stats['lifetime_sent_coins']?.toString() ?? '') ?? 0;
     final next = int.tryParse(wealth['next_threshold']?.toString() ?? '');
+    final dollar = stats['dollar_level'] is Map
+        ? Map<String, dynamic>.from(stats['dollar_level'] as Map)
+        : const <String, dynamic>{};
+    final dollarLevel = int.tryParse(dollar['level']?.toString() ?? '') ?? 0;
+    final rechargedCents =
+        int.tryParse(stats['total_recharged_usd_cents']?.toString() ?? '') ?? 0;
+    final nextDollar =
+        int.tryParse(dollar['next_threshold']?.toString() ?? '');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -303,6 +313,52 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
                           next == null
                               ? 'Highest configured level reached'
                               : '${_compact(next)} lifetime sending coins required',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TinniPanel(
+                      child: Row(
+                        children: [
+                          const TinniGlowIcon(
+                            icon: Icons.attach_money_rounded,
+                            size: 30,
+                            boxSize: 58,
+                          ),
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'LV.$dollarLevel',
+                                  style: const TextStyle(
+                                    color: TinniPalette.gold,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  'Lifetime recharge: ${_dollars(rechargedCents)}',
+                                  style: const TextStyle(
+                                    color: TinniPalette.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TinniPanel(
+                      child: ListTile(
+                        title: const Text('Next dollar level'),
+                        subtitle: Text(
+                          nextDollar == null
+                              ? 'Highest configured level reached'
+                              : '${_dollars(nextDollar)} total recharge required',
                         ),
                       ),
                     ),

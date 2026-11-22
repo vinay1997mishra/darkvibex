@@ -756,6 +756,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: _mineStatusCard(
+                    title: 'Dollar Level',
+                    subtitle:
+                        'LV.${((socialStats['dollar_level'] is Map ? (socialStats['dollar_level'] as Map)['level'] : 0) ?? 0)}',
+                    icon: Icons.attach_money_rounded,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => WealthLevelScreen(state: state),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 9),
