@@ -7,5 +7,51 @@
 <title>Download DarkVibeX Android Voice Chat App</title><link rel="canonical" href="https://darkvibex.pages.dev/download.html"><link rel="stylesheet" href="/assets/style.css"></head>
 <body><header class="site-header"><a class="brand" href="/" aria-label="DarkVibeX home"><span class="brand-mark">DV</span><span>DarkVibeX</span></a><nav aria-label="Main navigation"><a href="/">Home</a><a href="/download.html" aria-current="page">Download</a></nav></header>
 <main class="download-wrap"><section class="download-card"><div class="brand-mark large">DV</div><div class="eyebrow">DARKVIBEX FOR ANDROID</div><h1>Take your vibe with you.</h1><p>Download the latest DarkVibeX Android voice chat app APK directly to your device.</p>
-<a class="button primary" href="https://github.com/vinay1997mishra/darkvibex/releases/download/darkvibex-latest/DarkVibeX-latest.apk">Download latest APK</a><p class="small-note">After downloading, open the APK file to install. Android may ask you to allow installation from this source.</p><a class="back-link" href="/">← Back to Home</a></section></main>
-<footer>© <span id="year">2026</span> DarkVibeX. All rights reserved.</footer><script>document.getElementById('year').textContent=new Date().getFullYear();</script></body></html>
+<a class="button primary" id="recommended-download" href="https://github.com/vinay1997mishra/darkvibex/releases/download/darkvibex-latest/DarkVibeX-latest-release.apk">Download DarkVibeX</a>
+<p class="small-note" id="download-status" role="status" aria-live="polite">We'll select the best APK for this phone when supported. Otherwise, the universal APK will download.</p>
+<p class="small-note"><a id="universal-download" href="https://github.com/vinay1997mishra/darkvibex/releases/download/darkvibex-latest/DarkVibeX-latest-release.apk">Download universal APK (works across supported Android CPU types)</a></p>
+<p class="small-note">After downloading, open the APK file to install. Android may ask you to allow installation from this source.</p><a class="back-link" href="/">← Back to Home</a></section></main>
+<footer>© <span id="year">2026</span> DarkVibeX. All rights reserved.</footer>
+<script>
+(() => {
+  const release = 'https://github.com/vinay1997mishra/darkvibex/releases/download/darkvibex-latest/';
+  const universal = release + 'DarkVibeX-latest-release.apk';
+  const link = document.getElementById('recommended-download');
+  const status = document.getElementById('download-status');
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  document.getElementById('year').textContent = new Date().getFullYear();
+  document.getElementById('universal-download').href = universal;
+
+  async function choosePackage() {
+    if (!isAndroid) {
+      status.textContent = 'Universal APK selected. For Android phones, open this page on the phone to try automatic selection.';
+      return;
+    }
+    const ua = navigator.userAgentData;
+    if (!ua || typeof ua.getHighEntropyValues !== 'function') {
+      status.textContent = 'Your browser does not expose CPU details. Universal APK selected for compatibility.';
+      return;
+    }
+    try {
+      const info = await ua.getHighEntropyValues(['architecture', 'bitness']);
+      const arch = String(info.architecture || '').toLowerCase();
+      const bits = String(info.bitness || '');
+      let asset = '';
+      if (arch === 'arm' && bits === '64') asset = 'DarkVibeX-arm64-v8a-release.apk';
+      else if (arch === 'arm' && bits === '32') asset = 'DarkVibeX-armeabi-v7a-release.apk';
+      else if ((arch === 'x86' || arch === 'x86_64') && bits === '64') asset = 'DarkVibeX-x86_64-release.apk';
+      if (asset) {
+        link.href = release + asset;
+        status.textContent = 'Compatible APK detected for this phone. Tap Download DarkVibeX to get it.';
+      } else {
+        link.href = universal;
+        status.textContent = 'CPU type could not be matched safely. Universal APK selected.';
+      }
+    } catch (_) {
+      link.href = universal;
+      status.textContent = 'Could not detect this phone safely. Universal APK selected.';
+    }
+  }
+  choosePackage();
+})();
+</script></body></html>
