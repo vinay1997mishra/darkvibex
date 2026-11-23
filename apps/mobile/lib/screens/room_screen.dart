@@ -1513,6 +1513,11 @@ class _RoomScreenState extends State<RoomScreen>
   // Monthly top gifter shown in the header (Vinay, 2026-11-21): the ID
   // disappears the moment the top gifter exits the room, so it only
   // shows while they are among the room members.
+  // Kept after the header pill was removed (Vinay, 2026-11-23,
+  // permanent) — never-delete rule. The ignore keeps CI green:
+  // flutter analyze --no-fatal-infos fails on this unused_element
+  // warning, and the getter has no remaining caller.
+  // ignore: unused_element
   Map<String, dynamic>? get _monthTopGifterInRoom =>
       monthTopGifterInRoom(roomMonthTopGifter, roomMembers);
 
