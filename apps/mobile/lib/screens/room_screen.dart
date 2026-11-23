@@ -89,17 +89,12 @@ class _RoomScreenState extends State<RoomScreen>
   bool speakerphoneOn = true;
   bool followingRoom = false;
   bool followBusy = false;
-  final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
-    <String, dynamic>{
-      'display_name': 'DarkVibeX',
-      'text': 'Welcome to the room 👋',
-      // System message: the app's own launcher logo is its DP and the
-      // top (dragon) frame rings it, so the chat never shows the grey
-      // fallback avatar here (Vinay, 2026-11-23).
-      'avatar_asset': 'assets/branding/darkvibex_launcher.webp',
-      'frame_asset_url': vipFrameStillUrlForVipLevel(18),
-    },
-  ];
+  // Room chat, newest last. The welcome row is NOT a static system
+  // message any more: it goes by the ROOM OWNER's name and shows the
+  // owner's DP (Vinay, 2026-11-23), applied by _applyWelcomeOwner
+  // when the members load. The old DarkVibeX way (logo DP, "DarkVibeX"
+  // name) is permanently removed — it never appears again.
+  final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[];
 
   /// Priority message the user dismissed with the banner's X. The
   /// banner stays hidden until a newer priority message arrives.
@@ -444,6 +439,10 @@ class _RoomScreenState extends State<RoomScreen>
         amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
+    // Welcome row (Vinay, 2026-11-23): it goes by the room owner's
+    // name and shows the owner's DP — applied here, on every members
+    // refresh, so it appears as soon as the owner is known.
+    _applyWelcomeOwner();
     // Seat change (Agora audit 2026-11-22): the server mints
     // listener-tier (join-only) tokens for seatless members and full
     // tokens for seated members and the owner, so the token must
@@ -492,6 +491,51 @@ class _RoomScreenState extends State<RoomScreen>
       _prefetchArrivalVehicleVideos([member]);
       _showArrivalEffect(member);
     }
+  }
+
+  /// Welcome row (Vinay, 2026-11-23): the welcome message goes by the
+  /// ROOM OWNER's name and shows the owner's DP — the old DarkVibeX
+  /// system row (logo DP, "DarkVibeX" name) is permanently removed.
+  /// The owner member row carries the DP + VIP level; until the members
+  /// load, there is no welcome row at all (never the logo, never the
+  /// grey fallback). Idempotent: a matching row is left alone, so the
+  /// 3s members poll does not churn setState.
+  void _applyWelcomeOwner() {
+    if (!mounted) return;
+    final ownerRows = roomMembers.where(
+      (member) => member['user_id']?.toString() == widget.room.ownerUserId,
+    );
+    if (ownerRows.isEmpty) return;
+    final owner = ownerRows.first;
+    final name = owner['display_name']?.toString().trim() ?? '';
+    final avatarKey = owner['avatar_key']?.toString().trim() ?? '';
+    final vipLevel =
+        int.tryParse(owner['active_vip_level']?.toString() ?? '') ?? 0;
+    final displayName = name.isEmpty ? widget.room.ownerName : name;
+    if (avatarKey.isEmpty) return;
+    final index =
+        chat.indexWhere((row) => row['text'] == 'Welcome to the room 👋');
+    final current = index >= 0 ? chat[index] : null;
+    if (current != null &&
+        current['display_name'] == displayName &&
+        (current['avatar_key']?.toString() ?? '') == avatarKey &&
+        (int.tryParse(current['active_vip_level']?.toString() ?? '') ?? 0) ==
+            vipLevel) {
+      return;
+    }
+    final row = <String, dynamic>{
+      'display_name': displayName,
+      'text': 'Welcome to the room 👋',
+      'avatar_key': avatarKey,
+      'active_vip_level': vipLevel,
+    };
+    setState(() {
+      if (index >= 0) {
+        chat[index] = row;
+      } else {
+        chat.insert(0, row);
+      }
+    });
   }
 
   /// Separate per-area polls (no combined room-state any more): members,
@@ -895,11 +939,12 @@ class _RoomScreenState extends State<RoomScreen>
     // The welcome pseudo-message is display-only: it must not stick
     // around forever once real messages arrive (it used to vanish
     // when the poll replaced the list; merging keeps it otherwise).
+    // It is identified by its text alone now — its sender is the room
+    // owner, not DarkVibeX any more (Vinay, 2026-11-23).
     final current = chat
         .where((row) =>
             (row['id']?.toString() ?? '').isNotEmpty ||
-            !(row['display_name'] == 'DarkVibeX' &&
-                row['text'] == 'Welcome to the room 👋'))
+            !(row['text'] == 'Welcome to the room 👋'))
         .toList();
     final next = LocalMessageCache.merge(current, rows
         .map((message) => Map<String, dynamic>.from(message))
@@ -9969,11 +10014,6 @@ class _RoomScreenState extends State<RoomScreen>
                                 .toList(growable: false)
                             : const <Map<String, dynamic>>[];
                         final avatarKey = message['avatar_key']?.toString().trim() ?? '';
-                        // The welcome row carries its own frame (top
-                        // dragon frame); everyone else uses their VIP
-                        // level's frame.
-                        final welcomeFrameUrl =
-                            message['frame_asset_url']?.toString().trim() ?? '';
                         final messageBubble = hasBubble
                             ? bubbleAssetKey.isNotEmpty
                                 // Custom uploaded bubble art supplies its own
@@ -10039,9 +10079,7 @@ class _RoomScreenState extends State<RoomScreen>
                                     // Animal frame still (VIP5-18) with its
                                     // VAP alpha-video; the frame animates
                                     // once and then shows the still.
-                                    frameAssetUrl: welcomeFrameUrl.isNotEmpty
-                                        ? welcomeFrameUrl
-                                        : vipFrameStillUrlForVipLevel(senderVipLevel),
+                                    frameAssetUrl: vipFrameStillUrlForVipLevel(senderVipLevel),
                                     frameVideoUrl: vipFrameVapUrlForVipLevel(senderVipLevel),
                                     // Tapping the sender's DP or name in
                                     // room chat opens their profile card

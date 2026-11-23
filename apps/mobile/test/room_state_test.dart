@@ -219,19 +219,39 @@ void main() {
     expect(api, contains("String? period,"));
   });
 
-  test('room chat always shows a DP + frame: welcome row has the brand logo + dragon frame, send echoes carry the sender DP + VIP level (Vinay, 2026-11-23)',
+  test('room chat welcome goes by the room owner: owner DP + name, the old DarkVibeX way is permanently gone (Vinay, 2026-11-23)',
       () {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
-    // The welcome pseudo-message is a system row with no server data:
-    // it carries the app's own launcher logo as its DP and the top
-    // (dragon) frame, so the chat never shows the grey fallback avatar.
+    // The old way is gone: no DarkVibeX welcome row, no logo DP, no
+    // dragon frame on it, no welcomeFrameUrl plumbing.
+    expect(source, isNot(contains("'display_name': 'DarkVibeX'")));
     expect(
       source,
-      contains("'avatar_asset': 'assets/branding/darkvibex_launcher.webp'"),
+      isNot(contains(
+          "'avatar_asset': 'assets/branding/darkvibex_launcher.webp'")),
     );
-    expect(source, contains("'frame_asset_url': vipFrameStillUrlForVipLevel(18)"));
-    expect(source, contains("avatarAsset: message['avatar_asset']"));
-    expect(source, contains('welcomeFrameUrl.isNotEmpty'));
+    expect(
+      source,
+      isNot(contains("'frame_asset_url': vipFrameStillUrlForVipLevel(18)")),
+    );
+    expect(source, isNot(contains('welcomeFrameUrl')));
+    // The welcome row is built from the room owner when the members
+    // load: the owner's DP + VIP level, the owner's name (room's
+    // ownerName as the fallback), inserted at the top of the chat.
+    expect(source, contains('_applyWelcomeOwner()'));
+    expect(
+      source,
+      contains(
+          "member['user_id']?.toString() == widget.room.ownerUserId"),
+    );
+    expect(source, contains("'avatar_key': avatarKey"));
+    expect(source, contains("'active_vip_level': vipLevel"));
+    expect(source, contains('chat.insert(0, row)'));
+    // The welcome row is identified by its text alone now (its sender
+    // is the owner, not DarkVibeX), so it still vanishes once real
+    // messages arrive.
+    expect(source, contains("row['text'] == 'Welcome to the room 👋'"));
+    expect(source, isNot(contains("row['display_name'] == 'DarkVibeX'")));
     // The sender header renders a bundled asset DP when one is given.
     final header =
         File('lib/widgets/room_chat_sender_header.dart').readAsStringSync();
