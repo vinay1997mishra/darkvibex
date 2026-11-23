@@ -31,7 +31,8 @@ void main() {
     // tests the network image fails and the emoji fallback renders, but
     // the Image widget itself stays mounted (errorBuilder inside it).
     expect(find.byType(Image), findsWidgets);
-    // VIP tag image (R2-based, works for all 18 levels).
+    // VIP tag is gold "VIP N" text (no R2 plaque image), works for all
+    // 18 levels (Vinay, 2026-11-23).
     expect(find.byType(VipTagImage), findsOneWidget);
     // Animal name for the selected level (VIP8 = Panther).
     expect(find.textContaining('Panther'), findsWidgets);

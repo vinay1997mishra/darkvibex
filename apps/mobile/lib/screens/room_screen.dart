@@ -10033,6 +10033,8 @@ class _RoomScreenState extends State<RoomScreen>
                                     tags: profileTags,
                                     medals: profileMedals,
                                     vipLevel: senderVipLevel,
+                                    dollarLevel: int.tryParse(message['dollar_level']?.toString() ?? '') ?? 0,
+                                    idLevel: int.tryParse(message['id_level']?.toString() ?? ''),
                                     roleTag: message['role_tag']?.toString(),
                                     // Animal frame still (VIP5-18) with its
                                     // VAP alpha-video; the frame animates

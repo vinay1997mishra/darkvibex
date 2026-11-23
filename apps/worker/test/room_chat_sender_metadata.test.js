@@ -21,6 +21,24 @@ test("room chat API returns sender DP, owner tags, VIP role tags and earned meda
   assert.match(worker, /decorateRoomChatProfileMetadata\(/);
 });
 
+test("room messages carry the numeric dollar + ID levels for the 3D tag pills "
+    + "(Vinay, 2026-11-23)", () => {
+  // Wealth IS the dollar level — one gold-$ tag, batched per author so
+  // the chat tag and the profile always agree. The ID level rides
+  // alongside it; the app renders the "Lv.N" pill from the number, and
+  // the medal names stay only as the fallback.
+  assert.match(worker, /dollarLevelsByUser\(db, userIds\)/);
+  assert.match(worker, /dollar_level: anonymous \? 0 : \(dollarLevelByUser\.get\(userId\) \?\? 0\)/);
+  assert.match(worker, /id_level: anonymous \? 0 : \(idLevelByUser\.get\(userId\) \?\? 0\)/);
+  // The room screen feeds both numbers into the sender header.
+  assert.match(room, /dollarLevel: int\.tryParse\(message\['dollar_level'\]\?\.toString\(\) \?\? ''\) \?\? 0/);
+  assert.match(room, /idLevel: int\.tryParse\(message\['id_level'\]\?\.toString\(\) \?\? ''\)/);
+  assert.match(header, /final int dollarLevel;/);
+  assert.match(header, /final int\? idLevel;/);
+  assert.match(header, /WealthTag\(level: dollarLevel, fontSize: 11\)/);
+  assert.match(header, /IdLevelTag\(level: idLevelNumber, fontSize: 11\)/);
+});
+
 test("room sender header stays above the bubble and message content excludes sender name", () => {
   assert.match(room, /RoomChatSenderHeader\(/);
   assert.match(room, /BubbleChatText\(text: text\)/);

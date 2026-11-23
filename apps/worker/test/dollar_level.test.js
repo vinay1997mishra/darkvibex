@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
   dollarLevelThresholdsCents,
+  dollarLevelsByUser,
   profileStats,
 } from "../src/tinni_social.js";
 import { ensurePlayBillingSchema } from "../src/play_billing.js";
@@ -125,4 +126,47 @@ test("dollar level is zero with no recharge and honours the owner override", asy
   const overridden = await profileStats(DB, "user-9");
   assert.equal(overridden.dollar_level.level, 1);
   assert.equal(overridden.dollar_level.next_threshold, null);
+});
+
+test("dollarLevelsByUser batches the chat tag levels and matches profileStats", async () => {
+  const { sqlite, DB } = await fixture();
+  const now = Date.now();
+  sqlite.prepare(
+    "INSERT INTO users(id,created_at,updated_at) VALUES('user-1',?,?),('user-2',?,?),('user-3',?,?)"
+  ).run(now, now, now, now, now, now);
+  const insert = sqlite.prepare(
+    "INSERT INTO play_purchases (purchase_token,user_id,product_id,coins_credited,bonus_coins,exp_awarded,first_recharge,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)"
+  );
+  // user-1: $1 + $10 granted = $11, refunded $5 ignored.
+  insert.run("tok-1", "user-1", "coins_8000000", 8000000, 0, 0, 0, "granted", now);
+  insert.run("tok-2", "user-1", "coins_80000000", 80000000, 0, 0, 0, "granted", now);
+  insert.run("tok-3", "user-1", "coins_40000000", 40000000, 0, 0, 0, "refunded", now);
+  // user-3: exactly $2.
+  insert.run("tok-4", "user-3", "coins_16000000", 16000000, 0, 0, 0, "granted", now);
+  const ledger = sqlite.prepare(
+    "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+  );
+  // user-1: +$1.50 from a seller transfer; the VIP bonus is not a recharge.
+  ledger.run(crypto.randomUUID(), "user-1", "coin_seller_received", 8000000, 8000000, "ref-1", now);
+  ledger.run(crypto.randomUUID(), "user-1", "merchant_received", 4000000, 12000000, "ref-2", now);
+  ledger.run(crypto.randomUUID(), "user-1", "vip_coins_bonus", 400000, 12400000, "ref-1", now);
+
+  const levels = await dollarLevelsByUser(DB, ["user-1", "user-2", "user-3", "user-1"]);
+  // $12.50 -> L3; no recharge -> 0; $2.00 -> L1. Duplicated ids collapse.
+  assert.equal(levels.size, 3);
+  assert.equal(levels.get("user-1"), 3);
+  assert.equal(levels.get("user-2"), 0);
+  assert.equal(levels.get("user-3"), 1);
+  // Same numbers as the single-user path, so the chat tag and the
+  // profile can never disagree.
+  assert.equal((await profileStats(DB, "user-1")).dollar_level.level, 3);
+  assert.equal((await profileStats(DB, "user-3")).dollar_level.level, 1);
+
+  // The owner override applies to the batch too.
+  sqlite.prepare(
+    "INSERT INTO owner_settings(key,value_json,updated_at) VALUES(?,?,?)"
+  ).run("dollar_level_thresholds", JSON.stringify([100]), Date.now());
+  const overridden = await dollarLevelsByUser(DB, ["user-3"]);
+  assert.equal(overridden.get("user-3"), 1);
+  assert.equal((await dollarLevelsByUser(DB, [])).size, 0);
 });

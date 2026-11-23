@@ -55,6 +55,7 @@ import {
 import {
   ensureTinniSocialSchema,
   profileStats,
+  dollarLevelsByUser,
   followUser,
   followStatus,
   listFollowers,
@@ -186,6 +187,18 @@ async function decorateRoomChatProfileMetadata(db, messages) {
   // rocket launch): they show with the name in chat profile popups.
   const rocketMedalsByAuthor = await rocketMedalsByUser(db, userIds);
 
+  // Wealth tag (Vinay, 2026-11-23): wealth IS the dollar level — one
+  // gold-$ tag per sender, batched like the medals above so the chat
+  // tag and the profile always agree.
+  const dollarLevelByUser = await dollarLevelsByUser(db, userIds);
+  const idLevelByUser = new Map();
+  for (const row of medalRows) {
+    idLevelByUser.set(
+      String(row.user_id),
+      Math.max(0, Number(row.id_level ?? 0)),
+    );
+  }
+
   // Owner-assigned role tags ride separately from the text profile tags:
   // one tag per ID, rendered as the tag image next to the name. Role-tag
   // rows never render as text chips.
@@ -272,6 +285,11 @@ async function decorateRoomChatProfileMetadata(db, messages) {
       profile_tags: anonymous ? [] : profileTags,
       role_tag: anonymous ? null : (roleTagByUser.get(userId) ?? null),
       medals: anonymous ? [] : (medalsByUser.get(userId) ?? []),
+      // Numeric levels for the chat tags (the app renders the 3D pills
+      // from these; the medal names stay as the fallback). Anonymous
+      // senders leak no level, like no DP and no tags.
+      dollar_level: anonymous ? 0 : (dollarLevelByUser.get(userId) ?? 0),
+      id_level: anonymous ? 0 : (idLevelByUser.get(userId) ?? 0),
     };
   });
 }

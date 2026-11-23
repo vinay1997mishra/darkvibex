@@ -2,6 +2,12 @@ export const ID_LEVEL_GIFT_COINS_PER_EXP = 400;
 export const ID_LEVEL_ROOM_ENTRY_EXP_PER_DAY = 70;
 export const ID_LEVEL_ROOM_SHARE_EXP_PER_DAY = 75;
 
+// ID level runs to 200 (Vinay, 2026-11-23: "Haan isme 80lvl tak hai
+// humare me 200lvl tak hoga" — the reference Level page stops at Lv.80,
+// DarkVibeX goes to 200). The EXP curve below has no cap, so only the
+// reward list needs the max.
+export const ID_LEVEL_MAX = 200;
+
 const FIXED_LEVEL_EXP = [10000, 13000, 18000, 25000, 36000];
 
 export function idLevelExpToNext(currentLevel) {
@@ -29,7 +35,7 @@ export function applyIdLevelExp(currentLevel, currentExp, awardedExp) {
 export function idLevelRewards(level) {
   const unlocked = Math.max(0, Math.floor(Number(level) || 0));
   const rewards = [];
-  for (let rewardLevel = 1; rewardLevel <= 100; rewardLevel += 1) {
+  for (let rewardLevel = 1; rewardLevel <= ID_LEVEL_MAX; rewardLevel += 1) {
     const items = [{ id: `gift-${rewardLevel}`, label: `Level ${rewardLevel} gift`, kind: 'gift' }];
     if (rewardLevel === 5 || (rewardLevel >= 10 && rewardLevel % 10 === 0)) {
       items.push({ id: `medal-${rewardLevel}`, label: `Lv.${rewardLevel} medal`, kind: 'medal' });

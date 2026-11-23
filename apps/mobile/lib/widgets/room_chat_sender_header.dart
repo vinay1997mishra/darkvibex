@@ -4,6 +4,7 @@ import 'vip_animated_frame.dart';
 import 'vip_name_text.dart';
 import 'vip_tag_image.dart';
 import 'role_tag_image.dart';
+import 'level_tag.dart';
 
 /// Sender identity shown above each room chat bubble.
 ///
@@ -19,6 +20,8 @@ class RoomChatSenderHeader extends StatelessWidget {
     this.avatarHeaders,
     this.avatarAsset,
     this.vipLevel = 0,
+    this.dollarLevel = 0,
+    this.idLevel,
     this.roleTag,
     this.frameAssetUrl,
     this.frameVideoUrl,
@@ -38,9 +41,19 @@ class RoomChatSenderHeader extends StatelessWidget {
   /// the sender's profile card. Null = the avatar is not tappable.
   final VoidCallback? onAvatarTap;
 
-  /// Sender's active VIP level (0 = none). Drives the golden tag
-  /// (VIP5-18) next to the name and the frame level.
+  /// Sender's active VIP level (0 = none). Drives the golden "VIP N"
+  /// text (VIP1-18) next to the name and the frame level.
   final int vipLevel;
+
+  /// Sender's wealth level (0 = none). Wealth IS the dollar level
+  /// (Vinay, 2026-11-23) — one gold-$ tag next to the name, 3D + glow,
+  /// colour changing every 10 levels. 0 = no tag.
+  final int dollarLevel;
+
+  /// Sender's ID level (null = not sent by the server, e.g. an old
+  /// cached message). Drives the "Lv.N" pill next to the name; when
+  /// null the number is parsed from the level medal's name instead.
+  final int? idLevel;
 
   /// The owner-assigned role-tag slug for the sender, e.g.
   /// 'coin-seller' (from the message's `role_tag`). Drives the role
@@ -223,13 +236,46 @@ class RoomChatSenderHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = displayName.trim().isEmpty ? 'User' : displayName.trim();
+    // Role badges are icons in the name row, not text chips (Vinay,
+    // 2026-11-23): the room owner gets a red house, a room admin a blue
+    // shield, and neither shows its name as text.
+    final isRoomOwner =
+        tags.any((tag) => tag['id']?.toString() == 'room-owner');
+    final isRoomAdmin =
+        tags.any((tag) => tag['id']?.toString() == 'room-admin');
+    // The VIP level already shows as gold "VIP N" text next to the name
+    // (VipTagImage), so the "VIP N" tag and the "VIP" medal are filtered
+    // out here instead of repeating below.
     final visibleTags = tags.where((tag) {
+      final id = tag['id']?.toString() ?? '';
+      if (id == 'room-owner' || id == 'room-admin' || id == 'active-vip') {
+        return false;
+      }
       return (tag['name']?.toString().trim().isNotEmpty ?? false) ||
           (tag['designation']?.toString().trim().isNotEmpty ?? false);
     }).toList(growable: false);
-    final visibleMedals = medals
-        .where((medal) => medal['name']?.toString().trim().isNotEmpty == true)
-        .toList(growable: false);
+    // The ID Level medal renders as the 3D "Lv.N" pill next to the name
+    // (Vinay, 2026-11-23), not a ribbon chip. The numeric level comes
+    // from the server (idLevel); old cached messages carry only the
+    // medal name ("ID Level N"), so the number is parsed from it as a
+    // fallback. If neither gives a number, the plain text stays below.
+    final levelMedal = medals.firstWhere(
+      (medal) => medal['id']?.toString() == 'level',
+      orElse: () => const <String, dynamic>{},
+    );
+    final levelName = levelMedal['name']?.toString().trim() ?? '';
+    final parsedLevel = int.tryParse(
+      RegExp(r'(\d+)').firstMatch(levelName)?.group(1) ?? '',
+    );
+    final idLevelNumber =
+        (idLevel ?? 0) > 0 ? idLevel! : (parsedLevel ?? 0);
+    final visibleMedals = medals.where((medal) {
+      final id = medal['id']?.toString() ?? '';
+      // The written "Charm" tag is removed permanently (Vinay,
+      // 2026-11-23): only the wealth and dollar tags stay.
+      if (id == 'vip' || id == 'level' || id == 'charm') return false;
+      return medal['name']?.toString().trim().isNotEmpty == true;
+    }).toList(growable: false);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -259,10 +305,43 @@ class RoomChatSenderHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              // Golden VIP tag (VIP5-18), sized from the 11pt name text.
-              if (vipLevel >= 5) ...<Widget>[
+              // Golden "VIP N" text (no ribbon plaque), sized from the
+              // 11pt name text. VipTagImage renders nothing below VIP1.
+              if (vipLevel >= 1) ...<Widget>[
                 const SizedBox(width: 4),
                 VipTagImage(vipLevel: vipLevel, fontSize: 11),
+              ],
+              // Room owner: a red house, no "Room Owner" text.
+              if (isRoomOwner) ...<Widget>[
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.home_rounded,
+                  color: Colors.red,
+                  size: 14,
+                ),
+              ],
+              // Room admin: a blue shield, no "admin" text.
+              if (isRoomAdmin) ...<Widget>[
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.shield_rounded,
+                  color: Color(0xFF73CFFF),
+                  size: 14,
+                ),
+              ],
+              // Wealth tag: gold $ + dollar level, 3D + glow, colour
+              // every 10 levels (Vinay, 2026-11-23). WealthTag renders
+              // nothing at level 0.
+              if (dollarLevel > 0) ...<Widget>[
+                const SizedBox(width: 4),
+                WealthTag(level: dollarLevel, fontSize: 11),
+              ],
+              // ID Level pill: "Lv.N", 3D + glow, emblem + colour every
+              // 10 levels (Vinay, 2026-11-23). IdLevelTag renders
+              // nothing at level 0.
+              if (idLevelNumber > 0) ...<Widget>[
+                const SizedBox(width: 4),
+                IdLevelTag(level: idLevelNumber, fontSize: 11),
               ],
               // Role tag (owner-assigned), sized from the 11pt name text.
               const SizedBox(width: 4),
@@ -270,13 +349,28 @@ class RoomChatSenderHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (visibleTags.isNotEmpty || visibleMedals.isNotEmpty)
+        if (visibleTags.isNotEmpty ||
+            visibleMedals.isNotEmpty ||
+            (idLevelNumber <= 0 && levelName.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 34, top: 3),
             child: Wrap(
               spacing: 4,
               runSpacing: 3,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                // ID Level as plain blue text — only when the pill could
+                // not be built (no numeric level anywhere).
+                if (idLevelNumber <= 0 && levelName.isNotEmpty)
+                  Text(
+                    levelName,
+                    style: const TextStyle(
+                      color: Color(0xFF45AAF2),
+                      fontSize: 9,
+                      height: 1.1,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 for (final tag in visibleTags) _tagChip(tag),
                 for (final medal in visibleMedals) _medalChip(medal),
               ],
