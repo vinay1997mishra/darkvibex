@@ -26,7 +26,7 @@
   // Browser APIs do not expose Android's full SUPPORTED_ABIS list.
   // Use exact Client Hints first, then a conservative known-device fallback.
   const knownModels = [
-    { pattern: /\bCPH2239\\b/i, asset: 'DarkVibeX-arm64-v8a-release.apk', label: 'OPPO A54 (CPH2239)' }
+    { pattern: /CPH2239/i, asset: 'DarkVibeX-arm64-v8a-release.apk', label: 'OPPO A54 (CPH2239)' }
   ];
 
   function getGpuRenderer() {
@@ -79,7 +79,7 @@
 
     // Some browsers expose a GPU renderer even when User-Agent Client Hints are absent.
     const renderer = getGpuRenderer();
-    if (/\b(Intel|AMD|Radeon)\\b/i.test(renderer)) {
+    if (/(Intel|AMD|Radeon)/i.test(renderer)) {
       select('DarkVibeX-x86_64-release.apk', 'x86-class graphics hardware detected. x86_64 APK selected; if installation fails, use Universal APK.');
       return;
     }
