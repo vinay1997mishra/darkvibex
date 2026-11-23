@@ -608,21 +608,30 @@ export async function medalState(db, userId) {
   return medals;
 }
 
-export async function familyList(db, limitValue = 100) {
+export async function familyList(db, limitValue = 100, countryValue = '') {
   await ensureTinniSocialSchema(db);
   const limit = Math.max(1, Math.min(100, Number(limitValue) || 100));
+  // Local scope (Top Families page, 2026-11-24): when a country is given,
+  // only families whose LEADER is in that country are listed.
+  const country = String(countryValue ?? '').trim().toUpperCase();
+  const where = country
+    ? `WHERE UPPER(COALESCE(u.country_code,'')) = ?`
+    : '';
+  const params = country ? [country, limit] : [limit];
   const rows = await db.prepare(
     `SELECT f.id,f.name,f.tag,f.notice,f.leader_user_id,
             f.experience,f.wallet_coins,f.created_at,f.updated_at,
             u.display_name AS leader_name,u.avatar_key AS leader_avatar_key,
+            u.country_code AS leader_country_code,
             COUNT(fm.user_id) AS member_count
        FROM families f
        LEFT JOIN family_members fm ON fm.family_id=f.id
        LEFT JOIN users u ON u.id=f.leader_user_id
+      ${where}
       GROUP BY f.id
       ORDER BY f.experience DESC, member_count DESC, f.created_at ASC
       LIMIT ?`
-  ).bind(limit).all();
+  ).bind(...params).all();
   return (rows.results ?? []).map((row) => ({
     ...row,
     level: familyLevel(row.experience),
