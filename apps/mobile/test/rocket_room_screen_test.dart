@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/screens/rocket_room_screen.dart';
 import 'package:darkvibex/utils/rocket_top_rewards.dart';
@@ -101,6 +103,7 @@ List<Map<String, dynamic>> _seats() => <Map<String, dynamic>>[
 
 RocketRoomPage _page({
   int lifetimeTotal = 42000000,
+  int? dailyTotal,
   List<Map<String, dynamic>>? ranking,
   List<Map<String, dynamic>>? seatMembers,
   String currentUserId = 'user-2',
@@ -112,6 +115,7 @@ RocketRoomPage _page({
     roomNumber: '766793',
     onlineCount: 1200,
     lifetimeTotal: lifetimeTotal,
+    dailyTotal: dailyTotal ?? lifetimeTotal,
     ranking: ranking ?? _ranking(),
     seatMembers: seatMembers ?? _seats(),
     currentUserId: currentUserId,
@@ -355,5 +359,72 @@ void main() {
     expect(backend.claimCalls, 1);
     expect(find.textContaining('Coins have been added'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  test('the floating rocket opens the new full page directly — the old panel is gone', () {
+    final source =
+        File('lib/screens/room_screen.dart').readAsStringSync();
+    expect(source, isNot(contains('_showRocketPanel')));
+    expect(source, isNot(contains('room-rocket-panel')));
+    expect(source, isNot(contains('room-rocket-open-full-page')));
+    expect(source, isNot(contains('Open Rocket Room')));
+    expect(source, contains('onTap: _openRocketRoom,'));
+    final start = source.indexOf('Future<void> _openRocketRoom()');
+    expect(start, isNot(-1));
+    final end = source.indexOf(
+      '// Touching the Ranking / total chips opens the room ranking page',
+      start,
+    );
+    final method = source.substring(start, end);
+    expect(method, contains('await _loadRoomGiftRanking();'));
+    expect(method, contains('RocketRoomPage('));
+    expect(method, contains('lifetimeTotal: roomGiftLifetimeTotal,'));
+    expect(method, contains('dailyTotal: roomGiftDailyTotal,'));
+    expect(method, contains('ranking: roomGiftRanking,'));
+  });
+
+  test('rocket progress runs on the daily total and resets to level 1 on the new day', () {
+    final room = File('lib/screens/room_screen.dart').readAsStringSync();
+    // The ranking poll reads the IST-day total and the rocket level
+    // runs on it — never on the lifetime total.
+    expect(room, contains("int.tryParse(value?['daily_total']?.toString() ?? '') ?? 0;"));
+    expect(room, contains('roomGiftDailyTotal = nextDailyTotal;'));
+    expect(room, contains("_rocketProgressState(roomGiftDailyTotal)['completed']"));
+    expect(room, contains('final dailyReset = nextDailyTotal < roomGiftDailyTotal;'));
+    expect(room, contains('_lastObservedRocketCompleted = nextCompleted;'));
+    // The full page takes the daily total for its progress; the
+    // lifetime total stays only as the display total.
+    final page = File('lib/screens/rocket_room_screen.dart').readAsStringSync();
+    expect(page, contains('required this.dailyTotal,'));
+    expect(page, contains("calculateRocketProgress(widget.dailyTotal)['completed']"));
+    expect(page, contains("calculateRocketProgress(widget.dailyTotal)['percent']"));
+    expect(page, contains('_compactCoins(widget.lifetimeTotal)'));
+  });
+
+  testWidgets('a big lifetime total does not lift the level — today\'s total does',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _page(lifetimeTotal: 42000000, dailyTotal: 5000000),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Level 1 is current (gold border, width 2) even though 42M
+    // lifetime would reach level 6.
+    await tester.ensureVisible(
+      find.byKey(const Key('rocket-room-ladder-level-1')),
+    );
+    await tester.pump();
+    final level1 =
+        tester.widget<Container>(find.byKey(const Key('rocket-room-ladder-level-1')));
+    final decoration1 = level1.decoration as BoxDecoration;
+    expect(decoration1.border?.top.width, 2);
+    // Progress runs on today's 5M, not the 42M lifetime: 5M of the
+    // 12M level-1 target is 41%, not the 80% the lifetime total
+    // would show.
+    expect(find.text('41%'), findsOneWidget);
+    expect(find.text('80%'), findsNothing);
   });
 }

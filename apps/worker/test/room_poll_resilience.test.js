@@ -1,10 +1,10 @@
 // Room poll resilience (Vinay, 2026-11-22): IDs were leaving rooms
 // on their own. The server never deletes a member row on presence —
-// but the 3s state poll used to fail as a whole when its inline
+// but the 3s room poll used to fail as a whole when its inline
 // housekeeping (heartbeat write, empty-room chat wipe) failed, and
 // the app read any failed poll as a kick. These tests pin the
-// server side: the wipe runs inside the poll and must never break it,
-// and the heartbeat/wipe are best-effort.
+// server side: the wipe runs inside the members poll and must never
+// break it, and the heartbeat/wipe are best-effort.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -79,7 +79,7 @@ async function makeRoom(fx, ownerId) {
   return String(created.body.room_id);
 }
 
-test("the 3s state poll answers while the empty-room wipe runs inside it", async () => {
+test("the 3s members poll answers while the empty-room wipe runs inside it", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner-a");
   await makeUser(fx, "member-a");
@@ -97,9 +97,9 @@ test("the 3s state poll answers while the empty-room wipe runs inside it", async
   fx.sqlite.prepare("DELETE FROM room_members WHERE room_id=?").run(roomB);
   assert.equal(fx.sqlite.prepare("SELECT COUNT(*) AS n FROM room_messages WHERE room_id=?").get(roomB).n, 1);
 
-  // The member's state poll must answer 200 with the member list —
+  // The member's members poll must answer 200 with the member list —
   // the wipe of room B running inside it must not break the poll.
-  const state = await fx.request(`/api/rooms/${roomA}/state`, { userId: "member-a" });
+  const state = await fx.request(`/api/rooms/${roomA}/members`, { userId: "member-a" });
   assert.equal(state.status, 200, JSON.stringify(state.body));
   assert.equal(state.body.ok, true);
   assert.ok((state.body.members ?? []).some((m) => m.user_id === "member-a"));
@@ -108,13 +108,13 @@ test("the 3s state poll answers while the empty-room wipe runs inside it", async
   fx.sqlite.close();
 });
 
-test("the state poll still answers when the member row is the only thing left in a wiped room", async () => {
+test("the members poll still answers when the member row is the only thing left in a wiped room", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner-a");
   await makeUser(fx, "member-a");
   const roomA = await makeRoom(fx, "owner-a");
   await fx.request(`/api/rooms/${roomA}/join`, { method: "POST", userId: "member-a", body: { user_id: "member-a", display_name: "member-a" } });
-  const state = await fx.request(`/api/rooms/${roomA}/state`, { userId: "member-a" });
+  const state = await fx.request(`/api/rooms/${roomA}/members`, { userId: "member-a" });
   assert.equal(state.status, 200, JSON.stringify(state.body));
   assert.equal(state.body.ok, true);
   fx.sqlite.close();
@@ -125,6 +125,6 @@ test("heartbeat and empty-room wipe are best-effort inside the poll (source asse
   // refreshRoomPresence: a failed wipe must never fail the caller.
   assert.match(index, /async function refreshRoomPresence[\s\S]*?try \{\s*await wipeChatOfEmptyRooms\(db, env\);[\s\S]*?\} catch \(_\) \{/);
   // checkRoomMemberPresence: a failed heartbeat write must never fail
-  // the state poll — the membership SELECT below it still runs.
+  // the members poll — the membership SELECT below it still runs.
   assert.match(index, /async function checkRoomMemberPresence[\s\S]*?try \{\s*await db\.prepare\(\s*"UPDATE room_members SET updated_at=\? WHERE room_id=\? AND user_id=\?"\s*\)\.bind\(heartbeatTs, roomId, actorId\)\.run\(\);[\s\S]*?\} catch \(_\) \{/);
 });

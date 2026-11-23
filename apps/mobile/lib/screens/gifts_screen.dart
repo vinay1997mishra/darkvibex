@@ -54,23 +54,13 @@ class _GiftsScreenState extends State<GiftsScreen> {
   }
 
   Future<void> _load() async {
-    // Combined gifts + diamonds + coins (Vinay, 2026-11-21): ONE call
-    // carrying the full catalog + live balances, instead of a separate
-    // giftCatalog call. The standalone giftCatalog stays as the offline
-    // fallback (its local featured list) when the combined call fails.
+    // Separate gift catalog call (no combined gifts API any more):
+    // giftCatalog is the live source (its local featured list is only
+    // the offline fallback when the call fails).
     List<Map<String, dynamic>> rows = const <Map<String, dynamic>>[];
     if (state.backendConnected) {
       try {
-        final combined = await state.backend.giftsCombinedState();
-        final combinedRows = combined?['gifts'];
-        if (combinedRows is List) {
-          rows = combinedRows
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(growable: false);
-        } else {
-          rows = await state.backend.giftCatalog(userId: state.userId);
-        }
+        rows = await state.backend.giftCatalog(userId: state.userId);
       } catch (_) {
         rows = const <Map<String, dynamic>>[];
       }

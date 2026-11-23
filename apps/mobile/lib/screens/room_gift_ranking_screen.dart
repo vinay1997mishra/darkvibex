@@ -1,9 +1,9 @@
 // Room gift ranking page (Vinay, 2026-11-21): opened by touching the
 // total gifting amount beside the trophy (rocket page) or the Ranking /
 // total chips in the room. Shows THIS room only — who sent how many
-// coins here, Day / Week / Month, top 99. The data rides the room's
-// 3s combined state poll (roomStateOrNull with ?period=), no separate
-// ranking API. A day with no sending shows nobody. The month's top
+// coins here, Day / Week / Month, top 99. The data comes from the
+// separate gift-ranking call (roomGiftRanking with ?period=) every 3s,
+// no combined state. A day with no sending shows nobody. The month's top
 // gifter gets a gold spotlight at the top (their ID shows for the
 // month) when the Monthly tab is open.
 import 'dart:async';
@@ -48,7 +48,7 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
         ? widget.initialPeriod
         : 'day';
     _load();
-    // Same 3s combined poll as the room screen, gated on the app being
+    // Same 3s poll as the room screen, gated on the app being
     // in the foreground so background users cost nothing.
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -68,17 +68,17 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
   Future<void> _load() async {
     if (_loading || !mounted) return;
     setState(() => _loading = true);
-    final state = await widget.backend.roomStateOrNull(
+    final value = await widget.backend.roomGiftRanking(
       roomId: widget.roomId,
       period: _period,
     );
     if (!mounted) return;
     setState(() {
       _loading = false;
-      if (state == null) return;
-      final total = state['gift_lifetime_total'];
+      if (value == null || value['ok'] != true) return;
+      final total = value['lifetime_total'];
       if (total is num) _lifetimeTotal = total.toInt();
-      final rows = state['gift_ranking'];
+      final rows = value['ranking'];
       _rows = rows is List
           ? rows
               .whereType<Map>()

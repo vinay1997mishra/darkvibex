@@ -39,6 +39,7 @@ class RocketRoomPage extends StatefulWidget {
     required this.roomNumber,
     required this.onlineCount,
     required this.lifetimeTotal,
+    required this.dailyTotal,
     required this.ranking,
     required this.seatMembers,
     required this.currentUserId,
@@ -53,6 +54,12 @@ class RocketRoomPage extends StatefulWidget {
 
   /// Cumulative room gift coins (drives level + progress).
   final int lifetimeTotal;
+
+  /// Today's (IST day) room gift total. The rocket level and progress
+  /// run on this, so the rocket returns to level 1 on the new day
+  /// (Vinay, 2026-11-23); the lifetime total above is only the display
+  /// total.
+  final int dailyTotal;
 
   /// Top gifters, best first. Rows carry display_name, avatar_key,
   /// sent_coins and user_id (same shape as roomGiftRanking).
@@ -106,13 +113,13 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
   final ScrollController _ladderController = ScrollController();
 
   int get _completed =>
-      calculateRocketProgress(widget.lifetimeTotal)['completed']!.toInt();
+      calculateRocketProgress(widget.dailyTotal)['completed']!.toInt();
 
   int get _currentLevel =>
       _completed >= rocketStageTargets.length ? rocketStageTargets.length : _completed + 1;
 
   double get _progressPercent =>
-      calculateRocketProgress(widget.lifetimeTotal)['percent']!.toDouble();
+      calculateRocketProgress(widget.dailyTotal)['percent']!.toDouble();
 
   List<RocketTopReward> get _topRewards =>
       rocketTopRewardsForLevel(_currentLevel) ??

@@ -25,11 +25,10 @@ test('Owner Panel gift overrides are present in the catalog used by gift sending
 });
 
 test('gift sending charges the same minimum one-coin price displayed in the catalog', () => {
-  // Combined API (Vinay, 2026-11-21): the catalog pricing lives in the
-  // shared loadPricedGiftCatalog helper, used by both /api/gifts/catalog
-  // and /api/gifts/combined so both show the exact same prices.
+  // The catalog pricing lives in the shared loadPricedGiftCatalog helper,
+  // used by /api/gifts/catalog (no combined gifts API any more).
   const helperStart = source.indexOf('async function loadPricedGiftCatalog(db, userId)');
-  const helperEnd = source.indexOf('async function giftsCombinedState', helperStart);
+  const helperEnd = source.indexOf('async function vipVisualsForLevel', helperStart);
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
   const helper = source.slice(helperStart, helperEnd);
   assert.match(helper, /Math\.max\(1, Number\(pricing\.price_coins \?\? gift\.coin_cost \?\? 0\)\)/);
@@ -38,7 +37,6 @@ test('gift sending charges the same minimum one-coin price displayed in the cata
   const catalogEnd = source.indexOf('if (url.pathname === "/api/gifts/send"', catalogStart);
   const catalogEndpoint = source.slice(catalogStart, catalogEnd);
   assert.match(catalogEndpoint, /loadPricedGiftCatalog\(db, userId\)/);
-  assert.match(catalogEndpoint, /giftsCombinedState\(db, userId, now\(\)\)/);
 
   const sendStart = source.indexOf('if (url.pathname === "/api/gifts/send"');
   const sendEnd = source.indexOf(

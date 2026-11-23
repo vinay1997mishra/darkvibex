@@ -336,6 +336,13 @@ async function loadRoomGiftSummaryState(db, roomId, periodParam) {
   const totalRow = await db.prepare(
     "SELECT COALESCE(SUM(coin_cost),0) AS lifetime_total FROM gift_events WHERE room_id=?"
   ).bind(roomId).first();
+  // Rocket daily reset (Vinay, 2026-11-23): the rocket level returns to
+  // 1st on the new day, so the rocket total is TODAY's IST-day gift
+  // sum, not the lifetime total. Same IST day window as the ranking.
+  const dayWindow = istPeriodWindow("day", now());
+  const dayRow = await db.prepare(
+    "SELECT COALESCE(SUM(coin_cost),0) AS daily_total FROM gift_events WHERE room_id=? AND created_at>=? AND created_at<?"
+  ).bind(roomId, dayWindow.start, dayWindow.end).first();
   const monthWindow = istPeriodWindow("month", now());
   const monthTop = await db.prepare(
     `${roomGiftRankingSelect} WHERE g.room_id=? AND g.created_at>=? AND g.created_at<? ${roomGiftRankingGroup} LIMIT 1`
@@ -356,6 +363,7 @@ async function loadRoomGiftSummaryState(db, roomId, periodParam) {
   }
   return {
     lifetime_total: Number(totalRow?.lifetime_total ?? 0),
+    daily_total: Number(dayRow?.daily_total ?? 0),
     month_top: monthTop.results?.[0] ?? null,
     period: period ?? "lifetime",
     ranking,
@@ -1232,10 +1240,9 @@ async function effectiveGiftCatalog(db) {
   );
 }
 
-// Priced gift catalog for one user (Vinay, 2026-11-21 — combined API):
+// Priced gift catalog for one user (Vinay, 2026-11-21):
 // VIP-gated base catalog + approved custom gifts, each priced through the
-// owner's per-user pricing. Shared by GET /api/gifts/catalog and GET
-// /api/gifts/combined so both return the exact same catalog.
+// owner's per-user pricing. Served by GET /api/gifts/catalog.
 async function loadPricedGiftCatalog(db, userId) {
   const vip = await getVipStatus(db, userId, now());
   await ensureCustomGiftSchema(db);
@@ -1414,64 +1421,6 @@ async function globalBannerFeed(db, ts = now()) {
   }
   items.sort((a, b) => b.created_at - a.created_at);
   return { ok: true, items: items.slice(0, GLOBAL_BANNER_LIMIT) };
-}
-
-const GIFTS_COMBINED_HISTORY_LIMIT = 20;
-async function giftsCombinedState(db, userId, ts = now()) {
-  const user = await ensureUser(db, userId);
-  const gifts = await loadPricedGiftCatalog(db, userId);
-  await ensureDiamondConversionTable(db);
-  const diamondsGifts = await db.prepare(
-    `SELECT g.id,g.gift_id,
-            COALESCE(u.display_name,'User') AS sender_name,
-            u.public_id AS sender_public_id,
-            g.sender_user_id,g.coin_cost AS diamonds,g.created_at
-       FROM gift_events g
-       LEFT JOIN users u ON u.id=g.sender_user_id
-      WHERE g.receiver_user_id=?
-      ORDER BY g.created_at DESC LIMIT ?`
-  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
-  const conversions = await db.prepare(
-    "SELECT id,diamonds,coins,rate,created_at FROM diamond_conversions WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
-  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
-  const coinsGifts = await db.prepare(
-    `SELECT g.id,g.gift_id,
-            COALESCE(u.display_name,'User') AS receiver_name,
-            u.public_id AS receiver_public_id,
-            g.receiver_user_id,g.coin_cost AS coins,g.created_at
-       FROM gift_events g
-       LEFT JOIN users u ON u.id=g.receiver_user_id
-      WHERE g.sender_user_id=?
-      ORDER BY g.created_at DESC LIMIT ?`
-  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
-  const sellerReceived = await db.prepare(
-    `SELECT l.id,l.kind,l.amount AS coins,l.reference_id,l.created_at,
-            CASE WHEN l.kind='merchant_received' THEN 'merchant' ELSE 'coin_seller' END AS wallet_type
-       FROM wallet_ledger l
-      WHERE l.user_id=? AND l.kind IN ('coin_seller_received','merchant_received')
-      ORDER BY l.created_at DESC LIMIT ?`
-  ).bind(userId, GIFTS_COMBINED_HISTORY_LIMIT).all();
-  return {
-    ok: true,
-    server_time: ts,
-    gifts,
-    current_coins: Number(user?.coins ?? 0),
-    current_diamonds: Number(user?.diamonds ?? 0),
-    wallet: {
-      coins: Number(user?.coins ?? 0),
-      diamonds: Number(user?.diamonds ?? 0),
-    },
-    diamonds: {
-      current_diamonds: Number(user?.diamonds ?? 0),
-      gifts: diamondsGifts.results ?? [],
-      conversions: conversions.results ?? [],
-    },
-    coins: {
-      current_coins: Number(user?.coins ?? 0),
-      gifts: coinsGifts.results ?? [],
-      seller_received: sellerReceived.results ?? [],
-    },
-  };
 }
 
 // Resolve the visual bundle configured for each VIP level. Asset references
@@ -2240,12 +2189,11 @@ async function roomModeratorState(db, roomId, userId) {
   };
 }
 
-// Combined room-state (Vinay, 2026-11-20): ONE worker call every 3s
-// carrying members + messages + controls + gift events + settings, so the
-// room stays instant while the Workers free-tier request count drops.
-// These loaders hold the exact GET logic of the five standalone room
-// endpoints — the routes call them, and GET /api/rooms/:id/state calls
-// all five at once.
+// Room-state loaders (were the combined room-state, Vinay 2026-11-20;
+// the combined /api/rooms/:id/state endpoint was removed 2026-11-23 and
+// each area polls its own standalone endpoint every 3s). These loaders
+// hold the exact GET logic of the five standalone room endpoints —
+// the routes call them.
 // Success returns the standalone endpoint's response body verbatim;
 // failure returns { ok: false, error, status }.
 async function checkRoomMemberPresence(db, env, roomId, actorId) {
@@ -4227,62 +4175,30 @@ async function syncFruitParty(db, ts = now()) {
   }
 }
 
-async function fruitPartyState(db, userId, ts = now()) {
-  await syncFruitParty(db, ts);
+// Girls Party (fruit-party) state, split into separate calls (no combined
+// game-state any more, Vinay 2026-11-23): the screen polls /round every 3s
+// for the live round + timer + config, /my-bets for its own bets +
+// today's winnings, and /history for the last 7 results. The wallet
+// balance comes from the wallet call (AppState.refreshWallet), not from
+// the game endpoints. fruitPartyBetState assembles the same shape only
+// for the bet response (the bet needs the fresh state at once); the poll
+// never uses it.
+async function fruitPartyRoundState(db, ts = now()) {
+  // 2026-11-23: the round read must survive a settlement failure. sync
+  // settles past rounds (writes + payouts); if it throws, the game sheet
+  // used to 500 and show "Game unavailable · Retry" forever. The round
+  // itself is time-derived, so it still renders; the next tick / bet
+  // retries the settle. Bet acceptance keeps its own strict sync.
+  try {
+    await syncFruitParty(db, ts);
+  } catch (_) {}
   const roundId = fruitPartyRoundId(ts);
   const betEnd = fruitPartyBetEnd(roundId);
   const cycleEnd = fruitPartyCycleEnd(roundId);
   const inResultSpin = ts >= betEnd;
-  const myRows = await db.prepare(
-    "SELECT fruit_key,COALESCE(SUM(amount),0) AS amount FROM fruit_party_bets WHERE round_id=? AND user_id=? GROUP BY fruit_key"
-  ).bind(roundId, userId).all();
-  const myBets = Object.fromEntries(
-    FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, 0]),
-  );
-  for (const row of myRows.results ?? []) {
-    if (Object.prototype.hasOwnProperty.call(myBets, row.fruit_key)) {
-      myBets[row.fruit_key] = Number(row.amount ?? 0);
-    }
-  }
   const totals = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS total_bet,COUNT(DISTINCT user_id) AS active_players FROM fruit_party_bets WHERE round_id=?"
   ).bind(roundId).first();
-  const historyRows = await db.prepare(
-    `SELECT round_id,fruit_key,mode,bonus_fruits_json,total_bet,total_payout,
-            active_players,top_winners_json,settled_at
-       FROM fruit_party_results
-      ORDER BY round_id DESC
-      LIMIT 7`
-  ).all();
-  const history = (historyRows.results ?? []).map((row) => {
-    let bonusKeys = [];
-    let topWinners = [];
-    try { bonusKeys = JSON.parse(String(row.bonus_fruits_json ?? "[]")); } catch (_) {}
-    try { topWinners = JSON.parse(String(row.top_winners_json ?? "[]")); } catch (_) {}
-    return {
-      round_id: Number(row.round_id),
-      fruit: FRUIT_PARTY_BY_KEY.get(String(row.fruit_key)) ?? null,
-      mode: String(row.mode ?? ""),
-      lucky11: String(row.mode ?? "").startsWith("lucky_11_"),
-      lucky_type: row.mode === "lucky_11_silver" ? "silver" : row.mode === "lucky_11_gold" ? "gold" : null,
-      bonus_fruits: bonusKeys
-        .map((key) => FRUIT_PARTY_BY_KEY.get(String(key)))
-        .filter(Boolean),
-      total_bet: Number(row.total_bet ?? 0),
-      total_payout: Number(row.total_payout ?? 0),
-      active_players: Number(row.active_players ?? 0),
-      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
-      settled_at: Number(row.settled_at ?? 0),
-    };
-  });
-  const wallet = await db.prepare(
-    "SELECT coins FROM users WHERE id=? LIMIT 1"
-  ).bind(userId).first();
-  const dayStart = Math.floor(ts / 86400000) * 86400000;
-  const winRow = await db.prepare(
-    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='fruit_party_win' AND created_at>=?"
-  ).bind(userId, dayStart).first();
-
   return {
     ok: true,
     server_time: ts,
@@ -4311,10 +4227,83 @@ async function fruitPartyState(db, userId, ts = now()) {
       lucky_fruit_count: 4,
       fruits: FRUIT_PARTY_FRUITS,
     },
-    wallet_balance: Number(wallet?.coins ?? 0),
-    today_winnings: Number(winRow?.winnings ?? 0),
+  };
+}
+
+async function fruitPartyMyBetsState(db, userId, ts = now()) {
+  const roundId = fruitPartyRoundId(ts);
+  const myRows = await db.prepare(
+    "SELECT fruit_key,COALESCE(SUM(amount),0) AS amount FROM fruit_party_bets WHERE round_id=? AND user_id=? GROUP BY fruit_key"
+  ).bind(roundId, userId).all();
+  const myBets = Object.fromEntries(
+    FRUIT_PARTY_FRUITS.map((fruit) => [fruit.key, 0]),
+  );
+  for (const row of myRows.results ?? []) {
+    if (Object.prototype.hasOwnProperty.call(myBets, row.fruit_key)) {
+      myBets[row.fruit_key] = Number(row.amount ?? 0);
+    }
+  }
+  const dayStart = Math.floor(ts / 86400000) * 86400000;
+  const winRow = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='fruit_party_win' AND created_at>=?"
+  ).bind(userId, dayStart).first();
+  return {
+    ok: true,
+    server_time: ts,
+    round_id: roundId,
     my_bets: myBets,
-    history,
+    today_winnings: Number(winRow?.winnings ?? 0),
+  };
+}
+
+async function fruitPartyHistoryState(db) {
+  const historyRows = await db.prepare(
+    `SELECT round_id,fruit_key,mode,bonus_fruits_json,total_bet,total_payout,
+            active_players,top_winners_json,settled_at
+       FROM fruit_party_results
+      ORDER BY round_id DESC
+      LIMIT 7`
+  ).all();
+  const history = (historyRows.results ?? []).map((row) => {
+    let bonusKeys = [];
+    let topWinners = [];
+    try { bonusKeys = JSON.parse(String(row.bonus_fruits_json ?? "[]")); } catch (_) {}
+    try { topWinners = JSON.parse(String(row.top_winners_json ?? "[]")); } catch (_) {}
+    return {
+      round_id: Number(row.round_id),
+      fruit: FRUIT_PARTY_BY_KEY.get(String(row.fruit_key)) ?? null,
+      mode: String(row.mode ?? ""),
+      lucky11: String(row.mode ?? "").startsWith("lucky_11_"),
+      lucky_type: row.mode === "lucky_11_silver" ? "silver" : row.mode === "lucky_11_gold" ? "gold" : null,
+      bonus_fruits: bonusKeys
+        .map((key) => FRUIT_PARTY_BY_KEY.get(String(key)))
+        .filter(Boolean),
+      total_bet: Number(row.total_bet ?? 0),
+      total_payout: Number(row.total_payout ?? 0),
+      active_players: Number(row.active_players ?? 0),
+      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
+      settled_at: Number(row.settled_at ?? 0),
+    };
+  });
+  return { ok: true, history };
+}
+
+async function fruitPartyBetState(db, userId, ts = now()) {
+  const round = await fruitPartyRoundState(db, ts);
+  const bets = await fruitPartyMyBetsState(db, userId, ts);
+  const history = await fruitPartyHistoryState(db);
+  const wallet = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  return {
+    ok: true,
+    server_time: ts,
+    round: round.round,
+    config: round.config,
+    wallet_balance: Number(wallet?.coins ?? 0),
+    today_winnings: bets.today_winnings,
+    my_bets: bets.my_bets,
+    history: history.history,
   };
 }
 
@@ -4525,59 +4514,28 @@ async function syncGreedyGirl(db, ts = now()) {
   }
 }
 
-async function greedyGirlState(db, userId, ts = now()) {
-  await syncGreedyGirl(db, ts);
+// Greedy Girl state, split into separate calls (no combined game-state
+// any more, Vinay 2026-11-23): the screen polls /round every 3s for the
+// live round + timer + config, /my-bets for its own bets + today's
+// winnings, and /history for the last 7 results. The wallet balance
+// comes from the wallet call (AppState.refreshWallet), not from the game
+// endpoints. greedyGirlBetState assembles the same shape only for the
+// bet response (the bet needs the fresh state at once); the poll never
+// uses it.
+async function greedyGirlRoundState(db, ts = now()) {
+  // 2026-11-23: same as fruitPartyRoundState — the round read must
+  // survive a settlement failure so the game still opens; the next
+  // tick / bet retries the settle. Bet acceptance keeps strict sync.
+  try {
+    await syncGreedyGirl(db, ts);
+  } catch (_) {}
   const roundId = greedyGirlRoundId(ts);
   const betEnd = greedyGirlBetEnd(roundId);
   const cycleEnd = greedyGirlCycleEnd(roundId);
   const inResultSpin = ts >= betEnd;
-
-  const myRows = await db.prepare(
-    "SELECT food_key,COALESCE(SUM(amount),0) AS amount FROM greedy_girl_bets WHERE round_id=? AND user_id=? GROUP BY food_key"
-  ).bind(roundId, userId).all();
-  const myBets = Object.fromEntries(
-    GREEDY_GIRL_FOODS.map((food) => [food.key, 0]),
-  );
-  for (const row of myRows.results ?? []) {
-    if (Object.prototype.hasOwnProperty.call(myBets, row.food_key)) {
-      myBets[row.food_key] = Number(row.amount ?? 0);
-    }
-  }
-
   const totals = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS total_bet,COUNT(DISTINCT user_id) AS active_players FROM greedy_girl_bets WHERE round_id=?"
   ).bind(roundId).first();
-  const historyRows = await db.prepare(
-    `SELECT round_id,food_key,total_bet,total_payout,active_players,
-            top_winners_json,settled_at
-       FROM greedy_girl_results
-      ORDER BY round_id DESC
-      LIMIT 7`
-  ).all();
-  const history = (historyRows.results ?? []).map((row) => {
-    let topWinners = [];
-    try {
-      topWinners = JSON.parse(String(row.top_winners_json ?? "[]"));
-    } catch (_) {}
-    return {
-      round_id: Number(row.round_id),
-      food: GREEDY_GIRL_BY_KEY.get(String(row.food_key)) ?? null,
-      total_bet: Number(row.total_bet ?? 0),
-      total_payout: Number(row.total_payout ?? 0),
-      active_players: Number(row.active_players ?? 0),
-      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
-      settled_at: Number(row.settled_at ?? 0),
-    };
-  });
-
-  const wallet = await db.prepare(
-    "SELECT coins FROM users WHERE id=? LIMIT 1"
-  ).bind(userId).first();
-  const dayStart = Math.floor(ts / 86400000) * 86400000;
-  const winRow = await db.prepare(
-    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='greedy_girl_win' AND created_at>=?"
-  ).bind(userId, dayStart).first();
-
   return {
     ok: true,
     server_time: ts,
@@ -4602,10 +4560,77 @@ async function greedyGirlState(db, userId, ts = now()) {
       bet_amounts: GREEDY_GIRL_BET_AMOUNTS,
       foods: GREEDY_GIRL_FOODS,
     },
-    wallet_balance: Number(wallet?.coins ?? 0),
-    today_winnings: Number(winRow?.winnings ?? 0),
+  };
+}
+
+async function greedyGirlMyBetsState(db, userId, ts = now()) {
+  const roundId = greedyGirlRoundId(ts);
+  const myRows = await db.prepare(
+    "SELECT food_key,COALESCE(SUM(amount),0) AS amount FROM greedy_girl_bets WHERE round_id=? AND user_id=? GROUP BY food_key"
+  ).bind(roundId, userId).all();
+  const myBets = Object.fromEntries(
+    GREEDY_GIRL_FOODS.map((food) => [food.key, 0]),
+  );
+  for (const row of myRows.results ?? []) {
+    if (Object.prototype.hasOwnProperty.call(myBets, row.food_key)) {
+      myBets[row.food_key] = Number(row.amount ?? 0);
+    }
+  }
+  const dayStart = Math.floor(ts / 86400000) * 86400000;
+  const winRow = await db.prepare(
+    "SELECT COALESCE(SUM(amount),0) AS winnings FROM wallet_ledger WHERE user_id=? AND kind='greedy_girl_win' AND created_at>=?"
+  ).bind(userId, dayStart).first();
+  return {
+    ok: true,
+    server_time: ts,
+    round_id: roundId,
     my_bets: myBets,
-    history,
+    today_winnings: Number(winRow?.winnings ?? 0),
+  };
+}
+
+async function greedyGirlHistoryState(db) {
+  const historyRows = await db.prepare(
+    `SELECT round_id,food_key,total_bet,total_payout,active_players,
+            top_winners_json,settled_at
+       FROM greedy_girl_results
+      ORDER BY round_id DESC
+      LIMIT 7`
+  ).all();
+  const history = (historyRows.results ?? []).map((row) => {
+    let topWinners = [];
+    try {
+      topWinners = JSON.parse(String(row.top_winners_json ?? "[]"));
+    } catch (_) {}
+    return {
+      round_id: Number(row.round_id),
+      food: GREEDY_GIRL_BY_KEY.get(String(row.food_key)) ?? null,
+      total_bet: Number(row.total_bet ?? 0),
+      total_payout: Number(row.total_payout ?? 0),
+      active_players: Number(row.active_players ?? 0),
+      top_winners: Array.isArray(topWinners) ? topWinners.slice(0, 3) : [],
+      settled_at: Number(row.settled_at ?? 0),
+    };
+  });
+  return { ok: true, history };
+}
+
+async function greedyGirlBetState(db, userId, ts = now()) {
+  const round = await greedyGirlRoundState(db, ts);
+  const bets = await greedyGirlMyBetsState(db, userId, ts);
+  const history = await greedyGirlHistoryState(db);
+  const wallet = await db.prepare(
+    "SELECT coins FROM users WHERE id=? LIMIT 1"
+  ).bind(userId).first();
+  return {
+    ok: true,
+    server_time: ts,
+    round: round.round,
+    config: round.config,
+    wallet_balance: Number(wallet?.coins ?? 0),
+    today_winnings: bets.today_winnings,
+    my_bets: bets.my_bets,
+    history: history.history,
   };
 }
 
@@ -8092,26 +8117,40 @@ async function handleApi(request, env, url) {
       "SELECT 1 AS active FROM room_members WHERE room_id=? AND user_id=?"
     ).bind(roomId, String(session.sub)).first();
     if (!member) return json({ ok:false,error:"room_membership_required" }, { status:403 });
-    const total = await db.prepare(
-      "SELECT COALESCE(SUM(coin_cost),0) AS lifetime_total FROM gift_events WHERE room_id=?"
-    ).bind(roomId).first();
-    const ranking = await db.prepare(
-      `SELECT g.sender_user_id AS user_id,
-              COALESCE(u.display_name,'User') AS display_name,
-              u.avatar_key,
-              SUM(g.coin_cost) AS sent_coins,
-              COUNT(*) AS gift_count
-         FROM gift_events g
-         LEFT JOIN users u ON u.id=g.sender_user_id
-        WHERE g.room_id=?
-        GROUP BY g.sender_user_id,u.display_name,u.avatar_key
-        ORDER BY sent_coins DESC,gift_count DESC,g.sender_user_id ASC
-        LIMIT 20`
-    ).bind(roomId).all();
+    // Separate gift-ranking call (no combined room-state any more):
+    // lifetime total + month top always; the top-99 list is period
+    // filtered only when the caller passes ?period= (the ranking page),
+    // otherwise the lifetime top 20 as before. The summary query joins
+    // user_vip, so the VIP schema must exist first (the old combined
+    // /state route ensured it before the same call).
+    await ensureVipSchema(db);
+    await ensureOwnerControlSchema(db);
+    const periodParam = String(url.searchParams.get("period") ?? "").trim().toLowerCase();
+    const summary = await loadRoomGiftSummaryState(db, roomId, periodParam);
+    let ranking = summary.ranking;
+    if (summary.period === "lifetime") {
+      const rows = await db.prepare(
+        `SELECT g.sender_user_id AS user_id,
+                COALESCE(u.display_name,'User') AS display_name,
+                u.avatar_key,
+                SUM(g.coin_cost) AS sent_coins,
+                COUNT(*) AS gift_count
+           FROM gift_events g
+           LEFT JOIN users u ON u.id=g.sender_user_id
+          WHERE g.room_id=?
+          GROUP BY g.sender_user_id,u.display_name,u.avatar_key
+          ORDER BY sent_coins DESC,gift_count DESC,g.sender_user_id ASC
+          LIMIT 20`
+      ).bind(roomId).all();
+      ranking = rows.results ?? [];
+    }
     return json({
       ok:true,
-      lifetime_total:Number(total?.lifetime_total ?? 0),
-      ranking:ranking.results ?? [],
+      lifetime_total:summary.lifetime_total,
+      daily_total:summary.daily_total,
+      month_top:summary.month_top,
+      period:summary.period,
+      ranking,
     });
   }
 
@@ -8497,79 +8536,6 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     return json({ ok: false, error: "method_not_allowed" }, { status: 405 });
   }
 
-  // Combined room-state (Vinay, 2026-11-20): ONE call every 3s carrying
-  // members + messages + controls + gift events + settings, so the room
-  // stays instant (messages/members today refresh at 8s/4s) while the
-  // Workers free-tier request count drops. Members load first: the
-  // heartbeat + presence rule is the kick signal, so a missing/stale
-  // membership row 403s exactly like the standalone members endpoint. A
-  // disabled messages feature is an owner setting, not a kick — the room
-  // still polls everything else and just sees no chat. Settings ride
-  // along too, so ANY setting change (DP, background, name, lock, room
-  // chat off) shows to everyone within 3s — but a settings failure must
-  // never fail the whole call.
-  if (parts[0] === "api" && parts[1] === "rooms" && parts.length === 4 && parts[3] === "state" && request.method === "GET") {
-    const roomId = parts[2];
-    const authError = await requireSession(request, env);
-    if (authError) return authError;
-    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
-    const actorId = String(session.sub);
-    // Same schema preamble as the standalone members GET: the member
-    // rows join user_vip / cosmetics / admin tables, which may not exist
-    // yet on a fresh DB if no message was ever sent.
-    await ensureVipSchema(db);
-    await ensureCosmeticsSchema(db);
-    await ensureOwnerControlSchema(db);
-    await ensureRoomControlTables(db, roomId);
-    await ensureRoomAdminTable(db);
-    const presence = await checkRoomMemberPresence(db, env, roomId, actorId);
-    if (!presence.ok) return json({ ok: false, error: presence.error }, { status: presence.status });
-    const lampOwner = await db.prepare(
-      "SELECT owner_user_id FROM rooms WHERE id = ? LIMIT 1"
-    ).bind(roomId).first();
-    if (String(lampOwner?.owner_user_id ?? "") === actorId) {
-      await sampleLampMicProgress(db, roomId, now());
-    }
-    const membersLoaded = await loadRoomMemberRows(db, roomId, presence.presenceCutoff);
-    const messagesFeature = await ownerSetting(db, "feature.messages", { enabled: true });
-    const messagesLoaded = messagesFeature.enabled === false
-      ? { ok: true, messages: [] }
-      : await loadRoomMessagesState(db, roomId, actorId);
-    if (!messagesLoaded.ok) return json({ ok: false, error: messagesLoaded.error }, { status: messagesLoaded.status });
-    const controlsLoaded = await loadRoomControlsState(db, roomId, actorId);
-    if (!controlsLoaded.ok) return json({ ok: false, error: controlsLoaded.error }, { status: controlsLoaded.status });
-    const after = Math.max(0, Number(url.searchParams.get("after") ?? 0) || 0);
-    const afterId = String(url.searchParams.get("after_id") ?? "").slice(0, 100);
-    const eventsLoaded = await loadRoomGiftEventsState(db, roomId, actorId, after, afterId, "");
-    if (!eventsLoaded.ok) return json({ ok: false, error: eventsLoaded.error }, { status: eventsLoaded.status });
-    // Settings must never fail the whole state call: a settings problem
-    // returns null settings and the room still gets members/messages/
-    // controls/events (the app keeps its last-known settings).
-    let settingsLoaded = null;
-    try {
-      const loaded = await loadRoomSettingsState(db, roomId, actorId);
-      if (loaded.ok) settingsLoaded = loaded.settings;
-    } catch (error) {
-      settingsLoaded = null;
-    }
-    // Gift ranking rides this same 3s poll (Vinay, 2026-11-21): the
-    // lifetime total + month top gifter always, the full top-99 list
-    // only when the caller passes ?period= (the ranking page).
-    const giftPeriodParam = String(url.searchParams.get("period") ?? "").trim().toLowerCase();
-    const giftSummary = await loadRoomGiftSummaryState(db, roomId, giftPeriodParam);
-    return json({
-      ok: true,
-      members: membersLoaded.members,
-      messages: messagesLoaded.messages,
-      controls: controlsLoaded,
-      events: eventsLoaded.events,
-      settings: settingsLoaded,
-      gift_lifetime_total: giftSummary.lifetime_total,
-      gift_month_top: giftSummary.month_top,
-      gift_period: giftSummary.period,
-      gift_ranking: giftSummary.ranking,
-    });
-  }
   // Was I kicked from this room? (room audit 2026-11-20) — the app asks
   // this on resume when its member row is gone, to tell a real kick
   // apart from a leave. Since 2026-11-21 there is no presence-timeout
@@ -10598,19 +10564,6 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     return json(await globalBannerFeed(db, now()));
   }
 
-  if (url.pathname === "/api/gifts/combined" && request.method === "GET") {
-    const authError = await requireSession(request, env);
-    if (authError) return authError;
-    const session = await verifySessionToken(
-      bearerToken(request),
-      String(env.SESSION_SECRET),
-    );
-    const userId = String(session.sub);
-    await ensureUser(db, userId);
-    await ensureUserAllowed(db, userId);
-    return json(await giftsCombinedState(db, userId, now()));
-  }
-
   if (url.pathname === "/api/gifts/send" && request.method === "POST") {
     const giftsFeature = await ownerSetting(db, "feature.gifts", { enabled: true });
     if (giftsFeature.enabled === false) {
@@ -11108,7 +11061,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     }
   }
 
-  if (url.pathname === "/api/games/fruit-party/state" && request.method === "GET") {
+  // Girls Party, separate calls (no combined game-state any more):
+  // /round (live round + timer + config, polled every 3s),
+  // /my-bets (own bets + today's winnings), /history (last 7 results).
+  if (url.pathname === "/api/games/fruit-party/round" && request.method === "GET") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
     const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
     if (gamesFeature.enabled === false || gameConfig.enabled === false) {
@@ -11123,7 +11079,43 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const userId = String(session.sub);
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
-    return json(await fruitPartyState(db, userId, now()));
+    return json(await fruitPartyRoundState(db, now()));
+  }
+
+  if (url.pathname === "/api/games/fruit-party/my-bets" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await fruitPartyMyBetsState(db, userId, now()));
+  }
+
+  if (url.pathname === "/api/games/fruit-party/history" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    const gameConfig = await ownerGameConfig(db,"fruit-party",{enabled:true,min_bet:Math.min(...FRUIT_PARTY_BET_AMOUNTS),max_bet:Math.max(...FRUIT_PARTY_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await fruitPartyHistoryState(db));
   }
 
   if (url.pathname === "/api/games/fruit-party/bet" && request.method === "POST") {
@@ -11161,10 +11153,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const prior = await db.prepare(
       "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
     ).bind(userId, requestId).first();
-    if (prior) return json(await fruitPartyState(db, userId, ts));
+    if (prior) return json(await fruitPartyBetState(db, userId, ts));
     if (ts >= fruitPartyBetEnd(roundId)) {
       return json(
-        { ok:false,error:"betting_locked",state:await fruitPartyState(db,userId,ts) },
+        { ok:false,error:"betting_locked",state:await fruitPartyBetState(db,userId,ts) },
         { status:409 },
       );
     }
@@ -11197,22 +11189,25 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         "SELECT id FROM fruit_party_bets WHERE user_id=? AND request_id=? LIMIT 1"
       ).bind(userId, requestId).first();
       if (!duplicate) throw error;
-      return json(await fruitPartyState(db, userId, now()));
+      return json(await fruitPartyBetState(db, userId, now()));
     }
     const accepted = await db.prepare(
       "SELECT id FROM fruit_party_bets WHERE id=? LIMIT 1"
     ).bind(betId).first();
     if (!accepted) {
       return json(
-        { ok:false,error:"insufficient_coins",state:await fruitPartyState(db,userId,ts) },
+        { ok:false,error:"insufficient_coins",state:await fruitPartyBetState(db,userId,ts) },
         { status:409 },
       );
     }
-    return json(await fruitPartyState(db, userId, now()), { status:201 });
+    return json(await fruitPartyBetState(db, userId, now()), { status:201 });
   }
 
 
-  if (url.pathname === "/api/games/greedy-girl/state" && request.method === "GET") {
+  // Greedy Girl, separate calls (no combined game-state any more):
+  // /round (live round + timer + config, polled every 3s),
+  // /my-bets (own bets + today's winnings), /history (last 7 results).
+  if (url.pathname === "/api/games/greedy-girl/round" && request.method === "GET") {
     const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
     const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
     if (gamesFeature.enabled === false || gameConfig.enabled === false) {
@@ -11227,7 +11222,43 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     const userId = String(session.sub);
     await ensureUser(db, userId);
     await ensureUserAllowed(db, userId);
-    return json(await greedyGirlState(db, userId, now()));
+    return json(await greedyGirlRoundState(db, now()));
+  }
+
+  if (url.pathname === "/api/games/greedy-girl/my-bets" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await greedyGirlMyBetsState(db, userId, now()));
+  }
+
+  if (url.pathname === "/api/games/greedy-girl/history" && request.method === "GET") {
+    const gamesFeature = await ownerSetting(db, "feature.games", { enabled: true });
+    const gameConfig = await ownerGameConfig(db,"greedy-girl",{enabled:true,min_bet:Math.min(...GREEDY_GIRL_BET_AMOUNTS),max_bet:Math.max(...GREEDY_GIRL_BET_AMOUNTS)});
+    if (gamesFeature.enabled === false || gameConfig.enabled === false) {
+      return json({ ok:false,error:"games_disabled" }, { status:403 });
+    }
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(
+      bearerToken(request),
+      String(env.SESSION_SECRET),
+    );
+    const userId = String(session.sub);
+    await ensureUser(db, userId);
+    await ensureUserAllowed(db, userId);
+    return json(await greedyGirlHistoryState(db));
   }
 
   if (url.pathname === "/api/games/greedy-girl/bet" && request.method === "POST") {
@@ -11275,7 +11306,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     ).bind(userId, requestId).first();
     if (prior) {
       if (!compactResponse) {
-        return json(await greedyGirlState(db, userId, now()));
+        return json(await greedyGirlBetState(db, userId, now()));
       }
       const wallet = await db.prepare(
         "SELECT coins FROM users WHERE id=? LIMIT 1"
@@ -11293,7 +11324,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     }
     if (ts >= greedyGirlBetEnd(roundId)) {
       return json(
-        { ok:false,error:"betting_locked",state:await greedyGirlState(db,userId,ts) },
+        { ok:false,error:"betting_locked",state:await greedyGirlBetState(db,userId,ts) },
         { status:409 },
       );
     }
@@ -11328,7 +11359,7 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       ).bind(userId, requestId).first();
       if (!duplicate) throw error;
       if (!compactResponse) {
-        return json(await greedyGirlState(db, userId, now()));
+        return json(await greedyGirlBetState(db, userId, now()));
       }
       const wallet = await db.prepare(
         "SELECT coins FROM users WHERE id=? LIMIT 1"
@@ -11350,12 +11381,12 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     ).bind(betId).first();
     if (!accepted) {
       return json(
-        { ok:false,error:"insufficient_coins",state:await greedyGirlState(db,userId,ts) },
+        { ok:false,error:"insufficient_coins",state:await greedyGirlBetState(db,userId,ts) },
         { status:409 },
       );
     }
     if (!compactResponse) {
-      return json(await greedyGirlState(db, userId, now()), { status:201 });
+      return json(await greedyGirlBetState(db, userId, now()), { status:201 });
     }
     const wallet = await db.prepare(
       "SELECT coins FROM users WHERE id=? LIMIT 1"

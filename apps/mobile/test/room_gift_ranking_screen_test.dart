@@ -1,11 +1,12 @@
 // Room gift ranking page (Vinay, 2026-11-21): opened by touching the
 // total gifting amount beside the trophy (rocket page) or the Ranking /
 // total chips in the room. Shows THIS room only — who sent how many
-// coins here, Day / Week / Month, top 99 — over the room's 3s combined
-// state poll, no separate ranking API. A day with no sending shows
-// nobody. The month's top gifter gets a gold spotlight at the top
-// (their ID shows for the month) on the Monthly tab, and the same ID
-// shows in the room header only while they are in the room.
+// coins here, Day / Week / Month, top 99 — from its own
+// /gift-ranking endpoint (the combined room-state poll was removed
+// 2026-11-23). A day with no sending shows nobody. The month's top
+// gifter gets a gold spotlight at the top (their ID shows for the
+// month) on the Monthly tab, and the same ID shows in the room header
+// only while they are in the room.
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/room/month_top_gifter.dart';
 import 'package:darkvibex/screens/rocket_room_screen.dart';
@@ -19,19 +20,17 @@ class _FakeRankingBackend extends BackendApi {
   final Map<String, List<Map<String, dynamic>>> byPeriod;
 
   @override
-  Future<Map<String, dynamic>?> roomStateOrNull({
+  Future<Map<String, dynamic>?> roomGiftRanking({
     required String roomId,
-    int after = 0,
-    String afterId = '',
     String? period,
   }) async {
     final rows = byPeriod[period ?? 'day'] ?? const [];
     return <String, dynamic>{
       'ok': true,
-      'gift_lifetime_total': 9500000,
-      'gift_month_top': rows.isEmpty ? null : rows.first,
-      'gift_period': period ?? 'day',
-      'gift_ranking': rows,
+      'lifetime_total': 9500000,
+      'month_top': rows.isEmpty ? null : rows.first,
+      'period': period ?? 'day',
+      'ranking': rows,
     };
   }
 
@@ -110,6 +109,7 @@ RocketRoomPage _rocketPage(BackendApi backend) {
     roomNumber: '766793',
     onlineCount: 1200,
     lifetimeTotal: 42000000,
+    dailyTotal: 22000000,
     ranking: _dayRows(),
     seatMembers: <Map<String, dynamic>>[
       for (var i = 0; i < 8; i++)

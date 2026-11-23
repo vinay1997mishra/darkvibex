@@ -1,15 +1,17 @@
-// Combined room-state (Vinay, 2026-11-20): ONE call every 3s carrying
-// members + messages + controls + gift events + settings, so the room stays
-// instant while the Workers free-tier request count drops. GET
-// /api/rooms/:id/state must return the exact shapes of the five standalone
-// endpoints, 403 room_membership_required for non-members (the app's kick
-// signal), the same message join-time + chat-clear cutoffs, and the same
-// incremental gift-events cursor. The controls field embeds the full
-// controls response object unchanged, including its ok field (the app's
-// _applyRoomControls keeps the strict value['ok'] != true guard).
-// Settings ride along too: ANY setting change (DP, background, name, lock,
-// room chat off) must show to everyone in the room within 3s, and a
-// settings failure must never fail the whole state call.
+// Separate room polls (combined room-state removed 2026-11-23, Vinay:
+// "combined API hta de, har jagah se"): members + messages + controls +
+// gift events + settings each call their own endpoint every 3s, so one
+// failing area never blanks the whole room. GET /api/rooms/:id/members,
+// /messages, /controls, /gift-events and /settings must return the exact
+// shapes the combined /state used to embed, 403 room_membership_required
+// for non-members (the app's kick signal), the same message join-time +
+// chat-clear cutoffs, and the same incremental gift-events cursor. The
+// controls endpoint returns the full controls object unchanged,
+// including its ok field (the app's _applyRoomControls keeps the strict
+// value['ok'] != true guard). Settings: ANY setting change (DP,
+// background, name, lock, room chat off) must show on the next 3s poll,
+// and room chat off hides messages via 403 messages_disabled while
+// settings still load.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -117,8 +119,20 @@ async function clearChat(fx, roomId, userId) {
   return fx.request(`/api/rooms/${roomId}/messages/clear`, { method: "POST", userId, body: { user_id: userId } });
 }
 
-async function getState(fx, roomId, userId, query = "") {
-  return fx.request(`/api/rooms/${roomId}/state${query}`, { userId });
+async function getMembers(fx, roomId, userId) {
+  return fx.request(`/api/rooms/${roomId}/members`, { userId });
+}
+
+async function getMessages(fx, roomId, userId) {
+  return fx.request(`/api/rooms/${roomId}/messages`, { userId });
+}
+
+async function getControls(fx, roomId, userId) {
+  return fx.request(`/api/rooms/${roomId}/controls`, { userId });
+}
+
+async function getEvents(fx, roomId, userId, query = "") {
+  return fx.request(`/api/rooms/${roomId}/gift-events${query}`, { userId });
 }
 
 async function getSettings(fx, roomId, userId) {
@@ -151,7 +165,7 @@ function insertGiftEvent(fx, roomId, senderId, receiverId, createdAt) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test("state returns members, messages, controls and events in one call for a member", async () => {
+test("separate polls return members, messages, controls and events for a member", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
@@ -163,45 +177,49 @@ test("state returns members, messages, controls and events in one call for a mem
   const e1 = insertGiftEvent(fx, roomId, "owner", "member", base);
   const e2 = insertGiftEvent(fx, roomId, "member", "owner", base + 10);
 
-  const state = await getState(fx, roomId, "member");
-  assert.equal(state.status, 200, JSON.stringify(state.body));
-  assert.equal(state.body.ok, true);
-
-  // Members: same rows as the standalone members endpoint.
-  const memberIds = (state.body.members ?? []).map((m) => String(m.user_id));
+  // Members: same rows as before.
+  const members = await getMembers(fx, roomId, "member");
+  assert.equal(members.status, 200, JSON.stringify(members.body));
+  assert.equal(members.body.ok, true);
+  const memberIds = (members.body.members ?? []).map((m) => String(m.user_id));
   assert.ok(memberIds.includes("owner"), "owner must be listed");
   assert.ok(memberIds.includes("member"), "caller must be listed");
-  const self = state.body.members.find((m) => String(m.user_id) === "member");
+  const self = members.body.members.find((m) => String(m.user_id) === "member");
   assert.equal(String(self.display_name), "member");
   assert.ok("seat_index" in self && "joined_at" in self);
 
-  // Messages: same rows as the standalone messages endpoint.
+  // Messages: same rows as before.
+  const messages = await getMessages(fx, roomId, "member");
+  assert.equal(messages.status, 200, JSON.stringify(messages.body));
   assert.deepEqual(
-    (state.body.messages ?? []).map((m) => String(m.text)),
+    (messages.body.messages ?? []).map((m) => String(m.text)),
     ["hello-room"],
   );
 
   // Controls: the FULL controls response object, including ok — the app's
   // _applyRoomControls keeps the strict value['ok'] != true guard, so a
   // flattened controls field without ok would silently never apply.
-  const controls = state.body.controls ?? {};
-  assert.equal(controls.ok, true, "controls must embed the full response with ok");
-  assert.equal(controls.mic_mode, "free");
-  assert.equal(controls.public_screen_enabled, true);
-  assert.equal(controls.vip_only, 0);
-  assert.deepEqual(controls.seat_controls, []);
-  assert.deepEqual(controls.seat_requests, []);
-  assert.equal(controls.chat_banned, false);
-  assert.equal(controls.seat_invite, null);
-  assert.equal(controls.is_owner, false, "member is not the owner");
-  assert.equal(controls.is_admin, false);
+  const controls = await getControls(fx, roomId, "member");
+  assert.equal(controls.status, 200, JSON.stringify(controls.body));
+  assert.equal(controls.body.ok, true, "controls must embed the full response with ok");
+  assert.equal(controls.body.mic_mode, "free");
+  assert.equal(controls.body.public_screen_enabled, true);
+  assert.equal(controls.body.vip_only, 0);
+  assert.deepEqual(controls.body.seat_controls, []);
+  assert.deepEqual(controls.body.seat_requests, []);
+  assert.equal(controls.body.chat_banned, false);
+  assert.equal(controls.body.seat_invite, null);
+  assert.equal(controls.body.is_owner, false, "member is not the owner");
+  assert.equal(controls.body.is_admin, false);
 
-  // Gift events: same rows as the standalone gift-events endpoint.
+  // Gift events: same rows as before.
+  const events = await getEvents(fx, roomId, "member");
+  assert.equal(events.status, 200, JSON.stringify(events.body));
   assert.deepEqual(
-    (state.body.events ?? []).map((e) => String(e.id)),
+    (events.body.events ?? []).map((e) => String(e.id)),
     [e1.id, e2.id],
   );
-  const first = state.body.events[0];
+  const first = events.body.events[0];
   assert.equal(first.sender_user_id, "owner");
   assert.equal(first.receiver_user_id, "member");
   assert.equal(first.gift_id, "rose");
@@ -210,19 +228,14 @@ test("state returns members, messages, controls and events in one call for a mem
   assert.notEqual(first.gift_ribbon, null);
   assert.equal(typeof first.gift_ribbon.tier, "string");
 
-  // Events must be byte-identical to the standalone gift-events endpoint.
-  const standaloneEvents = await fx.request(`/api/rooms/${roomId}/gift-events`, { userId: "member" });
-  assert.equal(standaloneEvents.status, 200, JSON.stringify(standaloneEvents.body));
-  assert.deepEqual(state.body.events, standaloneEvents.body.events);
-
   // Owner sees the same payload with owner flags.
-  const ownerState = await getState(fx, roomId, "owner");
-  assert.equal(ownerState.status, 200, JSON.stringify(ownerState.body));
-  assert.equal(ownerState.body.controls.is_owner, true);
-  assert.equal(ownerState.body.controls.ok, true);
+  const ownerControls = await getControls(fx, roomId, "owner");
+  assert.equal(ownerControls.status, 200, JSON.stringify(ownerControls.body));
+  assert.equal(ownerControls.body.is_owner, true);
+  assert.equal(ownerControls.body.ok, true);
 });
 
-test("state 403s room_membership_required for non-members and leavers", async () => {
+test("separate polls 403 room_membership_required for non-members and leavers", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
@@ -230,17 +243,20 @@ test("state 403s room_membership_required for non-members and leavers", async ()
   const roomId = await makeRoom(fx, "owner");
   await joinRoom(fx, roomId, "member");
 
-  const outsider = await getState(fx, roomId, "outsider");
-  assert.equal(outsider.status, 403);
-  assert.equal(outsider.body.error, "room_membership_required");
+  const outsiderMembers = await getMembers(fx, roomId, "outsider");
+  assert.equal(outsiderMembers.status, 403);
+  assert.equal(outsiderMembers.body.error, "room_membership_required");
+  const outsiderMessages = await getMessages(fx, roomId, "outsider");
+  assert.equal(outsiderMessages.status, 403);
+  assert.equal(outsiderMessages.body.error, "room_membership_required");
 
   await leaveRoom(fx, roomId, "member");
-  const leaver = await getState(fx, roomId, "member");
+  const leaver = await getMembers(fx, roomId, "member");
   assert.equal(leaver.status, 403);
   assert.equal(leaver.body.error, "room_membership_required");
 });
 
-test("state applies the join-time message cutoff", async () => {
+test("messages apply the join-time cutoff", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "late");
@@ -250,29 +266,29 @@ test("state applies the join-time message cutoff", async () => {
   await sleep(10);
   await joinRoom(fx, roomId, "late");
 
-  const lateState = await getState(fx, roomId, "late");
-  assert.equal(lateState.status, 200, JSON.stringify(lateState.body));
+  const lateMessages = await getMessages(fx, roomId, "late");
+  assert.equal(lateMessages.status, 200, JSON.stringify(lateMessages.body));
   assert.deepEqual(
-    (lateState.body.messages ?? []).map((m) => String(m.text)),
+    (lateMessages.body.messages ?? []).map((m) => String(m.text)),
     [],
     "late joiner must not see messages from before they joined",
   );
 
   await sleep(10);
   await sendMessage(fx, roomId, "late", "after-late-joined");
-  const lateAfter = await getState(fx, roomId, "late");
+  const lateAfter = await getMessages(fx, roomId, "late");
   assert.deepEqual(
     (lateAfter.body.messages ?? []).map((m) => String(m.text)),
     ["after-late-joined"],
   );
-  const ownerState = await getState(fx, roomId, "owner");
+  const ownerMessages = await getMessages(fx, roomId, "owner");
   assert.deepEqual(
-    (ownerState.body.messages ?? []).map((m) => String(m.text)),
+    (ownerMessages.body.messages ?? []).map((m) => String(m.text)),
     ["before-late-joined", "after-late-joined"],
   );
 });
 
-test("state applies the admin-clear cutoff (owner still sees the old chat)", async () => {
+test("messages apply the admin-clear cutoff (owner still sees the old chat)", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "admin");
@@ -290,27 +306,27 @@ test("state applies the admin-clear cutoff (owner still sees the old chat)", asy
   const cleared = await clearChat(fx, roomId, "admin");
   assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
 
-  const adminState = await getState(fx, roomId, "admin");
-  assert.deepEqual(adminState.body.messages ?? [], [], "admin must not see pre-clear chat");
-  const memberState = await getState(fx, roomId, "member");
-  assert.deepEqual(memberState.body.messages ?? [], [], "member must not see pre-clear chat");
-  const ownerState = await getState(fx, roomId, "owner");
+  const adminMessages = await getMessages(fx, roomId, "admin");
+  assert.deepEqual(adminMessages.body.messages ?? [], [], "admin must not see pre-clear chat");
+  const memberMessages = await getMessages(fx, roomId, "member");
+  assert.deepEqual(memberMessages.body.messages ?? [], [], "member must not see pre-clear chat");
+  const ownerMessages = await getMessages(fx, roomId, "owner");
   assert.deepEqual(
-    (ownerState.body.messages ?? []).map((m) => String(m.text)),
+    (ownerMessages.body.messages ?? []).map((m) => String(m.text)),
     ["m1-owner", "m2-member"],
     "owner still sees the old chat after an admin clear",
   );
 
   await sleep(10);
   await sendMessage(fx, roomId, "owner", "m3-after-clear");
-  const memberAfter = await getState(fx, roomId, "member");
+  const memberAfter = await getMessages(fx, roomId, "member");
   assert.deepEqual(
     (memberAfter.body.messages ?? []).map((m) => String(m.text)),
     ["m3-after-clear"],
   );
 });
 
-test("state gift events are incremental: no duplicates, no gaps, id tiebreak", async () => {
+test("gift events are incremental: no duplicates, no gaps, id tiebreak", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
@@ -326,78 +342,73 @@ test("state gift events are incremental: no duplicates, no gaps, id tiebreak", a
   const e4 = insertGiftEvent(fx, roomId, "member", "owner", base + 20);
   assert.ok(e3.id < e4.id, "tiebreak fixture must sort e3 before e4");
 
-  const full = await getState(fx, roomId, "owner");
+  const full = await getEvents(fx, roomId, "owner");
   assert.equal(full.status, 200, JSON.stringify(full.body));
   assert.deepEqual(
     (full.body.events ?? []).map((e) => String(e.id)),
     [e1.id, e2.id, e3.id, e4.id],
   );
 
-  const afterE2 = await getState(fx, roomId, "owner", `?after=${e2.created_at}&after_id=${e2.id}`);
+  const afterE2 = await getEvents(fx, roomId, "owner", `?after=${e2.created_at}&after_id=${e2.id}`);
   assert.deepEqual(
     (afterE2.body.events ?? []).map((e) => String(e.id)),
     [e3.id, e4.id],
     "cursor after e2 must return only the later events",
   );
 
-  const afterE3 = await getState(fx, roomId, "owner", `?after=${e3.created_at}&after_id=${e3.id}`);
+  const afterE3 = await getEvents(fx, roomId, "owner", `?after=${e3.created_at}&after_id=${e3.id}`);
   assert.deepEqual(
     (afterE3.body.events ?? []).map((e) => String(e.id)),
     [e4.id],
     "same-timestamp tiebreak must not repeat e3 or skip e4",
   );
 
-  const afterE4 = await getState(fx, roomId, "owner", `?after=${e4.created_at}&after_id=${e4.id}`);
+  const afterE4 = await getEvents(fx, roomId, "owner", `?after=${e4.created_at}&after_id=${e4.id}`);
   assert.deepEqual(afterE4.body.events ?? [], [], "cursor past the last event returns none");
 });
 
-test("state returns settings identical to the standalone settings endpoint", async () => {
+test("settings endpoint returns the room settings", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
   const roomId = await makeRoom(fx, "owner");
   await joinRoom(fx, roomId, "member");
 
-  const state = await getState(fx, roomId, "member");
-  assert.equal(state.status, 200, JSON.stringify(state.body));
-  const settings = state.body.settings ?? {};
-  assert.equal(settings.name, "owner room");
-  assert.equal(settings.seat_count, 12);
-  assert.equal(Number(settings.locked), 0);
-  assert.equal(settings.lock_password_set, 0);
-  assert.equal(settings.theme_id, "dark");
-  assert.equal(settings.theme_asset_key, "");
-  assert.equal(settings.party_mode, "Friends-making Party");
-  assert.equal(settings.room_mode, "voice");
-  assert.equal(settings.seat_theme_id, "royal-gold");
-  assert.equal(settings.group_pk_enabled, 0);
-  assert.equal(settings.announcement, "");
-  assert.equal(settings.avatar_key, "");
-  assert.equal(settings.welcome_image_key, "");
-  assert.equal(settings.feature?.messages?.enabled, true, "chat is on by default");
-  assert.ok(!("lock_code" in settings), "non-owner must not see the lock code");
-  assert.ok(!("lock_password_code" in settings), "password code must never leak");
-
-  // Same loader as the standalone GET: byte-identical settings objects.
-  const standalone = await getSettings(fx, roomId, "member");
-  assert.equal(standalone.status, 200, JSON.stringify(standalone.body));
-  assert.deepEqual(state.body.settings, standalone.body.settings);
+  const settings = await getSettings(fx, roomId, "member");
+  assert.equal(settings.status, 200, JSON.stringify(settings.body));
+  const body = settings.body.settings ?? {};
+  assert.equal(body.name, "owner room");
+  assert.equal(body.seat_count, 12);
+  assert.equal(Number(body.locked), 0);
+  assert.equal(body.lock_password_set, 0);
+  assert.equal(body.theme_id, "dark");
+  assert.equal(body.theme_asset_key, "");
+  assert.equal(body.party_mode, "Friends-making Party");
+  assert.equal(body.room_mode, "voice");
+  assert.equal(body.seat_theme_id, "royal-gold");
+  assert.equal(body.group_pk_enabled, 0);
+  assert.equal(body.announcement, "");
+  assert.equal(body.avatar_key, "");
+  assert.equal(body.welcome_image_key, "");
+  assert.equal(body.feature?.messages?.enabled, true, "chat is on by default");
+  assert.ok(!("lock_code" in body), "non-owner must not see the lock code");
+  assert.ok(!("lock_password_code" in body), "password code must never leak");
 
   // Non-member still 403s even though settings exist.
   await makeUser(fx, "outsider");
-  const outsider = await getState(fx, roomId, "outsider");
+  const outsider = await getSettings(fx, roomId, "outsider");
   assert.equal(outsider.status, 403);
   assert.equal(outsider.body.error, "room_membership_required");
 });
 
-test("state reflects a settings change within one call (announcement, name, room DP)", async () => {
+test("settings reflect a change on the next poll (announcement, name, room DP)", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
   const roomId = await makeRoom(fx, "owner");
   await joinRoom(fx, roomId, "member");
 
-  const before = await getState(fx, roomId, "member");
+  const before = await getSettings(fx, roomId, "member");
   assert.equal(before.body.settings.announcement, "");
   assert.equal(before.body.settings.name, "owner room");
   assert.equal(before.body.settings.avatar_key, "");
@@ -408,15 +419,15 @@ test("state reflects a settings change within one call (announcement, name, room
   const avatar = await setRoomAvatar(fx, roomId, "owner", avatarKey);
   assert.equal(avatar.status, 200, JSON.stringify(avatar.body));
 
-  // The very next 3s state call must carry the new values — no 60s wait.
-  const after = await getState(fx, roomId, "member");
+  // The very next 3s settings poll must carry the new values — no 60s wait.
+  const after = await getSettings(fx, roomId, "member");
   assert.equal(after.status, 200, JSON.stringify(after.body));
   assert.equal(after.body.settings.announcement, "new-announcement");
   assert.equal(after.body.settings.name, "Renamed room");
   assert.equal(after.body.settings.avatar_key, avatarKey);
 });
 
-test("state shows room chat off via settings.feature.messages", async () => {
+test("messages hide when room chat is off (403 messages_disabled); settings still load", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
@@ -424,21 +435,27 @@ test("state shows room chat off via settings.feature.messages", async () => {
   await joinRoom(fx, roomId, "member");
 
   await sendMessage(fx, roomId, "owner", "before-off");
-  const onState = await getState(fx, roomId, "member");
-  assert.deepEqual((onState.body.messages ?? []).map((m) => String(m.text)), ["before-off"]);
-  assert.equal(onState.body.settings.feature.messages.enabled, true);
+  const onMessages = await getMessages(fx, roomId, "member");
+  assert.deepEqual((onMessages.body.messages ?? []).map((m) => String(m.text)), ["before-off"]);
+  const onSettings = await getSettings(fx, roomId, "member");
+  assert.equal(onSettings.body.settings.feature.messages.enabled, true);
 
-  // Owner turns room chat off: the next state call hides chat AND says so.
+  // Owner turns room chat off: the messages call 403s messages_disabled
+  // (the app treats a failed messages fetch as no new chat) while the
+  // settings call still loads and says chat is off.
   setMessagesFeature(fx, false);
-  const offState = await getState(fx, roomId, "member");
-  assert.deepEqual(offState.body.messages ?? [], [], "chat off must hide messages");
-  assert.equal(offState.body.settings.feature.messages.enabled, false);
-  assert.notEqual(offState.body.settings, null, "settings must still load when chat is off");
+  const offMessages = await getMessages(fx, roomId, "member");
+  assert.equal(offMessages.status, 403);
+  assert.equal(offMessages.body.error, "messages_disabled");
+  const offSettings = await getSettings(fx, roomId, "member");
+  assert.equal(offSettings.body.settings.feature.messages.enabled, false);
+  assert.notEqual(offSettings.body.settings, null, "settings must still load when chat is off");
 
-  // Back on: chat flows again in the same 3s call.
+  // Back on: chat flows again on the next poll.
   setMessagesFeature(fx, true);
   await sendMessage(fx, roomId, "owner", "after-on");
-  const backOn = await getState(fx, roomId, "member");
+  const backOn = await getMessages(fx, roomId, "member");
   assert.deepEqual((backOn.body.messages ?? []).map((m) => String(m.text)), ["before-off", "after-on"]);
-  assert.equal(backOn.body.settings.feature.messages.enabled, true);
+  const backOnSettings = await getSettings(fx, roomId, "member");
+  assert.equal(backOnSettings.body.settings.feature.messages.enabled, true);
 });
