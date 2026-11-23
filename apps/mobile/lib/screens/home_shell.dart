@@ -11,6 +11,7 @@ import '../i18n/darkvibex_localization.dart';
 import '../utils/public_user_id.dart';
 import '../ui/tinni_style.dart';
 import '../vip/vip_policy.dart';
+import '../widgets/top_front_pill.dart';
 import 'messages_screen.dart';
 import 'mine_social_screens.dart';
 import 'profile_screen.dart';
@@ -788,6 +789,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
   Timer? _bannerAutoSlideTimer;
   int _currentBannerPage = 0;
 
+  // Top Family pill avatars: the leaders of the top families, loaded once
+  // with the party tab (Vinay, 2026-11-23).
+  List<Map<String, dynamic>> _topFamilies = const [];
+
   static const int _promoBannerCount = 3;
 
   bool get _hasConfiguredWelcomeBanner => ownerBanners.any((banner) {
@@ -817,6 +822,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
   void initState() {
     super.initState();
     _loadBanners();
+    _loadTopFamilies();
     _bannerAutoSlideTimer =
         Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted || !_bannerPageController.hasClients) return;
@@ -849,6 +855,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           state.refreshRooms(),
           _loadBanners(),
           _loadFollowedRooms(),
+          _loadTopFamilies(),
         ]);
       } else {
         await Future.wait<void>([
@@ -860,6 +867,44 @@ class _RoomsHomeState extends State<_RoomsHome> {
       debugPrint('DarkVibeX Party tab refresh failed ($tab): $error');
     }
   }
+
+  // Top Family pill: the top families by EXP (familyList is already ordered
+  // by experience DESC). Only the first 3 leaders' DPs show on the pill
+  // (Vinay, 2026-11-23). Best-effort: a failed load leaves the last list.
+  Future<void> _loadTopFamilies() async {
+    if (!state.backendConnected) return;
+    try {
+      final rows = await state.backend.familyList();
+      if (!mounted) return;
+      setState(() => _topFamilies = rows);
+    } catch (error) {
+      debugPrint('DarkVibeX top families refresh failed: $error');
+    }
+  }
+
+  // Top Rooms pill: the top 3 live rooms by online members, same order as
+  // the room list below (online DESC, then id DESC).
+  List<String> get _topRoomAvatarKeys {
+    final rooms = state.rooms.where((room) => room.online > 0).toList()
+      ..sort((a, b) {
+        final byOnline = b.online.compareTo(a.online);
+        return byOnline != 0 ? byOnline : b.id.compareTo(a.id);
+      });
+    return rooms
+        .take(3)
+        .map((room) => room.avatarKey)
+        .whereType<String>()
+        .where((key) => key.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  // Top Family pill: the leaders' DPs of the top 3 families.
+  List<String> get _topFamilyAvatarKeys => _topFamilies
+      .take(3)
+      .map((family) => family['leader_avatar_key']?.toString())
+      .whereType<String>()
+      .where((key) => key.isNotEmpty)
+      .toList(growable: false);
 
   Future<void> _loadFollowedRooms() async {
     if (!state.backendConnected) return;
@@ -1227,36 +1272,46 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 ),
               ),
             ),
+            // Top fronts (Vinay, 2026-11-23): only Top Rooms (gold) and Top
+            // Family (purple) pills, like the other apps' pill tabs. The old
+            // Room / CP Ranking / Family card row is permanently removed.
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
                 child: Row(
                   children: [
                     Expanded(
-                      child: _QuickCard(
-                        label: 'Room',
-                        icon: Icons.mic_external_on_rounded,
+                      child: TopFrontPill(
+                        key: const Key('party-top-rooms-pill'),
+                        label: 'Top Rooms',
+                        gradientColors: const [
+                          Color(0xFFFFE9A8),
+                          Color(0xFFD09A0A),
+                        ],
+                        textColor: const Color(0xFF3A2A00),
+                        avatarUrls: _topRoomAvatarKeys
+                            .map(state.backend.fileUrl)
+                            .toList(growable: false),
+                        avatarHeaders: state.backend.fileHeaders,
+                        fallbackIcon: Icons.emoji_events_rounded,
                         onTap: () => _openRankings(context, initialTab: 0),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _QuickCard(
-                        label: 'CP Ranking',
-                        icon: Icons.favorite_rounded,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => CpRankingScreen(state: state),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _QuickCard(
-                        label: 'Family',
-                        icon: Icons.groups_rounded,
+                      child: TopFrontPill(
+                        key: const Key('party-top-family-pill'),
+                        label: 'Top Family',
+                        gradientColors: const [
+                          Color(0xFF8B5CF6),
+                          Color(0xFF6D28D9),
+                        ],
+                        textColor: Colors.white,
+                        avatarUrls: _topFamilyAvatarKeys
+                            .map(state.backend.fileUrl)
+                            .toList(growable: false),
+                        avatarHeaders: state.backend.fileHeaders,
+                        fallbackIcon: Icons.groups_rounded,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute<void>(
@@ -2640,42 +2695,6 @@ class _PromoCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      );
-}
-
-class _QuickCard extends StatelessWidget {
-  const _QuickCard({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => _PartyPanel(
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-        child: Column(
-          children: [
-            _PartyGlowIcon(
-              icon: icon,
-              size: 19,
-              boxSize: 36,
-            ),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: const Color(0xFFB1A6FF),
-                fontWeight: FontWeight.w800,
-                fontSize: 11,
-              ),
-            ),
-          ],
         ),
       );
 }
