@@ -282,6 +282,25 @@ jobs:
           # Play Store bundle: Google Play generates device-specific APK splits.
           flutter build appbundle "${BUILD_ARGS[@]}"
 
+      - name: Report APK and AAB sizes
+        if: env.ANDROID_KEYSTORE_PATH != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "### DarkVibeX package sizes" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Package | Size |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|" >> "$GITHUB_STEP_SUMMARY"
+          for file in \
+            apps/mobile/build/app/outputs/flutter-apk/app-release.apk \
+            apps/mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            apps/mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            apps/mobile/build/app/outputs/flutter-apk/app-x86_64-release.apk \
+            apps/mobile/build/app/outputs/bundle/release/app-release.aab; do
+            test -f "$file"
+            size="$(du -h "$file" | cut -f1)"
+            echo "| $(basename "$file") | $size |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
       - name: Print APK signing certificate fingerprint
         shell: bash
         continue-on-error: true
@@ -401,6 +420,13 @@ jobs:
               --title "DarkVibeX Latest APK" \
               --notes "Rolling latest APK build from main. Asset is replaced on each successful build."
             gh release upload darkvibex-latest "$RUNNER_TEMP/$asset_name"
+            if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
+              gh release upload darkvibex-latest \
+                "$RUNNER_TEMP/DarkVibeX-arm64-v8a-release.apk" \
+                "$RUNNER_TEMP/DarkVibeX-armeabi-v7a-release.apk" \
+                "$RUNNER_TEMP/DarkVibeX-x86_64-release.apk" \
+                "$RUNNER_TEMP/DarkVibeX-latest-release.aab"
+            fi
           fi
 
       - name: Mark APK build success
