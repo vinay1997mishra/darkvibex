@@ -29,16 +29,6 @@
     { pattern: /CPH2239/i, asset: 'DarkVibeX-arm64-v8a-release.apk', label: 'OPPO A54 (CPH2239)' }
   ];
 
-  function getGpuRenderer() {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      if (!gl) return '';
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : '';
-    } catch (_) { return ''; }
-  }
-
   function select(asset, message) {
     link.href = release + asset;
     status.textContent = message;
@@ -51,9 +41,11 @@
     }
 
     const ua = navigator.userAgentData;
+    let hintedModel = '';
     if (ua && typeof ua.getHighEntropyValues === 'function') {
       try {
         const info = await ua.getHighEntropyValues(['architecture', 'bitness', 'model']);
+        hintedModel = String(info.model || '');
         const arch = String(info.architecture || '').toLowerCase();
         const bits = String(info.bitness || '');
         if ((arch === 'arm' || arch === 'arm64') && bits === '64') {
@@ -71,16 +63,9 @@
       } catch (_) { /* Continue with conservative fallbacks. */ }
     }
 
-    const modelMatch = knownModels.find(item => item.pattern.test(uaString));
+    const modelMatch = knownModels.find(item => item.pattern.test(uaString) || item.pattern.test(hintedModel));
     if (modelMatch) {
       select(modelMatch.asset, modelMatch.label + ' detected from browser device model. ARM64 APK selected.');
-      return;
-    }
-
-    // Some browsers expose a GPU renderer even when User-Agent Client Hints are absent.
-    const renderer = getGpuRenderer();
-    if (/(Intel|AMD|Radeon)/i.test(renderer)) {
-      select('DarkVibeX-x86_64-release.apk', 'x86-class graphics hardware detected. x86_64 APK selected; if installation fails, use Universal APK.');
       return;
     }
 
