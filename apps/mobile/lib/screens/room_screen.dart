@@ -9304,39 +9304,10 @@ class _RoomScreenState extends State<RoomScreen>
                     ],
                   ),
                 ),
-                // Month's top gifter (Vinay, 2026-11-21): their ID shows
-                // here for the month, and disappears the moment they exit
-                // the room (see _monthTopGifterInRoom). Tapping opens the
-                // ranking page on the Monthly tab.
-                if (_monthTopGifterInRoom != null) ...[
-                  const SizedBox(width: 6),
-                  TinniPanel(
-                    key: const Key('room-header-top-gifter'),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                    onTap: () =>
-                        _openRoomGiftRanking(initialPeriod: 'month'),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.emoji_events_rounded,
-                          size: 15,
-                          color: TinniPalette.gold,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'ID ${formatPublicUserId(_monthTopGifterInRoom!['public_id'])}',
-                          style: const TextStyle(
-                            color: TinniPalette.gold,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                // Month's top-gifter ID pill removed permanently (Vinay,
+                // 2026-11-23: "hamesha ke liye hata de"). The getter
+                // _monthTopGifterInRoom stays (never-delete rule), only the
+                // visible pill is gone.
                 const Spacer(),
                 _RoomLampButton(onTap: _openLamp),
                 const SizedBox(width: 6),

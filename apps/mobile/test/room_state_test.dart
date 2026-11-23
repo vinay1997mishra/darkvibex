@@ -171,7 +171,7 @@ void main() {
     final source = File('lib/screens/room_screen.dart').readAsStringSync();
     final start = source.indexOf("key: const Key('room-header-total')");
     expect(start, isNot(-1));
-    final end = source.indexOf("// Month's top gifter", start);
+    final end = source.indexOf("// Month's top-gifter ID pill removed", start);
     final pill = source.substring(start, end);
     // Real gold trophy image (same asset as the rocket page), not the
     // painted emoji_events icon; coins total beside it, no 'Ranking'
@@ -183,6 +183,9 @@ void main() {
     expect(pill, isNot(contains("'Ranking'")));
     expect(pill, isNot(contains('emoji_events_rounded')));
     expect(pill, isNot(contains('monetization_on_rounded')));
+    // The month-top-gifter ID pill is gone permanently (Vinay, 2026-11-23:
+    // "hamesha ke liye hata de") — no top-gifter pill anywhere in the room.
+    expect(source, isNot(contains("room-header-top-gifter")));
   });
 
   test('seat join lets the server decide the lock and moves seats directly', () {
