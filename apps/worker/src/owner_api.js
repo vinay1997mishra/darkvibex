@@ -2416,7 +2416,7 @@ async function handleBanners(request, db, actor, parts) {
 // below always lists these three, merged with their saved override.
 const BASE_GAMES = [
   { id: "ludo", name: "Ludo" },
-  { id: "fruit-party", name: "Fruit Party" },
+  { id: "fruit-party", name: "Girls Party" },
   { id: "greedy-girl", name: "Greedy Girl" },
 ];
 

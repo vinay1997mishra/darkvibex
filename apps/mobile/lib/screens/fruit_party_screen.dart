@@ -1389,7 +1389,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   );
 }
 
-/// A Fruit Party grid tile: one girl per fruit. The resting tile shows
+/// A Girls Party grid tile: one girl per fruit. The resting tile shows
 /// her still (full girl, contain); the winning tile plays her kiss video
 /// (Greedy-Girl style, real video, not an emoji animation). The
 /// multiplier reads "N times" under her picture, like the reference

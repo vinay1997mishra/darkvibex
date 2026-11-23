@@ -1399,12 +1399,12 @@ async function globalBannerFeed(db, ts = now()) {
   }
   // Big game bet wins (Vinay, 2026-11-22): every user who wins
   // 30,000,000+ coins in a game round gets their banner in every
-  // room — e.g. "Ravi win 30M in Greedy Girl". Fruit Party and
+  // room — e.g. "Ravi win 30M in Greedy Girl". Girls Party and
   // Greedy Girl store their top-3 winners (with winning_coins) as
   // JSON in their results tables. A game win names no room (games
   // are not tied to one room), so its banner is not tappable.
   for (const [table, settledCol, gameName] of [
-    ["fruit_party_results", "settled_at", "Fruit Party"],
+    ["fruit_party_results", "settled_at", "Girls Party"],
     ["greedy_girl_results", "settled_at", "Greedy Girl"],
   ]) {
     try {
@@ -11716,7 +11716,7 @@ export default {
         })(),
       );
       // Game data retention (Vinay, 2026-11-19): game data backup is
-      // 45 days too — Ludo sessions, Greedy Girl / Fruit Party bets
+      // 45 days too — Ludo sessions, Greedy Girl / Girls Party bets
       // and results, lucky pouches and lucky numbers older than 45
       // days are deleted from D1. Separate try/catch so one cleanup
       // failing never blocks the other.

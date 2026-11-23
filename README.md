@@ -20,7 +20,7 @@ Cloudflare Workers Builds is connected to the `main` branch. Production Worker s
 - Latest main APK build must include the merged VIP1–VIP18 entrance nameplates and full profile-card cosmetics.
 
 ## Games
-- Fruit Party: half-screen server-settled fruit game.
+- Girls Party: half-screen server-settled fruit game.
 - Greedy Girl: half-screen 30-second food-multiplier game with server-authoritative bets, payouts, records, and room Game Center entry.
 
 ## Latest stability fix (2026-10-21)
