@@ -264,13 +264,23 @@ jobs:
         working-directory: apps/mobile
         run: flutter build apk --debug --build-number "$GITHUB_RUN_NUMBER" --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
 
-      - name: Build signed release APK
+      - name: Build signed release APKs and Play Store bundle
         if: env.ANDROID_KEYSTORE_PATH != ''
         working-directory: apps/mobile
         run: |
+          set -euo pipefail
           flutter clean
           flutter pub get
-          flutter build apk --release --build-number "$GITHUB_RUN_NUMBER" --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED"
+          BUILD_ARGS=(--release --build-number "$GITHUB_RUN_NUMBER" --dart-define=DARKVIBEX_API_ORIGIN="$DVX_API_ORIGIN" --dart-define=DARKVIBEX_PUSH_CONFIGURED="$DVX_PUSH_CONFIGURED")
+
+          # Universal APK: one file for direct download on all supported ABIs.
+          flutter build apk "${BUILD_ARGS[@]}"
+
+          # ABI-split APKs: smaller downloads for phones that use one CPU ABI.
+          flutter build apk --split-per-abi "${BUILD_ARGS[@]}"
+
+          # Play Store bundle: Google Play generates device-specific APK splits.
+          flutter build appbundle "${BUILD_ARGS[@]}"
 
       - name: Print APK signing certificate fingerprint
         shell: bash
@@ -317,6 +327,10 @@ jobs:
           path: |
             apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
             apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+            apps/mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            apps/mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            apps/mobile/build/app/outputs/flutter-apk/app-x86_64-release.apk
+            apps/mobile/build/app/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
 
@@ -340,6 +354,24 @@ jobs:
           fi
           cp "$apk" "$RUNNER_TEMP/$asset_name"
 
+          # Publish the ABI-specific installers and Play Store AAB alongside
+          # the universal APK. Missing outputs fail the release rather than
+          # silently publishing an incomplete set.
+          if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
+            out="apps/mobile/build/app/outputs/flutter-apk"
+            bundle="apps/mobile/build/app/outputs/bundle/release/app-release.aab"
+            test -f "$out/app-release.apk"
+            test -f "$out/app-arm64-v8a-release.apk"
+            test -f "$out/app-armeabi-v7a-release.apk"
+            test -f "$out/app-x86_64-release.apk"
+            test -f "$bundle"
+            cp "$out/app-release.apk" "$RUNNER_TEMP/DarkVibeX-latest-release.apk"
+            cp "$out/app-arm64-v8a-release.apk" "$RUNNER_TEMP/DarkVibeX-arm64-v8a-release.apk"
+            cp "$out/app-armeabi-v7a-release.apk" "$RUNNER_TEMP/DarkVibeX-armeabi-v7a-release.apk"
+            cp "$out/app-x86_64-release.apk" "$RUNNER_TEMP/DarkVibeX-x86_64-release.apk"
+            cp "$bundle" "$RUNNER_TEMP/DarkVibeX-latest-release.aab"
+          fi
+
           # GitHub can return HTTP 5xx while deleting an existing release asset
           # during --clobber. Repeated clobber calls hit the same broken asset ID.
           # If retries fail, recreate the rolling Release (not the git tag), then
@@ -353,6 +385,14 @@ jobs:
             fi
             if [ "$attempt" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
+          if [ -n "${ANDROID_KEYSTORE_PATH:-}" ]; then
+            gh release upload darkvibex-latest \
+              "$RUNNER_TEMP/DarkVibeX-arm64-v8a-release.apk" \
+              "$RUNNER_TEMP/DarkVibeX-armeabi-v7a-release.apk" \
+              "$RUNNER_TEMP/DarkVibeX-x86_64-release.apk" \
+              "$RUNNER_TEMP/DarkVibeX-latest-release.aab" \
+              --clobber
+          fi
           if [ "$uploaded" != true ]; then
             echo "Existing release asset could not be replaced; recreating rolling Release."
             release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/darkvibex-latest" --jq .id)"
