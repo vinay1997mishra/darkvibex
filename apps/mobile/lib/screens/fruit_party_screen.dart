@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -40,7 +41,16 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   bool loading = true;
   String panel = 'game';
   bool loadingState = false;
-  bool placingBet = false;
+  // Bet queue (Vinay, 2026-11-23 — "Fruit Party ko bhi queue wala bana
+  // de"): same pattern as Greedy Girl. A tap queues the bet at once and
+  // returns — the tiles and the amount chips never lock while a bet is
+  // in flight, so rapid counting taps all land. _drainBetQueue sends
+  // them one at a time; queuedDebit keeps the shown balance honest
+  // until each bet is confirmed.
+  bool drainingBetQueue = false;
+  final List<_QueuedFruitBet> betQueue = <_QueuedFruitBet>[];
+  final Map<String, int> queuedBets = <String, int>{};
+  int queuedDebit = 0;
   int serverTimeAtSync = 0;
   int localTimeAtSync = 0;
   int _lightStep = 0;
@@ -161,7 +171,14 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
 
   Map<String, dynamic> get _myBets {
     final raw = game['my_bets'];
-    return raw is Map ? Map<String, dynamic>.from(raw) : const {};
+    final base =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    // Queued (not yet confirmed) bets show at once, like Greedy Girl.
+    for (final entry in queuedBets.entries) {
+      final current = int.tryParse(base[entry.key]?.toString() ?? '') ?? 0;
+      base[entry.key] = current + entry.value;
+    }
+    return base;
   }
 
   List<Map<String, dynamic>> get _history {
@@ -232,7 +249,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (loadingState || placingBet) return;
+    if (loadingState || drainingBetQueue || betQueue.isNotEmpty) return;
     if (!widget.state.backendConnected) {
       if (!silent && mounted) {
         setState(() => loading = false);
@@ -293,7 +310,9 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
     final serverTime =
         int.tryParse(value['server_time']?.toString() ?? '') ?? 0;
     final balance = int.tryParse(value['wallet_balance']?.toString() ?? '');
-    if (balance != null) widget.state.setCoinBalance(balance);
+    if (balance != null) {
+      widget.state.setCoinBalance(math.max(0, balance - queuedDebit).toInt());
+    }
     final bets = value['config'] is Map
         ? Map<String, dynamic>.from(value['config'] as Map)['bet_amounts']
         : null;
@@ -310,30 +329,157 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
   }
 
   Future<void> _placeBet(String fruitKey) async {
-    if (placingBet || !_bettingOpen) return;
-    setState(() => placingBet = true);
-    final requestId =
-        'fp_${DateTime.now().microsecondsSinceEpoch}_${DateTime.now().millisecondsSinceEpoch}';
-    final result = await widget.state.backend.fruitPartyBet(
-      userId: widget.state.userId,
-      fruitKey: fruitKey,
-      amount: selectedBet,
-      requestId: requestId,
-    );
-    if (!mounted) return;
-    setState(() => placingBet = false);
+    if (!_bettingOpen) return;
 
-    if (result?['ok'] == true) {
-      _applyState(Map<String, dynamic>.from(result!));
+    final authoritativeWallet =
+        int.tryParse(game['wallet_balance']?.toString() ?? '') ??
+            widget.state.coins;
+    final availableWallet =
+        math.max(0, authoritativeWallet - queuedDebit).toInt();
+    final amount = selectedBet;
+    if (availableWallet < amount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough coins for this bet.')),
+      );
       return;
     }
-    final nested = result?['state'];
-    if (nested is Map && nested['ok'] == true) {
-      _applyState(Map<String, dynamic>.from(nested));
+
+    final bet = _QueuedFruitBet(
+      fruitKey: fruitKey,
+      amount: amount,
+      requestId:
+          'fp-${widget.state.userId}-${DateTime.now().microsecondsSinceEpoch}',
+    );
+
+    setState(() {
+      betQueue.add(bet);
+      queuedBets[fruitKey] = (queuedBets[fruitKey] ?? 0) + amount;
+      queuedDebit += amount;
+    });
+    widget.state.setCoinBalance(
+      math.max(0, authoritativeWallet - queuedDebit).toInt(),
+    );
+    unawaited(_drainBetQueue());
+  }
+
+  void _removeQueuedBet(_QueuedFruitBet bet) {
+    if (betQueue.isNotEmpty && identical(betQueue.first, bet)) {
+      betQueue.removeAt(0);
+    } else {
+      betQueue.remove(bet);
     }
-    final error =
-        result?['error']?.toString().replaceAll('_', ' ') ?? 'Bet failed';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    final next = (queuedBets[bet.fruitKey] ?? 0) - bet.amount;
+    if (next <= 0) {
+      queuedBets.remove(bet.fruitKey);
+    } else {
+      queuedBets[bet.fruitKey] = next;
+    }
+    queuedDebit = math.max(0, queuedDebit - bet.amount).toInt();
+  }
+
+  void _applyBetAck(
+    Map<String, dynamic> result,
+    _QueuedFruitBet bet,
+  ) {
+    final next = Map<String, dynamic>.from(game);
+    final baseBets = next['my_bets'] is Map
+        ? Map<String, dynamic>.from(next['my_bets'] as Map)
+        : <String, dynamic>{};
+    final current =
+        int.tryParse(baseBets[bet.fruitKey]?.toString() ?? '') ?? 0;
+    baseBets[bet.fruitKey] = current + bet.amount;
+    next['my_bets'] = baseBets;
+
+    final wallet =
+        int.tryParse(result['wallet_balance']?.toString() ?? '');
+    if (wallet != null) {
+      next['wallet_balance'] = wallet;
+      widget.state.setCoinBalance(math.max(0, wallet - queuedDebit).toInt());
+    }
+
+    final serverTime =
+        int.tryParse(result['server_time']?.toString() ?? '') ?? 0;
+    if (serverTime > 0) {
+      next['server_time'] = serverTime;
+      serverTimeAtSync = serverTime;
+      localTimeAtSync = DateTime.now().millisecondsSinceEpoch;
+    }
+
+    if (mounted) {
+      setState(() {
+        game = next;
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> _drainBetQueue() async {
+    if (drainingBetQueue) return;
+    drainingBetQueue = true;
+    var needsReconcile = false;
+
+    try {
+      while (mounted && betQueue.isNotEmpty) {
+        final bet = betQueue.first;
+        Map<String, dynamic>? result;
+        Object? failure;
+
+        try {
+          result = await widget.state.backend.fruitPartyBet(
+            userId: widget.state.userId,
+            fruitKey: bet.fruitKey,
+            amount: bet.amount,
+            requestId: bet.requestId,
+          );
+        } catch (error) {
+          failure = error;
+        }
+
+        if (!mounted) return;
+        setState(() => _removeQueuedBet(bet));
+
+        if (result?['ok'] == true) {
+          if (result?['my_bets'] is Map) {
+            _applyState(Map<String, dynamic>.from(result!));
+          } else {
+            _applyBetAck(result!, bet);
+          }
+          continue;
+        }
+
+        final returnedState = result?['state'];
+        if (returnedState is Map) {
+          _applyState(Map<String, dynamic>.from(returnedState));
+        } else {
+          needsReconcile = true;
+        }
+
+        final raw = result?['error']?.toString().trim();
+        final error = switch (raw) {
+          'insufficient_coins' => 'Not enough coins for this bet.',
+          'betting_locked' =>
+            'Betting closed for this round. Next round is starting.',
+          'games_disabled' => 'Games are disabled by the owner.',
+          'unauthorized' || 'forbidden' =>
+            'Login session expired. Sign in again.',
+          null || '' => failure == null
+              ? 'Bet could not reach the server. Try again.'
+              : 'Bet connection failed. Try again.',
+          _ => raw.replaceAll('_', ' '),
+        };
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
+    } finally {
+      drainingBetQueue = false;
+      if (mounted) {
+        setState(() {});
+        if (needsReconcile || betQueue.isEmpty) {
+          unawaited(_load(silent: true));
+        }
+      }
+    }
   }
 
   String _compact(int value) {
@@ -540,7 +686,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
       won: won,
       bet: bet,
       compactBet: bet > 0 ? _compact(bet) : null,
-      onTap: _bettingOpen && !placingBet ? () => _placeBet(key) : null,
+      onTap: _bettingOpen ? () => unawaited(_placeBet(key)) : null,
     );
   }
 
@@ -610,9 +756,7 @@ class _FruitPartyScreenState extends State<FruitPartyScreen> {
         padding: EdgeInsets.only(right: index == _betAmounts.length - 1 ? 0 : 4),
         child: InkWell(
           key: Key('fruit-party-bet-${_compact(amount)}'),
-          onTap: placingBet
-              ? null
-              : () => setState(() => selectedBet = amount),
+          onTap: () => setState(() => selectedBet = amount),
           child: Container(
             height: 28,
             alignment: Alignment.center,
@@ -1581,4 +1725,16 @@ class _MarqueeFrame extends StatelessWidget {
       ],
     );
   }
+}
+
+class _QueuedFruitBet {
+  const _QueuedFruitBet({
+    required this.fruitKey,
+    required this.amount,
+    required this.requestId,
+  });
+
+  final String fruitKey;
+  final int amount;
+  final String requestId;
 }
