@@ -567,17 +567,10 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
     );
     if (receiver == null || !mounted) return;
 
-    // Combined gifts + diamonds + coins (Vinay, 2026-11-21): ONE call
-    // carrying the full catalog + live balances, instead of a separate
-    // giftCatalog call.
-    final combined = await widget.state.backend.giftsCombinedState();
-    final combinedRows = combined?['gifts'];
-    final gifts = combinedRows is List
-        ? combinedRows
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(growable: false)
-        : const <Map<String, dynamic>>[];
+    // Separate gift catalog call (no combined gifts API any more).
+    final gifts = await widget.state.backend.giftCatalog(
+      userId: widget.state.userId,
+    );
     if (!mounted || gifts.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,10 +1,14 @@
-// Room gift ranking rides the 3s room state poll (Vinay, 2026-11-21):
-// the state response always carries the lifetime total + the current
-// month's top gifter, and the full top-99 list only when ?period= is
-// passed (the ranking page polls with it). Periods are IST calendar
-// windows: day changes at IST midnight, week every Monday 00:00 IST,
-// month refreshes on the 1st. A day with no sending returns an empty
-// day ranking. This room only — no other room's ranking.
+// Room gift ranking comes from the separate gift-ranking call
+// (GET /api/rooms/:id/gift-ranking, no combined room-state any more):
+// the response always carries the lifetime total + the current IST-day
+// total (daily_total — the rocket level runs on it and returns to 1st
+// on the new day) + the current month's top gifter, and the full
+// top-99 list only when ?period= is passed (the ranking page polls
+// with it). Without ?period= it returns the lifetime top 20. Periods
+// are IST calendar windows: day changes at IST midnight, week every
+// Monday 00:00 IST, month refreshes on the 1st. A day with no sending
+// returns an empty day ranking. This room only — no other room's
+// ranking.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -132,25 +136,33 @@ test("day ranking shows only today's senders; month top is the month's top sende
   seedGift(fx, roomId, alice.userId, host.userId, 9000, todayStart - 3600_000);
   seedGift(fx, otherRoomId, alice.userId, host.userId, 99999, now - 1000);
 
-  const day = await fx.request(`/api/rooms/${roomId}/state?period=day`, { userId: host.userId });
+  const day = await fx.request(`/api/rooms/${roomId}/gift-ranking?period=day`, { userId: host.userId });
   assert.equal(day.status, 200, JSON.stringify(day.body));
-  assert.equal(day.body.gift_period, "day");
+  assert.equal(day.body.period, "day");
   assert.deepEqual(
-    day.body.gift_ranking.map((row) => [row.user_id, row.sent_coins]),
+    day.body.ranking.map((row) => [row.user_id, row.sent_coins]),
     [[alice.userId, 5000], [bob.userId, 3000]],
   );
-  assert.equal(day.body.gift_ranking[0].public_id, alice.publicId);
-  assert.equal(day.body.gift_lifetime_total, 17000);
+  assert.equal(day.body.ranking[0].public_id, alice.publicId);
+  assert.equal(day.body.lifetime_total, 17000);
+  // Daily total: only today's gifts (5000 + 3000) — yesterday's 9000
+  // does not count, so the rocket level runs on this and resets at
+  // IST midnight.
+  assert.equal(day.body.daily_total, 8000);
   // Month top: alice sent 5000 today + 9000 yesterday (same month unless
   // today is the 1st, when yesterday is last month — still alice on top).
-  assert.equal(day.body.gift_month_top.user_id, alice.userId);
+  assert.equal(day.body.month_top.user_id, alice.userId);
 
-  const noPeriod = await fx.request(`/api/rooms/${roomId}/state`, { userId: host.userId });
+  const noPeriod = await fx.request(`/api/rooms/${roomId}/gift-ranking`, { userId: host.userId });
   assert.equal(noPeriod.status, 200, JSON.stringify(noPeriod.body));
-  assert.equal(noPeriod.body.gift_period, "lifetime");
-  assert.deepEqual(noPeriod.body.gift_ranking, []);
-  assert.equal(noPeriod.body.gift_lifetime_total, 17000);
-  assert.equal(noPeriod.body.gift_month_top.user_id, alice.userId);
+  assert.equal(noPeriod.body.period, "lifetime");
+  assert.deepEqual(
+    noPeriod.body.ranking.map((row) => [row.user_id, row.sent_coins]),
+    [[alice.userId, 14000], [bob.userId, 3000]],
+  );
+  assert.equal(noPeriod.body.lifetime_total, 17000);
+  assert.equal(noPeriod.body.daily_total, 8000);
+  assert.equal(noPeriod.body.month_top.user_id, alice.userId);
 });
 
 test("a day with no sending returns an empty day ranking; an empty room has no month top", async () => {
@@ -160,18 +172,18 @@ test("a day with no sending returns an empty day ranking; an empty room has no m
   const roomId = await makeRoom(fx, host.userId);
   await joinRoom(fx, roomId, host.userId);
 
-  const empty = await fx.request(`/api/rooms/${roomId}/state?period=day`, { userId: host.userId });
+  const empty = await fx.request(`/api/rooms/${roomId}/gift-ranking?period=day`, { userId: host.userId });
   assert.equal(empty.status, 200, JSON.stringify(empty.body));
-  assert.deepEqual(empty.body.gift_ranking, []);
-  assert.equal(empty.body.gift_month_top, null);
-  assert.equal(empty.body.gift_lifetime_total, 0);
+  assert.deepEqual(empty.body.ranking, []);
+  assert.equal(empty.body.month_top, null);
+  assert.equal(empty.body.lifetime_total, 0);
 
   const now = Date.now();
   seedGift(fx, roomId, alice.userId, host.userId, 4000, istDayStart(now) - 3600_000);
-  const day = await fx.request(`/api/rooms/${roomId}/state?period=day`, { userId: host.userId });
+  const day = await fx.request(`/api/rooms/${roomId}/gift-ranking?period=day`, { userId: host.userId });
   assert.equal(day.status, 200, JSON.stringify(day.body));
-  assert.deepEqual(day.body.gift_ranking, []);
-  assert.equal(day.body.gift_lifetime_total, 4000);
+  assert.deepEqual(day.body.ranking, []);
+  assert.equal(day.body.lifetime_total, 4000);
 });
 
 test("week and month rankings follow IST calendar windows", async () => {
@@ -192,19 +204,19 @@ test("week and month rankings follow IST calendar windows", async () => {
   seedGift(fx, monthRoomId, alice.userId, host.userId, 6000, monthStart + 3600_000);
   seedGift(fx, monthRoomId, bob.userId, host.userId, 9000, monthStart - 3600_000);
 
-  const week = await fx.request(`/api/rooms/${weekRoomId}/state?period=week`, { userId: host.userId });
+  const week = await fx.request(`/api/rooms/${weekRoomId}/gift-ranking?period=week`, { userId: host.userId });
   assert.equal(week.status, 200, JSON.stringify(week.body));
-  assert.equal(week.body.gift_period, "week");
+  assert.equal(week.body.period, "week");
   assert.deepEqual(
-    week.body.gift_ranking.map((row) => [row.user_id, row.sent_coins]),
+    week.body.ranking.map((row) => [row.user_id, row.sent_coins]),
     [[alice.userId, 5000]],
   );
 
-  const month = await fx.request(`/api/rooms/${monthRoomId}/state?period=month`, { userId: host2.userId });
+  const month = await fx.request(`/api/rooms/${monthRoomId}/gift-ranking?period=month`, { userId: host2.userId });
   assert.equal(month.status, 200, JSON.stringify(month.body));
-  assert.equal(month.body.gift_period, "month");
+  assert.equal(month.body.period, "month");
   assert.deepEqual(
-    month.body.gift_ranking.map((row) => [row.user_id, row.sent_coins]),
+    month.body.ranking.map((row) => [row.user_id, row.sent_coins]),
     [[alice.userId, 6000]],
   );
 });
@@ -219,11 +231,11 @@ test("top 99 cap: 105 senders today returns 99 rows, best first", async () => {
     const user = await makeUser(fx, `cap-${i}`);
     seedGift(fx, roomId, user.userId, host.userId, (i + 1) * 100, now - 1000);
   }
-  const day = await fx.request(`/api/rooms/${roomId}/state?period=day`, { userId: host.userId });
+  const day = await fx.request(`/api/rooms/${roomId}/gift-ranking?period=day`, { userId: host.userId });
   assert.equal(day.status, 200, JSON.stringify(day.body));
-  assert.equal(day.body.gift_ranking.length, 99);
-  assert.equal(day.body.gift_ranking[0].user_id, "cap-104");
-  assert.equal(day.body.gift_ranking[0].sent_coins, 10500);
-  assert.equal(day.body.gift_ranking[98].user_id, "cap-6");
-  assert.equal(day.body.gift_ranking[98].sent_coins, 700);
+  assert.equal(day.body.ranking.length, 99);
+  assert.equal(day.body.ranking[0].user_id, "cap-104");
+  assert.equal(day.body.ranking[0].sent_coins, 10500);
+  assert.equal(day.body.ranking[98].user_id, "cap-6");
+  assert.equal(day.body.ranking[98].sent_coins, 700);
 });

@@ -101,7 +101,7 @@ function memberIds(body) {
   return (body.members ?? []).map((member) => String(member.user_id));
 }
 
-test("a member quiet for over 30s still gets room state but is hidden until they poll again", async () => {
+test("a member quiet for over 30s still gets the members poll but is hidden until they poll again", async () => {
   const fx = await fixture();
   await makeUser(fx, "owner");
   await makeUser(fx, "member");
@@ -117,11 +117,11 @@ test("a member quiet for over 30s still gets room state but is hidden until they
   assert.equal(memberIds(hidden.body).includes("member"), false);
   assert.equal(memberCount(fx, roomId), 2);
 
-  // The quiet member still gets the combined state — no 403, no kick.
-  const state = await fx.request(`/api/rooms/${roomId}/state`, { userId: "member" });
+  // The quiet member still gets the members poll — no 403, no kick.
+  const state = await fx.request(`/api/rooms/${roomId}/members`, { userId: "member" });
   assert.equal(state.status, 200, JSON.stringify(state.body));
   assert.equal(state.body.ok, true);
-  // Their own state call heartbeats them, so they are online again
+  // Their own members call heartbeats them, so they are online again
   // and reappear in the list at once.
   assert.equal(memberIds(state.body).includes("member"), true);
   const shown = await fx.request(`/api/rooms/${roomId}/members?user_id=owner`, { userId: "owner" });

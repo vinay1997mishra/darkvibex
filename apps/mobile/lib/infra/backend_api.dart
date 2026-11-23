@@ -41,7 +41,7 @@ class BackendApi {
     <String, Object>{'id': 'heart-crystal', 'name': 'Heart Crystal', 'emoji': '💗', 'coin_cost': 800000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'diya-blessing', 'name': 'Diya Blessing', 'emoji': '🪔', 'coin_cost': 250000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'royal-thali', 'name': 'Royal Thali', 'emoji': '🍽️', 'coin_cost': 900000, 'vip_level': 0, 'category': 'luxury'},
-    <String, Object>{'id': 'magic-lamp', 'name': 'Magic Lamp', 'emoji': '🪔', 'coin_cost': 2000000, 'vip_level': 0, 'category': 'lucky'},
+    <String, Object>{'id': 'magic-lamp', 'name': 'Magic Lamp', 'coin_cost': 2000000, 'vip_level': 0, 'category': 'normal', 'asset_key': 'gifts/normal-3d/magic-lamp.png', 'local_asset': 'assets/images/gold_lamp.png'},
     <String, Object>{'id': 'rainbow-gemstones', 'name': 'Rainbow Gemstones', 'emoji': '💎', 'coin_cost': 600000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'flower-swing', 'name': 'Flower Swing', 'emoji': '🌺', 'coin_cost': 1100000, 'vip_level': 0, 'category': 'cp'},
     <String, Object>{'id': 'crown-shower', 'name': 'Crown Shower', 'emoji': '👑', 'coin_cost': 2500000, 'vip_level': 0, 'category': 'luxury'},
@@ -742,10 +742,14 @@ class BackendApi {
         .toList(growable: false);
   }
 
-  Future<Map<String, dynamic>?> roomGiftRanking({required String roomId}) =>
+  Future<Map<String, dynamic>?> roomGiftRanking({
+    required String roomId,
+    String? period,
+  }) =>
       _json(
         'GET',
-        '/api/rooms/${Uri.encodeComponent(roomId)}/gift-ranking',
+        '/api/rooms/${Uri.encodeComponent(roomId)}/gift-ranking'
+        '${period == null ? '' : '?period=${Uri.encodeQueryComponent(period)}'}',
       );
 
   Future<Map<String, dynamic>?> roomRocketRewardStatus({
@@ -1328,23 +1332,6 @@ class BackendApi {
     return featured;
   }
 
-  /// Combined gifts + diamonds + coins (Vinay, 2026-11-21 — "Har user ka
-  /// alag combined API rakh"): ONE session-scoped call every 3s carrying the
-  /// full priced catalog + this user's live coin/diamond balances + recent
-  /// histories. Same pattern as [fruitPartyState]/[greedyGirlState]: the
-  /// server derives the user from the session, so no user_id is sent. The
-  /// standalone [giftCatalog]/[diamondsHistory]/[coinsHistory] calls keep
-  /// working unchanged (full histories on open); this is the live source.
-  Future<Map<String, dynamic>?> giftsCombinedState() async {
-    final value = await _json(
-      'GET',
-      '/api/gifts/combined',
-      returnErrorBody: true,
-    );
-    if (value == null) return null;
-    return Map<String, dynamic>.from(value);
-  }
-
   Future<List<Map<String, dynamic>>> customGifts({
     required String userId,
   }) async {
@@ -1592,15 +1579,30 @@ class BackendApi {
         returnErrorBody: true,
       );
 
-  /// Combined Girls Party state (round + timer + config + wallet +
-  /// my bets + history) in ONE call. The screen polls this every 3s
-  /// (Vinay, 2026-11-21) instead of separate state calls — same pattern
-  /// as [roomStateOrNull]; the 250ms local clock keeps the countdown
-  /// ticking between syncs and a poll only corrects it to server time.
-  Future<Map<String, dynamic>?> fruitPartyState() =>
+  /// Girls Party, separate calls (no combined game-state any more): the
+  /// screen polls [fruitPartyRound] every 3s for the live round + timer +
+  /// config; [fruitPartyMyBets] for its own bets + today's winnings and
+  /// [fruitPartyHistory] for the last 7 results. The 250ms local clock
+  /// keeps the countdown ticking between syncs and a poll only corrects
+  /// it to server time. The wallet balance comes from refreshWallet.
+  Future<Map<String, dynamic>?> fruitPartyRound() =>
       _json(
         'GET',
-        '/api/games/fruit-party/state',
+        '/api/games/fruit-party/round',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> fruitPartyMyBets() =>
+      _json(
+        'GET',
+        '/api/games/fruit-party/my-bets',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> fruitPartyHistory() =>
+      _json(
+        'GET',
+        '/api/games/fruit-party/history',
         returnErrorBody: true,
       );
 
@@ -1622,15 +1624,30 @@ class BackendApi {
         },
       );
 
-  /// Combined Greedy Girl state (round + timer + config + wallet +
-  /// my bets + history) in ONE call. The screen polls this every 3s
-  /// (Vinay, 2026-11-21) instead of separate state calls — same pattern
-  /// as [roomStateOrNull]; the 250ms local clock keeps the countdown
-  /// ticking between syncs and a poll only corrects it to server time.
-  Future<Map<String, dynamic>?> greedyGirlState() =>
+  /// Greedy Girl, separate calls (no combined game-state any more): the
+  /// screen polls [greedyGirlRound] every 3s for the live round + timer +
+  /// config; [greedyGirlMyBets] for its own bets + today's winnings and
+  /// [greedyGirlHistory] for the last 7 results. The 250ms local clock
+  /// keeps the countdown ticking between syncs and a poll only corrects
+  /// it to server time. The wallet balance comes from refreshWallet.
+  Future<Map<String, dynamic>?> greedyGirlRound() =>
       _json(
         'GET',
-        '/api/games/greedy-girl/state',
+        '/api/games/greedy-girl/round',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> greedyGirlMyBets() =>
+      _json(
+        'GET',
+        '/api/games/greedy-girl/my-bets',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> greedyGirlHistory() =>
+      _json(
+        'GET',
+        '/api/games/greedy-girl/history',
         returnErrorBody: true,
       );
 
@@ -1688,32 +1705,6 @@ class BackendApi {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList();
-  }
-
-  /// Combined room state (members + messages + controls + gift events),
-  /// or null when the request failed. The worker answers 403
-  /// `room_membership_required` when the caller's own membership row
-  /// is gone (kicked), so null here is the kick signal — unlike an
-  /// empty members list, which also happens when a 200-member room cuts
-  /// the caller off (the worker caps the list at 200 rows). Mirrors
-  /// the null-on-failure contract of [roomMembersOrNull]. The room
-  /// screen polls this every 3s instead of the four separate
-  /// members/messages/controls/gift-events calls; [after]/[afterId]
-  /// are the gift-events incremental cursor, as in [roomGiftEvents].
-  Future<Map<String, dynamic>?> roomStateOrNull({
-    required String roomId,
-    int after = 0,
-    String afterId = '',
-    String? period,
-  }) async {
-    final value = await _json(
-      'GET',
-      '/api/rooms/${Uri.encodeComponent(roomId)}/state'
-      '?after=$after&after_id=${Uri.encodeQueryComponent(afterId)}'
-      '${period == null ? '' : '&period=${Uri.encodeQueryComponent(period)}'}',
-    );
-    if (value == null) return null;
-    return Map<String, dynamic>.from(value);
   }
 
   /// Top-of-room banner feed (Vinay, 2026-11-22): the cross-room

@@ -3,14 +3,12 @@ import 'dart:io';
 import 'package:darkvibex/screens/wallet_detail_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Combined gifts + diamonds + coins (Vinay, 2026-11-21 — "Har user ka alag
-// combined API rakh"): ONE session-scoped call every 3s carrying the full
-// priced catalog + this user's live balances + recent histories. The
-// Diamonds/Coins screens poll it while open (merging new rows on top of the
-// full history loaded on open), and the three gift UIs take their catalog
-// from it instead of separate giftCatalog calls. The standalone
-// giftCatalog/diamondsHistory/coinsHistory endpoints keep working (worker
-// tests cover them); this test covers the live wiring.
+// Separate gifts + diamonds + coins calls (combined gifts API removed
+// 2026-11-23, Vinay: "combined API hta de, har jagah se"): the priced
+// catalog comes from giftCatalog, live balances from refreshWallet, and
+// the Diamonds/Coins screens poll their own history endpoints every 3s
+// (merging new rows on top of the full history loaded on open). The
+// worker tests cover the endpoints; this test covers the live wiring.
 void main() {
   test('mergeHistoryRows puts new rows first, dedupes by id, caps at 200', () {
     final existing = <Map<String, dynamic>>[
@@ -35,34 +33,64 @@ void main() {
     expect(mergeHistoryRows(existing, const []), existing);
   });
 
-  test('Diamonds + Coins + Seller-received screens poll ONE combined call every 3s', () {
+  test('Diamonds + Coins + Seller-received screens poll separate history calls every 3s', () {
     final wallet =
         File('lib/screens/wallet_detail_screens.dart').readAsStringSync();
-    expect(wallet, contains('giftsCombinedState'));
+    expect(wallet, isNot(contains('giftsCombinedState')));
+    expect(wallet, isNot(contains('_pollCombined')));
+    expect(wallet, contains('_pollHistory'));
+    expect(wallet, contains('coinsHistory'));
+    expect(wallet, contains('diamondsHistory'));
+    expect(wallet, contains('refreshWallet'));
     // One 3s poll each: Diamonds, Coins History, Seller Received.
     expect('Duration(seconds: 3)'.allMatches(wallet).length, 3);
     expect('Timer.periodic('.allMatches(wallet).length, 3);
-    expect(wallet, contains('_pollCombined'));
     expect(wallet, contains('mergeHistoryRows'));
   });
 
-  test('gift UIs take their catalog from the combined call', () {
+  test('gift UIs take their catalog from the separate catalog call', () {
     final room = File('lib/screens/room_screen.dart').readAsStringSync();
-    expect(room, contains('giftsCombinedState'));
-    expect(room, isNot(contains('giftCatalog(')));
+    expect(room, isNot(contains('giftsCombinedState')));
+    expect(room, contains('giftCatalog('));
 
     final gameRoom =
         File('lib/screens/game_room_screen.dart').readAsStringSync();
-    expect(gameRoom, contains('giftsCombinedState'));
-    expect(gameRoom, isNot(contains('giftCatalog(')));
+    expect(gameRoom, isNot(contains('giftsCombinedState')));
+    expect(gameRoom, contains('giftCatalog('));
 
     final gifts = File('lib/screens/gifts_screen.dart').readAsStringSync();
-    expect(gifts, contains('giftsCombinedState'));
+    expect(gifts, isNot(contains('giftsCombinedState')));
+    expect(gifts, contains('giftCatalog('));
   });
 
-  test('BackendApi exposes the session-scoped combined endpoint', () {
+  test('BackendApi exposes the separate endpoints, no combined call', () {
     final api = File('lib/infra/backend_api.dart').readAsStringSync();
-    expect(api, contains("'/api/gifts/combined'"));
-    expect(api, contains('giftsCombinedState'));
+    expect(api, isNot(contains("'/api/gifts/combined'")));
+    expect(api, isNot(contains('giftsCombinedState')));
+    expect(api, contains('/api/gifts/catalog?user_id='));
+    expect(api, contains('coinsHistory'));
+    expect(api, contains('diamondsHistory'));
+  });
+
+  test('Magic Lamp never renders as a flat emoji — the gold lamp is bundled (Vinay, 2026-11-23)', () {
+    final api = File('lib/infra/backend_api.dart').readAsStringSync();
+    final preview =
+        File('lib/widgets/gift_media_preview.dart').readAsStringSync();
+    final gifts = File('lib/screens/gifts_screen.dart').readAsStringSync();
+    // The offline fallback entry carries the real art, not the 🪔 emoji,
+    // and its category is normal (a Normal-panel gift, not lucky).
+    final start = api.indexOf("'id': 'magic-lamp'");
+    expect(start, isNot(-1));
+    final entry = api.substring(start, api.indexOf('},', start));
+    expect(entry, contains("'local_asset': 'assets/images/gold_lamp.png'"));
+    expect(entry, contains("'asset_key': 'gifts/normal-3d/magic-lamp.png'"));
+    expect(entry, contains("'category': 'normal'"));
+    expect(entry, isNot(contains('🪔')));
+    expect(entry, isNot(contains("'emoji'")));
+    // The preview renders a bundled image before any network art, and the
+    // gift grid passes the entry's local asset through.
+    expect(preview, contains('widget.localAsset'));
+    expect(preview, contains('Image.asset(localAsset'));
+    expect(gifts, contains("gift['local_asset']"));
   });
 }

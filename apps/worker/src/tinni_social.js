@@ -272,6 +272,80 @@ export async function totalRechargedUsdCents(db, userId) {
   return playCents + sellerCents;
 }
 
+// Dollar levels for a batch of users (room chat tags, Vinay 2026-11-23):
+// one Play query + one ledger query for all ids, then the same ladder
+// (with the owner override) as profileStats, so the chat tag and the
+// profile always agree. Wealth IS the dollar level — one gold-$ tag.
+export async function dollarLevelsByUser(db, userIds) {
+  const ids = [...new Set(
+    (userIds ?? []).map((id) => String(id ?? "").trim()).filter(Boolean),
+  )];
+  const levels = new Map(ids.map((id) => [id, 0]));
+  if (!ids.length) return levels;
+  const placeholders = ids.map(() => "?").join(",");
+  const centsByUser = new Map(ids.map((id) => [id, 0]));
+  const isMissingTable = (error) => /no such table/i.test(String(error?.message ?? error));
+  // Granted Play purchases, by product (refunded/pending excluded).
+  try {
+    const rows = await db.prepare(`
+      SELECT user_id, COALESCE(SUM(CASE product_id
+        WHEN 'coins_8000000' THEN 100
+        WHEN 'coins_16000000' THEN 200
+        WHEN 'coins_40000000' THEN 500
+        WHEN 'coins_80000000' THEN 1000
+        ELSE 0 END),0) AS total
+        FROM play_purchases
+       WHERE user_id IN (${placeholders}) AND status='granted'
+       GROUP BY user_id
+    `).bind(...ids).all();
+    for (const row of rows.results ?? []) {
+      centsByUser.set(String(row.user_id), Number(row.total ?? 0));
+    }
+  } catch (error) {
+    if (!isMissingTable(error)) throw error;
+  }
+  // Coins received from a coin seller / merchant transfer, $1 = 8M coins.
+  try {
+    const rows = await db.prepare(`
+      SELECT user_id, COALESCE(SUM(amount),0) AS total FROM wallet_ledger
+       WHERE user_id IN (${placeholders})
+         AND kind IN ('coin_seller_received','merchant_received')
+       GROUP BY user_id
+    `).bind(...ids).all();
+    for (const row of rows.results ?? []) {
+      const userId = String(row.user_id);
+      const sellerCents = Math.floor(Number(row.total ?? 0) * 100 / COINS_PER_USD);
+      centsByUser.set(userId, (centsByUser.get(userId) ?? 0) + sellerCents);
+    }
+  } catch (error) {
+    if (!isMissingTable(error)) throw error;
+  }
+  // The owner can override the whole ladder (same key as profileStats).
+  let thresholds = dollarLevelThresholdsCents();
+  try {
+    const row = await db.prepare(
+      "SELECT value_json FROM owner_settings WHERE key=?"
+    ).bind("dollar_level_thresholds").first();
+    const parsed = JSON.parse(String(row?.value_json ?? "[]"));
+    if (Array.isArray(parsed)) {
+      const custom = parsed
+        .map((value) => Math.max(0, Number(value || 0)))
+        .filter(Number.isFinite)
+        .sort((a, b) => a - b);
+      if (custom.length) thresholds = custom;
+    }
+  } catch (_) {}
+  for (const [userId, cents] of centsByUser) {
+    let level = 0;
+    for (const threshold of thresholds) {
+      if (cents >= threshold) level += 1;
+      else break;
+    }
+    levels.set(userId, level);
+  }
+  return levels;
+}
+
 export async function profileStats(db, userId) {
   await ensureTinniSocialSchema(db);
   const following = await db.prepare(

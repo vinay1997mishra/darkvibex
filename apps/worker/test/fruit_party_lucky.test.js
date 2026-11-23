@@ -38,7 +38,7 @@ for (const [roll, type, keys, payout] of [
     sqlite.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
     const db = new D1(sqlite);
     let sequence = 0;
-    const api = runInNewContext(core + '\n({ensureFruitPartySchema, settleFruitPartyRound, fruitPartyState});', {
+    const api = runInNewContext(core + '\n({ensureFruitPartySchema, settleFruitPartyRound, fruitPartyHistoryState});', {
       crypto: { getRandomValues: (values) => { values[0] = roll; return values; } },
       now: () => 281000, id: () => `ledger-${sequence++}`,
     });
@@ -56,9 +56,9 @@ for (const [roll, type, keys, payout] of [
     assert.equal(result.total_payout, payout);
     assert.equal(sqlite.prepare("SELECT coins FROM users WHERE id='player'").get().coins, 1000000 + payout);
     assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM wallet_ledger').get().n, 1);
-    const state = await api.fruitPartyState(db, 'player', 281000);
-    assert.equal(state.history[0].lucky_type, type);
-    assert.deepEqual(Array.from(state.history[0].bonus_fruits, fruit => fruit.key), keys);
+    const history = await api.fruitPartyHistoryState(db);
+    assert.equal(history.history[0].lucky_type, type);
+    assert.deepEqual(Array.from(history.history[0].bonus_fruits, fruit => fruit.key), keys);
     sqlite.close();
   });
 }

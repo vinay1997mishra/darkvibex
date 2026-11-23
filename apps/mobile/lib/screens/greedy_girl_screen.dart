@@ -136,11 +136,11 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
   void initState() {
     super.initState();
     unawaited(_load());
-    // Combined game-state (Vinay, 2026-11-21): ONE worker call every 3s
-    // carrying round + timer + config + wallet + my bets + history, so
-    // everything updates together in one go — same pattern as the room
-    // combined API. The 250ms clock below keeps the countdown ticking
-    // locally between syncs; a poll only corrects it to server time.
+    // Separate game calls (no combined game-state any more): round +
+    // timer + config, own bets + today's winnings, and the last 7
+    // results each come from their own endpoint every 3s. The 250ms
+    // clock below keeps the countdown ticking locally between syncs;
+    // a poll only corrects it to server time.
     // (The 5s kiss timer further down only replays the local emote
     // video — it makes no network call.)
     refreshTimer = Timer.periodic(
@@ -240,19 +240,41 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
     }
 
     loadingState = true;
-    Map<String, dynamic>? value;
+    Map<String, dynamic>? round;
+    Map<String, dynamic>? bets;
+    Map<String, dynamic>? history;
     Object? failure;
+    // Each slice is fetched on its own (Vinay, 2026-11-23 — "game bhi
+    // play nhi ho raha"): one failing slice must not blank the whole
+    // game the way the old combined call did. The round is the only
+    // required slice; bets/history fall back to empty below, and the
+    // balance falls back to the cached coins.
     try {
-      value = await widget.state.backend.greedyGirlState();
+      round = await widget.state.backend.greedyGirlRound();
     } catch (error) {
       failure = error;
-    } finally {
-      loadingState = false;
+      round = null;
     }
+    try {
+      bets = await widget.state.backend.greedyGirlMyBets();
+    } catch (_) {
+      bets = null;
+    }
+    try {
+      history = await widget.state.backend.greedyGirlHistory();
+    } catch (_) {
+      history = null;
+    }
+    try {
+      await widget.state.refreshWallet(notify: false);
+    } catch (_) {
+      // Balance stays cached; the next poll retries.
+    }
+    loadingState = false;
 
     if (!mounted) return;
-    if (value == null || value['ok'] != true) {
-      final raw = value?['error']?.toString().trim();
+    if (round == null || round['ok'] != true) {
+      final raw = round?['error']?.toString().trim();
       final message = raw == null || raw.isEmpty
           ? (failure == null
               ? 'Greedy Girl server did not respond. Tap Retry.'
@@ -271,7 +293,13 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
       }
       return;
     }
-    _applyState(value);
+    _applyState(<String, dynamic>{
+      ...round,
+      'wallet_balance': widget.state.coins,
+      'today_winnings': bets?['today_winnings'] ?? 0,
+      'my_bets': bets?['my_bets'] ?? const <String, dynamic>{},
+      'history': history?['history'] ?? const <Map<String, dynamic>>[],
+    });
   }
 
   void _applyState(Map<String, dynamic> value) {

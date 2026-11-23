@@ -49,6 +49,7 @@ flutter:
     - assets/branding/darkvibex_launcher.webp
     - assets/images/greedy_girl_mascot.webp
     - assets/images/gold_trophy.png
+    - assets/images/gold_lamp.png
     - assets/images/cp_card_reference.webp
     - assets/images/vs_card_reference.webp
     - assets/images/friend_lock_card_ref.webp

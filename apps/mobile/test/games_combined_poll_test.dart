@@ -198,9 +198,53 @@ void main() {
     },
   );
 
-  test('Both games poll ONE combined state call every 3s (no 5s game poll)', () {
+  test('each game slice loads on its own — one failing call never blanks the game', () {
     final fruitParty =
         File('lib/screens/fruit_party_screen.dart').readAsStringSync();
+    expect(
+      fruitParty,
+      contains('try {\n      round = await widget.state.backend.fruitPartyRound();'),
+    );
+    expect(
+      fruitParty,
+      contains('try {\n      bets = await widget.state.backend.fruitPartyMyBets();'),
+    );
+    expect(
+      fruitParty,
+      contains('try {\n      history = await widget.state.backend.fruitPartyHistory();'),
+    );
+    expect(
+      fruitParty,
+      isNot(contains('fruitPartyRound();\n      bets = await')),
+    );
+
+    final greedyGirl =
+        File('lib/screens/greedy_girl_screen.dart').readAsStringSync();
+    expect(
+      greedyGirl,
+      contains('try {\n      round = await widget.state.backend.greedyGirlRound();'),
+    );
+    expect(
+      greedyGirl,
+      contains('try {\n      bets = await widget.state.backend.greedyGirlMyBets();'),
+    );
+    expect(
+      greedyGirl,
+      contains('try {\n      history = await widget.state.backend.greedyGirlHistory();'),
+    );
+    expect(
+      greedyGirl,
+      isNot(contains('greedyGirlRound();\n      bets = await')),
+    );
+  });
+
+  test('Both games poll separate round / my-bets / history calls every 3s (no combined state call)', () {
+    final fruitParty =
+        File('lib/screens/fruit_party_screen.dart').readAsStringSync();
+    expect(fruitParty, isNot(contains('fruitPartyState(')));
+    expect(fruitParty, contains('fruitPartyRound()'));
+    expect(fruitParty, contains('fruitPartyMyBets()'));
+    expect(fruitParty, contains('fruitPartyHistory()'));
     final fruitTimer = fruitParty.substring(
       fruitParty.indexOf('stateTimer = Timer.periodic'),
     );
@@ -212,6 +256,10 @@ void main() {
 
     final greedyGirl =
         File('lib/screens/greedy_girl_screen.dart').readAsStringSync();
+    expect(greedyGirl, isNot(contains('greedyGirlState(')));
+    expect(greedyGirl, contains('greedyGirlRound()'));
+    expect(greedyGirl, contains('greedyGirlMyBets()'));
+    expect(greedyGirl, contains('greedyGirlHistory()'));
     final greedyTimer = greedyGirl.substring(
       greedyGirl.indexOf('refreshTimer = Timer.periodic'),
     );
@@ -226,5 +274,15 @@ void main() {
       greedyGirl,
       contains('_kissTimer = Timer.periodic('),
     );
+
+    final api = File('lib/infra/backend_api.dart').readAsStringSync();
+    expect(api, isNot(contains("'/api/games/fruit-party/state'")));
+    expect(api, isNot(contains("'/api/games/greedy-girl/state'")));
+    expect(api, contains("'/api/games/fruit-party/round'"));
+    expect(api, contains("'/api/games/fruit-party/my-bets'"));
+    expect(api, contains("'/api/games/fruit-party/history'"));
+    expect(api, contains("'/api/games/greedy-girl/round'"));
+    expect(api, contains("'/api/games/greedy-girl/my-bets'"));
+    expect(api, contains("'/api/games/greedy-girl/history'"));
   });
 }

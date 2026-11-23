@@ -89,9 +89,12 @@ class _RoomScreenState extends State<RoomScreen>
   bool speakerphoneOn = true;
   bool followingRoom = false;
   bool followBusy = false;
-  final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
-    <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
-  ];
+  // Room chat, newest last. The welcome row is NOT a static system
+  // message any more: it goes by the ROOM OWNER's name and shows the
+  // owner's DP (Vinay, 2026-11-23), applied by _applyWelcomeOwner
+  // when the members load. The old DarkVibeX way (logo DP, "DarkVibeX"
+  // name) is permanently removed — it never appears again.
+  final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[];
 
   /// Priority message the user dismissed with the banner's X. The
   /// banner stays hidden until a newer priority message arrives.
@@ -113,6 +116,11 @@ class _RoomScreenState extends State<RoomScreen>
   final Map<int, Map<String, dynamic>> membersBySeat = <int, Map<String, dynamic>>{};
   List<Map<String, dynamic>> roomMembers = <Map<String, dynamic>>[];
   int roomGiftLifetimeTotal = 0;
+  // Today's (IST day) room gift total — the rocket level/progress runs
+  // on this, so it returns to 1st on the new day (Vinay, 2026-11-23).
+  // Unlike the lifetime total it MAY move backwards at midnight: that
+  // drop IS the reset.
+  int roomGiftDailyTotal = 0;
   int _giftEventCursorMs = DateTime.now().millisecondsSinceEpoch;
   String _giftEventCursorId = '';
   final Set<String> _seenGiftEventIds = <String>{};
@@ -140,7 +148,7 @@ class _RoomScreenState extends State<RoomScreen>
   bool _confirmingRemoval = false;
   // Room polling is split by data freshness needs. Polling every 4 seconds
   // for all four resources multiplied Worker requests for every connected user.
-  Timer? roomStateTimer;
+  Timer? roomPollTimer;
   Timer? arrivalEffectTimer;
   Map<String, dynamic>? arrivalEffectMember;
   String? roomAvatarKey;
@@ -359,18 +367,16 @@ class _RoomScreenState extends State<RoomScreen>
     unawaited(_loadRoomMessages());
     unawaited(_loadRoomGiftEvents());
 
-    // One 3s poll for members + messages + controls + gift events +
-    // settings (combined room-state endpoint) instead of five separate
-    // timers. Speed does not drop — members were 4s, messages 8s,
-    // controls 20s, settings 60s; now all refresh every 3s — while
-    // the Workers free-tier request count drops. Any room setting
-    // change (room DP, background, name, lock, room chat off) shows
-    // to everyone within 3s. User actions still refresh data
-    // immediately through the old loaders.
+    // Separate 3s polls for members + messages + controls + gift events +
+    // settings + gift ranking (no combined room-state any more): each area
+    // calls its own endpoint, so one failing area never blanks the whole
+    // room. Any room setting change (room DP, background, name, lock,
+    // room chat off) still shows to everyone within 3s. User actions
+    // still refresh data immediately through the same loaders.
     bool appIsActive() =>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-    roomStateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (appIsActive()) unawaited(_loadRoomState());
+    roomPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (appIsActive()) _loadRoomSeparate();
     });
   }
 
@@ -433,6 +439,10 @@ class _RoomScreenState extends State<RoomScreen>
         amRoomAdmin = own.first['is_admin'] == true || own.first['is_admin']?.toString() == '1';
       }
     });
+    // Welcome row (Vinay, 2026-11-23): it goes by the room owner's
+    // name and shows the owner's DP — applied here, on every members
+    // refresh, so it appears as soon as the owner is known.
+    _applyWelcomeOwner();
     // Seat change (Agora audit 2026-11-22): the server mints
     // listener-tier (join-only) tokens for seatless members and full
     // tokens for seated members and the owner, so the token must
@@ -483,105 +493,65 @@ class _RoomScreenState extends State<RoomScreen>
     }
   }
 
-  /// One combined poll for members + messages + controls + gift events,
-  /// replacing the four separate timers. The payload embeds each
-  /// section in the same shape as its old endpoint, so it is applied
-  /// through the same helpers the old loaders use. Kick detection is
-  /// unchanged: a failed call (worker 403 `room_membership_required`
-  /// when my own membership row is gone) is null, one failure is
-  /// transient, two in a row means I was removed. An empty members
-  /// list is NOT a kick — it is a valid payload and is applied as-is.
-  Future<void> _loadRoomState() async {
-    if (!widget.state.backendConnected) return;
-    final state = await widget.state.backend.roomStateOrNull(
-      roomId: widget.room.id,
-      after: _giftEventCursorMs,
-      afterId: _giftEventCursorId,
+  /// Welcome row (Vinay, 2026-11-23): the welcome message goes by the
+  /// ROOM OWNER's name and shows the owner's DP — the old DarkVibeX
+  /// system row (logo DP, "DarkVibeX" name) is permanently removed.
+  /// The owner member row carries the DP + VIP level; until the members
+  /// load, there is no welcome row at all (never the logo, never the
+  /// grey fallback). Idempotent: a matching row is left alone, so the
+  /// 3s members poll does not churn setState.
+  void _applyWelcomeOwner() {
+    if (!mounted) return;
+    final ownerRows = roomMembers.where(
+      (member) => member['user_id']?.toString() == widget.room.ownerUserId,
     );
-    if (state == null) {
-      // Same as _loadRoomMembers: a failed state fetch is not a kick
-      // by itself — confirm with the server (kick marker + silent
-      // re-join) before exiting (Vinay, 2026-11-22).
-      if (_leavingRoom) return;
-      if (_kickTracker.noteFetch(ok: false)) {
-        await _handleFailedRoomFetch();
-      }
+    if (ownerRows.isEmpty) return;
+    final owner = ownerRows.first;
+    final name = owner['display_name']?.toString().trim() ?? '';
+    final avatarKey = owner['avatar_key']?.toString().trim() ?? '';
+    final vipLevel =
+        int.tryParse(owner['active_vip_level']?.toString() ?? '') ?? 0;
+    final displayName = name.isEmpty ? widget.room.ownerName : name;
+    if (avatarKey.isEmpty) return;
+    final index =
+        chat.indexWhere((row) => row['text'] == 'Welcome to the room 👋');
+    final current = index >= 0 ? chat[index] : null;
+    if (current != null &&
+        current['display_name'] == displayName &&
+        (current['avatar_key']?.toString() ?? '') == avatarKey &&
+        (int.tryParse(current['active_vip_level']?.toString() ?? '') ?? 0) ==
+            vipLevel) {
       return;
     }
-    _kickTracker.noteFetch(ok: true);
-    final members = state['members'];
-    if (members is List) {
-      unawaited(
-        _applyRoomMembers(
-          members
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(),
-        ),
-      );
-    }
-    final messages = state['messages'];
-    if (messages is List) {
-      _applyRoomMessages(
-        messages
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(),
-      );
-    }
-    final controls = state['controls'];
-    if (controls is Map) {
-      _applyRoomControls(Map<String, dynamic>.from(controls));
-    }
-    final events = state['events'];
-    if (events is List) {
-      _applyRoomGiftEvents(
-        events
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList(),
-      );
-    }
-    // Settings ride the same 3s poll now — any room setting change
-    // (room DP, background, name, lock, room chat off) shows to
-    // everyone within 3s. Absent on an older worker: skipped, never
-    // a crash and never a stale clear of the current values.
-    final settings = state['settings'];
-    if (settings is Map) {
-      // The state payload embeds the settings map itself; if a worker
-      // shape wraps it under a `settings` key instead, unwrap that —
-      // applying the wrapper would clear the boolean fields.
-      final inner = settings['settings'];
-      _applyRoomSettings(
-        Map<String, dynamic>.from(inner is Map ? inner : settings),
-      );
-    }
-    // Gift totals ride this same 3s poll (Vinay, 2026-11-21): the
-    // lifetime total for the trophy/total chips, and the month's top
-    // gifter for the header chip. Absent on an older worker: skipped,
-    // never a crash and never a stale clear of the current values.
-    final giftTotal = state['gift_lifetime_total'];
-    final giftMonthTop = state['gift_month_top'];
-    final nextTotal = giftTotal is num ? giftTotal.toInt() : null;
-    final nextTop =
-        giftMonthTop is Map ? Map<String, dynamic>.from(giftMonthTop) : null;
-    final nextTopId = nextTop?['user_id']?.toString() ?? '';
-    final currentTopId = roomMonthTopGifter?['user_id']?.toString() ?? '';
-    if ((nextTotal != null && nextTotal > roomGiftLifetimeTotal) ||
-        nextTopId != currentTopId) {
-      if (!mounted) return;
-      setState(() {
-        if (nextTotal != null && nextTotal > roomGiftLifetimeTotal) {
-          roomGiftLifetimeTotal = nextTotal;
-        }
-        roomMonthTopGifter = nextTop;
-      });
-    }
-    // Cross-room banners (Vinay, 2026-11-22): Rocket launches, big
-    // gifts and Lucky wins from ANY room ride the same 3s poll.
-    // They join the top banner queue with their room id, so tapping
-    // one takes the user into that room. A failed fetch keeps the
-    // current queue — never a crash and never a stale clear.
+    final row = <String, dynamic>{
+      'display_name': displayName,
+      'text': 'Welcome to the room 👋',
+      'avatar_key': avatarKey,
+      'active_vip_level': vipLevel,
+    };
+    setState(() {
+      if (index >= 0) {
+        chat[index] = row;
+      } else {
+        chat.insert(0, row);
+      }
+    });
+  }
+
+  /// Separate per-area polls (no combined room-state any more): members,
+  /// messages, controls, gift events, settings and gift ranking each call
+  /// their own endpoint every 3s, so one failing area never blanks the
+  /// whole room. Kick detection is unchanged: the members loader records
+  /// the fetch outcome (one failure transient, two in a row confirm with
+  /// the server before exiting).
+  void _loadRoomSeparate() {
+    if (!widget.state.backendConnected) return;
+    unawaited(_loadRoomMembers());
+    unawaited(_loadRoomMessages());
+    unawaited(_loadRoomControls());
+    unawaited(_loadRoomGiftEvents());
+    unawaited(_loadRoomSettings());
+    unawaited(_loadRoomGiftRanking());
     unawaited(_applyGlobalBanners());
   }
 
@@ -969,11 +939,12 @@ class _RoomScreenState extends State<RoomScreen>
     // The welcome pseudo-message is display-only: it must not stick
     // around forever once real messages arrive (it used to vanish
     // when the poll replaced the list; merging keeps it otherwise).
+    // It is identified by its text alone now — its sender is the room
+    // owner, not DarkVibeX any more (Vinay, 2026-11-23).
     final current = chat
         .where((row) =>
             (row['id']?.toString() ?? '').isNotEmpty ||
-            !(row['display_name'] == 'DarkVibeX' &&
-                row['text'] == 'Welcome to the room 👋'))
+            !(row['text'] == 'Welcome to the room 👋'))
         .toList();
     final next = LocalMessageCache.merge(current, rows
         .map((message) => Map<String, dynamic>.from(message))
@@ -1469,15 +1440,32 @@ class _RoomScreenState extends State<RoomScreen>
     final rawRanking = value?['ranking'];
     final nextTotal =
         int.tryParse(value?['lifetime_total']?.toString() ?? '') ?? 0;
-    final nextCompleted = _rocketProgressState(nextTotal)['completed']!.toInt();
+    final nextDailyTotal =
+        int.tryParse(value?['daily_total']?.toString() ?? '') ?? 0;
+    final nextTop =
+        value?['month_top'] is Map
+            ? Map<String, dynamic>.from(value?['month_top'] as Map)
+            : null;
+    final nextTopId = nextTop?['user_id']?.toString() ?? '';
+    final currentTopId = roomMonthTopGifter?['user_id']?.toString() ?? '';
+    final nextCompleted = _rocketProgressState(nextDailyTotal)['completed']!.toInt();
     final wasInitialized = _roomGiftRankingInitialized;
     final previouslyObservedCompleted = _lastObservedRocketCompleted;
+    // A smaller daily total than the last poll means IST midnight
+    // passed: the new day started and the rocket reset to level 1.
+    final dailyReset = nextDailyTotal < roomGiftDailyTotal;
 
     setState(() {
       // Lifetime room totals should never move backwards if overlapping API
       // responses return out of order.
       if (nextTotal >= roomGiftLifetimeTotal) {
         roomGiftLifetimeTotal = nextTotal;
+      }
+      // Daily total is assigned as-is: at IST midnight it drops back
+      // to 0, and that drop is the rocket reset to level 1.
+      roomGiftDailyTotal = nextDailyTotal;
+      if (nextTopId != currentTopId) {
+        roomMonthTopGifter = nextTop;
       }
       roomGiftRanking = rawRanking is List
           ? rawRanking
@@ -1486,14 +1474,21 @@ class _RoomScreenState extends State<RoomScreen>
               .toList(growable: false)
           : <Map<String, dynamic>>[];
       _roomGiftRankingInitialized = true;
-      if (nextCompleted > _lastObservedRocketCompleted) {
+      if (dailyReset) {
+        // New day: forget yesterday's reached levels so today's climb
+        // fires its launch + chest again from level 1.
+        _lastObservedRocketCompleted = nextCompleted;
+      } else if (nextCompleted > _lastObservedRocketCompleted) {
         _lastObservedRocketCompleted = nextCompleted;
       }
     });
 
     // Do not fire old milestones on initial room load. A shared guard makes
-    // concurrent refreshes launch only once per newly reached stage.
-    if (wasInitialized && nextCompleted > previouslyObservedCompleted) {
+    // concurrent refreshes launch only once per newly reached stage. After
+    // a daily reset, yesterday's levels no longer count: any level reached
+    // today (completed > 0) fires again.
+    if (wasInitialized &&
+        nextCompleted > (dailyReset ? 0 : previouslyObservedCompleted)) {
       final reachedLevel =
           nextCompleted.clamp(1, _rocketStageTargets.length).toInt();
       _showRocketLaunch(reachedLevel);
@@ -1522,278 +1517,35 @@ class _RoomScreenState extends State<RoomScreen>
 
   int get _currentRocketLevel {
     final completed =
-        _rocketProgressState(roomGiftLifetimeTotal)['completed']!.toInt();
+        _rocketProgressState(roomGiftDailyTotal)['completed']!.toInt();
     return completed >= _rocketStageTargets.length
         ? _rocketStageTargets.length
         : completed + 1;
   }
 
-  Future<void> _showRocketPanel() async {
+  // Rocket icon (Vinay, 2026-11-23): the floating rocket opens the NEW
+  // Rocket Room full page directly. The old bottom-sheet panel is gone —
+  // "sab new wala dikhna chahiye, old wala nhi".
+  Future<void> _openRocketRoom() async {
     await _loadRoomGiftRanking();
     if (!mounted) return;
-    final progress = _rocketProgressState(roomGiftLifetimeTotal);
-    final completed = progress['completed']!.toInt();
-    final allComplete = completed >= _rocketStageTargets.length;
-    final currentLevel = allComplete ? _rocketStageTargets.length : completed + 1;
-    final currentProgress = progress['current_progress']!.toInt();
-    final currentTarget = progress['current_target']!.toInt();
-    final percent = progress['percent']!.toDouble();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => FractionallySizedBox(
-        heightFactor: .72,
-        child: Container(
-          key: const Key('room-rocket-panel'),
-          margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: <Color>[
-                Color(0xFF07143B),
-                Color(0xFF0B2564),
-                Color(0xFF08163F),
-              ],
-            ),
-            border: Border.all(
-              color: TinniPalette.brightGold,
-              width: 1.1,
-            ),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(color: Color(0x665D3BFF), blurRadius: 24),
-            ],
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Rocket $currentLevel/${_rocketStageTargets.length}',
-                        style: const TextStyle(
-                          color: Color(0xFF50D8FF),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        _compactRoomCoins(roomGiftLifetimeTotal),
-                        key: const Key('room-rocket-social-total'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(sheetContext),
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 104,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(8, 4, 4, 8),
-                          itemCount: _rocketStageTargets.length,
-                          itemBuilder: (context, index) {
-                            final level = index + 1;
-                            final done = index < completed;
-                            final current = !allComplete && index == completed;
-                            return Container(
-                              key: Key('room-rocket-stage-$level'),
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 7,
-                              ),
-                              decoration: BoxDecoration(
-                                color: current
-                                    ? const Color(0xFF173E8F)
-                                    : const Color(0xFF071B4D),
-                                borderRadius: BorderRadius.circular(9),
-                                border: Border.all(
-                                  color: done
-                                      ? Color(0xFF50D8FF)
-                                      : current
-                                          ? const Color(0xFF61D9FF)
-                                          : const Color(0xFF56627E),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Rocket $level',
-                                    style: TextStyle(
-                                      color: done
-                                          ? Color(0xFF50D8FF)
-                                          : Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                  Text(
-                                    _compactRoomCoins(
-                                      _rocketStageTargets[index],
-                                    ),
-                                    style: const TextStyle(
-                                      color: Color(0xFFB9C8F3),
-                                      fontSize: 8,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: Center(
-                          child: RoomStealthRocketLogo(
-                            size: 132,
-                            level: currentLevel,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      key: const Key('room-rocket-progress'),
-                      value: percent,
-                      minHeight: 12,
-                      backgroundColor: const Color(0xFF241B2C),
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Color(0xFF50D8FF),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  allComplete
-                      ? '${_rocketStageTargets.length}/${_rocketStageTargets.length} rockets complete'
-                      : '${_compactRoomCoins(currentProgress)} / '
-                          '${_compactRoomCoins(currentTarget)} • '
-                          '${(percent * 100).floor()}%',
-                  key: const Key('room-rocket-progress-label'),
-                  style: const TextStyle(
-                    color: Color(0xFF50D8FF),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
-                  ),
-                ),
-                if (completed > 0) ...<Widget>[
-                  const SizedBox(height: 7),
-                  const Text(
-                    'REWARD CHESTS',
-                    style: TextStyle(
-                      color: Color(0xFF50D8FF),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 5,
-                      runSpacing: 4,
-                      children: List<Widget>.generate(completed, (index) {
-                        final level = index + 1;
-                        return OutlinedButton.icon(
-                          key: Key('room-rocket-reward-chest-$level'),
-                          onPressed: () {
-                            Navigator.pop(sheetContext);
-                            unawaited(_showRocketRewardChest(level));
-                          },
-                          icon: const Icon(Icons.card_giftcard_rounded, size: 14),
-                          label: Text('L$level'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Color(0xFF50D8FF),
-                            side: BorderSide(
-                              color: TinniPalette.brightGold.withValues(alpha: .55),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                            minimumSize: const Size(44, 38),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
-                ],
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
-                  child: FilledButton.icon(
-                    key: const Key('room-rocket-open-full-page'),
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      unawaited(Navigator.of(context).push<void>(
-                        MaterialPageRoute<void>(
-                          builder: (_) => RocketRoomPage(
-                            roomId: widget.room.id,
-                            roomName: roomName,
-                            roomNumber: widget.room.roomNumber,
-                            onlineCount: roomMembers.length,
-                            lifetimeTotal: roomGiftLifetimeTotal,
-                            ranking: roomGiftRanking,
-                            seatMembers: roomMembers,
-                            currentUserId: widget.state.userId,
-                            backend: widget.state.backend,
-                            state: widget.state,
-                          ),
-                        ),
-                      ));
-                    },
-                    icon: const Icon(Icons.rocket_launch_rounded),
-                    label: const Text('Open Rocket Room'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF9D00),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(18, 8, 18, 14),
-                  child: Text(
-                    'Rocket follows the same room gift total and 10-stage targets as Tinni.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFFB9C8F3),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    unawaited(Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RocketRoomPage(
+          roomId: widget.room.id,
+          roomName: roomName,
+          roomNumber: widget.room.roomNumber,
+          onlineCount: roomMembers.length,
+          lifetimeTotal: roomGiftLifetimeTotal,
+          dailyTotal: roomGiftDailyTotal,
+          ranking: roomGiftRanking,
+          seatMembers: roomMembers,
+          currentUserId: widget.state.userId,
+          backend: widget.state.backend,
+          state: widget.state,
         ),
       ),
-    );
+    ));
   }
 
   // Touching the Ranking / total chips opens the room ranking page
@@ -1806,6 +1558,11 @@ class _RoomScreenState extends State<RoomScreen>
   // Monthly top gifter shown in the header (Vinay, 2026-11-21): the ID
   // disappears the moment the top gifter exits the room, so it only
   // shows while they are among the room members.
+  // Kept after the header pill was removed (Vinay, 2026-11-23,
+  // permanent) — never-delete rule. The ignore keeps CI green:
+  // flutter analyze --no-fatal-infos fails on this unused_element
+  // warning, and the getter has no remaining caller.
+  // ignore: unused_element
   Map<String, dynamic>? get _monthTopGifterInRoom =>
       monthTopGifterInRoom(roomMonthTopGifter, roomMembers);
 
@@ -2639,7 +2396,7 @@ class _RoomScreenState extends State<RoomScreen>
       rocketOverlay.remove();
       rocketOverlay.dispose();
     }
-    roomStateTimer?.cancel();
+    roomPollTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
     giftRibbonTimer?.cancel();
@@ -2780,35 +2537,17 @@ class _RoomScreenState extends State<RoomScreen>
   }
 
   Future<void> _sendGiftToSeatUser(String receiverId) async {
-    // Combined gifts + diamonds + coins (Vinay, 2026-11-21): ONE call
-    // carrying the full catalog + the authoritative server wallet balance
-    // before showing Gift Box, instead of separate refreshWallet +
-    // giftCatalog calls. A stale/default AppState balance must never be
-    // presented as the wallet.
+    // Separate calls (no combined gifts API any more): refreshWallet
+    // for the authoritative server balance + giftCatalog for the
+    // priced catalog, before showing Gift Box. A stale/default
+    // AppState balance must never be presented as the wallet.
     List<Map<String, dynamic>> catalog = <Map<String, dynamic>>[];
     if (widget.state.backendConnected) {
       try {
-        final combined =
-            await widget.state.backend.giftsCombinedState();
-        final rows = combined?['gifts'];
-        if (rows is List) {
-          catalog = rows
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(growable: false);
-        }
-        final wallet = combined?['wallet'];
-        if (wallet is Map) {
-          final coins = int.tryParse(wallet['coins']?.toString() ?? '');
-          if (coins != null && coins != widget.state.coins) {
-            widget.state.setCoinBalance(coins);
-          }
-          final diamonds =
-              int.tryParse(wallet['diamonds']?.toString() ?? '');
-          if (diamonds != null && diamonds != widget.state.diamonds) {
-            widget.state.setDiamondBalance(diamonds);
-          }
-        }
+        await widget.state.refreshWallet(notify: false);
+        catalog = await widget.state.backend.giftCatalog(
+          userId: widget.state.userId,
+        );
       } catch (_) {
         // A network drop must not kill the Gift Box — it opens with an
         // empty catalog and the last known balance.
@@ -4659,23 +4398,25 @@ class _RoomScreenState extends State<RoomScreen>
   }
 
   Future<void> _handleUserSeatTap(int seat) async {
-    if (lockedSeats.contains(seat)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Seat ${seat + 1} is locked')),
-      );
-      return;
-    }
+    // No client-side lock check here: the server decides (Vinay,
+    // 2026-11-23 — "seat per nhi ja pa raha"). A locked seat 409s with
+    // seat_locked for everyone except the owner/admin, who the server
+    // lets in; the app's own admin flag can lag the server (stale room
+    // object), so pre-blocking here locked the owner out of his own
+    // locked seat. _takeSeatDirect shows 'This seat is locked.' on
+    // the 409.
     if (membersBySeat.containsKey(seat)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Seat ${seat + 1} is occupied')),
       );
       return;
     }
-    if (mySeat != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Leave your current seat first')),
-      );
-      return;
+    // Moving seats: leave the current seat first, then take the new
+    // one — same as the owner/admin Take Seat tile. Tapping another
+    // seat used to just refuse and go nowhere.
+    if (mySeat != null && mySeat != seat) {
+      final left = await _leaveMySeat();
+      if (!left) return;
     }
 
     if (roomMicMode == 'apply' &&
@@ -9150,6 +8891,11 @@ class _RoomScreenState extends State<RoomScreen>
               };
         message['display_name'] ??= widget.state.displayName;
         message['active_bubble_id'] ??= widget.state.activeCosmetic('bubble');
+        // The echo shows the sender's own DP + frame at once (Vinay,
+        // 2026-11-23): the server message carries them, but a bare
+        // fallback echo must not show the grey avatar meanwhile.
+        message['avatar_key'] ??= widget.state.avatarKey;
+        message['active_vip_level'] ??= widget.state.vipLevel;
         final id = message['id']?.toString();
         if (id == null ||
             id.isEmpty ||
@@ -9168,6 +8914,10 @@ class _RoomScreenState extends State<RoomScreen>
             'display_name': widget.state.displayName,
             'text': value,
             'active_bubble_id': widget.state.activeCosmetic('bubble'),
+            // Own DP + VIP level, so the offline echo shows the
+            // sender's DP + frame too (Vinay, 2026-11-23).
+            'avatar_key': widget.state.avatarKey,
+            'active_vip_level': widget.state.vipLevel,
           }));
       _scrollChatToLatest();
     } finally {
@@ -9593,21 +9343,26 @@ class _RoomScreenState extends State<RoomScreen>
             padding: const EdgeInsets.fromLTRB(10, 4, 10, 2),
             child: Row(
               children: [
+                // Top bar total (Vinay, 2026-11-23): the real gold trophy
+                // image + the room's coins total — no 'Ranking' text, no
+                // painted trophy icon. Tapping the trophy opens the
+                // ranking page.
                 TinniPanel(
+                  key: const Key('room-header-total'),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   onTap: _showRoomGiftRanking,
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.emoji_events_rounded,
-                        size: 17,
-                        color: TinniPalette.gold,
+                      Image.asset(
+                        'assets/images/gold_trophy.png',
+                        key: const Key('room-header-gold-trophy'),
+                        height: 17,
                       ),
-                      SizedBox(width: 5),
+                      const SizedBox(width: 5),
                       Text(
-                        'Ranking',
-                        style: TextStyle(
+                        _compactRoomCoins(roomGiftLifetimeTotal),
+                        style: const TextStyle(
                           color: TinniPalette.gold,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
@@ -9616,63 +9371,10 @@ class _RoomScreenState extends State<RoomScreen>
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                TinniPanel(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                  onTap: _showRoomGiftRanking,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.monetization_on_rounded,
-                        size: 15,
-                        color: TinniPalette.gold,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _compactRoomCoins(roomGiftLifetimeTotal),
-                        style: const TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Month's top gifter (Vinay, 2026-11-21): their ID shows
-                // here for the month, and disappears the moment they exit
-                // the room (see _monthTopGifterInRoom). Tapping opens the
-                // ranking page on the Monthly tab.
-                if (_monthTopGifterInRoom != null) ...[
-                  const SizedBox(width: 6),
-                  TinniPanel(
-                    key: const Key('room-header-top-gifter'),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                    onTap: () =>
-                        _openRoomGiftRanking(initialPeriod: 'month'),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.emoji_events_rounded,
-                          size: 15,
-                          color: TinniPalette.gold,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'ID ${formatPublicUserId(_monthTopGifterInRoom!['public_id'])}',
-                          style: const TextStyle(
-                            color: TinniPalette.gold,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                // Month's top-gifter ID pill removed permanently (Vinay,
+                // 2026-11-23: "hamesha ke liye hata de"). The getter
+                // _monthTopGifterInRoom stays (never-delete rule), only the
+                // visible pill is gone.
                 const Spacer(),
                 _RoomLampButton(onTap: _openLamp),
                 const SizedBox(width: 6),
@@ -10367,9 +10069,12 @@ class _RoomScreenState extends State<RoomScreen>
                                         ? null
                                         : widget.state.backend.fileUrl(avatarKey),
                                     avatarHeaders: widget.state.backend.fileHeaders,
+                                    avatarAsset: message['avatar_asset']?.toString(),
                                     tags: profileTags,
                                     medals: profileMedals,
                                     vipLevel: senderVipLevel,
+                                    dollarLevel: int.tryParse(message['dollar_level']?.toString() ?? '') ?? 0,
+                                    idLevel: int.tryParse(message['id_level']?.toString() ?? ''),
                                     roleTag: message['role_tag']?.toString(),
                                     // Animal frame still (VIP5-18) with its
                                     // VAP alpha-video; the frame animates
@@ -10432,7 +10137,7 @@ class _RoomScreenState extends State<RoomScreen>
                   child: InkResponse(
                     key: const Key('room-rocket-floating-button'),
                     radius: 24,
-                    onTap: _showRocketPanel,
+                    onTap: _openRocketRoom,
                     child: RoomStealthRocketLogo(
                       size: 42,
                       level: _currentRocketLevel,
@@ -11167,93 +10872,23 @@ class _RoomLampButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          child: const SizedBox(
+          child: SizedBox(
             width: 42,
             height: 36,
             child: Padding(
-              padding: EdgeInsets.all(3),
-              child: CustomPaint(painter: _MiniLampPainter()),
+              padding: const EdgeInsets.all(3),
+              // Real gold lamp image (Vinay, 2026-11-23): the same gold
+              // Magic Lamp render as the gift — not the old painted
+              // CustomPaint lamp.
+              child: Image.asset(
+                'assets/images/gold_lamp.png',
+                key: const Key('room-header-gold-lamp'),
+                fit: BoxFit.contain,
+              ),
             ),
           ),
         ),
       ),
     );
   }
-}
-
-class _MiniLampPainter extends CustomPainter {
-  const _MiniLampPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gold = Paint()
-      ..shader = const LinearGradient(
-        colors: <Color>[
-          Color(0xFFEAF5FF),
-          Color(0xFF53D9FF),
-          Color(0xFFD88C00),
-        ],
-      ).createShader(Offset.zero & size);
-    final body = Path()
-      ..moveTo(size.width * .28, size.height * .50)
-      ..quadraticBezierTo(
-        size.width * .42,
-        size.height * .30,
-        size.width * .66,
-        size.height * .47,
-      )
-      ..quadraticBezierTo(
-        size.width * .70,
-        size.height * .72,
-        size.width * .43,
-        size.height * .76,
-      )
-      ..quadraticBezierTo(
-        size.width * .28,
-        size.height * .72,
-        size.width * .28,
-        size.height * .50,
-      )
-      ..close();
-    canvas.drawPath(body, gold);
-    final spout = Path()
-      ..moveTo(size.width * .30, size.height * .51)
-      ..quadraticBezierTo(
-        size.width * .13,
-        size.height * .44,
-        size.width * .06,
-        size.height * .29,
-      )
-      ..quadraticBezierTo(
-        size.width * .22,
-        size.height * .33,
-        size.width * .40,
-        size.height * .47,
-      )
-      ..close();
-    canvas.drawPath(spout, gold);
-    final handle = Paint()
-      ..color = Color(0xFF50D8FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4;
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: Offset(size.width * .70, size.height * .52),
-        width: size.width * .25,
-        height: size.height * .45,
-      ),
-      -1.2,
-      2.5,
-      false,
-      handle,
-    );
-    canvas.drawCircle(
-      Offset(size.width * .48, size.height * .22),
-      2,
-      Paint()..color = Color(0xFFEAF5FF),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

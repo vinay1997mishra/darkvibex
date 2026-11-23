@@ -48,8 +48,8 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
-  testWidgets('VIP ID tag renders the R2 tag image next to the ID',
-      (tester) async {
+  testWidgets('VIP ID tag renders gold "VIP N" text, no ribbon plaque '
+      'image (Vinay, 2026-11-23)', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -57,11 +57,14 @@ void main() {
         ),
       ),
     );
-    // Checked on the first frame, before the (failing in tests)
-    // network load's error fires and swaps in the empty fallback.
-    expect(find.byType(Image), findsOneWidget);
-    // Height follows the neighbouring text: fontSize 12 x 1.5 = 18.
-    expect(tester.widget<Image>(find.byType(Image)).height, 18);
+    await tester.pump();
+    // Gold gradient text, not the R2 plaque image.
+    expect(find.byType(Image), findsNothing);
+    expect(find.text('VIP 1'), findsOneWidget);
+    final text = tester.widget<Text>(find.text('VIP 1'));
+    expect(text.style?.fontSize, 12);
+    expect(text.style?.fontWeight, FontWeight.w900);
+    expect(find.byType(ShaderMask), findsOneWidget);
   });
 
   testWidgets('VIP ID tag renders nothing for VIP 0 (no VIP, no tag)',

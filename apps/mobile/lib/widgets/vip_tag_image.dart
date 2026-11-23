@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../vip/vip_visual_assets.dart';
-
-/// Golden VIP tag image for a VIP level (VIP1-18).
-///
-/// The tag is a pure level badge — it is never equipped or bought. It sits
-/// next to the VIP level text (room chat sender name, profile VIP badge,
-/// room profile card ID row) and sizes itself from that text: height =
-/// [fontSize] x 1.5 (default fontSize 12 -> 18 px tall), width from the
-/// image's own aspect ratio. No fixed size per place — pass the
-/// neighbouring text's font size and the tag follows it. Out of range
-/// (VIP 0) renders nothing.
+/// Golden "VIP N" text for a VIP level (VIP1-18) — no ribbon, no plaque
+/// (Vinay, 2026-11-23: "VIP gold me likha dikhna chahiye, ribbon tag nhi").
+/// The old R2 plaque image (vip-tags/vip<N>-tag.png, a gold oval with the
+/// level animal + a gem) is what made the tag look like a ribbon, so the
+/// widget no longer loads it: the level now shows as metallic-gold text,
+/// sized from the neighbouring text via [fontSize] (default 12). Out of
+/// range (VIP 0) renders nothing.
 class VipTagImage extends StatelessWidget {
   const VipTagImage({
     super.key,
@@ -25,14 +21,28 @@ class VipTagImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String? url = vipTagUrlForVipLevel(vipLevel);
-    if (url == null) return const SizedBox.shrink();
-    final double height = (fontSize ?? 12) * 1.5;
-    return Image.network(
-      url,
-      height: height,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    if (vipLevel < 1 || vipLevel > 18) return const SizedBox.shrink();
+    return ShaderMask(
+      shaderCallback: (Rect bounds) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: <Color>[
+          Color(0xFFFFE9A8),
+          Color(0xFFD09A0A),
+          Color(0xFFFFF3C4),
+        ],
+        stops: <double>[0, 0.55, 1],
+      ).createShader(bounds),
+      blendMode: BlendMode.srcIn,
+      child: Text(
+        'VIP $vipLevel',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: fontSize ?? 12,
+          fontWeight: FontWeight.w900,
+          height: 1.1,
+        ),
+      ),
     );
   }
 }

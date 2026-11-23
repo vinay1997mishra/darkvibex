@@ -22,6 +22,7 @@ import '../widgets/vip_name_text.dart';
 import '../widgets/vip_show_id_text.dart';
 import '../widgets/vip_tag_image.dart';
 import '../widgets/role_tag_image.dart';
+import '../widgets/level_tag.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
@@ -387,11 +388,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           spacing: 6,
                           runSpacing: 5,
                           children: [
-                            _mineTag('Lv.${state.idLevel}'),
-                            _mineTag('VIP ${state.vipLevel}'),
-                            // Golden VIP tag (VIP5-18), sized to the tag chip (~21px).
-                            if (state.vipLevel >= 5)
-                              VipTagImage(vipLevel: state.vipLevel, fontSize: 12),
+                            // ID Level pill: "Lv.N", 3D + glow, emblem +
+                            // colour every 10 levels (Vinay, 2026-11-23).
+                            IdLevelTag(level: state.idLevel, fontSize: 11),
+                            // Golden "VIP N" text (no ribbon plaque), for
+                            // every VIP level — VipTagImage renders nothing
+                            // at VIP 0.
+                            VipTagImage(vipLevel: state.vipLevel, fontSize: 12),
                             // Role tag the owner assigned to this ID —
                             // shows only when activated in the Owner Panel.
                             RoleTagImage(roleTag: state.userRoleTag, fontSize: 12),
@@ -3626,24 +3629,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           runSpacing: 5,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xAA16A36A),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                'Lv.$level',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
+                            // ID Level pill: "Lv.N", 3D + glow, emblem +
+                            // colour every 10 levels (Vinay, 2026-11-23).
+                            IdLevelTag(level: level, fontSize: 11),
                             if (gender == 'male' || gender == 'female')
                               Container(
                                 width: 23,

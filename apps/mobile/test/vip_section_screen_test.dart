@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:darkvibex/screens/vip_section_screen.dart';
 import 'package:darkvibex/widgets/vip_tag_image.dart';
 import 'package:flutter/material.dart';
@@ -29,7 +31,8 @@ void main() {
     // tests the network image fails and the emoji fallback renders, but
     // the Image widget itself stays mounted (errorBuilder inside it).
     expect(find.byType(Image), findsWidgets);
-    // VIP tag image (R2-based, works for all 18 levels).
+    // VIP tag is gold "VIP N" text (no R2 plaque image), works for all
+    // 18 levels (Vinay, 2026-11-23).
     expect(find.byType(VipTagImage), findsOneWidget);
     // Animal name for the selected level (VIP8 = Panther).
     expect(find.textContaining('Panther'), findsWidgets);
@@ -77,5 +80,13 @@ void main() {
     await pumpScreen(tester);
     expect(find.text('VIP Points: 300000'), findsOneWidget);
     expect(find.textContaining('Monthly VIP Points'), findsNothing);
+  });
+
+  test('VIP win card trophy is the real gold trophy image, never the trophy emoji (Vinay, 2026-11-23)',
+      () {
+    final source =
+        File('lib/screens/vip_section_screen.dart').readAsStringSync();
+    expect(source, contains('gold_trophy.png'));
+    expect(source, isNot(contains('🏆')));
   });
 }

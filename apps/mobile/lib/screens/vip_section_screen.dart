@@ -341,10 +341,16 @@ class _WinBanner extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          const CircleAvatar(
+          CircleAvatar(
             radius: 24,
             backgroundColor: VipSectionColors.surfaceRaised,
-            child: Text('🏆', style: TextStyle(fontSize: 24)),
+            // Gold trophy image, never the flat trophy emoji
+            // (Vinay, 2026-11-23: trophy paint permanently removed).
+            child: Image.asset(
+              'assets/images/gold_trophy.png',
+              height: 28,
+              width: 28,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

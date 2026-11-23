@@ -130,9 +130,9 @@ test("Room gift ranking shows anonymous senders as 'Anonymous'", async () => {
   seedGift(fx, anon, plain, 50000);
   seedGift(fx, plain, anon, 40000);
 
-  const state = await request("/api/rooms/room1/state?period=day", { userId: plain });
+  const state = await request("/api/rooms/room1/gift-ranking?period=day", { userId: plain });
   assert.equal(state.status, 200);
-  const ranking = state.body.gift_ranking ?? [];
+  const ranking = state.body.ranking ?? [];
   const anonRow = ranking.find((row) => row.user_id === anon);
   assert.ok(anonRow, "anonymous sender must appear in the room gift ranking");
   assert.equal(anonRow.display_name, "Anonymous");

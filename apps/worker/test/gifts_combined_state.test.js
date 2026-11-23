@@ -1,12 +1,11 @@
-// Combined gifts + diamonds + coins (Vinay, 2026-11-21 — "Har user ka alag
-// combined API rakh"): ONE session-scoped call every 3s — GET
-// /api/gifts/combined — carrying the full priced catalog (exactly the same
-// gifts as GET /api/gifts/catalog) + this user's live coin/diamond balances
-// + recent diamond/coin history, so gift UIs, the Diamond received view and
-// the coin balance update together without separate calls. Per-user: the
-// caller is the session user, so another user's balances and gift history
-// must never appear. Histories are capped at 20 recent rows per section;
-// the full 200-row histories stay on the standalone history endpoints.
+// Separate gifts + wallet calls (combined gifts API removed 2026-11-23,
+// Vinay: "combined API hta de, har jagah se"): the priced catalog comes
+// from GET /api/gifts/catalog, live balances from GET /api/wallet/:id,
+// and the histories from /api/wallet/diamonds/history and
+// /api/wallet/coins/history (full 200-row histories, loaded on open).
+// Per-user: each call is scoped to its user_id, so another user's
+// balances and gift history must never appear. GET /api/gifts/combined
+// is gone (404).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -103,46 +102,56 @@ function seedHistory(sqlite) {
   ).run("wl-1", "alice", "coin_seller_received", 8000000, 9000000, null, 5000);
 }
 
-test("one combined call carries catalog + live balances + recent histories for the session user", async () => {
+test("separate calls carry catalog + live balances + histories for the user", async () => {
   const fx = await fixture();
   seedUsers(fx.sqlite);
   seedHistory(fx.sqlite);
 
-  const res = await fx.request("/api/gifts/combined", { userId: "alice" });
-  assert.equal(res.status, 200, JSON.stringify(res.body));
-  const body = res.body;
-  assert.equal(body.ok, true);
-  assert.equal(typeof body.server_time, "number");
-  // Full priced catalog, same as the standalone catalog endpoint.
-  assert.ok(Array.isArray(body.gifts));
-  const rose = body.gifts.find((gift) => gift.id === "rose");
-  assert.ok(rose, "rose must be in the combined catalog");
-  assert.equal(rose.coin_cost, 100);
+  // Priced catalog from the standalone endpoint.
   const catalog = await fx.request("/api/gifts/catalog?user_id=alice", { userId: "alice" });
   assert.equal(catalog.status, 200, JSON.stringify(catalog.body));
-  assert.deepEqual(body.gifts, catalog.body.gifts);
-  // Live balances — Alice's only.
-  assert.equal(body.current_coins, 1000000);
-  assert.equal(body.current_diamonds, 5000);
-  assert.equal(body.wallet.coins, 1000000);
-  assert.equal(body.wallet.diamonds, 5000);
+  assert.ok(Array.isArray(catalog.body.gifts));
+  const rose = catalog.body.gifts.find((gift) => gift.id === "rose");
+  assert.ok(rose, "rose must be in the catalog");
+  assert.equal(rose.coin_cost, 100);
+  // Magic Lamp (Vinay, 2026-11-23 — "gold wala chirag show nhi ho
+  // raha"): the catalog must carry its real image + animation keys, so
+  // the gift panel renders the gold lamp instead of the 🪔 emoji
+  // offline fallback.
+  const lamp = catalog.body.gifts.find((gift) => gift.id === "magic-lamp");
+  assert.ok(lamp, "magic-lamp must be in the catalog");
+  assert.equal(lamp.coin_cost, 2000000);
+  assert.equal(lamp.asset_key, "gifts/normal-3d/magic-lamp.png");
+  assert.equal(lamp.svga_key, "gifts/svga/magic-lamp.svga");
+
+  // Live balances from the wallet endpoint.
+  const wallet = await fx.request("/api/wallet/alice", { userId: "alice" });
+  assert.equal(wallet.status, 200, JSON.stringify(wallet.body));
+  assert.equal(wallet.body.wallet.coins, 1000000);
+  assert.equal(wallet.body.wallet.diamonds, 5000);
+
   // Diamonds received: Bob's Rose to Alice; conversions ride along.
-  assert.equal(body.diamonds.current_diamonds, 5000);
-  assert.equal(body.diamonds.gifts.length, 1);
-  assert.equal(body.diamonds.gifts[0].gift_id, "rose");
-  assert.equal(body.diamonds.gifts[0].sender_user_id, "bob");
-  assert.equal(body.diamonds.gifts[0].diamonds, 100);
-  assert.equal(body.diamonds.conversions.length, 1);
-  assert.equal(body.diamonds.conversions[0].diamonds, 100);
-  assert.equal(body.diamonds.conversions[0].coins, 60);
+  const diamonds = await fx.request("/api/wallet/diamonds/history?user_id=alice", { userId: "alice" });
+  assert.equal(diamonds.status, 200, JSON.stringify(diamonds.body));
+  assert.equal(diamonds.body.current_diamonds, 5000);
+  assert.equal(diamonds.body.gifts.length, 1);
+  assert.equal(diamonds.body.gifts[0].gift_id, "rose");
+  assert.equal(diamonds.body.gifts[0].sender_user_id, "bob");
+  assert.equal(diamonds.body.gifts[0].diamonds, 100);
+  assert.equal(diamonds.body.conversions.length, 1);
+  assert.equal(diamonds.body.conversions[0].diamonds, 100);
+  assert.equal(diamonds.body.conversions[0].coins, 60);
+
   // Coins: Alice's sent Crown to Bob + her seller receipt.
-  assert.equal(body.coins.current_coins, 1000000);
-  assert.equal(body.coins.gifts.length, 1);
-  assert.equal(body.coins.gifts[0].gift_id, "crown");
-  assert.equal(body.coins.gifts[0].receiver_user_id, "bob");
-  assert.equal(body.coins.gifts[0].coins, 1000);
-  assert.equal(body.coins.seller_received.length, 1);
-  assert.equal(body.coins.seller_received[0].coins, 8000000);
+  const coins = await fx.request("/api/wallet/coins/history?user_id=alice", { userId: "alice" });
+  assert.equal(coins.status, 200, JSON.stringify(coins.body));
+  assert.equal(coins.body.current_coins, 1000000);
+  assert.equal(coins.body.gifts.length, 1);
+  assert.equal(coins.body.gifts[0].gift_id, "crown");
+  assert.equal(coins.body.gifts[0].receiver_user_id, "bob");
+  assert.equal(coins.body.gifts[0].coins, 1000);
+  assert.equal(coins.body.seller_received.length, 1);
+  assert.equal(coins.body.seller_received[0].coins, 8000000);
   fx.sqlite.close();
 });
 
@@ -151,48 +160,32 @@ test("per-user isolation: another user's balances and history never appear", asy
   seedUsers(fx.sqlite);
   seedHistory(fx.sqlite);
 
-  const res = await fx.request("/api/gifts/combined", { userId: "bob" });
-  assert.equal(res.status, 200, JSON.stringify(res.body));
-  const body = res.body;
-  assert.equal(body.current_coins, 2500000);
-  assert.equal(body.current_diamonds, 700);
-  // Bob received Alice's Crown; he never received the Rose.
-  assert.equal(body.diamonds.gifts.length, 1);
-  assert.equal(body.diamonds.gifts[0].gift_id, "crown");
-  assert.equal(body.diamonds.conversions.length, 0);
-  // Bob sent the Rose; Alice's seller receipt is not his.
-  assert.equal(body.coins.gifts.length, 1);
-  assert.equal(body.coins.gifts[0].gift_id, "rose");
-  assert.equal(body.coins.seller_received.length, 0);
-  fx.sqlite.close();
-});
+  const wallet = await fx.request("/api/wallet/bob", { userId: "bob" });
+  assert.equal(wallet.status, 200, JSON.stringify(wallet.body));
+  assert.equal(wallet.body.wallet.coins, 2500000);
+  assert.equal(wallet.body.wallet.diamonds, 700);
 
-test("combined call requires a session (no user_id from the request is trusted)", async () => {
-  const fx = await fixture();
-  seedUsers(fx.sqlite);
-  const res = await fx.request("/api/gifts/combined?user_id=alice");
-  assert.notEqual(res.status, 200);
-  assert.notEqual(res.body?.ok, true);
-  fx.sqlite.close();
-});
-
-test("standalone catalog, diamonds history and coins history keep working (additive)", async () => {
-  const fx = await fixture();
-  seedUsers(fx.sqlite);
-  seedHistory(fx.sqlite);
-
-  const catalog = await fx.request("/api/gifts/catalog?user_id=alice", { userId: "alice" });
-  assert.equal(catalog.status, 200, JSON.stringify(catalog.body));
-  assert.ok(catalog.body.gifts.some((gift) => gift.id === "rose"));
-
-  const diamonds = await fx.request("/api/wallet/diamonds/history?user_id=alice", { userId: "alice" });
+  const diamonds = await fx.request("/api/wallet/diamonds/history?user_id=bob", { userId: "bob" });
   assert.equal(diamonds.status, 200, JSON.stringify(diamonds.body));
-  assert.equal(diamonds.body.current_diamonds, 5000);
+  // Bob received Alice's Crown; he never received the Rose.
   assert.equal(diamonds.body.gifts.length, 1);
+  assert.equal(diamonds.body.gifts[0].gift_id, "crown");
+  assert.equal(diamonds.body.conversions.length, 0);
 
-  const coins = await fx.request("/api/wallet/coins/history?user_id=alice", { userId: "alice" });
+  const coins = await fx.request("/api/wallet/coins/history?user_id=bob", { userId: "bob" });
   assert.equal(coins.status, 200, JSON.stringify(coins.body));
-  assert.equal(coins.body.current_coins, 1000000);
+  // Bob sent the Rose; Alice's seller receipt is not his.
   assert.equal(coins.body.gifts.length, 1);
+  assert.equal(coins.body.gifts[0].gift_id, "rose");
+  assert.equal(coins.body.seller_received.length, 0);
+  fx.sqlite.close();
+});
+
+test("the combined gifts endpoint is gone", async () => {
+  const fx = await fixture();
+  seedUsers(fx.sqlite);
+  const res = await fx.request("/api/gifts/combined", { userId: "alice" });
+  assert.equal(res.status, 404, JSON.stringify(res.body));
+  assert.notEqual(res.body?.ok, true);
   fx.sqlite.close();
 });

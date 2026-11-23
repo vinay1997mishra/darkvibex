@@ -47,7 +47,7 @@ test('Greedy Girl settles a 30-second round once with ledger-backed payout', asy
   const db = new D1(sqlite);
   let sequence = 0;
   const api = runInNewContext(
-    core + '\n({ensureGreedyGirlSchema, settleGreedyGirlRound, greedyGirlState, GREEDY_GIRL_ROUND_MS});',
+    core + '\n({ensureGreedyGirlSchema, settleGreedyGirlRound, greedyGirlHistoryState, greedyGirlRoundState, GREEDY_GIRL_ROUND_MS});',
     {
       crypto: {
         getRandomValues: (values) => {
@@ -92,8 +92,9 @@ test('Greedy Girl settles a 30-second round once with ledger-backed payout', asy
     1,
   );
 
-  const state = await api.greedyGirlState(db, 'player', 191000);
-  assert.equal(state.history[0].food.key, 'tomato');
-  assert.equal(state.config.foods.length, 8);
+  const history = await api.greedyGirlHistoryState(db);
+  const round = await api.greedyGirlRoundState(db, 191000);
+  assert.equal(history.history[0].food.key, 'tomato');
+  assert.equal(round.config.foods.length, 8);
   sqlite.close();
 });
