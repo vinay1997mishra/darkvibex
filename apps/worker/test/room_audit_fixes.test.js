@@ -158,7 +158,7 @@ test("Greedy Girl bet succeeds over HTTP and a same-request retry does not doubl
   assert.equal(compact.result.body.accepted_bet.amount, 1000);
 });
 
-test("Fruit Party bet succeeds over HTTP and a same-request retry is idempotent", async () => {
+test("Girls Party bet succeeds over HTTP and a same-request retry is idempotent", async () => {
   const fx = await fixture();
   await makeUser(fx, "fp-player", { coins: 100000 });
   const { result, requestId } = await placeBet(fx, "/api/games/fruit-party/bet", "fp-player", {

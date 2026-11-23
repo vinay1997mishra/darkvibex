@@ -100,7 +100,7 @@ void main() {
 
       // Game Banner (Vinay, 2026-11-22): the 2-line banner at the TOP
       // of the room (gift, Lucky win, Rocket, VIP entry) — NOT the
-      // effect inside the game screen. The Fruit Party round-end popup
+      // effect inside the game screen. The Girls Party round-end popup
       // NEVER turns off, so the game screen must not reference the
       // Game Banner pref at all.
       expect(fruitSource, isNot(contains('_gameBannerEnabled')));

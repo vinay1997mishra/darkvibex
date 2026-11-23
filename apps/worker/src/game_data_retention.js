@@ -14,7 +14,7 @@
 //   game, never a live one.
 // - Greedy Girl: greedy_girl_bets (created_at) and
 //   greedy_girl_results (settled_at).
-// - Fruit Party: fruit_party_bets (created_at),
+// - Girls Party: fruit_party_bets (created_at),
 //   fruit_party_results (settled_at) and fruit_party_lucky_windows
 //   (created_at).
 // - Lucky pouch / lucky number: room_lucky_pouches (created_at) and
@@ -104,7 +104,7 @@ export async function expireOldGameData(db, nowMs = Date.now()) {
     // Table missing (Greedy Girl never played) — nothing to delete.
   }
 
-  // Fruit Party: old bets, old settled results, old lucky windows.
+  // Girls Party: old bets, old settled results, old lucky windows.
   try {
     counts.fruitPartyBets += await deleteCount(
       db,
@@ -122,7 +122,7 @@ export async function expireOldGameData(db, nowMs = Date.now()) {
       cutoff,
     );
   } catch (_) {
-    // Table missing (Fruit Party never played) — nothing to delete.
+    // Table missing (Girls Party never played) — nothing to delete.
   }
 
   // Lucky pouch / lucky number: claims of expired pouches go first,
