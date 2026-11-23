@@ -71,4 +71,26 @@ void main() {
     expect(api, contains('coinsHistory'));
     expect(api, contains('diamondsHistory'));
   });
+
+  test('Magic Lamp never renders as a flat emoji — the gold lamp is bundled (Vinay, 2026-11-23)', () {
+    final api = File('lib/infra/backend_api.dart').readAsStringSync();
+    final preview =
+        File('lib/widgets/gift_media_preview.dart').readAsStringSync();
+    final gifts = File('lib/screens/gifts_screen.dart').readAsStringSync();
+    // The offline fallback entry carries the real art, not the 🪔 emoji,
+    // and its category is normal (a Normal-panel gift, not lucky).
+    final start = api.indexOf("'id': 'magic-lamp'");
+    expect(start, isNot(-1));
+    final entry = api.substring(start, api.indexOf('},', start));
+    expect(entry, contains("'local_asset': 'assets/images/gold_lamp.png'"));
+    expect(entry, contains("'asset_key': 'gifts/normal-3d/magic-lamp.png'"));
+    expect(entry, contains("'category': 'normal'"));
+    expect(entry, isNot(contains('🪔')));
+    expect(entry, isNot(contains("'emoji'")));
+    // The preview renders a bundled image before any network art, and the
+    // gift grid passes the entry's local asset through.
+    expect(preview, contains('widget.localAsset'));
+    expect(preview, contains('Image.asset(localAsset'));
+    expect(gifts, contains("gift['local_asset']"));
+  });
 }

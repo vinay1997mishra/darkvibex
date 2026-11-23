@@ -11,6 +11,7 @@ import { vipBadgeVisualForVipLevel } from "./vip_badge_catalog.js";
 import { giftRibbonForVipLevel } from "./gift_ribbon_catalog.js";
 import {
   isUserIdFileKey,
+  userIdFileCategoryFromKey,
   userIdFileKeyBelongsTo,
 } from "./user_id_files_catalog.js";
 import { expireOldMessages } from "./message_retention.js";
@@ -11486,10 +11487,14 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
     }
     const actor = String(session?.sub ?? "");
     const key = String(url.searchParams.get("key") ?? "").trim();
-    // Owner-only read: a user sees ONLY their own files. Anyone else
-    // gets file_not_found (not a 403, so the key's existence is not
-    // revealed either).
-    if (!actor || !isUserIdFileKey(key) || !userIdFileKeyBelongsTo(key, actor)) {
+    // Owner-only read, EXCEPT the DP: a DP is the user's public
+    // identity (seats, room chat, profiles all show it), so any
+    // logged-in user may read another user's DP (Vinay, 2026-11-23:
+    // "Real user dp dikhni chahiye"). id-number/sms/misc stay
+    // owner-only. Anyone else gets file_not_found (not a 403, so the
+    // key's existence is not revealed either).
+    const isDp = userIdFileCategoryFromKey(key) === "dp";
+    if (!actor || !isUserIdFileKey(key) || (!isDp && !userIdFileKeyBelongsTo(key, actor))) {
       return json({ ok: false, error: "file_not_found" }, { status: 404 });
     }
     const object = await env.ID_FILES.get(key);

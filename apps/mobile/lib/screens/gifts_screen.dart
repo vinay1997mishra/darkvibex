@@ -362,6 +362,9 @@ class _GiftsScreenState extends State<GiftsScreen> {
                                             gift['asset_key']?.toString() ?? '',
                                         glbKey:
                                             gift['glb_key']?.toString() ?? '',
+                                        localAsset: gift['local_asset']
+                                                ?.toString() ??
+                                            '',
                                         emoji:
                                             gift['emoji']?.toString() ?? '🎁',
                                       ),

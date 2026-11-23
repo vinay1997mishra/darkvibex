@@ -150,13 +150,15 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
             clipBehavior: Clip.none,
             children: [
               _avatar(avatarKey, radius: 28),
-              const Positioned(
+              // Gold trophy image, never the flat painted trophy icon
+              // (Vinay, 2026-11-23: trophy paint permanently removed).
+              Positioned(
                 right: -4,
                 top: -8,
-                child: Icon(
-                  Icons.emoji_events_rounded,
-                  color: TinniPalette.gold,
-                  size: 22,
+                child: Image.asset(
+                  'assets/images/gold_trophy.png',
+                  height: 22,
+                  width: 22,
                 ),
               ),
             ],
@@ -253,10 +255,10 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
-                    Icons.emoji_events_rounded,
-                    size: 15,
-                    color: TinniPalette.gold,
+                  Image.asset(
+                    'assets/images/gold_trophy.png',
+                    height: 15,
+                    width: 15,
                   ),
                   const SizedBox(width: 4),
                   Text(

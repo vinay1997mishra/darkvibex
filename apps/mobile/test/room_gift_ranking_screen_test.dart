@@ -7,6 +7,8 @@
 // gifter gets a gold spotlight at the top (their ID shows for the
 // month) on the Monthly tab, and the same ID shows in the room header
 // only while they are in the room.
+import 'dart:io';
+
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/room/month_top_gifter.dart';
 import 'package:darkvibex/screens/rocket_room_screen.dart';
@@ -258,5 +260,13 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  test('Ranking page trophies are the real gold trophy image, never the painted icon (Vinay, 2026-11-23)',
+      () {
+    final source =
+        File('lib/screens/room_gift_ranking_screen.dart').readAsStringSync();
+    expect(source, contains('gold_trophy.png'));
+    expect(source, isNot(contains('emoji_events_rounded')));
   });
 }

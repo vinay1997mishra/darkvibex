@@ -41,7 +41,7 @@ class BackendApi {
     <String, Object>{'id': 'heart-crystal', 'name': 'Heart Crystal', 'emoji': '💗', 'coin_cost': 800000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'diya-blessing', 'name': 'Diya Blessing', 'emoji': '🪔', 'coin_cost': 250000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'royal-thali', 'name': 'Royal Thali', 'emoji': '🍽️', 'coin_cost': 900000, 'vip_level': 0, 'category': 'luxury'},
-    <String, Object>{'id': 'magic-lamp', 'name': 'Magic Lamp', 'emoji': '🪔', 'coin_cost': 2000000, 'vip_level': 0, 'category': 'lucky'},
+    <String, Object>{'id': 'magic-lamp', 'name': 'Magic Lamp', 'coin_cost': 2000000, 'vip_level': 0, 'category': 'normal', 'asset_key': 'gifts/normal-3d/magic-lamp.png', 'local_asset': 'assets/images/gold_lamp.png'},
     <String, Object>{'id': 'rainbow-gemstones', 'name': 'Rainbow Gemstones', 'emoji': '💎', 'coin_cost': 600000, 'vip_level': 0, 'category': 'normal'},
     <String, Object>{'id': 'flower-swing', 'name': 'Flower Swing', 'emoji': '🌺', 'coin_cost': 1100000, 'vip_level': 0, 'category': 'cp'},
     <String, Object>{'id': 'crown-shower', 'name': 'Crown Shower', 'emoji': '👑', 'coin_cost': 2500000, 'vip_level': 0, 'category': 'luxury'},

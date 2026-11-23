@@ -14,6 +14,7 @@ class GiftMediaPreview extends StatefulWidget {
     required this.assetKey,
     required this.emoji,
     this.glbKey = '',
+    this.localAsset = '',
     this.fit = BoxFit.cover,
   });
 
@@ -22,6 +23,9 @@ class GiftMediaPreview extends StatefulWidget {
   final String assetKey;
   final String glbKey;
   final String emoji;
+  // Bundled image (e.g. the gold lamp): renders even with no network, so
+  // a gift never falls back to a flat emoji when its catalog call fails.
+  final String localAsset;
   final BoxFit fit;
 
   @override
@@ -94,6 +98,14 @@ class _GiftMediaPreviewState extends State<GiftMediaPreview> {
 
   @override
   Widget build(BuildContext context) {
+    // Bundled image wins: it renders with no network at all, so the gift
+    // never shows a flat emoji when the catalog call fails (Vinay,
+    // 2026-11-23: paint ek dum hata de — the Magic Lamp is always gold).
+    final localAsset = widget.localAsset.trim();
+    if (localAsset.isNotEmpty) {
+      return Image.asset(localAsset, fit: widget.fit);
+    }
+
     final assetKey = widget.assetKey.trim();
     if (assetKey.isNotEmpty) {
       return Image.network(

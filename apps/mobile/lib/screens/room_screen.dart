@@ -90,7 +90,15 @@ class _RoomScreenState extends State<RoomScreen>
   bool followingRoom = false;
   bool followBusy = false;
   final List<Map<String, dynamic>> chat = <Map<String, dynamic>>[
-    <String, dynamic>{'display_name': 'DarkVibeX', 'text': 'Welcome to the room 👋'},
+    <String, dynamic>{
+      'display_name': 'DarkVibeX',
+      'text': 'Welcome to the room 👋',
+      // System message: the app's own launcher logo is its DP and the
+      // top (dragon) frame rings it, so the chat never shows the grey
+      // fallback avatar here (Vinay, 2026-11-23).
+      'avatar_asset': 'assets/branding/darkvibex_launcher.webp',
+      'frame_asset_url': vipFrameStillUrlForVipLevel(18),
+    },
   ];
 
   /// Priority message the user dismissed with the banner's X. The
@@ -8833,6 +8841,11 @@ class _RoomScreenState extends State<RoomScreen>
               };
         message['display_name'] ??= widget.state.displayName;
         message['active_bubble_id'] ??= widget.state.activeCosmetic('bubble');
+        // The echo shows the sender's own DP + frame at once (Vinay,
+        // 2026-11-23): the server message carries them, but a bare
+        // fallback echo must not show the grey avatar meanwhile.
+        message['avatar_key'] ??= widget.state.avatarKey;
+        message['active_vip_level'] ??= widget.state.vipLevel;
         final id = message['id']?.toString();
         if (id == null ||
             id.isEmpty ||
@@ -8851,6 +8864,10 @@ class _RoomScreenState extends State<RoomScreen>
             'display_name': widget.state.displayName,
             'text': value,
             'active_bubble_id': widget.state.activeCosmetic('bubble'),
+            // Own DP + VIP level, so the offline echo shows the
+            // sender's DP + frame too (Vinay, 2026-11-23).
+            'avatar_key': widget.state.avatarKey,
+            'active_vip_level': widget.state.vipLevel,
           }));
       _scrollChatToLatest();
     } finally {
@@ -9947,6 +9964,11 @@ class _RoomScreenState extends State<RoomScreen>
                                 .toList(growable: false)
                             : const <Map<String, dynamic>>[];
                         final avatarKey = message['avatar_key']?.toString().trim() ?? '';
+                        // The welcome row carries its own frame (top
+                        // dragon frame); everyone else uses their VIP
+                        // level's frame.
+                        final welcomeFrameUrl =
+                            message['frame_asset_url']?.toString().trim() ?? '';
                         final messageBubble = hasBubble
                             ? bubbleAssetKey.isNotEmpty
                                 // Custom uploaded bubble art supplies its own
@@ -10002,6 +10024,7 @@ class _RoomScreenState extends State<RoomScreen>
                                         ? null
                                         : widget.state.backend.fileUrl(avatarKey),
                                     avatarHeaders: widget.state.backend.fileHeaders,
+                                    avatarAsset: message['avatar_asset']?.toString(),
                                     tags: profileTags,
                                     medals: profileMedals,
                                     vipLevel: senderVipLevel,
@@ -10009,7 +10032,9 @@ class _RoomScreenState extends State<RoomScreen>
                                     // Animal frame still (VIP5-18) with its
                                     // VAP alpha-video; the frame animates
                                     // once and then shows the still.
-                                    frameAssetUrl: vipFrameStillUrlForVipLevel(senderVipLevel),
+                                    frameAssetUrl: welcomeFrameUrl.isNotEmpty
+                                        ? welcomeFrameUrl
+                                        : vipFrameStillUrlForVipLevel(senderVipLevel),
                                     frameVideoUrl: vipFrameVapUrlForVipLevel(senderVipLevel),
                                     // Tapping the sender's DP or name in
                                     // room chat opens their profile card

@@ -218,4 +218,30 @@ void main() {
     expect(api, contains('Future<Map<String, dynamic>?> roomGiftRanking('));
     expect(api, contains("String? period,"));
   });
+
+  test('room chat always shows a DP + frame: welcome row has the brand logo + dragon frame, send echoes carry the sender DP + VIP level (Vinay, 2026-11-23)',
+      () {
+    final source = File('lib/screens/room_screen.dart').readAsStringSync();
+    // The welcome pseudo-message is a system row with no server data:
+    // it carries the app's own launcher logo as its DP and the top
+    // (dragon) frame, so the chat never shows the grey fallback avatar.
+    expect(
+      source,
+      contains("'avatar_asset': 'assets/branding/darkvibex_launcher.webp'"),
+    );
+    expect(source, contains("'frame_asset_url': vipFrameStillUrlForVipLevel(18)"));
+    expect(source, contains("avatarAsset: message['avatar_asset']"));
+    expect(source, contains('welcomeFrameUrl.isNotEmpty'));
+    // The sender header renders a bundled asset DP when one is given.
+    final header =
+        File('lib/widgets/room_chat_sender_header.dart').readAsStringSync();
+    expect(header, contains('avatarAsset'));
+    expect(header, contains('Image.asset('));
+    // A just-sent message echoes with the sender's own DP + VIP level
+    // at once, instead of the grey avatar until the next poll.
+    expect(source, contains("message['avatar_key'] ??= widget.state.avatarKey"));
+    expect(source, contains("message['active_vip_level'] ??= widget.state.vipLevel"));
+    expect(source, contains("'avatar_key': widget.state.avatarKey"));
+    expect(source, contains("'active_vip_level': widget.state.vipLevel"));
+  });
 }

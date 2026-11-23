@@ -17,6 +17,7 @@ class RoomChatSenderHeader extends StatelessWidget {
     required this.medals,
     this.avatarUrl,
     this.avatarHeaders,
+    this.avatarAsset,
     this.vipLevel = 0,
     this.roleTag,
     this.frameAssetUrl,
@@ -27,6 +28,11 @@ class RoomChatSenderHeader extends StatelessWidget {
   final String displayName;
   final String? avatarUrl;
   final Map<String, String>? avatarHeaders;
+
+  /// Bundled asset used as the DP instead of [avatarUrl] — system
+  /// messages (the DarkVibeX welcome row) have no network avatar.
+  /// Null = the network DP (or the fallback icon when that is empty).
+  final String? avatarAsset;
 
   /// Fired when the sender's avatar (DP) is tapped — the room chat opens
   /// the sender's profile card. Null = the avatar is not tappable.
@@ -84,9 +90,23 @@ class RoomChatSenderHeader extends StatelessWidget {
   }
 
   Widget _avatar() {
-    final url = avatarUrl?.trim() ?? '';
+    final String asset = avatarAsset?.trim() ?? '';
+    final String url = avatarUrl?.trim() ?? '';
     final Widget avatar;
-    if (url.isEmpty) {
+    if (asset.isNotEmpty) {
+      avatar = SizedBox(
+        width: 28,
+        height: 28,
+        child: ClipOval(
+          child: Image.asset(
+            asset,
+            width: 28,
+            height: 28,
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    } else if (url.isEmpty) {
       avatar = _fallbackAvatar();
     } else {
       avatar = SizedBox(

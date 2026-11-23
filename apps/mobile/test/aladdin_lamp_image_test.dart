@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Aladdin lamp banner shows the 3D gold-purple R2 image, painter is fallback only',
+  test('Aladdin lamp banner shows the 3D gold-purple R2 image, gold lamp on error — no paint anywhere (Vinay, 2026-11-23)',
       () {
     final source =
         File('lib/screens/aladdin_lamp_screen.dart').readAsStringSync();
@@ -27,13 +27,13 @@ void main() {
     expect(source, contains('child: ClipRRect('));
     expect(source, isNot(contains('child: const CustomPaint(')));
 
-    // The painted lamp stays only as the offline/error fallback, so a
-    // failed image load still shows a lamp instead of an empty banner.
+    // The painted lamp is gone permanently (Vinay, 2026-11-23: "paint
+    // wale ko permanent remove kar de") — a failed image load shows the
+    // bundled gold lamp, never a painting.
     expect(source, contains('errorBuilder'));
-    expect(source, contains('painter: _MagicLampPainter()'));
-    expect(
-      source,
-      contains('class _MagicLampPainter extends CustomPainter'),
-    );
+    expect(source, contains('Image.asset('));
+    expect(source, contains("'assets/images/gold_lamp.png'"));
+    expect(source, isNot(contains('_MagicLampPainter')));
+    expect(source, isNot(contains('CustomPaint(')));
   });
 }

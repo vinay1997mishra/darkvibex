@@ -458,9 +458,13 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
                               fit: BoxFit.contain,
                               width: double.infinity,
                               height: double.infinity,
+                              // Paint removed permanently (Vinay, 2026-11-23):
+                              // a failed load shows the bundled gold lamp,
+                              // never the old painted lamp.
                               errorBuilder: (context, error, stackTrace) =>
-                                  const CustomPaint(
-                                painter: _MagicLampPainter(),
+                                  Image.asset(
+                                'assets/images/gold_lamp.png',
+                                fit: BoxFit.contain,
                               ),
                             ),
                           ),
@@ -757,131 +761,6 @@ class _ProgressPill extends StatelessWidget {
       ),
     );
   }
-}
-
-class _MagicLampPainter extends CustomPainter {
-  const _MagicLampPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width * .49, size.height * .59);
-    final glow = Paint()
-      ..shader = const RadialGradient(
-        colors: <Color>[
-          Color(0xFFBFA7FF),
-          Color(0x0050D8FF),
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: center,
-          radius: size.shortestSide * .48,
-        ),
-      );
-    canvas.drawCircle(center, size.shortestSide * .48, glow);
-
-    final gold = Paint()
-      ..shader = const LinearGradient(
-        colors: <Color>[
-          Color(0xFF8B7CFF),
-          Color(0xFF8B7CFF),
-          Color(0xFF5645F5),
-        ],
-      ).createShader(
-        Rect.fromLTWH(0, 0, size.width, size.height),
-      );
-    final outline = Paint()
-      ..color = const Color(0xFF50D8FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2;
-
-    final body = Path()
-      ..moveTo(size.width * .28, size.height * .51)
-      ..quadraticBezierTo(
-        size.width * .37,
-        size.height * .37,
-        size.width * .55,
-        size.height * .43,
-      )
-      ..quadraticBezierTo(
-        size.width * .67,
-        size.height * .46,
-        size.width * .69,
-        size.height * .57,
-      )
-      ..quadraticBezierTo(
-        size.width * .66,
-        size.height * .76,
-        size.width * .42,
-        size.height * .76,
-      )
-      ..quadraticBezierTo(
-        size.width * .29,
-        size.height * .72,
-        size.width * .28,
-        size.height * .51,
-      )
-      ..close();
-    canvas.drawPath(body, gold);
-    canvas.drawPath(body, outline);
-
-    final spout = Path()
-      ..moveTo(size.width * .31, size.height * .53)
-      ..quadraticBezierTo(
-        size.width * .14,
-        size.height * .47,
-        size.width * .08,
-        size.height * .35,
-      )
-      ..quadraticBezierTo(
-        size.width * .20,
-        size.height * .38,
-        size.width * .38,
-        size.height * .48,
-      )
-      ..close();
-    canvas.drawPath(spout, gold);
-    canvas.drawPath(spout, outline);
-
-    final handle = Rect.fromCenter(
-      center: Offset(size.width * .72, size.height * .55),
-      width: size.width * .24,
-      height: size.height * .31,
-    );
-    final thickOutline = Paint()
-      ..color = const Color(0xFF50D8FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10;
-    canvas.drawArc(handle, -1.2, 2.5, false, thickOutline);
-
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width * .49, size.height * .43),
-        width: size.width * .31,
-        height: 16,
-      ),
-      gold,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width * .49, size.height * .77),
-        width: size.width * .34,
-        height: 12,
-      ),
-      gold,
-    );
-    for (var i = 0; i < 5; i++) {
-      final x = size.width * (.24 + i * .12);
-      final y = size.height * (.26 + (i.isEven ? .02 : 0));
-      canvas.drawCircle(
-        Offset(x, y),
-        3.2,
-        Paint()..color = const Color(0xFFEAF5FF),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 String _formatCoins(int value) {
