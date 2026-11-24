@@ -57,6 +57,14 @@ flutter:
     - assets/images/shield_orange.png
     - assets/images/gold_crown.png
     - assets/images/family_bg_light.png
+    # Family detail page (Mr. Wrong, 2026-11-24): original purple+gold
+    # models for the new detail design — cover, notice banner, level
+    # badge, EXP crystal, Lucky Wheel. Made for DarkVibeX, not copied.
+    - assets/images/family_cover_new.webp
+    - assets/images/family_banner_new.webp
+    - assets/images/family_level_badge.webp
+    - assets/images/family_exp_crystal.webp
+    - assets/images/family_lucky_wheel.webp
     - assets/images/cp_card_reference.webp
     - assets/images/vs_card_reference.webp
     - assets/images/friend_lock_card_ref.webp

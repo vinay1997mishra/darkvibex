@@ -95,6 +95,7 @@ import {
   familyWeekBounds,
   familyWeeklyState,
   familyLuckyDrawRecords,
+  familyLuckyWheelSpin,
   awardFamilyGiftExp,
   awardFamilyGameExp,
   cpState,
@@ -5971,6 +5972,21 @@ async function handleApi(request, env, url) {
         ok: true,
         records: await familyLuckyDrawRecords(db, familyId, Number(url.searchParams.get("limit") ?? 100)),
       });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Daily Lucky Wheel SPIN (Mr. Wrong, 2026-11-24): the EVENT hold is
+  // LIFTED — one spin per user per day, family draws by rank.
+  if (url.pathname === "/api/family/lucky-wheel/spin" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const familyId = String(body.family_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyLuckyWheelSpin(db, familyId, userId));
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }

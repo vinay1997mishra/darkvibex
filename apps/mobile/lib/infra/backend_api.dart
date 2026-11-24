@@ -2688,6 +2688,22 @@ class BackendApi {
         returnErrorBody: true,
       );
 
+  /// Daily Lucky Wheel SPIN (Mr. Wrong, 2026-11-24): the EVENT hold is
+  /// LIFTED — one spin per user per day, family draws by rank.
+  Future<Map<String, dynamic>?> familyLuckyWheelSpin({
+    required String userId,
+    required String familyId,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/lucky-wheel/spin',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'family_id': familyId,
+        },
+        returnErrorBody: true,
+      );
+
   /// Today's Family Lucky Draw Records (Mr. Wrong, 2026-11-24). The
   /// wheel SPIN is on HOLD (event) — empty until the event is built.
   Future<List<Map<String, dynamic>>> familyLuckyDrawRecords({

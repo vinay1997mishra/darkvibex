@@ -131,6 +131,47 @@ class _RenderBackend extends BackendApi {
           'live_count': 12,
           'seat_count': 12,
         },
+        'wheel': <String, dynamic>{
+          'draws_total': 12,
+          'draws_used': 3,
+          'draws_left': 9,
+          'has_spun': false,
+          'spins_left': 1,
+          'top_prize': 217688,
+          'segments': <int>[
+            34830,
+            43538,
+            58050,
+            72563,
+            87075,
+            108845,
+            145125,
+            217688,
+          ],
+        },
+      };
+
+  @override
+  Future<Map<String, dynamic>?> familyLuckyWheelSpin({
+    required String userId,
+    required String familyId,
+  }) async =>
+      <String, dynamic>{
+        'ok': true,
+        'coins': 58050,
+        'draws_left': 8,
+        'draws_total': 12,
+        'top_prize': 217688,
+        'segments': <int>[
+          34830,
+          43538,
+          58050,
+          72563,
+          87075,
+          108845,
+          145125,
+          217688,
+        ],
       };
 
   @override
@@ -369,6 +410,18 @@ void main() {
         const AssetImage('assets/images/family_bg_light.png'),
         context,
       );
+      // New detail-page models (Mr. Wrong, 2026-11-24): precache so the
+      // rendered pic shows the real cover / banner / badge / crystal /
+      // wheel instead of blank boxes.
+      for (final asset in <String>[
+        'assets/images/family_cover_new.webp',
+        'assets/images/family_banner_new.webp',
+        'assets/images/family_level_badge.webp',
+        'assets/images/family_exp_crystal.webp',
+        'assets/images/family_lucky_wheel.webp',
+      ]) {
+        await precacheImage(AssetImage(asset), context);
+      }
     });
     await tester.pump();
     await tester.pumpAndSettle();
@@ -379,6 +432,9 @@ void main() {
     state.dispose();
   }
 
+  // NEW detail design (Mr. Wrong, 2026-11-24): new filename, so the
+  // edited page never shows him a cached old pic (pic-caching lesson).
+  // v2: Daily Tasks section added (Task stays, Trends goes).
   testWidgets('family detail page real screenshot 720x1565',
       (tester) async {
     final backend = _RenderBackend();
@@ -388,7 +444,7 @@ void main() {
     await renderOne(
       tester,
       'render-detail',
-      'family-detail-page-real.png',
+      'family-detail-page-new-v2.png',
       state,
       FamilyDetailScreen(
         state: state,

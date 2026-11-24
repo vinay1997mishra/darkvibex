@@ -1,6 +1,7 @@
 import { rocketMedalObjects, userRocketMedals } from "./rocket_medal_grants.js";
 import { checkContent } from "./content_filter.js";
 import {
+  FAMILY_LUCKY_WHEEL_SEGMENTS,
   FAMILY_MAX_LEVEL,
   FAMILY_TASK_REWARDS,
   FAMILY_WEEKLY_ELIGIBILITY_COINS,
@@ -10,6 +11,9 @@ import {
   familyGiftExp,
   familyLevelBand,
   familyLevelForExp,
+  familyLuckyWheelDrawsForRank,
+  familyLuckyWheelRoll,
+  familyLuckyWheelTopPrize,
   familyMemberLimit,
   familyMonthlyVaultReward,
   familyRankForMonthlyExp,
@@ -1676,6 +1680,7 @@ export async function familyDetail(db, familyId, viewerUserId) {
   ).bind(familyId, viewerUserId ?? "").first();
   const topMembers = await familyTopMembers(db, familyId);
   const room = await familyRoomFor(db, familyId);
+  const wheel = await familyLuckyWheelState(db, familyId, viewerUserId);
   // Join requests (Mr. Wrong, 2026-11-24): the members page shows them
   // too, exactly like the Management page — but only to the leader and
   // admins of this family, never to plain members or outsiders.
@@ -1735,6 +1740,7 @@ export async function familyDetail(db, familyId, viewerUserId) {
       created_at: Number(row.created_at ?? 0),
     })),
     room,
+    wheel,
   };
 }
 
@@ -1984,6 +1990,122 @@ export async function familyLuckyDrawRecords(db, familyId, limitValue = 100) {
     coins: Number(row.coins ?? 0),
     created_at: Number(row.created_at ?? 0),
   }));
+}
+
+// Daily Lucky Wheel SPIN (Mr. Wrong, 2026-11-24): the EVENT hold is
+// LIFTED — "sab kuch add kar de, wheel bhi". Video rules: one spin per
+// user per day; the family's daily draws depend on its rank (a rank change
+// updates that day's total at once); when the draws run out, nobody spins
+// that day; every spin wins coins.
+export async function familyLuckyWheelSpin(db, familyId, userId) {
+  await ensureTinniSocialSchema(db);
+  const member = await familyMembership(db, userId);
+  if (!member || String(member.family_id) !== String(familyId)) {
+    throw new Error("join_family_first");
+  }
+  const family = await db.prepare(
+    "SELECT id FROM families WHERE id=?"
+  ).bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayStartMs = dayStart.getTime();
+  const mine = await db.prepare(
+    `SELECT id FROM family_lucky_draw_records
+      WHERE family_id=? AND user_id=? AND created_at>=? LIMIT 1`
+  ).bind(familyId, userId, dayStartMs).first();
+  if (mine) throw new Error("already_spun");
+  const monthlyExp = await db.prepare(
+    "SELECT exp FROM family_monthly_exp WHERE family_id=? AND month_key=?"
+  ).bind(familyId, familyMonthKey()).first();
+  const rankInfo = familyRankForMonthlyExp(Number(monthlyExp?.exp ?? 0));
+  const drawsTotal = familyLuckyWheelDrawsForRank(rankInfo.rank);
+  const used = await db.prepare(
+    `SELECT COUNT(*) AS total FROM family_lucky_draw_records
+      WHERE family_id=? AND created_at>=?`
+  ).bind(familyId, dayStartMs).first();
+  const drawsUsed = Number(used?.total ?? 0);
+  if (drawsUsed >= drawsTotal) throw new Error("no_draws_left");
+  const segment = familyLuckyWheelRoll();
+  const coins = segment.coins;
+  const createdAt = ts();
+  const user = await db.prepare(
+    "SELECT display_name,coins FROM users WHERE id=?"
+  ).bind(userId).first();
+  await db.batch([
+    db.prepare(
+      `INSERT INTO family_lucky_draw_records(id,family_id,user_id,display_name,coins,created_at)
+       VALUES(?,?,?,?,?,?)`
+    ).bind(
+      uid("lucky-draw-"),
+      familyId,
+      userId,
+      String(user?.display_name ?? ""),
+      coins,
+      createdAt,
+    ),
+    db.prepare(
+      "UPDATE users SET coins=coins+?,updated_at=? WHERE id=?"
+    ).bind(coins, createdAt, userId),
+    db.prepare(
+      `INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at)
+       VALUES(?,?,?,?,?,?,?)`
+    ).bind(
+      uid("ledger-"),
+      userId,
+      "family_lucky_wheel",
+      coins,
+      Number(user?.coins ?? 0) + coins,
+      `family-lucky-wheel:${familyId}`,
+      createdAt,
+    ),
+  ]);
+  return {
+    ok: true,
+    coins,
+    draws_left: drawsTotal - drawsUsed - 1,
+    draws_total: drawsTotal,
+    top_prize: familyLuckyWheelTopPrize(),
+    segments: FAMILY_LUCKY_WHEEL_SEGMENTS.map((s) => s.coins),
+  };
+}
+
+// Wheel state for the detail page: draws left today, whether the viewer
+// already spun, top prize, and the 8 segment values.
+export async function familyLuckyWheelState(db, familyId, viewerUserId) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare("SELECT id FROM families WHERE id=?").bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayStartMs = dayStart.getTime();
+  const monthlyExp = await db.prepare(
+    "SELECT exp FROM family_monthly_exp WHERE family_id=? AND month_key=?"
+  ).bind(familyId, familyMonthKey()).first();
+  const rankInfo = familyRankForMonthlyExp(Number(monthlyExp?.exp ?? 0));
+  const drawsTotal = familyLuckyWheelDrawsForRank(rankInfo.rank);
+  const used = await db.prepare(
+    `SELECT COUNT(*) AS total FROM family_lucky_draw_records
+      WHERE family_id=? AND created_at>=?`
+  ).bind(familyId, dayStartMs).first();
+  const drawsUsed = Number(used?.total ?? 0);
+  let hasSpun = false;
+  if (viewerUserId) {
+    const mine = await db.prepare(
+      `SELECT id FROM family_lucky_draw_records
+        WHERE family_id=? AND user_id=? AND created_at>=? LIMIT 1`
+    ).bind(familyId, viewerUserId, dayStartMs).first();
+    hasSpun = Boolean(mine);
+  }
+  return {
+    draws_total: drawsTotal,
+    draws_used: drawsUsed,
+    draws_left: Math.max(0, drawsTotal - drawsUsed),
+    has_spun: hasSpun,
+    spins_left: hasSpun ? 0 : 1,
+    top_prize: familyLuckyWheelTopPrize(),
+    segments: FAMILY_LUCKY_WHEEL_SEGMENTS.map((s) => s.coins),
+  };
 }
 
 // ---------------------------------------------------------------------------
