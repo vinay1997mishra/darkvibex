@@ -23,8 +23,8 @@ test("one user owns an ID permanently across public, VIP and purchased ID paths"
   assert.match(indexJs, /unique_id_purchases WHERE public_id=\? AND buyer_user_id<>\?/);
   assert.match(ownerApi, /public_id_reserved_by_history/);
   assert.match(ownerApi, /public_id_owned_by_another_user/);
-  assert.match(ownerApi, /public_id_must_be_10000001_to_99999999/);
-  assert.match(panelApp, /Public ID must be between 10000001 and 99999999/);
+  assert.match(ownerApi, /public_id_must_be_1_to_999999999/);
+  assert.match(panelApp, /Public ID must be 1 to 999999999/);
   assert.match(uniqueIdStore, /purchaseOwner/);
   assert.match(uniqueIdStore, /unique_id_taken/);
   assert.match(vipActions, /unique_id_purchases WHERE public_id=\? AND buyer_user_id<>\?/);

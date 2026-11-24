@@ -173,9 +173,17 @@ test("Public ID changes, rejects duplicates and bad formats", async () => {
   assert.equal(taken.status, 409);
 
   const bad = await call("/api/owner/users/u2/public-id", {
-    method: "POST", token: OWNER_TOKEN, body: { public_id: "123" },
+    method: "POST", token: OWNER_TOKEN, body: { public_id: "1234567890" },
   });
   assert.equal(bad.status, 400);
+  assert.equal(bad.body.error, "public_id_must_be_1_to_999999999");
+
+  // Short IDs are valid now (Mr. Wrong, 2026-11-24): even a single digit.
+  const short = await call("/api/owner/users/u2/public-id", {
+    method: "POST", token: OWNER_TOKEN, body: { public_id: "123" },
+  });
+  assert.equal(short.status, 200);
+  assert.equal(short.body.public_id, "123");
 });
 
 // ---- Device ban ----

@@ -1764,10 +1764,9 @@ async function ensureUserPublicId(db, userId) {
           WHERE id=?
             AND (
               public_id IS NULL OR public_id=''
-              OR LENGTH(public_id) NOT IN (7,8)
+              OR LENGTH(public_id) NOT BETWEEN 1 AND 9
               OR public_id GLOB '*[^0-9]*'
-              OR (LENGTH(public_id)=7 AND CAST(public_id AS INTEGER)<1000001)
-              OR (LENGTH(public_id)=8 AND CAST(public_id AS INTEGER)<10000001)
+              OR CAST(public_id AS INTEGER)<1
             )`
       ).bind(candidate,now(),userId).run();
       if (Number(update.meta?.changes ?? 0) === 1) return candidate;
@@ -1776,8 +1775,9 @@ async function ensureUserPublicId(db, userId) {
         "SELECT public_id FROM users WHERE id=? LIMIT 1"
       ).bind(userId).first();
       const latestId = String(latest?.public_id ?? "").trim();
-      if (/^\d{7}$/.test(latestId) && Number(latestId) >= 1000001) return latestId;
-      if (/^\d{8}$/.test(latestId) && Number(latestId) >= 10000001) return latestId;
+      // A valid owner-set ID of any length (1–9 digits) stays as it is;
+      // only invalid IDs get replaced by the next auto 8-digit number.
+      if (/^\d{1,9}$/.test(latestId) && Number(latestId) >= 1) return latestId;
     } catch (error) {
       if (String(error?.message ?? error).toLowerCase().includes("unique")) continue;
       throw error;
