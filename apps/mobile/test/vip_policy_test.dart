@@ -46,11 +46,22 @@ void main() {
     expect(VipPolicy.giftDiscountRate(18, active: false), 0);
   });
 
-  test('55 privileges: friends limit removed, 15 new entries added', () {
-    expect(VipPolicy.privileges.length, 55);
+  test('51 privileges: 4 removed (Vinay, 2026-11-24)', () {
+    expect(VipPolicy.privileges.length, 51);
     final ids = VipPolicy.privileges.map((p) => p.id).toSet();
     // Friends Limit Expanded was removed (Vinay, 2026-11-19).
     expect(ids.contains('friends_limit'), false);
+    // The 4 privileges Mr. Wrong ordered removed (2026-11-24):
+    // Hide Last Online, Room With Many Seats, Display in News,
+    // Recommend on Splash — none of them was ever built.
+    for (final id in <String>[
+      'hide_last_online',
+      'many_seats',
+      'vip_news',
+      'splash_recommend',
+    ]) {
+      expect(ids.contains(id), false, reason: '$id must be gone');
+    }
     // The 15 new privileges (Vinay, 2026-11-19).
     for (final id in <String>[
       'exp_boost_1_1x',
@@ -82,14 +93,16 @@ void main() {
     expect(VipPolicy.unlockedAt(1).length, 7);
     // Daily Rewards moved to VIP5 (Vinay, 2026-11-20): VIP2-4 no
     // longer see it, so their counts drop by one each.
-    expect(VipPolicy.unlockedAt(2).length, 9);
-    expect(VipPolicy.unlockedAt(3).length, 11);
-    expect(VipPolicy.unlockedAt(4).length, 12);
-    expect(VipPolicy.unlockedAt(5).length, 22);
-    expect(VipPolicy.unlockedAt(6).length, 23);
-    // 54, not 55: nickname_light is VIP8-17 only, so VIP18 does not
+    // Hide Last Online removed (Mr. Wrong, 2026-11-24): VIP2-6 each
+    // drop by one more.
+    expect(VipPolicy.unlockedAt(2).length, 8);
+    expect(VipPolicy.unlockedAt(3).length, 10);
+    expect(VipPolicy.unlockedAt(4).length, 11);
+    expect(VipPolicy.unlockedAt(5).length, 21);
+    expect(VipPolicy.unlockedAt(6).length, 22);
+    // 50, not 51: nickname_light is VIP8-17 only, so VIP18 does not
     // see it — every other privilege is unlocked at VIP18.
-    expect(VipPolicy.unlockedAt(18).length, 54);
+    expect(VipPolicy.unlockedAt(18).length, 50);
     // VIP6 does not see VIP7+ privileges at all.
     final vip6Ids = VipPolicy.unlockedAt(6).map((p) => p.id).toSet();
     expect(vip6Ids.contains('dynamic_avatar'), false);
