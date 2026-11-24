@@ -12,6 +12,28 @@ abstract final class TinniPalette {
   static const cream = Color(0xFFF0F2FF);
   static const muted = Color(0xFFA5B0D8);
   static const danger = Color(0xFFB95E5B);
+
+  /// Family level colours (Mr. Wrong, 2026-11-23): every family level
+  /// has its own colour — sampled from the family medal art on R2
+  /// (medals/family-lv01..lv10.png). Index = level - 1.
+  static const familyLevelColors = [
+    Color(0xFF8D5D32), // L1 bronze
+    Color(0xFFC3C1B8), // L2 silver
+    Color(0xFFCEB055), // L3 gold
+    Color(0xFFA057C3), // L4 purple
+    Color(0xFFC35151), // L5 red
+    Color(0xFF588AC3), // L6 blue
+    Color(0xFF58C369), // L7 green
+    Color(0xFFCE5692), // L8 pink
+    Color(0xFFCE7F44), // L9 orange
+    Color(0xFF58BAC3), // L10 cyan
+  ];
+
+  static Color familyLevelColor(int level) {
+    if (level < 1) return familyLevelColors[0];
+    if (level > familyLevelColors.length) return familyLevelColors.last;
+    return familyLevelColors[level - 1];
+  }
 }
 
 

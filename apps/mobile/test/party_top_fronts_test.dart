@@ -67,7 +67,7 @@ void main() {
       expect(source, isNot(contains("label: 'CP Ranking'")));
       // The pills open the same pages the old cards did.
       expect(source, contains('_openRankings(context, initialTab: 0)'));
-      expect(source, contains('FamilyRankingScreen(state: state)'));
+      expect(source, contains('TopFamiliesScreen(state: state)'));
     });
   });
 }

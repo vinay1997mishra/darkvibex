@@ -5597,7 +5597,11 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     return json({
       ok: true,
-      families: await familyList(db, url.searchParams.get("limit") ?? 100),
+      families: await familyList(
+        db,
+        url.searchParams.get("limit") ?? 100,
+        url.searchParams.get("country") ?? '',
+      ),
     });
   }
 

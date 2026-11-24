@@ -14,6 +14,7 @@ import '../vip/vip_policy.dart';
 import '../widgets/top_front_pill.dart';
 import 'messages_screen.dart';
 import 'mine_social_screens.dart';
+import 'top_families_screen.dart';
 import 'profile_screen.dart';
 import 'ranking_screen.dart';
 import 'vip_section_screen.dart';
@@ -1315,7 +1316,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute<void>(
-                            builder: (_) => FamilyRankingScreen(state: state),
+                            builder: (_) => TopFamiliesScreen(state: state),
                           ),
                         ),
                       ),
@@ -1761,7 +1762,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
         () => Navigator.push(
           context,
           MaterialPageRoute<void>(
-            builder: (_) => FamilyRankingScreen(state: state),
+            builder: (_) => TopFamiliesScreen(state: state),
           ),
         ),
       ),

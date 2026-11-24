@@ -2345,8 +2345,13 @@ class BackendApi {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> familyList() async {
-    final value = await _json('GET', '/api/family/list?limit=100');
+  Future<List<Map<String, dynamic>>> familyList({String? country}) async {
+    // Local scope (Top Families page, 2026-11-24): when a country is
+    // given, the worker lists only families whose leader is there.
+    final query = country != null && country.trim().isNotEmpty
+        ? '/api/family/list?limit=100&country=${Uri.encodeQueryComponent(country.trim())}'
+        : '/api/family/list?limit=100';
+    final value = await _json('GET', query);
     final rows = value?['families'];
     if (rows is! List) return const <Map<String, dynamic>>[];
     return rows

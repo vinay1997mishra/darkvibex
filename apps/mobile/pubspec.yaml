@@ -50,6 +50,11 @@ flutter:
     - assets/images/greedy_girl_mascot.webp
     - assets/images/gold_trophy.png
     - assets/images/gold_lamp.png
+    - assets/images/shield_gold.png
+    - assets/images/shield_blue.png
+    - assets/images/shield_orange.png
+    - assets/images/gold_crown.png
+    - assets/images/family_bg_light.png
     - assets/images/cp_card_reference.webp
     - assets/images/vs_card_reference.webp
     - assets/images/friend_lock_card_ref.webp
