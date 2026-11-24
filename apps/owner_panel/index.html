@@ -106,6 +106,16 @@
             <div class="search-row"><input id="userSearch" placeholder="User ID or name" /><button id="searchUsers" class="primary">Search</button></div>
             <div id="userList" class="stack"></div>
           </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Give VIP by ID</h2><p>Type a user's public ID, pick a VIP level and days — the grant expires on its own. A later grant replaces the earlier one.</p></div></div>
+            <div class="form-grid">
+              <label>Public ID<input id="vipGrantPublicId" inputmode="numeric" maxlength="9" placeholder="e.g. 7 or 12345678" /></label>
+              <label>VIP level<input id="vipGrantLevel" type="number" min="1" max="18" value="1" /></label>
+              <label>Days<input id="vipGrantDays" type="number" min="1" max="365" value="30" /></label>
+            </div>
+            <button id="grantVipById" class="primary">Grant VIP</button>
+            <p id="vipGrantResult" class="muted"></p>
+          </article>
           <article id="userEditor" class="panel" hidden>
             <div class="panel-head"><div><h2 id="userEditorTitle">Manage user</h2><p id="userMeta" class="muted"></p></div><button id="closeUser" class="secondary">Close</button></div>
             <h3>Live User Investigation</h3>
@@ -148,7 +158,7 @@
             <h3>Public 8-digit ID</h3>
             <p class="muted">Profile ID and room ID use the same public 8-digit identity. Existing legacy IDs are displayed as eight digits. Old IDs remain searchable from the Owner Panel.</p>
             <div class="form-grid compact">
-              <label>Current / new public ID<input id="editPublicId" inputmode="numeric" maxlength="8" placeholder="8-digit ID" /></label>
+              <label>Current / new public ID<input id="editPublicId" inputmode="numeric" maxlength="9" placeholder="1–9 digits, e.g. 7" /></label>
               <div><span class="muted">Previous IDs</span><div id="oldPublicIds" class="stack compact-stack"></div></div>
             </div>
             <button id="savePublicId" class="primary">Change Public ID</button>
@@ -375,7 +385,7 @@
                 <h3 id="economySelectedUserName">Selected user</h3>
                 <p id="economySelectedUserMeta" class="muted"></p>
                 <div class="form-grid compact">
-                  <label>New unique 8-digit ID<input id="economyPublicId" inputmode="numeric" maxlength="8" placeholder="e.g. 12345678" /></label>
+                  <label>New unique ID (1–9 digits)<input id="economyPublicId" inputmode="numeric" maxlength="9" placeholder="e.g. 7 or 12345678" /></label>
                 </div>
                 <button id="saveEconomyPublicId" class="primary">Change Unique ID</button>
               </div>

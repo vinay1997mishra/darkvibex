@@ -5,7 +5,7 @@ import { COSMETIC_CATALOG } from "./cosmetics.js";
 import { BASE_GIFT_CATALOG, DARKVIBE_EXTRA_GIFTS } from "./gift_catalog.js";
 import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
 import { VIP_LEVELS } from "./vip_policy.js";
-import { ensureVipSchema, getVipStatus } from "./vip_store.js";
+import { ensureVipSchema, getVipStatus, createVipGrant } from "./vip_store.js";
 import { deleteRoomRows } from "./room_cleanup.js";
 
 const corsHeaders = {
@@ -1721,9 +1721,12 @@ async function handleUsers(request, db, actor, url, parts) {
   if (parts[4] === "public-id" && request.method === "POST") {
     requirePermission(actor, "users.public_id.change");
     const body = await bodyJson(request);
-    const requested = String(body.public_id ?? "").trim();
-    if (!/^\d{8}$/.test(requested) || Number(requested) < 10000001) {
-      return json({ ok: false, error: "public_id_must_be_10000001_to_99999999" }, { status: 400 });
+    // Any length the owner chooses, 1–9 digits (Mr. Wrong, 2026-11-24):
+    // even a single digit like "7". Leading zeros are stripped so "007"
+    // and "7" cannot become two different IDs for two users.
+    const requested = String(body.public_id ?? "").trim().replace(/^0+(?=\d)/, "");
+    if (!/^\d{1,9}$/.test(requested) || Number(requested) < 1) {
+      return json({ ok: false, error: "public_id_must_be_1_to_999999999" }, { status: 400 });
     }
     const current = await db.prepare("SELECT public_id FROM users WHERE id = ?").bind(userId).first();
     if (!current) return json({ ok: false, error: "not_found" }, { status: 404 });
@@ -3262,6 +3265,56 @@ async function handleAudit(request, db, actor, url, parts) {
   return null;
 }
 
+// Give VIP to a user by Public ID (Mr. Wrong, 2026-11-24): the owner
+// types any user's public ID, picks a level (1-18) and days; the grant
+// is a real vip_grants row (source owner_grant) and expires on its own.
+// One owner grant per user: a later grant replaces the earlier one, so
+// the owner can change the level or extend the days.
+async function handleOwnerVipGrant(request, db, actor) {
+  if (request.method !== "POST") return null;
+  requirePermission(actor, "users.vip.edit");
+  const body = await bodyJson(request);
+  const publicId = String(body.public_id ?? "").trim().replace(/^0+(?=\d)/, "");
+  if (!/^\d{1,9}$/.test(publicId) || Number(publicId) < 1) {
+    return json({ ok: false, error: "public_id_must_be_1_to_999999999" }, { status: 400 });
+  }
+  const level = Number(body.level);
+  if (!Number.isInteger(level) || level < 1 || level > 18) {
+    return json({ ok: false, error: "vip_level_must_be_1_to_18" }, { status: 400 });
+  }
+  const days = Number(body.days);
+  if (!Number.isInteger(days) || days < 1 || days > 365) {
+    return json({ ok: false, error: "vip_days_must_be_1_to_365" }, { status: 400 });
+  }
+  const user = await db.prepare(
+    "SELECT id, display_name, public_id FROM users WHERE public_id = ? LIMIT 1"
+  ).bind(publicId).first();
+  if (!user) return json({ ok: false, error: "user_not_found" }, { status: 404 });
+  const rule = await ownerVipRule(db, level);
+  if (!rule || rule.enabled === false) {
+    return json({ ok: false, error: "vip_level_disabled" }, { status: 409 });
+  }
+  const ts = now();
+  const expiresAt = ts + days * 24 * 60 * 60 * 1000;
+  await ensureVipSchema(db);
+  const updated = await db.prepare(
+    "UPDATE vip_grants SET level=?, granted_at=?, expires_at=? WHERE user_id=? AND source='owner_grant'"
+  ).bind(level, ts, expiresAt, user.id).run();
+  if (Number(updated.meta?.changes ?? 0) === 0) {
+    await createVipGrant(db, user.id, level, days, "owner_grant", null, ts);
+  } else {
+    await db.prepare(
+      "UPDATE users SET vip_level=?, updated_at=? WHERE id=? AND vip_level<?"
+    ).bind(level, ts, user.id, level).run();
+  }
+  await audit(db, actor, "vip_grant_owner", "user", user.id, `level=${level}; days=${days}; public_id=${publicId}`);
+  return json({
+    ok: true,
+    user: { id: user.id, display_name: user.display_name, public_id: user.public_id },
+    grant: { level, expires_at: expiresAt, source: "owner_grant" },
+  });
+}
+
 async function handleSupportTickets(request, db, actor, url, parts) {
   await ensureSupportSchema(db);
   const ticketId = parts[3] ? decodeURIComponent(parts[3]) : "";
@@ -3348,6 +3401,7 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
     else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
+    else if (parts[2] === "vip-grant") response = await handleOwnerVipGrant(request, db, actor);
     else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
     else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts, env);

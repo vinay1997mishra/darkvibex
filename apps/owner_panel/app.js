@@ -85,7 +85,7 @@ const staffPermissionOptions = [
   ["users.name.edit","Users · change display name"],
   ["users.role.edit","Users · change role"],
   ["users.vip.edit","Users · change VIP level"],
-  ["users.public_id.change","Users · change 8-digit Public ID"],
+  ["users.public_id.change","Users · change Public ID (any length, 1–9 digits)"],
   ["users.moderation","Users · ban/suspend/moderation"],
   ["users.role_wallet.ban","Users · Coin Seller/Merchant wallet ban/unban"],
   ["users.override.invisible","Users · Invisible ID"],
@@ -244,6 +244,7 @@ const selectorPermissionRules = [
   ["#saveUserProfile",["users.name.edit","users.role.edit","users.vip.edit"],"self"],
   ["#editStatus",["users.moderation"],"label"],["#editNote",["users.moderation"],"label"],["#saveModeration",["users.moderation"],"self"],
   ["#editPublicId",["users.public_id.change"],"label"],["#savePublicId",["users.public_id.change"],"self"],
+  ["#vipGrantPublicId",["users.vip.edit"],"label"],["#vipGrantLevel",["users.vip.edit"],"label"],["#vipGrantDays",["users.vip.edit"],"label"],["#grantVipById",["users.vip.edit"],"self"],
   ["#coinDelta",["users.wallet.adjust"],"label"],["#diamondDelta",["users.wallet.adjust"],"label"],["#applyWallet",["users.wallet.adjust"],"self"],
   ["#roleWalletType",["users.role_wallet.adjust","users.role_wallet.ban"],"label"],["#roleCoinDelta",["users.role_wallet.adjust"],"label"],
   ["#roleWalletBanned",["users.role_wallet.ban"],"label"],["#applyRoleWallet",["users.role_wallet.adjust","users.role_wallet.ban"],"self"],
@@ -737,7 +738,7 @@ async function saveUserProfile(){
   toast("User profile saved");await openUser(state.selectedUser.id);if(can("users.search"))await loadUsers();
 }
 async function saveModeration(){if(!state.selectedUser)return;if(!can("users.moderation"))return toast("Moderation permission required",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/moderation`,{method:"POST",body:JSON.stringify({status:$("#editStatus").value,note:$("#editNote").value})});toast("Moderation status saved");await openUser(state.selectedUser.id);await loadUsers();}
-async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim();if(!/^\d{8}$/.test(publicId)||Number(publicId)<10000001)return toast("Public ID must be between 10000001 and 99999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
+async function savePublicId(){if(!state.selectedUser)return;if(!can("users.public_id.change"))return toast("Public ID permission required",false);const publicId=$("#editPublicId").value.trim().replace(/^0+(?=\d)/,"");if(!/^\d{1,9}$/.test(publicId)||Number(publicId)<1)return toast("Public ID must be 1 to 999999999",false);await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});toast("Public ID changed");await openUser(state.selectedUser.id);await loadUsers();}
 async function applyWallet(){if(!state.selectedUser)return;if(!can("users.wallet.adjust"))return toast("Wallet adjustment permission required",false);const coin=Number($("#coinDelta").value||0),diamond=Number($("#diamondDelta").value||0);if(!coin&&!diamond)return toast("Enter a coin or diamond change",false);try{await api(`/api/owner/users/${encodeURIComponent(state.selectedUser.id)}/wallet`,{method:"POST",body:JSON.stringify({coin_delta:coin,diamond_delta:diamond})});}catch(e){if(e.message==="insufficient_treasury_balance")return toast("Treasury balance is too low — top up the treasury first (Wallets / Treasury view)",false);throw e;}$("#coinDelta").value="";$("#diamondDelta").value="";toast("Wallet adjustment applied");await openUser(state.selectedUser.id);await loadUsers();}
 async function applyRoleWallet(){
   if(!state.selectedUser)return;
@@ -859,8 +860,8 @@ async function selectEconomyUser(id){
 async function saveEconomyPublicId(){
   if(!state.economyUser)return toast("Select a user first",false);
   if(!can("users.public_id.change"))return toast("Users write permission required",false);
-  const publicId=$("#economyPublicId").value.trim();
-  if(!/^\d{8}$/.test(publicId)||Number(publicId)<10000001)return toast("Unique ID must be between 10000001 and 99999999",false);
+  const publicId=$("#economyPublicId").value.trim().replace(/^0+(?=\d)/,"");
+  if(!/^\d{1,9}$/.test(publicId)||Number(publicId)<1)return toast("Unique ID must be 1 to 999999999",false);
   await api(`/api/owner/users/${encodeURIComponent(state.economyUser.id)}/public-id`,{method:"POST",body:JSON.stringify({public_id:publicId})});
   toast("Unique ID changed");
   await selectEconomyUser(state.economyUser.id);
@@ -1672,6 +1673,19 @@ async function createStaff(){
   await loadStaff();
 }
 
+async function grantVipById(){
+  if(!can("users.vip.edit"))return toast("VIP edit permission required",false);
+  const publicId=$("#vipGrantPublicId").value.trim().replace(/^0+(?=\d)/,"");
+  const level=Number($("#vipGrantLevel").value||0);
+  const days=Number($("#vipGrantDays").value||0);
+  if(!/^\d{1,9}$/.test(publicId)||Number(publicId)<1)return toast("Public ID must be 1 to 999999999",false);
+  if(!Number.isInteger(level)||level<1||level>18)return toast("VIP level must be 1 to 18",false);
+  if(!Number.isInteger(days)||days<1||days>365)return toast("Days must be 1 to 365",false);
+  const d=await api("/api/owner/vip-grant",{method:"POST",body:JSON.stringify({public_id:publicId,level,days})});
+  $("#vipGrantResult").textContent=`VIP ${d.grant.level} granted to ${d.user.display_name||'user'} (ID ${d.user.public_id}) until ${time(d.grant.expires_at)}`;
+  toast("VIP granted");
+}
+
 async function loadSupport(){if(!can('support.view'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
 async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.close');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
 async function sendSupportReply(){if(!state.selectedTicket)return;if(!can('support.reply'))return toast('Support reply permission required',false);const message=$("#supportReply").value.trim();if(!message)return toast('Write a reply first',false);await api(`/api/owner/support-tickets/${encodeURIComponent(state.selectedTicket.id)}/reply`,{method:'POST',body:JSON.stringify({message})});$("#supportReply").value='';toast('Reply sent');await openSupportTicket(state.selectedTicket.id);await loadSupport();}
@@ -2252,7 +2266,7 @@ $("#logout").onclick=()=>{
 $$('.nav-btn').forEach(b=>b.onclick=()=>{setView(b.dataset.view);});
 $$('[data-catalog-shortcut]').forEach(b=>b.onclick=()=>{$("#catalogKind").value=b.dataset.catalogShortcut;clearCatalogForm();loadCatalog().catch(e=>toast(e.message,false));});
 $("#refreshCurrent").onclick=()=>loadView(state.view).catch(e=>toast(e.message,false));
-$("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
+$("#searchUsers").onclick=()=>loadUsers().catch(e=>toast(e.message,false));$("#grantVipById").onclick=()=>grantVipById().catch(e=>toast(e.message,false));$("#userSearch").addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers().catch(x=>toast(x.message,false));});
 $("#saveUserOverrides").onclick=()=>saveUserOverrides().catch(e=>toast(e.message,false));
 $("#loadOwnerMessageInbox").onclick=()=>loadOwnerMessageInbox().catch(e=>toast(e.message,false));
 $("#closeOwnerMessageThread").onclick=()=>{$("#ownerMessageThreadPanel").hidden=true;state.ownerMessageThreadOtherId=null;};
