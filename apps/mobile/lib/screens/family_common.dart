@@ -6,10 +6,16 @@ import 'package:darkvibex/infra/family_rules.dart';
 import 'package:flutter/material.dart';
 
 /// The v9 Family background: light glass purple+gold.
+///
+/// Set [vivid] for pages where the pale glass reads almost white and the
+/// purple+gold must show clearly (Mr. Wrong, 2026-11-24, Party page):
+/// a purple-to-gold gradient wash is painted over the glass image, under
+/// the content, so the page reads purple+gold instead of white.
 class FamilyBackground extends StatelessWidget {
-  const FamilyBackground({super.key, required this.child});
+  const FamilyBackground({super.key, required this.child, this.vivid = false});
 
   final Widget child;
+  final bool vivid;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -19,7 +25,24 @@ class FamilyBackground extends StatelessWidget {
             fit: BoxFit.cover,
           ),
         ),
-        child: child,
+        child: vivid
+            ? Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0x667B2FBE),
+                      Color(0x338B5CF6),
+                      Color(0x59FFD54A),
+                      Color(0x88E8A91C),
+                    ],
+                    stops: [0, .3, .6, 1],
+                  ),
+                ),
+                child: child,
+              )
+            : child,
       );
 }
 

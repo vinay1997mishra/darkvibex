@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1209,10 +1210,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
         .toList(growable: false);
     return AnimatedBuilder(
       animation: state,
-      builder: (context, _) => TinniBackground(
-        child: RefreshIndicator(
-          onRefresh: () => _refreshPartyTab(1),
-          child: CustomScrollView(
+      // No background wrapper here: the outer Party tab already paints
+      // the light glass FamilyBackground (Mr. Wrong, 2026-11-24).
+      builder: (context, _) => RefreshIndicator(
+        onRefresh: () => _refreshPartyTab(1),
+        child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
             SliverToBoxAdapter(
@@ -1221,7 +1223,16 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 child: Column(
                   children: [
                     SizedBox(
-                      height: 142,
+                      // Banner = 15% of the screen height (Mr. Wrong,
+                      // 2026-11-24: "Screen ka 15% banner ke liye"),
+                      // never below 160: on a short screen 15% would
+                      // squeeze the banner cards' content (their icon
+                      // alone is 90) and overflow (Mine page tests at
+                      // 800x600 caught this).
+                      height: math.max(
+                        160,
+                        MediaQuery.sizeOf(context).height * 0.15,
+                      ),
                       child: PageView(
                         controller: _bannerPageController,
                         onPageChanged: (page) {
@@ -1303,8 +1314,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
                                 margin: const EdgeInsets.symmetric(horizontal: 3),
                                 decoration: BoxDecoration(
                                   color: selected
-                                      ? const Color(0xFF70E8FF)
-                                      : const Color(0x66A9B5DD),
+                                      ? const Color(0xFFD09A0A)
+                                      : const Color(0x66B8A6D9),
                                   borderRadius: BorderRadius.circular(99),
                                 ),
                               ),
@@ -1377,11 +1388,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     ChoiceChip(
                       label: const Text('🔥 Popular'),
                       selected: popular,
-                      selectedColor: const Color(0xFF5148C8),
-                      backgroundColor: const Color(0xFF192143),
-                      side: const BorderSide(color: Color(0xFF54518D)),
+                      selectedColor: const Color(0xFFFFD54A),
+                      backgroundColor: const Color(0xF2FFFFFF),
+                      side: const BorderSide(color: Color(0xFFE8C96A)),
                       labelStyle: const TextStyle(
-                        color: Color(0xFFF1F4FF),
+                        color: Color(0xFF2A2140),
                         fontWeight: FontWeight.w700,
                       ),
                       onSelected: (_) => setState(() => popular = true),
@@ -1390,11 +1401,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     ChoiceChip(
                       label: const Text('✨ New'),
                       selected: !popular,
-                      selectedColor: const Color(0xFF5148C8),
-                      backgroundColor: const Color(0xFF192143),
-                      side: const BorderSide(color: Color(0xFF54518D)),
+                      selectedColor: const Color(0xFFFFD54A),
+                      backgroundColor: const Color(0xF2FFFFFF),
+                      side: const BorderSide(color: Color(0xFFE8C96A)),
                       labelStyle: const TextStyle(
-                        color: Color(0xFFF1F4FF),
+                        color: Color(0xFF2A2140),
                         fontWeight: FontWeight.w700,
                       ),
                       onSelected: (_) => setState(() => popular = false),
@@ -1403,7 +1414,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     Text(
                       '${publicRooms.length} rooms',
                       style: const TextStyle(
-                        color: Color(0xFF8ECFFF),
+                        color: Color(0xFF2A2140),
                         fontSize: 11,
                       ),
                     ),
@@ -1441,7 +1452,6 @@ class _RoomsHomeState extends State<_RoomsHome> {
             ),
           ],
         ),
-      ),
       ),
     );
   }
@@ -1520,11 +1530,11 @@ class _RoomsHomeState extends State<_RoomsHome> {
                         unawaited(_refreshPartyTab(i));
                       },
                       style: TextButton.styleFrom(
+                        // Light glass background (Mr. Wrong, 2026-11-24):
+                        // dark labels, gold underline for the active tab.
                         foregroundColor: topPage == i
-                            ? (i == 1
-                                ? const Color(0xFF9B91FF)
-                                : TinniPalette.gold)
-                            : TinniPalette.muted,
+                            ? const Color(0xFF2A2140)
+                            : const Color(0xFF6B7194),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1544,9 +1554,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                             height: 2,
                             decoration: BoxDecoration(
                               color: topPage == i
-                                  ? (i == 1
-                                      ? const Color(0xFF70E8FF)
-                                      : TinniPalette.gold)
+                                  ? const Color(0xFFD09A0A)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(2),
                             ),
@@ -1613,7 +1621,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
         const Text(
           'My room',
           style: TextStyle(
-            color: TinniPalette.gold,
+            color: Color(0xFF2A2140),
             fontSize: 17,
             fontWeight: FontWeight.w900,
           ),
@@ -1675,7 +1683,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
               child: Text(
                 'Recents',
                 style: TextStyle(
-                  color: TinniPalette.gold,
+                  color: Color(0xFF2A2140),
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1687,7 +1695,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 onPressed: () => setState(recentRoomIds.clear),
                 icon: const Icon(
                   Icons.delete_sweep_rounded,
-                  color: TinniPalette.gold,
+                  color: Color(0xFF2A2140),
                 ),
               ),
           ],
@@ -1726,7 +1734,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
         const Text(
           'My followings',
           style: TextStyle(
-            color: TinniPalette.gold,
+            color: Color(0xFF2A2140),
             fontSize: 17,
             fontWeight: FontWeight.w900,
           ),
@@ -1745,7 +1753,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
                 SizedBox(height: 10),
                 Text(
                   'No following rooms yet',
-                  style: TextStyle(color: TinniPalette.muted),
+                  style: TextStyle(color: Color(0xFF6B7194)),
                 ),
               ],
             ),
@@ -1900,7 +1908,15 @@ class _RoomsHomeState extends State<_RoomsHome> {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
-      builder: (context, _) => TinniBackground(
+      // Light glass purple+gold background (Mr. Wrong, 2026-11-24):
+      // the whole Party tab uses the same background as the Family
+      // pages and Discover (family_bg_light.png), not the dark Tinni
+      // background. vivid: true — the pale glass alone reads almost
+      // white here, so the purple+gold wash must show clearly.
+      // Titles + chips go dark so they read on the light
+      // glass; the dark banner/room cards stay as dark tiles on it.
+      builder: (context, _) => FamilyBackground(
+        vivid: true,
         child: Column(
           children: [
             _topTabs(),
@@ -2338,8 +2354,8 @@ class _BuiltInBannerCard extends StatelessWidget {
                     child: Row(
                       children: [
                         Container(
-                          width: 60,
-                          height: 60,
+                          width: 90,
+                          height: 90,
                           padding: const EdgeInsets.all(2),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
@@ -2361,7 +2377,7 @@ class _BuiltInBannerCard extends StatelessWidget {
                               errorBuilder: (_, __, ___) => Container(
                                 color: const Color(0xFF111A42),
                                 alignment: Alignment.center,
-                                child: Icon(icon, color: accent, size: 31),
+                                child: Icon(icon, color: accent, size: 46),
                               ),
                             ),
                           ),
@@ -2376,7 +2392,7 @@ class _BuiltInBannerCard extends StatelessWidget {
                                 badge,
                                 style: TextStyle(
                                   color: accent,
-                                  fontSize: 9,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 1.5,
                                 ),
@@ -2388,7 +2404,7 @@ class _BuiltInBannerCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 17,
+                                  fontSize: 24,
                                   height: 1.05,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: .2,
@@ -2401,7 +2417,7 @@ class _BuiltInBannerCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Color(0xFFD3DCFF),
-                                  fontSize: 10,
+                                  fontSize: 14,
                                   height: 1.15,
                                 ),
                               ),
@@ -2412,7 +2428,7 @@ class _BuiltInBannerCard extends StatelessWidget {
                         Icon(
                           Icons.chevron_right_rounded,
                           color: accent,
-                          size: 25,
+                          size: 32,
                         ),
                       ],
                     ),
@@ -2707,7 +2723,7 @@ class _OwnerBannerCard extends StatelessWidget {
                 child: Row(
                   children: [
                     if (imageUrl.isEmpty) ...[
-                      const _DarkVibeXLogo(size: 58),
+                      const _DarkVibeXLogo(size: 84),
                       const SizedBox(width: 12),
                     ],
                     Expanded(
@@ -2721,7 +2737,7 @@ class _OwnerBannerCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Color(0xFFB1A6FF),
-                              fontSize: 20,
+                              fontSize: 26,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -2729,7 +2745,7 @@ class _OwnerBannerCard extends StatelessWidget {
                             const SizedBox(height: 5),
                             const Text(
                               'Tap to open',
-                              style: TextStyle(color: Colors.white70, fontSize: 11),
+                              style: TextStyle(color: Colors.white70, fontSize: 14),
                             ),
                           ],
                         ],
@@ -2768,8 +2784,8 @@ class _PromoCard extends StatelessWidget {
             children: [
               _PartyGlowIcon(
                 icon: icon,
-                size: 30,
-                boxSize: 58,
+                size: 42,
+                boxSize: 84,
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -2781,7 +2797,7 @@ class _PromoCard extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         color: const Color(0xFFB1A6FF),
-                        fontSize: 20,
+                        fontSize: 26,
                         fontWeight: FontWeight.w900,
                         letterSpacing: .4,
                       ),
@@ -2791,7 +2807,7 @@ class _PromoCard extends StatelessWidget {
                       subtitle,
                       style: const TextStyle(
                         color: const Color(0xFFA9B5DD),
-                        fontSize: 11,
+                        fontSize: 14,
                       ),
                     ),
                   ],
@@ -2800,6 +2816,7 @@ class _PromoCard extends StatelessWidget {
               const Icon(
                 Icons.chevron_right_rounded,
                 color: const Color(0xFF70E8FF),
+                size: 30,
               ),
             ],
           ),
