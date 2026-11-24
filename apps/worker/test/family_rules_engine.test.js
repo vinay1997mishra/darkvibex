@@ -499,3 +499,99 @@ test("family list: member_limit grows with level (join page counts)", async () =
   assert.equal(row.member_count, 1);
   assert.equal(row.member_limit, 60);
 });
+
+test("lucky wheel spin: wins coins, credits wallet, records the win", async () => {
+  const fx = await fixture();
+  const leader = await makeUser(fx, "leader", { vipLevel: 6, coins: 1000 });
+  const familyId = await createFamily(fx, leader);
+  const before = coins(fx, leader);
+  const res = await fx.request("/api/family/lucky-wheel/spin", {
+    method: "POST",
+    userId: leader,
+    body: { user_id: leader, family_id: familyId },
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.ok, true);
+  // One of the 8 segments (1.5x video values).
+  assert.ok(
+    [34830, 43538, 58050, 72563, 87075, 108845, 145125, 217688].includes(
+      res.body.coins,
+    ),
+  );
+  assert.equal(coins(fx, leader), before + res.body.coins);
+  // The win is in today's records.
+  const records = await fx.request(
+    `/api/family/lucky-draw-records?family_id=${familyId}`,
+    { method: "GET", userId: leader },
+  );
+  assert.equal(records.body.records.length, 1);
+  assert.equal(records.body.records[0].coins, res.body.coins);
+  // Detail carries the wheel state: spun, no spins left, draws left 4/5.
+  const detail = await fx.request(
+    `/api/family/detail?family_id=${familyId}`,
+    { method: "GET", userId: leader },
+  );
+  assert.equal(detail.body.wheel.has_spun, true);
+  assert.equal(detail.body.wheel.spins_left, 0);
+  assert.equal(detail.body.wheel.draws_total, 5);
+  assert.equal(detail.body.wheel.draws_left, 4);
+  assert.equal(detail.body.wheel.top_prize, 217688);
+});
+
+test("lucky wheel spin: once per user per day, non-members cannot spin", async () => {
+  const fx = await fixture();
+  const leader = await makeUser(fx, "leader", { vipLevel: 6 });
+  const member = await makeUser(fx, "member");
+  const outsider = await makeUser(fx, "outsider");
+  const familyId = await createFamily(fx, leader);
+  await joinFamily(fx, member, familyId);
+  const first = await fx.request("/api/family/lucky-wheel/spin", {
+    method: "POST",
+    userId: member,
+    body: { user_id: member, family_id: familyId },
+  });
+  assert.equal(first.status, 200);
+  const second = await fx.request("/api/family/lucky-wheel/spin", {
+    method: "POST",
+    userId: member,
+    body: { user_id: member, family_id: familyId },
+  });
+  assert.equal(second.status, 400);
+  assert.equal(second.body.error, "already_spun");
+  const outsiderRes = await fx.request("/api/family/lucky-wheel/spin", {
+    method: "POST",
+    userId: outsider,
+    body: { user_id: outsider, family_id: familyId },
+  });
+  assert.equal(outsiderRes.status, 400);
+  assert.equal(outsiderRes.body.error, "join_family_first");
+});
+
+test("lucky wheel spin: when the family draws run out, nobody spins", async () => {
+  const fx = await fixture();
+  const leader = await makeUser(fx, "leader", { vipLevel: 6 });
+  const familyId = await createFamily(fx, leader);
+  // Iron III gets 5 draws a day: 5 different members spin, the 6th cannot.
+  const spinners = [];
+  for (let i = 0; i < 6; i += 1) {
+    const user = await makeUser(fx, `spinner-${i}`);
+    await joinFamily(fx, user, familyId);
+    spinners.push(user);
+  }
+  for (let i = 0; i < 5; i += 1) {
+    const res = await fx.request("/api/family/lucky-wheel/spin", {
+      method: "POST",
+      userId: spinners[i],
+      body: { user_id: spinners[i], family_id: familyId },
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.draws_left, 4 - i);
+  }
+  const sixth = await fx.request("/api/family/lucky-wheel/spin", {
+    method: "POST",
+    userId: spinners[5],
+    body: { user_id: spinners[5], family_id: familyId },
+  });
+  assert.equal(sixth.status, 400);
+  assert.equal(sixth.body.error, "no_draws_left");
+});

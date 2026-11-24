@@ -257,7 +257,21 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('3 members'), findsOneWidget);
+    // "3 members" shows twice on the new detail page (cover hero +
+    // members card header) — scope the check to the members card.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('family-detail-member-list')),
+        matching: find.text('3 members'),
+      ),
+      findsOneWidget,
+    );
+    // The new single-scroll page is long — the members card sits below
+    // the fold, so scroll it into view before tapping.
+    await tester.ensureVisible(
+      find.byKey(const Key('family-detail-member-list')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('family-detail-member-list')));
     await tester.pumpAndSettle();
     // The members screen is on top now, showing the same members.

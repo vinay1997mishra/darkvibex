@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  FAMILY_LUCKY_WHEEL_SEGMENTS,
   FAMILY_MAX_LEVEL,
   FAMILY_LEVEL_EXP,
   FAMILY_TASK_REWARDS,
@@ -12,6 +13,9 @@ import {
   familyGameExp,
   familyGiftExp,
   familyLevelForExp,
+  familyLuckyWheelDrawsForRank,
+  familyLuckyWheelRoll,
+  familyLuckyWheelTopPrize,
   familyMemberLimit,
   familyMonthlyVaultReward,
   familyRankForMonthlyExp,
@@ -113,4 +117,34 @@ test("family rank: Silver III band width is the observed 7.38B x1.5", () => {
   assert.equal(silver.next_rank, "Silver II");
   assert.equal(familyRankForMonthlyExp(0).rank, "Iron III");
   assert.equal(familyRankForMonthlyExp(18270000000).rank, "Silver II");
+});
+
+test("lucky wheel: 8 segments, video values x1.5, every spin wins", () => {
+  // Reference video segments: 23,220 / 29,025 / 38,700 / 48,375 /
+  // 58,050 / 72,563 / 96,750 / 145,125 -> x1.5.
+  assert.equal(FAMILY_LUCKY_WHEEL_SEGMENTS.length, 8);
+  assert.deepEqual(
+    FAMILY_LUCKY_WHEEL_SEGMENTS.map((s) => s.coins),
+    [34830, 43538, 58050, 72563, 87075, 108845, 145125, 217688],
+  );
+  assert.equal(familyLuckyWheelTopPrize(), 217688);
+  // Weights sum to 100; every segment is a prize (no zero).
+  assert.equal(
+    FAMILY_LUCKY_WHEEL_SEGMENTS.reduce((sum, s) => sum + s.weight, 0),
+    100,
+  );
+  assert.ok(FAMILY_LUCKY_WHEEL_SEGMENTS.every((s) => s.coins > 0));
+  // Seeded rolls: 0.0 -> smallest, 0.6 -> third segment, 0.999 -> top.
+  assert.equal(familyLuckyWheelRoll(() => 0).coins, 34830);
+  assert.equal(familyLuckyWheelRoll(() => 0.6).coins, 58050);
+  assert.equal(familyLuckyWheelRoll(() => 0.999).coins, 217688);
+});
+
+test("lucky wheel: daily draws grow with rank (Iron III 5, Diamond I 22)", () => {
+  assert.equal(familyLuckyWheelDrawsForRank("Iron III"), 5);
+  assert.equal(familyLuckyWheelDrawsForRank("Iron II"), 6);
+  assert.equal(familyLuckyWheelDrawsForRank("Silver III"), 11);
+  assert.equal(familyLuckyWheelDrawsForRank("Gold I"), 16);
+  assert.equal(familyLuckyWheelDrawsForRank("Diamond I"), 22);
+  assert.equal(familyLuckyWheelDrawsForRank("No Such Rank"), 5);
 });

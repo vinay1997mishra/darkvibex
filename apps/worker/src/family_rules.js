@@ -260,3 +260,48 @@ export function familyWeeklyTopCoins(rank) {
   if (r >= 4 && r <= 15) return Math.round((390000 - (r - 4) * (255000 / 11)) / 1000) * 1000;
   return 0;
 }
+
+// ---------------------------------------------------------------------------
+// Daily Lucky Wheel (Mr. Wrong, 2026-11-24): the EVENT hold is LIFTED —
+// "sab kuch add kar de, wheel bhi". Same-to-same as the other app's wheel,
+// every number x1.5 (Family 6M:9M rule).
+// ---------------------------------------------------------------------------
+
+// Wheel segments from the reference video, x1.5:
+// 23,220 / 29,025 / 38,700 / 48,375 / 58,050 / 72,563 / 96,750 / 145,125
+// -> 34,830 / 43,538 / 58,050 / 72,563 / 87,075 / 108,845 / 145,125 / 217,688.
+// Every spin wins coins (no zero segment); smaller prizes are likelier.
+export const FAMILY_LUCKY_WHEEL_SEGMENTS = [
+  { coins: 34830, weight: 30 },
+  { coins: 43538, weight: 25 },
+  { coins: 58050, weight: 18 },
+  { coins: 72563, weight: 12 },
+  { coins: 87075, weight: 7 },
+  { coins: 108845, weight: 4 },
+  { coins: 145125, weight: 2.5 },
+  { coins: 217688, weight: 1.5 },
+];
+
+export function familyLuckyWheelTopPrize() {
+  return Math.max(...FAMILY_LUCKY_WHEEL_SEGMENTS.map((s) => s.coins));
+}
+
+// Weighted roll: returns one segment. `random` is injectable for tests.
+export function familyLuckyWheelRoll(random = Math.random) {
+  const total = FAMILY_LUCKY_WHEEL_SEGMENTS.reduce((sum, s) => sum + s.weight, 0);
+  let roll = random() * total;
+  for (const segment of FAMILY_LUCKY_WHEEL_SEGMENTS) {
+    roll -= segment.weight;
+    if (roll < 0) return segment;
+  }
+  return FAMILY_LUCKY_WHEEL_SEGMENTS[FAMILY_LUCKY_WHEEL_SEGMENTS.length - 1];
+}
+
+// Daily draws for the whole family, by rank (video rule: draws depend on
+// rank; a rank change updates that day's total at once). Iron III gets 5
+// draws a day, each higher rank one more, Diamond I gets 22.
+export function familyLuckyWheelDrawsForRank(rankName) {
+  const index = FAMILY_RANK_LADDER.findIndex((r) => r.name === rankName);
+  if (index < 0) return 5;
+  return 5 + index;
+}
