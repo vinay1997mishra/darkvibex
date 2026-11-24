@@ -9,6 +9,7 @@ import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:flutter/material.dart';
 import 'family_common.dart';
+import 'family_members_screen.dart';
 import 'family_monthly_ranking_screen.dart';
 import 'room_screen.dart';
 
@@ -162,6 +163,34 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
     );
   }
 
+  // Member list tap (Mr. Wrong, 2026-11-24): tapping the "N members"
+  // section opens the full members page, like in the reference video.
+  // The members page also carries everything the Management page has
+  // (admin controls, join requests, Leave Family), so it gets the
+  // viewer's role and the pending requests from this detail snapshot.
+  void _openMembers(List<Map<String, dynamic>> members) {
+    final requests = _detail?['join_requests'];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FamilyMembersScreen(
+          state: widget.state,
+          familyId: widget.familyId,
+          familyName: _family['name']?.toString() ?? 'Family',
+          members: members,
+          myRole: _family['my_role']?.toString(),
+          joinRequests: requests is List
+              ? requests
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList()
+              : const [],
+          backend: widget.backend,
+        ),
+      ),
+    ).then((_) => _load());
+  }
+
   void _openRecords() {
     showDialog<void>(
       context: context,
@@ -251,6 +280,7 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
                               onOpenMonthlyRanking: _openMonthlyRanking,
                               onOpenRoom: _openRoom,
                               onOpenRecords: _openRecords,
+                              onOpenMembers: _openMembers,
                               formatNumber: _formatNumber,
                             ),
                             _TaskTab(
@@ -290,6 +320,7 @@ class _HomeTab extends StatelessWidget {
     required this.onOpenMonthlyRanking,
     required this.onOpenRoom,
     required this.onOpenRecords,
+    required this.onOpenMembers,
     required this.formatNumber,
   });
 
@@ -301,6 +332,7 @@ class _HomeTab extends StatelessWidget {
   final VoidCallback onOpenMonthlyRanking;
   final void Function(Map<String, dynamic> room) onOpenRoom;
   final VoidCallback onOpenRecords;
+  final void Function(List<Map<String, dynamic>> members) onOpenMembers;
   final String Function(num value) formatNumber;
 
   Map<String, dynamic> get _family {
@@ -447,12 +479,14 @@ class _HomeTab extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Current rank: ${family['rank']?.toString() ?? 'Iron III'}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF2A2140),
+                    Expanded(
+                      child: Text(
+                        'Current rank: ${family['rank']?.toString() ?? 'Iron III'}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF2A2140),
+                        ),
                       ),
                     ),
                     TextButton(
@@ -525,18 +559,31 @@ class _HomeTab extends StatelessWidget {
             ],
           ),
           const FamilySectionTitle('Member list'),
-          FamilyCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${memberList.length} members',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF2A2140),
+          InkWell(
+            key: const Key('family-detail-member-list'),
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => onOpenMembers(memberList),
+            child: FamilyCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '${memberList.length} members',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF2A2140),
+                        ),
+                      ),
+                      const Spacer(),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: Color(0xFF7A7390),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 10),
+                  const SizedBox(height: 10),
                 SizedBox(
                   height: 64,
                   child: ListView.builder(
@@ -573,6 +620,7 @@ class _HomeTab extends StatelessWidget {
                 ),
               ],
             ),
+          ),
           ),
           if (roomMap != null) ...[
             const FamilySectionTitle('Family room'),
