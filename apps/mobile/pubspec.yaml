@@ -65,6 +65,9 @@ flutter:
     - assets/images/family_level_badge.webp
     - assets/images/family_exp_crystal.webp
     - assets/images/family_lucky_wheel.webp
+    - assets/images/gift_phoenix_new.webp
+    - assets/images/gift_treasure_chest_new.webp
+    - assets/images/vip17_entry_new.webp
     - assets/images/cp_card_reference.webp
     - assets/images/vs_card_reference.webp
     - assets/images/friend_lock_card_ref.webp

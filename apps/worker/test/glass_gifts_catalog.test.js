@@ -81,3 +81,29 @@ test("glass gift ids are unique and do not collide with other gifts", () => {
   const ids = BASE_GIFT_CATALOG.map((g) => g.id);
   assert.equal(new Set(ids).size, ids.length, "duplicate gift id in catalog");
 });
+
+// New golden models (Mr. Wrong, 2026-11-24: complete the 3 models):
+// Phoenix + Treasure Chest keep their glass ids/prices, but the app
+// shows the bundled golden WebP (local_asset) instead of the R2 glass PNG.
+test("phoenix + treasure chest gifts use the new bundled golden models", () => {
+  const byId = new Map(BASE_GIFT_CATALOG.map((g) => [g.id, g]));
+  assert.equal(
+    byId.get("glass-phoenix")?.local_asset,
+    "assets/images/gift_phoenix_new.webp",
+  );
+  assert.equal(
+    byId.get("glass-treasure-chest")?.local_asset,
+    "assets/images/gift_treasure_chest_new.webp",
+  );
+  // Prices + R2 asset keys unchanged (the model is an art upgrade only).
+  assert.equal(byId.get("glass-phoenix")?.coin_cost, 5000);
+  assert.equal(byId.get("glass-treasure-chest")?.coin_cost, 2500);
+  assert.equal(
+    byId.get("glass-phoenix")?.asset_key,
+    "gifts/glass/phoenix.png",
+  );
+  assert.equal(
+    byId.get("glass-treasure-chest")?.asset_key,
+    "gifts/glass/treasure-chest.png",
+  );
+});

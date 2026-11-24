@@ -989,7 +989,8 @@ export const BASE_GIFT_CATALOG = [
     "coin_cost": 2500,
     "vip_level": 0,
     "category": "lucky",
-    "asset_key": "gifts/glass/treasure-chest.png"
+    "asset_key": "gifts/glass/treasure-chest.png",
+    "local_asset": "assets/images/gift_treasure_chest_new.webp"
   },
   {
     "id": "glass-golden-key",
@@ -1016,7 +1017,8 @@ export const BASE_GIFT_CATALOG = [
     "coin_cost": 5000,
     "vip_level": 0,
     "category": "lucky",
-    "asset_key": "gifts/glass/phoenix.png"
+    "asset_key": "gifts/glass/phoenix.png",
+    "local_asset": "assets/images/gift_phoenix_new.webp"
   },
   {
     "id": "royal-galaxy-castle",
