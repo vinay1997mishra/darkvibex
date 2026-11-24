@@ -151,6 +151,16 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
   int get _wheelTopPrize => _asInt(_wheel['top_prize']);
   bool get _wheelHasSpun => _wheel['has_spun'] == true;
 
+  /// The 8 wheel prizes (server-driven segment values). The wheel model
+  /// itself has no numbers painted on it, so the coins must be written
+  /// out under the wheel (Mr. Wrong, 2026-11-24: "Spin per coins bhi
+  /// likhe nhi dikh rahe hain").
+  List<int> get _wheelSegments {
+    final segments = _wheel['segments'];
+    if (segments is! List) return const <int>[];
+    return segments.map(_asInt).where((value) => value > 0).toList();
+  }
+
   int _asInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
 
   String _formatNumber(num value) {
@@ -175,12 +185,15 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
   }
 
   Future<void> _join() async {
-    final ok = await _backend.requestFamilyJoin(
+    final result = await _backend.requestFamilyJoin(
       userId: widget.state.userId,
       familyId: widget.familyId,
     );
     if (!mounted) return;
-    if (ok) {
+    if (result.joined) {
+      _showMessage('Joined the family!');
+      await _load();
+    } else if (result.ok) {
       _showMessage('Join request sent');
       await _load();
     } else {
@@ -237,10 +250,32 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
       return;
     }
     final won = _asInt(value['coins']);
-    // Spin the wheel: 5 full turns + a random offset, easing out.
+    // The wheel lands on the won prize (Mr. Wrong, 2026-11-24: "Wheel
+    // ghumna bhi chahiye" + "Random coins amount win ke liye"): the
+    // server rolls a RANDOM segment (weighted random over the 8
+    // prizes), and the wheel turns 5 full rounds, then eases out so
+    // the pointer stops on that segment. 8 segments of 45 degrees;
+    // segment i is centred i*45 + 22.5 degrees clockwise from the top
+    // in the artwork, so the wheel must turn 360 - (i*45 + 22.5)
+    // degrees past the full rounds (plus a small jitter inside the
+    // segment so it never stops dead-centre twice in a row).
+    final responseSegments = value['segments'];
+    final segments = responseSegments is List
+        ? responseSegments.map(_asInt).where((v) => v > 0).toList()
+        : _wheelSegments;
+    final winIndex = segments.indexOf(won);
+    final random = math.Random();
+    final double landing;
+    if (winIndex >= 0) {
+      final jitter = (random.nextDouble() - 0.5) * (math.pi / 7.5);
+      landing = 5 * 2 * math.pi +
+          (2 * math.pi - (winIndex * math.pi / 4 + math.pi / 8)) +
+          jitter;
+    } else {
+      landing = (5 + random.nextDouble()) * 2 * math.pi;
+    }
     _spinFrom = _wheelAngle;
-    _spinTo = _wheelAngle +
-        (5 + math.Random().nextDouble()) * 2 * math.pi;
+    _spinTo = _wheelAngle + landing;
     await _spinController.forward(from: 0);
     if (!mounted) return;
     setState(() {
@@ -1145,56 +1180,99 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: 220,
-                height: 220,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    AnimatedBuilder(
-                      animation: _spinCurve,
-                      builder: (context, child) {
-                        final angle = _spinFrom +
-                            (_spinTo - _spinFrom) * _spinCurve.value;
-                        return Transform.rotate(angle: angle, child: child);
-                      },
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/images/family_lucky_wheel.webp',
-                          width: 220,
-                          height: 220,
-                          fit: BoxFit.cover,
+              // Tapping the wheel itself spins it too (Mr. Wrong,
+              // 2026-11-24: "Wheel ghumna bhi chahiye") — same guards
+              // as the SPIN button (members only, once a day).
+              GestureDetector(
+                key: const Key('family-wheel'),
+                onTap: _spin,
+                child: SizedBox(
+                  width: 220,
+                  height: 220,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _spinCurve,
+                        builder: (context, child) {
+                          final angle = _spinFrom +
+                              (_spinTo - _spinFrom) * _spinCurve.value;
+                          return Transform.rotate(angle: angle, child: child);
+                        },
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/images/family_lucky_wheel.webp',
+                            width: 220,
+                            height: 220,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
-                    ),
-                    // Pointer at the top.
-                    Positioned(
-                      top: 0,
-                      child: Container(
-                        width: 0,
-                        height: 0,
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            left: BorderSide(
-                              color: Colors.transparent,
-                              width: 10,
-                            ),
-                            right: BorderSide(
-                              color: Colors.transparent,
-                              width: 10,
-                            ),
-                            top: BorderSide(
-                              color: Color(0xFFE8A91C),
-                              width: 16,
+                      // Pointer at the top.
+                      Positioned(
+                        top: 0,
+                        child: Container(
+                          width: 0,
+                          height: 0,
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              left: BorderSide(
+                                color: Colors.transparent,
+                                width: 10,
+                              ),
+                              right: BorderSide(
+                                color: Colors.transparent,
+                                width: 10,
+                              ),
+                              top: BorderSide(
+                                color: Color(0xFFE8A91C),
+                                width: 16,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
+              // Prizes written out: the wheel artwork has no numbers on
+              // its segments, so the 8 coin values are shown as chips
+              // under the wheel (Mr. Wrong, 2026-11-24).
+              if (_wheelSegments.isNotEmpty) ...[
+                Wrap(
+                  key: const Key('family-wheel-prizes'),
+                  alignment: WrapAlignment.center,
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final prize in _wheelSegments)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3C4),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFFE8A91C),
+                          ),
+                        ),
+                        child: Text(
+                          '${_formatNumber(prize)} coins',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF5A3E00),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               if (_spinWonCoins != null)
                 ScaleTransition(
                   scale: Tween<double>(begin: 0.7, end: 1.0).animate(

@@ -2389,7 +2389,13 @@ class BackendApi {
         returnErrorBody: true,
       );
 
-  Future<bool> requestFamilyJoin({
+  /// Sends a join request (approval family) or joins directly (open
+  /// family). Returns both flags: [ok] means the server accepted the
+  /// call, [joined] means the user is a member right now (Mr. Wrong,
+  /// 2026-11-24: "Join button per touch kar ke family me id join bhi
+  /// nhi ho rahi" — the old bool-only return hid the direct-join case,
+  /// so both pages said "request sent" even when the user had joined).
+  Future<({bool ok, bool joined})> requestFamilyJoin({
     required String userId,
     required String familyId,
   }) async {
@@ -2402,7 +2408,10 @@ class BackendApi {
       },
       returnErrorBody: true,
     );
-    return value?['ok'] == true;
+    return (
+      ok: value?['ok'] == true,
+      joined: value?['joined'] == true,
+    );
   }
 
   Future<bool> resolveFamilyJoin({

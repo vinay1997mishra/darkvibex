@@ -831,13 +831,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _join(String familyId) async {
-    final ok = await _backend.requestFamilyJoin(
+    final result = await _backend.requestFamilyJoin(
       userId: widget.state.userId,
       familyId: familyId,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'Join request sent' : 'Could not send request')),
+      SnackBar(
+        content: Text(
+          result.joined
+              ? 'Joined the family!'
+              : result.ok
+                  ? 'Join request sent'
+                  : 'Could not send request',
+        ),
+      ),
     );
   }
 

@@ -6,6 +6,7 @@ import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/screens/family_detail_screen.dart';
 import 'package:darkvibex/screens/family_members_screen.dart';
+import 'package:darkvibex/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -235,6 +236,32 @@ void main() {
     expect(find.text('Admin • Coins: 1120.72M • Today'), findsOneWidget);
     expect(find.text('akriti.'), findsOneWidget);
     expect(find.text('Member • Coins: 1542.60M • 1 day ago'), findsOneWidget);
+  });
+
+  testWidgets('tapping a member DP opens their ID (public profile)',
+      (tester) async {
+    // Mr. Wrong, 2026-11-24: "Family ke members page se agar user dp
+    // per touch karte hain to id open honi chahiye" — the DP opens the
+    // same public profile screen the ranking rows open.
+    final state = AppState()
+      ..userId = 'user-1'
+      ..vipLevel = 0;
+    final backend = _FakeDetailBackend();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FamilyMembersScreen(
+          state: state,
+          familyId: '10087',
+          familyName: 'ASTROPHILE',
+          members: _demoMembers(),
+          backend: backend,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('family-member-dp-user-akriti')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PublicProfileScreen), findsOneWidget);
   });
 
   testWidgets('tapping the detail member list opens the members screen',

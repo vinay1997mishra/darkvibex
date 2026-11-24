@@ -9,6 +9,7 @@ import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/infra/family_rules.dart';
 import 'package:flutter/material.dart';
 import 'family_common.dart';
+import 'profile_screen.dart';
 
 class FamilyMembersScreen extends StatefulWidget {
   const FamilyMembersScreen({
@@ -91,6 +92,24 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   void _showMessage(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  // Members page (Mr. Wrong, 2026-11-24): tapping a member's DP opens
+  // their ID (public profile) — the same screen the ranking rows open.
+  // Family members see each other's real names/DPs here, so there is no
+  // anonymous-row guard like the public rankings have.
+  Future<void> _openMemberProfile(Map<String, dynamic> member) async {
+    final userId = member['user_id']?.toString() ?? '';
+    if (userId.isEmpty) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(
+          state: widget.state,
+          userId: userId,
+        ),
+      ),
+    );
   }
 
   Future<void> _reload() async {
@@ -250,10 +269,16 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                   child: FamilyCard(
                     child: Row(
                       children: [
-                        FamilyAvatar(
-                          backend: _backend,
-                          avatarKey: member['avatar_key']?.toString() ?? '',
-                          size: 48,
+                        GestureDetector(
+                          key: Key(
+                            'family-member-dp-${member['user_id']}',
+                          ),
+                          onTap: () => _openMemberProfile(member),
+                          child: FamilyAvatar(
+                            backend: _backend,
+                            avatarKey: member['avatar_key']?.toString() ?? '',
+                            size: 48,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
