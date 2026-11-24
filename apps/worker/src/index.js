@@ -20,7 +20,7 @@ import { expireOldGameData } from "./game_data_retention.js";
 import { expireOldD1SpaceData } from "./d1_space_retention.js";
 import { vehicleVisualForVipLevel } from "./vehicle_entry_animals.js";
 import { handleOwnerApi } from "./owner_api.js";
-import { awardSellerVipExp, ensureVipSchema, getVipStatus } from "./vip_store.js";
+import { awardSellerVipExp, ensureVipSchema, getVipStatus, grantWelcomePack } from "./vip_store.js";
 import { PLAY_PACKS, firstRechargeAvailable, handlePlayWebhook, verifyPlayPurchase } from "./play_billing.js";
 import { applyGiftDiscount, giftDiscountForVipLevel } from "./vip_policy.js";
 import {
@@ -1793,6 +1793,12 @@ async function ensureUser(
 ) {
   await ensureUsersSchema(db);
   const ts = now();
+  // Welcome pack (Vinay, 2026-11-24): a brand-new user gets 500,000
+  // coins (the INSERT default below) + VIP1 free for 15 days. The
+  // grant runs ONLY when the row is created here — existing users
+  // never get it retroactively, and the grant itself is once per user
+  // (UNIQUE user_id+source), so a concurrent double-create is safe.
+  const existing = await db.prepare("SELECT id FROM users WHERE id=?").bind(userId).first();
   await db.prepare(
     `INSERT INTO users (id, display_name, role, coins, diamonds, vip_level, profile_setup_required, created_at, updated_at)
      VALUES (?, ?, 'user', 500000, 120, 0, ?, ?, ?)
@@ -1809,6 +1815,17 @@ async function ensureUser(
     ts,
     ts,
   ).run();
+  if (!existing) {
+    try {
+      await grantWelcomePack(db, userId, ts);
+    } catch (error) {
+      // The pack must never block signup/login: a user row without
+      // the trial still has the 500,000 starting coins. The grant is
+      // attempted once, at creation — if D1 fails here the trial is
+      // missed for this user (the owner can re-grant manually).
+      console.error("welcome pack grant failed", userId, error);
+    }
+  }
   await ensureUserPublicId(db, userId);
   return db.prepare(
     "SELECT id, public_id, display_name, role, coins, diamonds, vip_level, avatar_key, date_of_birth, country_code, country_name, flag_emoji, gender, profile_setup_required, bio, age_change_count, country_change_count, gender_change_count, language FROM users WHERE id = ?"

@@ -186,6 +186,13 @@ class AppState extends ChangeNotifier {
   bool dailyRewardReady = false;
   int dailyRewardClaimedCoins = 0;
   bool dailyRewardLoading = false;
+  // Welcome pack (Vinay, 2026-11-24): a new user's VIP1 trial grant
+  // (source "welcome_pack", 15 days). Ready while the grant is the
+  // effective level; seen is a per-user local flag so the pop-up
+  // shows once, not on every app open during the 15 days.
+  bool welcomePackReady = false;
+  DateTime? welcomePackExpiresAt;
+  bool welcomePackSeen = false;
   DateTime? vipActiveUntil;
   String? customVipId;
   String? vipError;
@@ -731,6 +738,10 @@ class AppState extends ChangeNotifier {
     coins = int.tryParse(user['coins']?.toString() ?? '') ?? coins;
     diamonds = int.tryParse(user['diamonds']?.toString() ?? '') ?? diamonds;
     vipLevel = int.tryParse(user['vip_level']?.toString() ?? '') ?? vipLevel;
+    welcomePackSeen =
+        (await SharedPreferences.getInstance())
+                .getBool('dvx.welcome_pack_seen_$userId') ??
+            false;
 
     await _persistSession();
     // Enter the app as soon as authentication/profile checks succeed.
@@ -986,6 +997,9 @@ class AppState extends ChangeNotifier {
     dailyRewardReady = false;
     dailyRewardClaimedCoins = 0;
     dailyRewardLoading = false;
+    welcomePackReady = false;
+    welcomePackExpiresAt = null;
+    welcomePackSeen = false;
     vipActiveUntil = null;
     customVipId = null;
     vipError = null;
@@ -1146,6 +1160,19 @@ class AppState extends ChangeNotifier {
       vipActiveUntil = activeUntilMs == null || activeUntilMs <= 0
           ? null
           : DateTime.fromMillisecondsSinceEpoch(activeUntilMs);
+      // Welcome pack: the trial grant is the effective level only
+      // while it is unexpired. A bought VIP level above the grant
+      // hides it (grant_source is only present when the grant lifts
+      // the level), so the pop-up never shows to a paying VIP.
+      final grantExpiresMs =
+          int.tryParse(vip['grant_expires_at']?.toString() ?? '');
+      welcomePackReady = vip['grant_source']?.toString() ==
+              'welcome_pack' &&
+          grantExpiresMs != null &&
+          grantExpiresMs > DateTime.now().millisecondsSinceEpoch;
+      welcomePackExpiresAt = welcomePackReady
+          ? DateTime.fromMillisecondsSinceEpoch(grantExpiresMs!)
+          : null;
       customVipId = vip['custom_id']?.toString();
       final prefs = vip['preferences'];
       vipFreeSayHiRemaining = int.tryParse(vip['free_say_hi_remaining']?.toString() ?? '') ?? vipFreeSayHiRemaining;
@@ -1166,6 +1193,15 @@ class AppState extends ChangeNotifier {
     }
     await refreshDailyReward(notify: false);
     if (notify) notifyListeners();
+  }
+
+  /// Marks the welcome-pack pop-up as shown for this user, so it
+  /// never appears again (the 15-day trial itself keeps running).
+  Future<void> markWelcomePackSeen() async {
+    welcomePackSeen = true;
+    await (await SharedPreferences.getInstance())
+        .setBool('dvx.welcome_pack_seen_$userId', true);
+    notifyListeners();
   }
 
   void _applyDailyRewardStatus(Map<String, dynamic>? value) {

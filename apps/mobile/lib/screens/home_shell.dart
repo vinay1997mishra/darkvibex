@@ -22,6 +22,7 @@ import 'vip_section_screen.dart';
 import 'room_screen.dart';
 import 'weekly_sign_in_dialog.dart';
 import 'vip_daily_reward_dialog.dart';
+import 'welcome_pack_dialog.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -47,6 +48,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final Set<int> visited = <int>{0};
   bool _weeklyDialogScheduled = false;
   bool _dailyRewardDialogScheduled = false;
+  bool _welcomePackDialogScheduled = false;
   bool _inviteCodePromptScheduled = false;
   Timer? _cpInvitePollTimer;
   bool _cpInviteChecking = false;
@@ -66,6 +68,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleWeeklySignIn();
       _scheduleVipDailyReward();
+      _scheduleWelcomePack();
       unawaited(_scheduleInviteCodePrompt());
       unawaited(_checkCpInvite());
     });
@@ -93,8 +96,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     widget.state.addListener(_weeklyStateChanged);
     _weeklyDialogScheduled = false;
     _dailyRewardDialogScheduled = false;
+    _welcomePackDialogScheduled = false;
     _scheduleWeeklySignIn();
     _scheduleVipDailyReward();
+    _scheduleWelcomePack();
   }
 
   @override
@@ -143,6 +148,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (!mounted) return;
     _scheduleWeeklySignIn();
     _scheduleVipDailyReward();
+    _scheduleWelcomePack();
   }
 
   void _scheduleWeeklySignIn() {
@@ -360,6 +366,43 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _anyDialogOpen = true;
     try {
       await showVipDailyRewardDialog(context, state: widget.state);
+    } finally {
+      _anyDialogOpen = false;
+    }
+  }
+
+  // Welcome pack (Vinay, 2026-11-24): a new user's 500,000 coins +
+  // VIP1 trial for 15 days, announced once. Same scheduling as the
+  // daily reward — post-frame + on state change, never stacked on
+  // another dialog, retried after 5s if one is open.
+  void _scheduleWelcomePack() {
+    if (!mounted ||
+        _welcomePackDialogScheduled ||
+        !widget.state.welcomePackReady ||
+        widget.state.welcomePackSeen) {
+      return;
+    }
+    _welcomePackDialogScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_anyDialogOpen) {
+        // Another dialog is up — do not stack on it. Retry shortly so
+        // the pack still appears once the other dialog is answered.
+        _welcomePackDialogScheduled = false;
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) _scheduleWelcomePack();
+        });
+        return;
+      }
+      unawaited(_showWelcomePackDialog());
+    });
+  }
+
+  Future<void> _showWelcomePackDialog() async {
+    if (_anyDialogOpen || !mounted) return;
+    _anyDialogOpen = true;
+    try {
+      await showWelcomePackDialog(context, state: widget.state);
     } finally {
       _anyDialogOpen = false;
     }
