@@ -36,6 +36,7 @@ abstract final class _MineMenuPalette {
   static const purple = Color(0xFF9C75FF);
   static const cyan = Color(0xFF58D7F4);
   static const pink = Color(0xFFFF80D0);
+  static const red = Color(0xFFFF6B6B);
   static const white = Color(0xFFF4F6FF);
   static const muted = Color(0xFFA7B4D5);
   static const border = Color(0xFF40558E);
@@ -860,9 +861,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 9),
             _mineMenuGroup([
               _MineMenuTile(
-                icon: Icons.chat_bubble_rounded,
-                accent: _MineMenuPalette.cyan,
-                title: darkVibeXText(language, 'feedback'),
+                key: const Key('mine-report-problem'),
+                icon: Icons.bug_report_rounded,
+                accent: _MineMenuPalette.red,
+                title: 'Report a Problem',
+                subtitle: 'Tell us what went wrong — with a screenshot',
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(

@@ -2316,6 +2316,8 @@ class BackendApi {
     required String userId,
     required String category,
     required String message,
+    String? deviceInfo,
+    String? screenshotKey,
   }) async {
     final value = await _json(
       'POST',
@@ -2324,10 +2326,44 @@ class BackendApi {
         'user_id': userId,
         'category': category,
         'message': message,
+        if (deviceInfo != null && deviceInfo.isNotEmpty)
+          'device_info': deviceInfo,
+        if (screenshotKey != null && screenshotKey.isNotEmpty)
+          'screenshot_key': screenshotKey,
       },
       returnErrorBody: true,
     );
     return value?['ok'] == true;
+  }
+
+  /// Sends one automatic crash report. Never throws: a failed send must
+  /// never crash the app a second time.
+  Future<bool> submitCrashReport({
+    required String userId,
+    required String error,
+    String stack = '',
+    String route = '',
+    String deviceInfo = '',
+    String appVersion = '',
+  }) async {
+    try {
+      final value = await _json(
+        'POST',
+        '/api/crash-report',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'error': error,
+          'stack': stack,
+          'route': route,
+          'device_info': deviceInfo,
+          'app_version': appVersion,
+        },
+        returnErrorBody: true,
+      );
+      return value?['ok'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<Map<String, dynamic>>> medals({

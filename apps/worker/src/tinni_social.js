@@ -74,9 +74,23 @@ export async function ensureTinniSocialSchema(db) {
       user_id TEXT NOT NULL,
       category TEXT NOT NULL,
       message TEXT NOT NULL,
+      device_info TEXT NOT NULL DEFAULT '',
+      screenshot_key TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'submitted',
       created_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS crash_reports (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      error TEXT NOT NULL,
+      stack TEXT NOT NULL DEFAULT '',
+      route TEXT NOT NULL DEFAULT '',
+      device_info TEXT NOT NULL DEFAULT '',
+      app_version TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_crash_reports_user_time
+       ON crash_reports(user_id,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS families (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -311,6 +325,14 @@ export async function ensureTinniSocialSchema(db) {
     "ALTER TABLE cp_relationships ADD COLUMN heartbeat_choice_a TEXT",
     "ALTER TABLE cp_relationships ADD COLUMN heartbeat_choice_b TEXT",
     "ALTER TABLE cp_relationships ADD COLUMN heartbeat_updated_at INTEGER"
+  ]) {
+    try { await db.prepare(sql).run(); } catch (_) {}
+  }
+  // Report a Problem + automatic crash reports (Mr. Wrong, 2026-11-24):
+  // feedback rows carry auto device info + an optional screenshot key.
+  for (const sql of [
+    "ALTER TABLE user_feedback ADD COLUMN device_info TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE user_feedback ADD COLUMN screenshot_key TEXT NOT NULL DEFAULT ''",
   ]) {
     try { await db.prepare(sql).run(); } catch (_) {}
   }
@@ -702,28 +724,85 @@ export async function claimTask(db, userId, taskId) {
 export async function feedbackHistory(db, userId) {
   await ensureTinniSocialSchema(db);
   const rows = await db.prepare(
-    "SELECT id,category,message,status,created_at FROM user_feedback WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
+    "SELECT id,category,message,device_info,screenshot_key,status,created_at FROM user_feedback WHERE user_id=? ORDER BY created_at DESC LIMIT 100"
   ).bind(userId).all();
   return rows.results ?? [];
 }
 
-export async function submitFeedback(db, userId, categoryValue, messageValue) {
+export async function submitFeedback(db, userId, categoryValue, messageValue, extra = {}) {
   await ensureTinniSocialSchema(db);
   const category = clean(categoryValue || "General", 40) || "General";
   const message = clean(messageValue, 2000);
   if (message.length < 3) throw new Error("feedback_too_short");
+  const deviceInfo = clean(extra.deviceInfo ?? "", 2000);
+  const screenshotKey = clean(extra.screenshotKey ?? "", 300);
+  if (screenshotKey && !/^users\/[a-zA-Z0-9._/-]+\/misc\/feedback-[a-zA-Z0-9._-]+\.(jpg|jpeg|png|webp)$/i.test(screenshotKey)) {
+    throw new Error("invalid_screenshot_key");
+  }
   const row = {
     id: uid("feedback-"),
     user_id: userId,
     category,
     message,
+    device_info: deviceInfo,
+    screenshot_key: screenshotKey,
     status: "submitted",
     created_at: ts(),
   };
   await db.prepare(
-    "INSERT INTO user_feedback(id,user_id,category,message,status,created_at) VALUES(?,?,?,?,?,?)"
-  ).bind(row.id,row.user_id,row.category,row.message,row.status,row.created_at).run();
+    "INSERT INTO user_feedback(id,user_id,category,message,device_info,screenshot_key,status,created_at) VALUES(?,?,?,?,?,?,?,?)"
+  ).bind(row.id,row.user_id,row.category,row.message,row.device_info,row.screenshot_key,row.status,row.created_at).run();
   return { ok: true, feedback: row };
+}
+
+// Automatic crash reports (Mr. Wrong, 2026-11-24): the app sends
+// uncaught errors here on its own. Rate limit: max 5 per user per hour,
+// so one crash loop cannot spam the owner or the database.
+export async function submitCrashReport(db, userId, input = {}) {
+  await ensureTinniSocialSchema(db);
+  const error = clean(input.error ?? "", 2000);
+  if (error.length < 3) throw new Error("crash_error_too_short");
+  const hourAgo = ts() - 60 * 60 * 1000;
+  const recent = await db.prepare(
+    "SELECT COUNT(*) AS value FROM crash_reports WHERE user_id=? AND created_at>?"
+  ).bind(userId, hourAgo).first();
+  if (Number(recent?.value ?? 0) >= 5) throw new Error("crash_rate_limited");
+  const row = {
+    id: uid("crash-"),
+    user_id: userId,
+    error,
+    stack: clean(input.stack ?? "", 4000),
+    route: clean(input.route ?? "", 200),
+    device_info: clean(input.deviceInfo ?? "", 2000),
+    app_version: clean(input.appVersion ?? "", 40),
+    created_at: ts(),
+  };
+  await db.prepare(
+    "INSERT INTO crash_reports(id,user_id,error,stack,route,device_info,app_version,created_at) VALUES(?,?,?,?,?,?,?,?)"
+  ).bind(row.id,row.user_id,row.error,row.stack,row.route,row.device_info,row.app_version,row.created_at).run();
+  return { ok: true, crash: row };
+}
+
+export async function feedbackListForOwner(db, limit = 50) {
+  await ensureTinniSocialSchema(db);
+  const rows = await db.prepare(
+    `SELECT f.id,f.user_id,f.category,f.message,f.device_info,f.screenshot_key,f.status,f.created_at,
+            u.display_name,u.public_id
+       FROM user_feedback f LEFT JOIN users u ON u.id=f.user_id
+      ORDER BY f.created_at DESC LIMIT ?`
+  ).bind(Math.max(1, Math.min(200, Number(limit) || 50))).all();
+  return rows.results ?? [];
+}
+
+export async function crashListForOwner(db, limit = 50) {
+  await ensureTinniSocialSchema(db);
+  const rows = await db.prepare(
+    `SELECT c.id,c.user_id,c.error,c.stack,c.route,c.device_info,c.app_version,c.created_at,
+            u.display_name,u.public_id
+       FROM crash_reports c LEFT JOIN users u ON u.id=c.user_id
+      ORDER BY c.created_at DESC LIMIT ?`
+  ).bind(Math.max(1, Math.min(200, Number(limit) || 50))).all();
+  return rows.results ?? [];
 }
 
 export async function medalState(db, userId) {

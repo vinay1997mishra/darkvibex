@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../app/app_state.dart';
 import '../infra/backend_api.dart';
+import '../infra/device_info.dart';
 import '../infra/family_rules.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
@@ -584,18 +588,27 @@ class _TaskScreenState extends State<TaskScreen> {
 }
 
 class FeedbackScreen extends StatefulWidget {
-  const FeedbackScreen({super.key, required this.state});
+  const FeedbackScreen({super.key, required this.state, this.backend});
   final AppState state;
+
+  /// Test seam: a fake backend. Defaults to [AppState.backend].
+  final BackendApi? backend;
 
   @override
   State<FeedbackScreen> createState() => _FeedbackScreenState();
 }
 
 class _FeedbackScreenState extends State<FeedbackScreen> {
+  BackendApi get _backend => widget.backend ?? widget.state.backend;
+
   final controller = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
   String category = 'General';
   bool sending = false;
   bool loading = true;
+  bool uploadingScreenshot = false;
+  Uint8List? screenshotBytes;
+  String? screenshotKey;
   List<Map<String, dynamic>> history = const [];
 
   @override
@@ -611,7 +624,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<void> _load() async {
-    final values = await widget.state.backend.feedbackHistory(
+    final values = await _backend.feedbackHistory(
       userId: widget.state.userId,
     );
     if (!mounted) return;
@@ -621,18 +634,82 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     });
   }
 
+  Future<void> _pickScreenshot() async {
+    if (uploadingScreenshot || sending) return;
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 84,
+      maxWidth: 1280,
+      maxHeight: 1280,
+    );
+    if (file == null) return;
+    final ext = file.name.split('.').last.toLowerCase();
+    final normalized = ext == 'jpeg' ? 'jpg' : ext;
+    final contentType = switch (normalized) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' => 'image/jpeg',
+      _ => null,
+    };
+    if (contentType == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a JPG, PNG or WebP photo')),
+      );
+      return;
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.length > 5 * 1024 * 1024) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a photo smaller than 5 MB')),
+      );
+      return;
+    }
+    setState(() => uploadingScreenshot = true);
+    // Private bucket, own misc folder only (the Worker rejects anything
+    // else for this key shape) — nobody else can open it.
+    final key =
+        'users/${widget.state.userId}/misc/feedback-${DateTime.now().millisecondsSinceEpoch}.$normalized';
+    final stored = await _backend.uploadUserFile(
+      key: key,
+      bytes: bytes,
+      contentType: contentType,
+    );
+    if (!mounted) return;
+    setState(() {
+      uploadingScreenshot = false;
+      if (stored != null) {
+        screenshotBytes = bytes;
+        screenshotKey = stored;
+      }
+    });
+    if (stored == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Screenshot could not be uploaded')),
+      );
+    }
+  }
+
   Future<void> _submit() async {
     final message = controller.text.trim();
     if (message.length < 3 || sending) return;
     setState(() => sending = true);
-    final ok = await widget.state.backend.submitFeedback(
+    final info = await collectDeviceInfo();
+    final ok = await _backend.submitFeedback(
       userId: widget.state.userId,
       category: category,
       message: message,
+      deviceInfo: deviceInfoSummary(info),
+      screenshotKey: screenshotKey,
     );
     if (!mounted) return;
     if (ok) {
       controller.clear();
+      setState(() {
+        screenshotBytes = null;
+        screenshotKey = null;
+      });
       await _load();
     }
     if (!mounted) return;
@@ -682,6 +759,56 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   alignLabelWithHint: true,
                 ),
               ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    key: const Key('feedback-attach-screenshot'),
+                    onPressed:
+                        (sending || uploadingScreenshot) ? null : _pickScreenshot,
+                    icon: const Icon(Icons.image_rounded),
+                    label: Text(
+                      uploadingScreenshot
+                          ? 'Uploading…'
+                          : screenshotKey == null
+                              ? 'Attach screenshot'
+                              : 'Change screenshot',
+                    ),
+                  ),
+                  if (screenshotBytes != null) ...[
+                    const SizedBox(width: 10),
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            screenshotBytes!,
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: GestureDetector(
+                            key: const Key('feedback-remove-screenshot'),
+                            onTap: () => setState(() {
+                              screenshotBytes = null;
+                              screenshotKey = null;
+                            }),
+                            child: const CircleAvatar(
+                              radius: 10,
+                              child: Icon(Icons.close_rounded, size: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 10),
               FilledButton.icon(
                 onPressed: sending ? null : _submit,
                 icon: const Icon(Icons.send_rounded),
@@ -707,6 +834,29 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                         '${row['message'] ?? ''}\n${_date(row['created_at'])}',
                       ),
                       isThreeLine: true,
+                      leading:
+                          (row['screenshot_key']?.toString() ?? '').isEmpty
+                              ? null
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    _backend.userFileUrl(
+                                      row['screenshot_key'].toString(),
+                                    ),
+                                    headers: BackendApi.sessionToken == null
+                                        ? null
+                                        : {
+                                            'Authorization':
+                                                'Bearer ${BackendApi.sessionToken!}',
+                                          },
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const Icon(
+                                      Icons.broken_image_rounded,
+                                    ),
+                                  ),
+                                ),
                       trailing: Text(
                         row['status']?.toString() ?? 'submitted',
                         style: const TextStyle(

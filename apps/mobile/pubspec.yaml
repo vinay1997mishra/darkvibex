@@ -14,6 +14,11 @@ dependencies:
   country_picker: ^2.0.28
   image_picker: ^1.2.4
   file_picker: ^13.1.0
+  # Report a Problem + automatic crash reports (Mr. Wrong, 2026-11-24):
+  # device model + app version ride along with every report, so the
+  # owner can reproduce a problem without asking the user.
+  package_info_plus: ^10.2.2
+  device_info_plus: ^13.0.0
   just_audio: ^0.10.5
   path_provider: ^2.1.5
   shared_preferences: ^2.5.5

@@ -7,6 +7,7 @@ import { BASE_UNIQUE_ID_CATALOG } from "./unique_id_store.js";
 import { VIP_LEVELS } from "./vip_policy.js";
 import { ensureVipSchema, getVipStatus } from "./vip_store.js";
 import { deleteRoomRows } from "./room_cleanup.js";
+import { feedbackListForOwner, crashListForOwner } from "./tinni_social.js";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -229,6 +230,7 @@ const STAFF_ASSIGNABLE_PERMISSIONS = new Set([
   "settings.feature.red_pocket","settings.feature.friends_call","settings.feature.visitors","settings.maintenance",
   "announcements.view","announcements.save","announcements.delete",
   "support.view","support.reply","support.close",
+  "feedback.view",
   "staff.view","staff.create","staff.permissions.edit","staff.toggle","staff.delete",
   "audit.view","audit.export"
 ]);
@@ -316,6 +318,7 @@ const PERMISSION_ALIASES = {
   "support.view":["support.read"],
   "support.reply":["support.write"],
   "support.close":["support.write"],
+  "feedback.view":["feedback.read"],
   "staff.view":["staff.read"],
   "staff.create":["staff.write"],
   "staff.permissions.edit":["staff.write"],
@@ -3262,6 +3265,46 @@ async function handleAudit(request, db, actor, url, parts) {
   return null;
 }
 
+// Report a Problem + automatic crash reports (Mr. Wrong, 2026-11-24):
+// owner-only lists of user reports and crash reports, plus the
+// private-bucket reader for feedback screenshots.
+async function handleFeedbackOwner(request, db, actor, url) {
+  if (request.method !== "GET") return null;
+  requirePermission(actor, "feedback.view");
+  const limit = Number(url.searchParams.get("limit") ?? 50);
+  return json({ ok: true, feedback: await feedbackListForOwner(db, limit) });
+}
+
+async function handleCrashReportsOwner(request, db, actor, url) {
+  if (request.method !== "GET") return null;
+  requirePermission(actor, "feedback.view");
+  const limit = Number(url.searchParams.get("limit") ?? 50);
+  return json({ ok: true, crashes: await crashListForOwner(db, limit) });
+}
+
+async function handleFeedbackScreenshot(request, env, db, actor, url) {
+  if (request.method !== "GET") return null;
+  requirePermission(actor, "feedback.view");
+  if (!env.ID_FILES) return json({ ok: false, error: "id_files_not_bound" }, { status: 503 });
+  const key = String(url.searchParams.get("key") ?? "").trim();
+  if (!/^users\/[a-zA-Z0-9._/-]+\/misc\/feedback-[a-zA-Z0-9._-]+\.(jpg|jpeg|png|webp)$/i.test(key)) {
+    return json({ ok: false, error: "invalid_feedback_screenshot_key" }, { status: 400 });
+  }
+  const object = await env.ID_FILES.get(key);
+  if (!object) return json({ ok: false, error: "file_not_found" }, { status: 404 });
+  await audit(db, actor, "owner_feedback_screenshot_view", "feedback_screenshot", key, "feedback screenshot viewed");
+  const ext = (key.split(".").pop() || "").toLowerCase();
+  const contentType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+  return new Response(object.body, {
+    status: 200,
+    headers: {
+      "content-type": contentType,
+      "cache-control": "private, no-store",
+      "content-disposition": "inline",
+    },
+  });
+}
+
 async function handleSupportTickets(request, db, actor, url, parts) {
   await ensureSupportSchema(db);
   const ticketId = parts[3] ? decodeURIComponent(parts[3]) : "";
@@ -3348,6 +3391,9 @@ export async function handleOwnerApi(request, env, url) {
     else if (parts[2] === "message-media") response = await handleOwnerMessageMedia(request, env, db, actor, url);
     else if (parts[2] === "users") response = await handleUsers(request, db, actor, url, parts);
     else if (parts[2] === "support-tickets") response = await handleSupportTickets(request, db, actor, url, parts);
+    else if (parts[2] === "feedback") response = await handleFeedbackOwner(request, db, actor, url);
+    else if (parts[2] === "crash-reports") response = await handleCrashReportsOwner(request, db, actor, url);
+    else if (parts[2] === "feedback-screenshot") response = await handleFeedbackScreenshot(request, env, db, actor, url);
     else if (parts[2] === "notifications") response = await handleNotifications(request, db, actor, parts);
     else if (parts[2] === "messages" || parts[2] === "tags") response = await handleMessaging(request, db, actor, url, parts);
     else if (parts[2] === "rooms") response = await handleRooms(request, db, actor, url, parts, env);
