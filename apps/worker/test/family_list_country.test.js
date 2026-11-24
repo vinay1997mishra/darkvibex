@@ -81,8 +81,8 @@ test("family list Local scope filters by the leader's country", async () => {
   makeUser(sqlite, "leader-in", "IN");
   makeUser(sqlite, "leader-us", "US");
   makeUser(sqlite, "viewer-in", "IN");
-  makeFamily(sqlite, { id: "family-in", name: "TIGER FAMILY", leaderId: "leader-in", experience: 1000 });
-  makeFamily(sqlite, { id: "family-us", name: "ASTRO", leaderId: "leader-us", experience: 2000 });
+  makeFamily(sqlite, { id: "family-in", name: "TIGER FAMILY", leaderId: "leader-in", experience: 1783000000 });
+  makeFamily(sqlite, { id: "family-us", name: "ASTRO", leaderId: "leader-us", experience: 2404000000 });
 
   // Global (no country): both families, ordered by EXP.
   const all = await request("/api/family/list", { userId: "viewer-in" });
@@ -92,9 +92,10 @@ test("family list Local scope filters by the leader's country", async () => {
     ["family-us", "family-in"],
   );
   assert.equal(all.body.families[0].leader_country_code, "US");
-  // 2000 EXP clears the 1500 threshold -> level 4; 1000 EXP -> level 3.
-  assert.equal(all.body.families[0].level.level, 4);
-  assert.equal(all.body.families[1].level.level, 3);
+  // New x1.5 Family Rules scale (Lv.1-50): 2,404,000,000 EXP is Lv.3,
+  // 1,783,000,000 EXP is Lv.2.
+  assert.equal(all.body.families[0].level.level, 3);
+  assert.equal(all.body.families[1].level.level, 2);
 
   // Local (country=IN): only the IN leader's family.
   const local = await request("/api/family/list?country=IN", { userId: "viewer-in" });

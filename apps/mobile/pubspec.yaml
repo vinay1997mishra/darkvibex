@@ -50,6 +50,8 @@ flutter:
     - assets/images/greedy_girl_mascot.webp
     - assets/images/gold_trophy.png
     - assets/images/gold_lamp.png
+    # Family main page (Mr. Wrong, 2026-11-24 — v9): light glass
+    # purple+gold background, shared by the Create Family page.
     - assets/images/shield_gold.png
     - assets/images/shield_blue.png
     - assets/images/shield_orange.png

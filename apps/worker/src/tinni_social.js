@@ -1,4 +1,22 @@
 import { rocketMedalObjects, userRocketMedals } from "./rocket_medal_grants.js";
+import { checkContent } from "./content_filter.js";
+import {
+  FAMILY_MAX_LEVEL,
+  FAMILY_TASK_REWARDS,
+  FAMILY_WEEKLY_ELIGIBILITY_COINS,
+  FAMILY_WEEKLY_TIERS,
+  familyDeputyLimit,
+  familyGameExp,
+  familyGiftExp,
+  familyLevelBand,
+  familyLevelForExp,
+  familyMemberLimit,
+  familyMonthlyVaultReward,
+  familyRankForMonthlyExp,
+  familyUpgradeVaultReward,
+  familyWeeklyTierForTotal,
+  familyWeeklyTopCoins,
+} from "./family_rules.js";
 
 const ts = () => Date.now();
 const uid = (prefix = "") => prefix + crypto.randomUUID();
@@ -66,6 +84,16 @@ export async function ensureTinniSocialSchema(db) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`,
+    // Last login per user (also created by ensureOwnerControlSchema):
+    // the Management page shows "Today / 1 day ago" per member, and
+    // the 15-day leader auto-transfer reads the same table.
+    `CREATE TABLE IF NOT EXISTS owner_user_devices (
+      device_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_owner_user_devices_user
+       ON owner_user_devices(user_id,last_seen_at DESC)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_families_name_ci
        ON families(LOWER(name))`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_families_tag_ci
@@ -106,6 +134,110 @@ export async function ensureTinniSocialSchema(db) {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_family_wallet_transfers_family_time
        ON family_wallet_transfers(family_id,created_at DESC)`,
+    // Family Rules (Mr. Wrong, 2026-11-24): monthly EXP per family (the
+    // monthly list is ranked by this month's EXP and settles on the 1st),
+    // per-member monthly stats for the Charm/Wealth/Active Star rankings,
+    // daily task progress (room stay / mic minutes), family Trends posts,
+    // and the vault reward history (level-up + monthly top-10 rewards).
+    `CREATE TABLE IF NOT EXISTS family_monthly_exp (
+      family_id TEXT NOT NULL,
+      month_key TEXT NOT NULL,
+      exp INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (family_id, month_key)
+    )`,
+    `CREATE TABLE IF NOT EXISTS family_member_monthly (
+      family_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      month_key TEXT NOT NULL,
+      given_exp INTEGER NOT NULL DEFAULT 0,
+      received_exp INTEGER NOT NULL DEFAULT 0,
+      active_minutes INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (family_id, user_id, month_key)
+    )`,
+    `CREATE TABLE IF NOT EXISTS family_task_progress (
+      family_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      minutes INTEGER NOT NULL DEFAULT 0,
+      awarded INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (family_id, user_id, day_key, kind)
+    )`,
+    `CREATE TABLE IF NOT EXISTS family_posts (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(family_id) REFERENCES families(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_posts_family_time
+       ON family_posts(family_id,created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS family_post_likes (
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (post_id, user_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS family_post_comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_post_comments_post_time
+       ON family_post_comments(post_id,created_at ASC)`,
+    `CREATE TABLE IF NOT EXISTS family_vault_history (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      coins INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_vault_history_family_time
+       ON family_vault_history(family_id,created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS family_monthly_rewards (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      month_key TEXT NOT NULL,
+      rank_value INTEGER NOT NULL,
+      vault_coins INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE (family_id, month_key)
+    )`,
+    // Family Weekly Rewards (Mr. Wrong, 2026-11-24): one row per settled
+    // reward (leader coins + top-15 coins + the 7-day frame/medal/tag/
+    // vehicle items, recorded as granted display items). Idempotent per
+    // (family, week, user, kind).
+    `CREATE TABLE IF NOT EXISTS family_weekly_rewards (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      week_key TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      rank_value INTEGER NOT NULL DEFAULT 0,
+      coins INTEGER NOT NULL DEFAULT 0,
+      detail TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      UNIQUE (family_id, week_key, user_id, kind)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_weekly_rewards_week
+       ON family_weekly_rewards(week_key,family_id)`,
+    // Today's Family Lucky Draw Records (Mr. Wrong, 2026-11-24): who won
+    // what in the Daily Lucky Wheel. The wheel SPIN is on HOLD (event) —
+    // this table is empty until the event is built; the list UI reads it.
+    `CREATE TABLE IF NOT EXISTS family_lucky_draw_records (
+      id TEXT PRIMARY KEY,
+      family_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      coins INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_family_lucky_draw_records_family_time
+       ON family_lucky_draw_records(family_id,created_at DESC)`,
     `CREATE TABLE IF NOT EXISTS cp_relationships (
       user_a TEXT NOT NULL,
       user_b TEXT NOT NULL,
@@ -178,6 +310,19 @@ export async function ensureTinniSocialSchema(db) {
   ]) {
     try { await db.prepare(sql).run(); } catch (_) {}
   }
+  // Family create (Mr. Wrong, 2026-11-24): approval setting (1 = leader
+  // must approve join requests, 0 = anyone joins directly) + logo key.
+  // Rename rule (Mr. Wrong, 2026-11-24): the family name and tag can
+  // each only be changed once a month — name_changed_at / tag_changed_at
+  // record the last change (creation counts as the first change).
+  for (const sql of [
+    "ALTER TABLE families ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE families ADD COLUMN logo_key TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE families ADD COLUMN name_changed_at INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE families ADD COLUMN tag_changed_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    try { await db.prepare(sql).run(); } catch (_) {}
+  }
   await db.prepare(
     "INSERT OR IGNORE INTO official_notices(id,title,body,created_at) VALUES(?,?,?,?)"
   ).bind(
@@ -200,6 +345,7 @@ async function familyMembership(db, userId) {
   return db.prepare(
     `SELECT fm.family_id,fm.role,fm.joined_at,
             f.name,f.tag,f.notice,f.leader_user_id,f.experience,f.wallet_coins,
+            f.logo_key,f.approval_required,f.name_changed_at,f.tag_changed_at,
             f.created_at,f.updated_at
        FROM family_members fm
        JOIN families f ON f.id=fm.family_id
@@ -207,15 +353,15 @@ async function familyMembership(db, userId) {
   ).bind(userId).first();
 }
 
+// Family level (Mr. Wrong, 2026-11-24): Lv.1-Lv.50, the other app's EXP
+// thresholds x1.5 (see family_rules.js — the two observed points are
+// Lv.4 = 3,240,000,000 and Lv.17 = 157,125,000,000). Replaces the old
+// L1-L8 ladder [0,100,500,1500,5000,15000,50000,150000].
 function familyLevel(experience) {
-  const thresholds = [0, 100, 500, 1500, 5000, 15000, 50000, 150000];
-  let level = 1;
-  for (let i = 1; i < thresholds.length; i += 1) {
-    if (Number(experience || 0) >= thresholds[i]) level = i + 1;
-  }
-  const next = level < thresholds.length ? thresholds[level] : null;
-  return { level, next_exp: next };
+  return familyLevelForExp(experience);
 }
+
+export { FAMILY_MAX_LEVEL, familyLevelBand };
 
 // Dollar level (Vinay, 2026-11-23): a level based on the user's total
 // recharge in US cents. L1-L10 are Vinay's numbers ($2, $5, $12, $20,
@@ -620,7 +766,8 @@ export async function familyList(db, limitValue = 100, countryValue = '') {
   const params = country ? [country, limit] : [limit];
   const rows = await db.prepare(
     `SELECT f.id,f.name,f.tag,f.notice,f.leader_user_id,
-            f.experience,f.wallet_coins,f.created_at,f.updated_at,
+            f.experience,f.wallet_coins,f.logo_key,f.approval_required,
+            f.created_at,f.updated_at,
             u.display_name AS leader_name,u.avatar_key AS leader_avatar_key,
             u.country_code AS leader_country_code,
             COUNT(fm.user_id) AS member_count
@@ -632,41 +779,249 @@ export async function familyList(db, limitValue = 100, countryValue = '') {
       ORDER BY f.experience DESC, member_count DESC, f.created_at ASC
       LIMIT ?`
   ).bind(...params).all();
-  return (rows.results ?? []).map((row) => ({
-    ...row,
-    level: familyLevel(row.experience),
-  }));
+  return (rows.results ?? []).map((row) => {
+    const level = familyLevel(row.experience);
+    return {
+      ...row,
+      level,
+      // Join the family page (Mr. Wrong, 2026-11-24): "44/45" style
+      // member counts — the limit grows with the family level.
+      member_limit: familyMemberLimit(level.level),
+    };
+  });
 }
 
-export async function familyCreate(db, userId, nameValue, tagValue) {
+// Family create (Mr. Wrong, 2026-11-24): creating a family costs
+// 90,000,000 coins, free for Wealth Level >= 30 or VIP Level >= 6.
+// The create page shows the name limit 0/20 and the tag limit 0/10.
+export const FAMILY_CREATE_COST_COINS = 90000000;
+export const FAMILY_CREATE_FREE_WEALTH_LEVEL = 30;
+export const FAMILY_CREATE_FREE_VIP_LEVEL = 6;
+
+export async function familyCreate(
+  db,
+  userId,
+  nameValue,
+  tagValue,
+  options = {},
+) {
   await ensureTinniSocialSchema(db);
   if (await familyMembership(db, userId)) throw new Error("already_in_family");
-  const name = clean(nameValue, 40);
-  const tag = clean(tagValue, 12).toUpperCase();
+  const name = clean(nameValue, 20);
+  const tag = clean(tagValue, 10).toUpperCase();
   if (name.length < 2 || tag.length < 2) throw new Error("invalid_family_name_or_tag");
+  // Strong security (Vinay, 2026-11-22): no gaaliyan, porn, political
+  // content, and no other apps' names — in the family name or tag.
+  const nameHit = checkContent(name);
+  if (nameHit.blocked) throw new Error("content_blocked");
+  const tagHit = checkContent(tag);
+  if (tagHit.blocked) throw new Error("content_blocked");
   const duplicate = await db.prepare(
     "SELECT id FROM families WHERE LOWER(name)=LOWER(?) OR UPPER(tag)=UPPER(?) LIMIT 1"
   ).bind(name, tag).first();
   if (duplicate) throw new Error("family_name_or_tag_in_use");
+  const approvalRequired = options.approvalRequired === false ? 0 : 1;
+  const logoKey = clean(options.logoKey, 512);
+  // Logo is mandatory (Mr. Wrong, 2026-11-24: "Logo ke bina family
+  // create hi nhi hogi") — a family cannot be created without one.
+  if (!logoKey) throw new Error("logo_required");
+  // Free creation for Wealth Level >= 30 or VIP Level >= 6, otherwise
+  // the 90,000,000-coin cost is deducted from the user's wallet.
+  const user = await db.prepare(
+    "SELECT coins,vip_level FROM users WHERE id=?"
+  ).bind(userId).first();
+  if (!user) throw new Error("user_not_found");
+  const stats = await profileStats(db, userId);
+  const wealthLevel = Number(stats?.wealth?.level ?? 0);
+  const vipLevel = Number(user.vip_level ?? 0);
+  const free =
+    wealthLevel >= FAMILY_CREATE_FREE_WEALTH_LEVEL ||
+    vipLevel >= FAMILY_CREATE_FREE_VIP_LEVEL;
+  const priceCoins = free ? 0 : FAMILY_CREATE_COST_COINS;
+  if (priceCoins > 0) {
+    const debit = await db.prepare(
+      "UPDATE users SET coins=coins-?,updated_at=? WHERE id=? AND coins>=?"
+    ).bind(priceCoins, ts(), userId, priceCoins).run();
+    if (Number(debit.meta?.changes ?? 0) !== 1) {
+      throw new Error("insufficient_coins");
+    }
+  }
   const createdAt = ts();
   const familyId = uid("family-");
-  await db.batch([
-    db.prepare(
-      "INSERT INTO families(id,name,tag,leader_user_id,notice,experience,wallet_coins,created_at,updated_at) VALUES(?,?,?,?,?,0,0,?,?)"
-    ).bind(familyId,name,tag,userId,"Welcome to " + name + " ❤️",createdAt,createdAt),
-    db.prepare(
-      "INSERT INTO family_members(family_id,user_id,role,joined_at) VALUES(?,?,'leader',?)"
-    ).bind(familyId,userId,createdAt),
-  ]);
-  return { ok: true, family_id: familyId };
+  try {
+    await db.batch([
+      db.prepare(
+        "INSERT INTO families(id,name,tag,leader_user_id,notice,experience,wallet_coins,approval_required,logo_key,name_changed_at,tag_changed_at,created_at,updated_at) VALUES(?,?,?,?,?,0,0,?,?,?,?,?,?)"
+      ).bind(familyId, name, tag, userId, "Welcome to " + name + " ❤️", approvalRequired, logoKey, createdAt, createdAt, createdAt, createdAt),
+      db.prepare(
+        "INSERT INTO family_members(family_id,user_id,role,joined_at) VALUES(?,?,'leader',?)"
+      ).bind(familyId, userId, createdAt),
+    ]);
+  } catch (error) {
+    // The family was not created: give the coins back.
+    if (priceCoins > 0) {
+      await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+        .bind(priceCoins, ts(), userId).run();
+    }
+    throw error;
+  }
+  if (priceCoins > 0) {
+    const wallet = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+    try {
+      await db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+      ).bind(
+        uid("ledger-"),
+        userId,
+        "family_create",
+        -priceCoins,
+        Number(wallet?.coins ?? 0),
+        familyId,
+        ts(),
+      ).run();
+    } catch (error) {
+      // The ledger insert failed after the family was created: take the
+      // family back and refund, or the user would keep a free family.
+      await db.prepare("DELETE FROM family_members WHERE family_id=?").bind(familyId).run();
+      await db.prepare("DELETE FROM families WHERE id=?").bind(familyId).run();
+      await db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?")
+        .bind(priceCoins, ts(), userId).run();
+      throw error;
+    }
+  }
+  // The creator is the family's first member: their Trends feed starts
+  // with "I was born!", like every member who joins after them.
+  await familyAutoBornPost(db, familyId, userId);
+  return { ok: true, family_id: familyId, price_coins: priceCoins, free };
+}
+
+// Family rename rule (Mr. Wrong, 2026-11-24): the family name and the
+// family tag can each only be changed once a month (30 days). Only the
+// family leader can rename; creation counts as the first change.
+export const FAMILY_RENAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function familyUpdateNameTag(db, userId, changes = {}) {
+  await ensureTinniSocialSchema(db);
+  const member = await familyMembership(db, userId);
+  if (!member) throw new Error("not_in_family");
+  if (String(member.role) !== "leader") throw new Error("family_leader_required");
+  const now = ts();
+  const updates = [];
+  const params = [];
+  if (changes.name !== undefined) {
+    const name = clean(changes.name, 20);
+    if (name.length < 2) throw new Error("invalid_family_name_or_tag");
+    const nameHit = checkContent(name);
+    if (nameHit.blocked) throw new Error("content_blocked");
+    if (Number(member.name_changed_at ?? 0) > 0 &&
+        now - Number(member.name_changed_at) < FAMILY_RENAME_COOLDOWN_MS) {
+      throw new Error("family_name_change_too_soon");
+    }
+    const duplicate = await db.prepare(
+      "SELECT id FROM families WHERE LOWER(name)=LOWER(?) AND id<>? LIMIT 1"
+    ).bind(name, member.family_id).first();
+    if (duplicate) throw new Error("family_name_or_tag_in_use");
+    updates.push("name=?", "name_changed_at=?");
+    params.push(name, now);
+  }
+  if (changes.tag !== undefined) {
+    const tag = clean(changes.tag, 10).toUpperCase();
+    if (tag.length < 2) throw new Error("invalid_family_name_or_tag");
+    const tagHit = checkContent(tag);
+    if (tagHit.blocked) throw new Error("content_blocked");
+    if (Number(member.tag_changed_at ?? 0) > 0 &&
+        now - Number(member.tag_changed_at) < FAMILY_RENAME_COOLDOWN_MS) {
+      throw new Error("family_tag_change_too_soon");
+    }
+    const duplicate = await db.prepare(
+      "SELECT id FROM families WHERE UPPER(tag)=UPPER(?) AND id<>? LIMIT 1"
+    ).bind(tag, member.family_id).first();
+    if (duplicate) throw new Error("family_name_or_tag_in_use");
+    updates.push("tag=?", "tag_changed_at=?");
+    params.push(tag, now);
+  }
+  if (updates.length === 0) throw new Error("nothing_to_update");
+  updates.push("updated_at=?");
+  params.push(now, member.family_id);
+  await db.prepare(
+    `UPDATE families SET ${updates.join(", ")} WHERE id=?`
+  ).bind(...params).run();
+  const updated = await db.prepare(
+    "SELECT name,tag,name_changed_at,tag_changed_at FROM families WHERE id=?"
+  ).bind(member.family_id).first();
+  return {
+    ok: true,
+    name: updated?.name ?? "",
+    tag: updated?.tag ?? "",
+    name_changed_at: Number(updated?.name_changed_at ?? 0),
+    tag_changed_at: Number(updated?.tag_changed_at ?? 0),
+  };
+}
+
+// Leader auto-transfer (Mr. Wrong, 2026-11-24): if the family leader
+// does not log in for 15 days, the leader position automatically moves
+// to the longest-joined admin, else the longest-joined member. Activity
+// is the leader's last device seen time (owner_user_devices.last_seen_at,
+// refreshed on every authenticated request with a device id). A leader
+// with no device record is left alone — no data, no transfer.
+export const FAMILY_LEADER_INACTIVE_MS = 15 * 24 * 60 * 60 * 1000;
+
+export async function transferInactiveFamilyLeaders(db, onlyFamilyId) {
+  await ensureTinniSocialSchema(db);
+  const families = onlyFamilyId
+    ? await db.prepare("SELECT id,leader_user_id FROM families WHERE id=?").bind(onlyFamilyId).all()
+    : await db.prepare("SELECT id,leader_user_id FROM families").all();
+  const transferred = [];
+  for (const family of families.results ?? []) {
+    const familyId = String(family.id);
+    const leaderId = String(family.leader_user_id ?? "");
+    if (!leaderId) continue;
+    let lastSeen = null;
+    try {
+      const row = await db.prepare(
+        "SELECT MAX(last_seen_at) AS last_seen FROM owner_user_devices WHERE user_id=?"
+      ).bind(leaderId).first();
+      lastSeen = Number(row?.last_seen ?? 0) || null;
+    } catch (_) {
+      // No device table (older DB): never transfer without data.
+      continue;
+    }
+    if (lastSeen == null) continue;
+    if (Date.now() - lastSeen < FAMILY_LEADER_INACTIVE_MS) continue;
+    const successor = await db.prepare(
+      `SELECT user_id FROM family_members WHERE family_id=? AND user_id<>?
+        ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END, joined_at ASC LIMIT 1`
+    ).bind(familyId, leaderId).first();
+    if (!successor) continue;
+    const successorId = String(successor.user_id);
+    const now = ts();
+    await db.batch([
+      db.prepare("UPDATE families SET leader_user_id=?,updated_at=? WHERE id=?")
+        .bind(successorId, now, familyId),
+      db.prepare("UPDATE family_members SET role='leader' WHERE family_id=? AND user_id=?")
+        .bind(familyId, successorId),
+      db.prepare("UPDATE family_members SET role='member' WHERE family_id=? AND user_id=?")
+        .bind(familyId, leaderId),
+    ]);
+    transferred.push({ family_id: familyId, from: leaderId, to: successorId });
+  }
+  return transferred;
 }
 
 export async function familyState(db, userId) {
   await ensureTinniSocialSchema(db);
-  const member = await familyMembership(db, userId);
+  let member = await familyMembership(db, userId);
   if (!member) {
     return { family: null, members: [], join_requests: [], available_families: await familyList(db, 100) };
   }
+  // Lazy leader auto-transfer (Mr. Wrong, 2026-11-24): if the leader has
+  // not logged in for 15 days, the position moves before we answer, so
+  // the family page always shows the current leader. The daily scheduled
+  // sweep does the same for families nobody opens.
+  try {
+    const moved = await transferInactiveFamilyLeaders(db, member.family_id);
+    if (moved.length > 0) member = await familyMembership(db, userId);
+  } catch (_) {}
   const members = await db.prepare(
     `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key,
             CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
@@ -675,7 +1030,8 @@ export async function familyState(db, userId) {
                 FROM family_wallet_transfers t
                WHERE t.family_id=fm.family_id
                  AND t.receiver_user_id=fm.user_id
-            ),0) AS received_coins
+            ),0) AS received_coins,
+            (SELECT MAX(d.last_seen_at) FROM owner_user_devices d WHERE d.user_id=fm.user_id) AS last_seen_at
        FROM family_members fm JOIN users u ON u.id=fm.user_id
        LEFT JOIN owner_user_overrides io ON io.user_id=fm.user_id
       WHERE fm.family_id=?
@@ -701,6 +1057,10 @@ export async function familyState(db, userId) {
       leader_user_id: member.leader_user_id,
       experience: Number(member.experience ?? 0),
       wallet_coins: Number(member.wallet_coins ?? 0),
+      logo_key: member.logo_key ?? "",
+      approval_required: Number(member.approval_required ?? 1),
+      name_changed_at: Number(member.name_changed_at ?? 0),
+      tag_changed_at: Number(member.tag_changed_at ?? 0),
       my_role: member.role,
       ...familyLevel(member.experience),
     },
@@ -712,9 +1072,18 @@ export async function familyState(db, userId) {
 export async function familyRequestJoin(db, userId, familyId) {
   await ensureTinniSocialSchema(db);
   if (await familyMembership(db, userId)) throw new Error("already_in_family");
-  const family = await db.prepare("SELECT id FROM families WHERE id=?").bind(familyId).first();
+  const family = await db.prepare("SELECT id,approval_required,experience FROM families WHERE id=?").bind(familyId).first();
   if (!family) throw new Error("family_not_found");
   const createdAt = ts();
+  // No approval required: the user joins the family directly.
+  if (Number(family.approval_required ?? 1) === 0) {
+    await enforceFamilyMemberLimit(db, family);
+    await db.prepare(
+      "INSERT INTO family_members(family_id,user_id,role,joined_at) VALUES(?,?,'member',?)"
+    ).bind(familyId, userId, createdAt).run();
+    await familyAutoBornPost(db, familyId, userId);
+    return { ok: true, joined: true };
+  }
   await db.prepare(
     `INSERT INTO family_join_requests(family_id,user_id,status,created_at,updated_at)
      VALUES(?,?,'pending',?,?)
@@ -739,6 +1108,8 @@ export async function familyResolveJoin(db, actorId, targetId, approve) {
   ];
   if (approve) {
     if (await familyMembership(db, targetId)) throw new Error("already_in_family");
+    const family = await db.prepare("SELECT id,experience FROM families WHERE id=?").bind(actor.family_id).first();
+    if (family) await enforceFamilyMemberLimit(db, family);
     statements.push(
       db.prepare(
         "INSERT INTO family_members(family_id,user_id,role,joined_at) VALUES(?,?,'member',?)"
@@ -746,7 +1117,20 @@ export async function familyResolveJoin(db, actorId, targetId, approve) {
     );
   }
   await db.batch(statements);
+  if (approve) await familyAutoBornPost(db, actor.family_id, targetId);
   return { ok: true, approved: Boolean(approve) };
+}
+
+// Member limit (Family Rules, Mr. Wrong 2026-11-24): a family can hold
+// only familyMemberLimit(level) members — Lv.1 60 ... Lv.50 495.
+async function enforceFamilyMemberLimit(db, family) {
+  const level = familyLevel(Number(family.experience ?? 0)).level;
+  const count = await db.prepare(
+    "SELECT COUNT(*) AS total FROM family_members WHERE family_id=?"
+  ).bind(family.id).first();
+  if (Number(count?.total ?? 0) >= familyMemberLimit(level)) {
+    throw new Error("family_full");
+  }
 }
 
 export async function familySetAdmin(db, actorId, targetId, admin) {
@@ -755,6 +1139,18 @@ export async function familySetAdmin(db, actorId, targetId, admin) {
   if (!actor || actor.role !== "leader") throw new Error("family_leader_required");
   if (!target || target.family_id !== actor.family_id || target.role === "leader") {
     throw new Error("invalid_family_member");
+  }
+  if (admin && target.role !== "admin") {
+    // Deputy limit (Family Rules, Mr. Wrong 2026-11-24): the leader can
+    // appoint only familyDeputyLimit(level) deputies — Lv.1-5: 3 ... Lv.30+: 18.
+    const family = await db.prepare("SELECT experience FROM families WHERE id=?").bind(actor.family_id).first();
+    const level = familyLevel(Number(family?.experience ?? 0)).level;
+    const count = await db.prepare(
+      "SELECT COUNT(*) AS total FROM family_members WHERE family_id=? AND role='admin'"
+    ).bind(actor.family_id).first();
+    if (Number(count?.total ?? 0) >= familyDeputyLimit(level)) {
+      throw new Error("family_deputy_limit");
+    }
   }
   await db.prepare(
     "UPDATE family_members SET role=? WHERE family_id=? AND user_id=?"
@@ -773,16 +1169,38 @@ export async function familyRemoveMember(db, actorId, targetId) {
   await db.prepare(
     "DELETE FROM family_members WHERE family_id=? AND user_id=?"
   ).bind(actor.family_id,targetId).run();
+  // Being removed clears the user's personal family EXP.
+  await clearFamilyPersonalExp(db, actor.family_id, targetId);
   return { ok: true };
 }
 
 export async function familyLeave(db, userId) {
   const member = await familyMembership(db, userId);
   if (!member) return { ok: true };
-  if (member.role === "leader") throw new Error("family_leader_cannot_leave");
+  if (member.role === "leader") {
+    // Family Rules (Mr. Wrong, 2026-11-24): the leader can only leave
+    // when they are the only person left in the family — then the family
+    // is disbanded.
+    const count = await db.prepare(
+      "SELECT COUNT(*) AS total FROM family_members WHERE family_id=?"
+    ).bind(member.family_id).first();
+    if (Number(count?.total ?? 0) > 1) throw new Error("family_leader_cannot_leave");
+    await db.batch([
+      db.prepare("DELETE FROM family_members WHERE family_id=?").bind(member.family_id),
+      db.prepare("DELETE FROM family_daily_logins WHERE family_id=?").bind(member.family_id),
+      db.prepare("DELETE FROM family_member_monthly WHERE family_id=?").bind(member.family_id),
+      db.prepare("DELETE FROM family_task_progress WHERE family_id=?").bind(member.family_id),
+      db.prepare("DELETE FROM family_posts WHERE family_id=?").bind(member.family_id),
+      db.prepare("DELETE FROM family_monthly_exp WHERE family_id=?").bind(member.family_id),
+      db.prepare("DELETE FROM families WHERE id=?").bind(member.family_id),
+    ]);
+    return { ok: true, disbanded: true };
+  }
   await db.prepare(
     "DELETE FROM family_members WHERE family_id=? AND user_id=?"
   ).bind(member.family_id,userId).run();
+  // Leaving clears the user's personal family EXP.
+  await clearFamilyPersonalExp(db, member.family_id, userId);
   return { ok: true };
 }
 
@@ -806,8 +1224,13 @@ export async function familyCheckIn(db, userId) {
     "SELECT exp_awarded FROM family_daily_logins WHERE family_id=? AND user_id=? AND day_key=?"
   ).bind(member.family_id,userId,dayKey).first();
   if (existing) return { ok: true, already_checked_in: true, exp_awarded: Number(existing.exp_awarded ?? 0) };
-  const exp = 1;
+  // Daily sign-in task (Family Rules, Mr. Wrong 2026-11-24): 405,000
+  // family EXP + 8,100 coins to the user, once a day. The other app's
+  // 270,000 EXP / 5,400 coins x1.5.
+  const exp = FAMILY_TASK_REWARDS.signIn.exp;
+  const coins = FAMILY_TASK_REWARDS.signIn.coins;
   const createdAt = ts();
+  const wallet = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
   await db.batch([
     db.prepare(
       "INSERT INTO family_daily_logins(family_id,user_id,day_key,exp_awarded,created_at) VALUES(?,?,?,?,?)"
@@ -815,8 +1238,15 @@ export async function familyCheckIn(db, userId) {
     db.prepare(
       "UPDATE families SET experience=experience+?,updated_at=? WHERE id=?"
     ).bind(exp,createdAt,member.family_id),
+    db.prepare(
+      "INSERT INTO family_monthly_exp(family_id,month_key,exp) VALUES(?,?,?) ON CONFLICT(family_id,month_key) DO UPDATE SET exp=exp+excluded.exp"
+    ).bind(member.family_id,familyMonthKey(),exp),
+    db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?").bind(coins,createdAt,userId),
+    db.prepare(
+      "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).bind(uid("ledger-"),userId,"family_task",coins,Number(wallet?.coins ?? 0)+coins,"sign-in-task",createdAt),
   ]);
-  return { ok: true, already_checked_in: false, exp_awarded: exp };
+  return { ok: true, already_checked_in: false, exp_awarded: exp, coins_awarded: coins };
 }
 
 export async function familyTransferCoins(db, senderId, receiverId, coinsValue) {
@@ -850,9 +1280,6 @@ export async function familyTransferCoins(db, senderId, receiverId, coinsValue) 
       "UPDATE users SET coins=coins+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
     ).bind(amount,createdAt,receiverId,transferId),
     db.prepare(
-      "UPDATE families SET experience=experience+?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM family_wallet_transfers WHERE id=?)"
-    ).bind(amount,createdAt,sender.family_id,transferId),
-    db.prepare(
       `INSERT INTO wallet_ledger(
         id,user_id,kind,amount,balance_after,reference_id,created_at
       )
@@ -874,6 +1301,9 @@ export async function familyTransferCoins(db, senderId, receiverId, coinsValue) 
     "SELECT id FROM family_wallet_transfers WHERE id=? LIMIT 1"
   ).bind(transferId).first();
   if (!created) throw new Error("insufficient_coins");
+  // Family EXP (1:1 on the transfer) goes through the engine so monthly
+  // EXP and level-up vault rewards apply too.
+  await addFamilyExp(db, sender.family_id, amount);
   const balance = await db.prepare(
     "SELECT coins FROM users WHERE id=? LIMIT 1"
   ).bind(senderId).first();
@@ -910,6 +1340,739 @@ export async function familyWalletTransfers(db, userId, limitValue = 100) {
       LIMIT ?`
   ).bind(membership.family_id,limit).all();
   return rows.results ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Family Rules engine (Mr. Wrong, 2026-11-24): EXP, levels, tasks, monthly
+// rankings, vault rewards, Trends. Every number is the other app's x1.5
+// (see family_rules.js).
+// ---------------------------------------------------------------------------
+
+export function familyMonthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
+}
+
+function familyDayKey(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+// Add EXP to a family (lifetime + this month). On a level-up the vault
+// receives the level-up reward (familyUpgradeVaultReward) and the reward
+// is recorded in the vault history. Returns the new level info.
+export async function addFamilyExp(db, familyId, exp, monthKey = familyMonthKey()) {
+  const amount = Math.max(0, Math.floor(Number(exp ?? 0)));
+  if (amount <= 0) {
+    const row = await db.prepare("SELECT experience FROM families WHERE id=?").bind(familyId).first();
+    return { level: familyLevel(row?.experience ?? 0).level, leveled_up: false, reward_coins: 0 };
+  }
+  const before = await db.prepare("SELECT experience FROM families WHERE id=?").bind(familyId).first();
+  const beforeExp = Number(before?.experience ?? 0);
+  const beforeLevel = familyLevel(beforeExp).level;
+  const now = ts();
+  await db.batch([
+    db.prepare("UPDATE families SET experience=experience+?,updated_at=? WHERE id=?")
+      .bind(amount, now, familyId),
+    db.prepare(
+      `INSERT INTO family_monthly_exp(family_id,month_key,exp) VALUES(?,?,?)
+       ON CONFLICT(family_id,month_key) DO UPDATE SET exp=exp+excluded.exp`
+    ).bind(familyId, monthKey, amount),
+  ]);
+  const afterLevel = familyLevel(beforeExp + amount).level;
+  let rewardCoins = 0;
+  if (afterLevel > beforeLevel) {
+    for (let level = beforeLevel + 1; level <= afterLevel; level += 1) {
+      rewardCoins += familyUpgradeVaultReward(level);
+    }
+    if (rewardCoins > 0) {
+      await db.batch([
+        db.prepare("UPDATE families SET wallet_coins=wallet_coins+?,updated_at=? WHERE id=?")
+          .bind(rewardCoins, now, familyId),
+        db.prepare(
+          "INSERT INTO family_vault_history(id,family_id,kind,detail,coins,created_at) VALUES(?,?,?,?,?,?)"
+        ).bind(uid("vault-"), familyId, "level_up", `Reached Lv.${afterLevel}`, rewardCoins, now),
+      ]);
+    }
+  }
+  return { level: afterLevel, leveled_up: afterLevel > beforeLevel, reward_coins: rewardCoins };
+}
+
+async function recordMemberMonthly(db, familyId, userId, monthKey, delta = {}) {
+  const given = Math.max(0, Math.floor(Number(delta.given ?? 0)));
+  const received = Math.max(0, Math.floor(Number(delta.received ?? 0)));
+  const minutes = Math.max(0, Math.floor(Number(delta.minutes ?? 0)));
+  if (!given && !received && !minutes) return;
+  await db.prepare(
+    `INSERT INTO family_member_monthly(family_id,user_id,month_key,given_exp,received_exp,active_minutes)
+     VALUES(?,?,?,?,?,?)
+     ON CONFLICT(family_id,user_id,month_key) DO UPDATE SET
+       given_exp=given_exp+excluded.given_exp,
+       received_exp=received_exp+excluded.received_exp,
+       active_minutes=active_minutes+excluded.active_minutes`
+  ).bind(familyId, userId, monthKey, given, received, minutes).run();
+}
+
+// Gift EXP (called best-effort from the gift send flow, after the gift is
+// committed — a failure here must never fail the paid send). Giving gifts
+// earns the SENDER's family 1 EXP per coin (x2 when giver and receiver
+// are in the same family); receiving earns the RECEIVER's family the
+// same. Lucky (and rebate) gifts only count 10%.
+export async function awardFamilyGiftExp(db, senderId, receiverId, coins, giftCategory) {
+  await ensureTinniSocialSchema(db);
+  const sender = await familyMembership(db, senderId);
+  const receiver = await familyMembership(db, receiverId);
+  if (!sender && !receiver) return { ok: true, awarded: false };
+  const sameFamily = Boolean(
+    sender && receiver && String(sender.family_id) === String(receiver.family_id),
+  );
+  const exp = familyGiftExp(coins, sameFamily, giftCategory);
+  if (exp <= 0) return { ok: true, awarded: false };
+  const monthKey = familyMonthKey();
+  if (sender) {
+    await addFamilyExp(db, sender.family_id, exp, monthKey);
+    await recordMemberMonthly(db, sender.family_id, senderId, monthKey, { given: exp });
+  }
+  if (receiver) {
+    await addFamilyExp(db, receiver.family_id, exp, monthKey);
+    await recordMemberMonthly(db, receiver.family_id, receiverId, monthKey, { received: exp });
+  }
+  return { ok: true, awarded: true, exp };
+}
+
+// Game EXP: 100 coins bet = 1 EXP for the bettor's family.
+export async function awardFamilyGameExp(db, userId, coins) {
+  await ensureTinniSocialSchema(db);
+  const member = await familyMembership(db, userId);
+  if (!member) return { ok: true, awarded: false };
+  const exp = familyGameExp(coins);
+  if (exp <= 0) return { ok: true, awarded: false };
+  await addFamilyExp(db, member.family_id, exp);
+  return { ok: true, awarded: true, exp };
+}
+
+// Leaving / being removed clears the user's PERSONAL family EXP (Mr.
+// Wrong, 2026-11-24): their daily check-ins, monthly contributions and
+// task progress in that family are deleted. The family's lifetime EXP
+// itself is not reduced.
+export async function clearFamilyPersonalExp(db, familyId, userId) {
+  await db.batch([
+    db.prepare("DELETE FROM family_daily_logins WHERE family_id=? AND user_id=?").bind(familyId, userId),
+    db.prepare("DELETE FROM family_member_monthly WHERE family_id=? AND user_id=?").bind(familyId, userId),
+    db.prepare("DELETE FROM family_task_progress WHERE family_id=? AND user_id=?").bind(familyId, userId),
+  ]);
+  return { ok: true };
+}
+
+// Daily task status for today: sign-in done?, stay/mic minutes + awarded?.
+export async function familyTaskStatus(db, userId) {
+  await ensureTinniSocialSchema(db);
+  const member = await familyMembership(db, userId);
+  if (!member) throw new Error("not_in_family");
+  const dayKey = familyDayKey();
+  const checkIn = await db.prepare(
+    "SELECT exp_awarded FROM family_daily_logins WHERE family_id=? AND user_id=? AND day_key=?"
+  ).bind(member.family_id, userId, dayKey).first();
+  const progress = await db.prepare(
+    "SELECT kind,minutes,awarded FROM family_task_progress WHERE family_id=? AND user_id=? AND day_key=?"
+  ).bind(member.family_id, userId, dayKey).all();
+  const byKind = {};
+  for (const row of progress.results ?? []) {
+    byKind[String(row.kind)] = { minutes: Number(row.minutes ?? 0), awarded: Number(row.awarded ?? 0) === 1 };
+  }
+  return {
+    ok: true,
+    signed_in: Boolean(checkIn),
+    sign_in_exp: Number(checkIn?.exp_awarded ?? 0),
+    stay: byKind.stay ?? { minutes: 0, awarded: false },
+    mic: byKind.mic ?? { minutes: 0, awarded: false },
+  };
+}
+
+// Room stay / mic task (Mr. Wrong, 2026-11-24): minutes only count while
+// the user is inside a family room — a voice room whose owner is a member
+// of the user's family. Minutes accumulate through the day; reaching the
+// threshold (stay 20 min, mic 10 min) awards the task EXP + coins once.
+export async function familyTaskProgress(db, userId, kind, minutesValue) {
+  await ensureTinniSocialSchema(db);
+  const kindValue = kind === "mic" ? "mic" : "stay";
+  const minutes = Math.max(0, Math.min(600, Math.floor(Number(minutesValue ?? 0))));
+  if (minutes <= 0) throw new Error("invalid_minutes");
+  const member = await familyMembership(db, userId);
+  if (!member) throw new Error("not_in_family");
+  // The user must be inside a family room right now.
+  const room = await db.prepare(
+    `SELECT r.owner_user_id AS owner
+       FROM room_members rm JOIN rooms r ON r.id=rm.room_id
+      WHERE rm.user_id=? LIMIT 1`
+  ).bind(userId).first();
+  if (!room) throw new Error("not_in_family_room");
+  const ownerMember = await db.prepare(
+    "SELECT 1 AS yes FROM family_members WHERE family_id=? AND user_id=? LIMIT 1"
+  ).bind(member.family_id, String(room.owner)).first();
+  if (!ownerMember) throw new Error("not_in_family_room");
+  const dayKey = familyDayKey();
+  const threshold = kindValue === "mic" ? 10 : 20;
+  const reward = kindValue === "mic" ? FAMILY_TASK_REWARDS.mic10 : FAMILY_TASK_REWARDS.stay20;
+  const existing = await db.prepare(
+    "SELECT minutes,awarded FROM family_task_progress WHERE family_id=? AND user_id=? AND day_key=? AND kind=?"
+  ).bind(member.family_id, userId, dayKey, kindValue).first();
+  const totalMinutes = Number(existing?.minutes ?? 0) + minutes;
+  const alreadyAwarded = Number(existing?.awarded ?? 0) === 1;
+  const now = ts();
+  await db.prepare(
+    `INSERT INTO family_task_progress(family_id,user_id,day_key,kind,minutes,awarded)
+     VALUES(?,?,?,?,?,?)
+     ON CONFLICT(family_id,user_id,day_key,kind) DO UPDATE SET minutes=excluded.minutes`
+  ).bind(member.family_id, userId, dayKey, kindValue, totalMinutes, alreadyAwarded ? 1 : 0).run();
+  let awardedNow = false;
+  if (!alreadyAwarded && totalMinutes >= threshold) {
+    await db.prepare(
+      "UPDATE family_task_progress SET awarded=1 WHERE family_id=? AND user_id=? AND day_key=? AND kind=?"
+    ).bind(member.family_id, userId, dayKey, kindValue).run();
+    await addFamilyExp(db, member.family_id, reward.exp);
+    await recordMemberMonthly(db, member.family_id, userId, familyMonthKey(), { minutes: totalMinutes });
+    const wallet = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+    await db.batch([
+      db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?").bind(reward.coins, now, userId),
+      db.prepare(
+        "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+      ).bind(uid("ledger-"), userId, "family_task", reward.coins, Number(wallet?.coins ?? 0) + reward.coins, `${kindValue}-task`, now),
+    ]);
+    awardedNow = true;
+  }
+  return {
+    ok: true,
+    kind: kindValue,
+    minutes: totalMinutes,
+    threshold,
+    awarded: alreadyAwarded || awardedNow,
+    awarded_now: awardedNow,
+    exp_awarded: awardedNow ? reward.exp : 0,
+    coins_awarded: awardedNow ? reward.coins : 0,
+  };
+}
+
+// Monthly ranking inside one family: Charm Star = gifts RECEIVED this
+// month, Wealth Star = gifts GIVEN this month, Active Star = minutes in
+// the family room this month. Settles on the 1st of each month.
+export async function familyMonthlyRanking(db, familyId, kind) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare("SELECT id FROM families WHERE id=?").bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const kindValue = kind === "wealth" ? "wealth" : kind === "active" ? "active" : "charm";
+  const column = kindValue === "wealth" ? "given_exp" : kindValue === "active" ? "active_minutes" : "received_exp";
+  const monthKey = familyMonthKey();
+  const rows = await db.prepare(
+    `SELECT m.user_id,m.given_exp,m.received_exp,m.active_minutes,
+            fm.role,fm.joined_at,u.display_name,u.avatar_key,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id
+       FROM family_member_monthly m
+       JOIN family_members fm ON fm.family_id=m.family_id AND fm.user_id=m.user_id
+       JOIN users u ON u.id=m.user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id=m.user_id
+      WHERE m.family_id=? AND m.month_key=?
+      ORDER BY m.${column} DESC, m.user_id ASC
+      LIMIT 100`
+  ).bind(familyId, monthKey).all();
+  return {
+    ok: true,
+    kind: kindValue,
+    month_key: monthKey,
+    members: (rows.results ?? []).map((row, index) => ({
+      rank: index + 1,
+      user_id: String(row.user_id),
+      display_name: String(row.display_name ?? ""),
+      avatar_key: row.avatar_key ?? "",
+      public_id: row.public_id ?? "",
+      role: String(row.role ?? "member"),
+      given_exp: Number(row.given_exp ?? 0),
+      received_exp: Number(row.received_exp ?? 0),
+      active_minutes: Number(row.active_minutes ?? 0),
+      value: Number(row[column] ?? 0),
+    })),
+  };
+}
+
+// Top member of each star for the family HOME tab.
+export async function familyTopMembers(db, familyId) {
+  const top = {};
+  for (const kind of ["charm", "wealth", "active"]) {
+    const ranking = await familyMonthlyRanking(db, familyId, kind);
+    top[kind] = ranking.members[0] ?? null;
+  }
+  return top;
+}
+
+// The family's room: the leader's voice room (if the leader owns one),
+// with how many family members are inside right now.
+export async function familyRoomFor(db, familyId) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare("SELECT leader_user_id FROM families WHERE id=?").bind(familyId).first();
+  if (!family) return null;
+  const room = await db.prepare(
+    `SELECT r.id,r.name,r.owner_user_id,r.seat_count,
+            (SELECT COUNT(*) FROM room_members rm WHERE rm.room_id=r.id) AS live_count,
+            (SELECT COUNT(*) FROM room_members rm
+               JOIN family_members fm ON fm.user_id=rm.user_id AND fm.family_id=?
+              WHERE rm.room_id=r.id) AS family_live_count
+       FROM rooms r WHERE r.owner_user_id=? ORDER BY r.created_at DESC LIMIT 1`
+  ).bind(familyId, String(family.leader_user_id)).first();
+  if (!room) return null;
+  return {
+    id: String(room.id),
+    name: String(room.name ?? ""),
+    owner_user_id: String(room.owner_user_id ?? ""),
+    seat_count: Number(room.seat_count ?? 0),
+    live_count: Number(room.live_count ?? 0),
+    family_live_count: Number(room.family_live_count ?? 0),
+  };
+}
+
+// Public family detail page data (HOME tab): header, EXP card, rank,
+// announcement, top members, member avatars, family room, vault (members
+// only), today's check-ins.
+export async function familyDetail(db, familyId, viewerUserId) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare(
+    `SELECT f.id,f.name,f.tag,f.notice,f.leader_user_id,f.experience,
+            f.wallet_coins,f.logo_key,f.approval_required,f.created_at,
+            u.display_name AS leader_name,u.avatar_key AS leader_avatar_key
+       FROM families f LEFT JOIN users u ON u.id=f.leader_user_id
+      WHERE f.id=?`
+  ).bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const experience = Number(family.experience ?? 0);
+  const levelInfo = familyLevel(experience);
+  const monthKey = familyMonthKey();
+  const monthly = await db.prepare(
+    "SELECT exp FROM family_monthly_exp WHERE family_id=? AND month_key=?"
+  ).bind(familyId, monthKey).first();
+  const monthlyExp = Number(monthly?.exp ?? 0);
+  const rankInfo = familyRankForMonthlyExp(monthlyExp);
+  const members = await db.prepare(
+    `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key,
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id
+       FROM family_members fm JOIN users u ON u.id=fm.user_id
+       LEFT JOIN owner_user_overrides io ON io.user_id=fm.user_id
+      WHERE fm.family_id=?
+      ORDER BY CASE fm.role WHEN 'leader' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+               fm.joined_at ASC`
+  ).bind(familyId).all();
+  const memberRows = members.results ?? [];
+  const dayKey = familyDayKey();
+  const checkIns = await db.prepare(
+    "SELECT COUNT(*) AS total FROM family_daily_logins WHERE family_id=? AND day_key=?"
+  ).bind(familyId, dayKey).first();
+  const viewer = viewerUserId ? await familyMembership(db, viewerUserId) : null;
+  const isMember = Boolean(viewer && String(viewer.family_id) === String(familyId));
+  const myContribution = await db.prepare(
+    "SELECT COALESCE(SUM(exp_awarded),0) AS total FROM family_daily_logins WHERE family_id=? AND user_id=?"
+  ).bind(familyId, viewerUserId ?? "").first();
+  const topMembers = await familyTopMembers(db, familyId);
+  const room = await familyRoomFor(db, familyId);
+  return {
+    ok: true,
+    family: {
+      id: String(family.id),
+      name: String(family.name ?? ""),
+      tag: String(family.tag ?? ""),
+      notice: String(family.notice ?? ""),
+      leader_user_id: String(family.leader_user_id ?? ""),
+      leader_name: String(family.leader_name ?? ""),
+      leader_avatar_key: family.leader_avatar_key ?? "",
+      experience,
+      level: levelInfo.level,
+      next_exp: levelInfo.next_exp,
+      level_band: familyLevelBand(levelInfo.level),
+      monthly_exp: monthlyExp,
+      rank: rankInfo.rank,
+      rank_progress: rankInfo.progress,
+      rank_need: rankInfo.need,
+      rank_next: rankInfo.next_rank,
+      wallet_coins: isMember ? Number(family.wallet_coins ?? 0) : null,
+      logo_key: family.logo_key ?? "",
+      approval_required: Number(family.approval_required ?? 1),
+      member_count: memberRows.length,
+      check_ins_today: Number(checkIns?.total ?? 0),
+      my_contributed_exp: Number(myContribution?.total ?? 0),
+      is_member: isMember,
+      my_role: isMember ? String(viewer.role) : null,
+    },
+    top_members: topMembers,
+    members: memberRows.map((row) => ({
+      user_id: String(row.user_id),
+      role: String(row.role ?? "member"),
+      display_name: String(row.display_name ?? ""),
+      avatar_key: row.avatar_key ?? "",
+      public_id: row.public_id ?? "",
+      joined_at: Number(row.joined_at ?? 0),
+    })),
+    room,
+  };
+}
+
+// Monthly settlement (runs on the 1st of each month, 03:00 UTC job): the
+// top-10 families of the LAST month by monthly EXP receive their vault
+// coins. Idempotent per (family, month) via family_monthly_rewards.
+export async function settleFamilyMonthly(db, monthKey) {
+  await ensureTinniSocialSchema(db);
+  const key = String(monthKey ?? "").trim();
+  if (!/^\d{4}-\d{2}$/.test(key)) throw new Error("invalid_month_key");
+  const rows = await db.prepare(
+    `SELECT family_id,exp FROM family_monthly_exp
+      WHERE month_key=? ORDER BY exp DESC, family_id ASC LIMIT 10`
+  ).bind(key).all();
+  const settled = [];
+  const now = ts();
+  for (const [index, row] of (rows.results ?? []).entries()) {
+    const rank = index + 1;
+    const reward = familyMonthlyVaultReward(rank);
+    if (reward <= 0) continue;
+    const familyId = String(row.family_id);
+    const existing = await db.prepare(
+      "SELECT id FROM family_monthly_rewards WHERE family_id=? AND month_key=?"
+    ).bind(familyId, key).first();
+    if (existing) continue;
+    await db.batch([
+      db.prepare(
+        "INSERT INTO family_monthly_rewards(id,family_id,month_key,rank_value,vault_coins,created_at) VALUES(?,?,?,?,?,?)"
+      ).bind(uid("monthly-reward-"), familyId, key, rank, reward, now),
+      db.prepare("UPDATE families SET wallet_coins=wallet_coins+?,updated_at=? WHERE id=?")
+        .bind(reward, now, familyId),
+      db.prepare(
+        "INSERT INTO family_vault_history(id,family_id,kind,detail,coins,created_at) VALUES(?,?,?,?,?,?)"
+      ).bind(uid("vault-"), familyId, "monthly_rank", `Monthly rank No.${rank} (${key})`, reward, now),
+    ]);
+    settled.push({ family_id: familyId, rank, vault_coins: reward });
+  }
+  return { ok: true, month_key: key, settled };
+}
+
+export async function familyVaultHistory(db, familyId, limitValue = 50) {
+  await ensureTinniSocialSchema(db);
+  const limit = Math.max(1, Math.min(100, Math.floor(Number(limitValue) || 50)));
+  const rows = await db.prepare(
+    `SELECT id,kind,detail,coins,created_at FROM family_vault_history
+      WHERE family_id=? ORDER BY created_at DESC LIMIT ?`
+  ).bind(familyId, limit).all();
+  return rows.results ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Family Weekly Rewards (Mr. Wrong, 2026-11-24): "Send gifts and win
+// rewards!" The week runs Monday 00:00 to Sunday 23:59 in UTC+3 (the
+// other app's timezone). Weekly gifting = coins of gifts SENT by family
+// members in the week (gift_events). Tiers 148.5M / 315M / 765M (other
+// app's 99M / 210M / 510M x1.5).
+// ---------------------------------------------------------------------------
+
+// Monday 00:00 UTC+3 bounds for the week containing `date`. week_key is
+// the Monday date (YYYY-MM-DD, UTC+3).
+export function familyWeekBounds(date = new Date()) {
+  const utc3 = new Date(date.getTime() + 3 * 3600 * 1000);
+  const daysSinceMonday = (utc3.getUTCDay() + 6) % 7;
+  const mondayUtc3 = new Date(Date.UTC(
+    utc3.getUTCFullYear(), utc3.getUTCMonth(), utc3.getUTCDate() - daysSinceMonday,
+  ));
+  const startMs = mondayUtc3.getTime() - 3 * 3600 * 1000;
+  return {
+    startMs,
+    endMs: startMs + 7 * 24 * 3600 * 1000,
+    weekKey: mondayUtc3.toISOString().slice(0, 10),
+  };
+}
+
+// Weekly gifting of one family: total + per-member ranking, for the week
+// starting at startMs (inclusive) and ending at endMs (exclusive).
+async function familyWeeklyTotals(db, familyId, startMs, endMs) {
+  const members = await db.prepare(
+    `SELECT fm.user_id,u.display_name,u.avatar_key,fm.role
+       FROM family_members fm JOIN users u ON u.id=fm.user_id
+      WHERE fm.family_id=?`
+  ).bind(familyId).all();
+  const memberRows = members.results ?? [];
+  const memberIds = new Set(memberRows.map((row) => String(row.user_id)));
+  const gifts = await db.prepare(
+    `SELECT sender_user_id AS user_id,SUM(coin_cost) AS total
+       FROM gift_events WHERE created_at>=? AND created_at<?
+      GROUP BY sender_user_id`
+  ).bind(startMs, endMs).all();
+  const byUser = new Map();
+  for (const row of gifts.results ?? []) {
+    const userId = String(row.user_id);
+    if (memberIds.has(userId)) byUser.set(userId, Number(row.total ?? 0));
+  }
+  const ranking = memberRows
+    .map((row) => ({
+      user_id: String(row.user_id),
+      display_name: String(row.display_name ?? ""),
+      avatar_key: row.avatar_key ?? "",
+      role: String(row.role ?? "member"),
+      weekly_gifts: byUser.get(String(row.user_id)) ?? 0,
+    }))
+    .sort((a, b) => b.weekly_gifts - a.weekly_gifts || String(a.user_id).localeCompare(String(b.user_id)))
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+  return {
+    total: ranking.reduce((sum, row) => sum + row.weekly_gifts, 0),
+    ranking,
+  };
+}
+
+export async function familyWeeklyState(db, familyId, viewerUserId) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare(
+    "SELECT id,name,leader_user_id FROM families WHERE id=?"
+  ).bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const now = new Date();
+  const current = familyWeekBounds(now);
+  const last = familyWeekBounds(new Date(current.startMs - 1));
+  const thisPeriod = await familyWeeklyTotals(db, familyId, current.startMs, current.endMs);
+  const lastPeriod = await familyWeeklyTotals(db, familyId, last.startMs, last.endMs);
+  const tierIndex = familyWeeklyTierForTotal(thisPeriod.total);
+  const nextTier = FAMILY_WEEKLY_TIERS[tierIndex + 1] ?? null;
+  const me = thisPeriod.ranking.find((row) => String(row.user_id) === String(viewerUserId ?? "")) ?? null;
+  const settled = await db.prepare(
+    "SELECT user_id,kind,rank_value,coins,detail FROM family_weekly_rewards WHERE family_id=? AND week_key=?"
+  ).bind(familyId, last.weekKey).all();
+  return {
+    ok: true,
+    family_id: String(family.id),
+    family_name: String(family.name ?? ""),
+    week_key: current.weekKey,
+    week_ends_at: current.endMs,
+    server_time: now.getTime(),
+    total: thisPeriod.total,
+    tier_index: tierIndex,
+    tiers: FAMILY_WEEKLY_TIERS.map((tier) => ({
+      threshold: tier.threshold,
+      leader_coins: tier.leader_coins,
+      reached: thisPeriod.total >= tier.threshold,
+    })),
+    next_tier_threshold: nextTier ? nextTier.threshold : null,
+    eligibility_coins: FAMILY_WEEKLY_ELIGIBILITY_COINS,
+    this_period: thisPeriod,
+    last_period: lastPeriod,
+    last_period_week_key: last.weekKey,
+    my_rank: me ? me.rank : 0,
+    my_weekly_gifts: me ? me.weekly_gifts : 0,
+    last_settled: (settled.results ?? []).map((row) => ({
+      user_id: String(row.user_id),
+      kind: String(row.kind),
+      rank_value: Number(row.rank_value ?? 0),
+      coins: Number(row.coins ?? 0),
+      detail: String(row.detail ?? ""),
+    })),
+  };
+}
+
+// Weekly settlement (runs Monday 03:00 UTC in the daily job — 06:00
+// UTC+3, after the week ended): the finished week's tier decides the
+// leader coins; the top 15 members by weekly gifting (each over
+// 7,200,000 weekly gifts) get their top coins. Coins are credited to
+// the users' wallets for real; the 7-day frame/medal/tag/vehicle items
+// are recorded as granted display items (no grant system exists yet).
+// Idempotent per (family, week, user, kind).
+export async function settleFamilyWeekly(db, weekKey) {
+  await ensureTinniSocialSchema(db);
+  const key = String(weekKey ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) throw new Error("invalid_week_key");
+  const monday = new Date(`${key}T00:00:00+03:00`);
+  const startMs = monday.getTime();
+  const endMs = startMs + 7 * 24 * 3600 * 1000;
+  const families = await db.prepare("SELECT id,leader_user_id FROM families").all();
+  const settled = [];
+  const now = ts();
+  for (const family of families.results ?? []) {
+    const familyId = String(family.id);
+    const leaderId = String(family.leader_user_id ?? "");
+    const totals = await familyWeeklyTotals(db, familyId, startMs, endMs);
+    if (totals.total <= 0) continue;
+    const tierIndex = familyWeeklyTierForTotal(totals.total);
+    const record = async (userId, kind, rankValue, coins, detail) => {
+      const existing = await db.prepare(
+        "SELECT id FROM family_weekly_rewards WHERE family_id=? AND week_key=? AND user_id=? AND kind=?"
+      ).bind(familyId, key, userId, kind).first();
+      if (existing) return false;
+      await db.prepare(
+        "INSERT INTO family_weekly_rewards(id,family_id,week_key,user_id,kind,rank_value,coins,detail,created_at) VALUES(?,?,?,?,?,?,?,?,?)"
+      ).bind(uid("weekly-reward-"), familyId, key, userId, kind, rankValue, coins, detail, now).run();
+      return true;
+    };
+    const creditCoins = async (userId, coins, kind, reference) => {
+      if (coins <= 0) return;
+      const wallet = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+      await db.batch([
+        db.prepare("UPDATE users SET coins=coins+?,updated_at=? WHERE id=?").bind(coins, now, userId),
+        db.prepare(
+          "INSERT INTO wallet_ledger(id,user_id,kind,amount,balance_after,reference_id,created_at) VALUES(?,?,?,?,?,?,?)"
+        ).bind(uid("ledger-"), userId, kind, coins, Number(wallet?.coins ?? 0) + coins, reference, now),
+      ]);
+    };
+    if (tierIndex >= 0 && leaderId) {
+      const leaderCoins = FAMILY_WEEKLY_TIERS[tierIndex].leader_coins;
+      if (await record(leaderId, "leader", 0, leaderCoins, `Weekly tier ${tierIndex + 1}`)) {
+        await creditCoins(leaderId, leaderCoins, "family_weekly_leader", `family-weekly:${key}`);
+        await record(leaderId, "leader_items", 0, 0, "Super Leader medal (7d) + Bronze Family frame (7d) + Tag-Bronze Family (7d)");
+        settled.push({ family_id: familyId, user_id: leaderId, kind: "leader", coins: leaderCoins });
+      }
+      // Every member gets the Bronze Family frame + tag when any tier
+      // is reached (7-day display items, recorded as granted).
+      for (const member of totals.ranking) {
+        await record(member.user_id, "member_items", 0, 0, "Bronze Family frame (7d) + Tag-Bronze Family (7d)");
+      }
+    }
+    for (const member of totals.ranking.slice(0, 15)) {
+      if (member.weekly_gifts <= FAMILY_WEEKLY_ELIGIBILITY_COINS) continue;
+      const coins = familyWeeklyTopCoins(member.rank);
+      if (coins <= 0) continue;
+      if (await record(member.user_id, "top", member.rank, coins, `Weekly top ${member.rank}`)) {
+        await creditCoins(member.user_id, coins, "family_weekly_top", `family-weekly:${key}`);
+        await record(member.user_id, "top_items", member.rank, 0, "Super Sponsor medal (7d) + Blue star vehicle (7d)");
+        settled.push({ family_id: familyId, user_id: member.user_id, kind: "top", rank: member.rank, coins });
+      }
+    }
+  }
+  return { ok: true, week_key: key, settled };
+}
+
+// Today's Family Lucky Draw Records (Mr. Wrong, 2026-11-24). The wheel
+// SPIN is on HOLD (event) — this only reads the records table, which is
+// empty until the event is built.
+export async function familyLuckyDrawRecords(db, familyId, limitValue = 100) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare("SELECT id FROM families WHERE id=?").bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const limit = Math.max(1, Math.min(200, Math.floor(Number(limitValue) || 100)));
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const rows = await db.prepare(
+    `SELECT id,user_id,display_name,coins,created_at FROM family_lucky_draw_records
+      WHERE family_id=? AND created_at>=? ORDER BY created_at DESC LIMIT ?`
+  ).bind(familyId, dayStart.getTime(), limit).all();
+  return (rows.results ?? []).map((row) => ({
+    id: String(row.id),
+    user_id: String(row.user_id),
+    display_name: String(row.display_name ?? ""),
+    coins: Number(row.coins ?? 0),
+    created_at: Number(row.created_at ?? 0),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Family Trends (posts feed on the family detail page).
+// ---------------------------------------------------------------------------
+
+async function familyAutoBornPost(db, familyId, userId) {
+  const createdAt = ts();
+  try {
+    await db.prepare(
+      "INSERT INTO family_posts(id,family_id,user_id,text,created_at) VALUES(?,?,?,?,?)"
+    ).bind(uid("family-post-"), familyId, userId, "I was born!", createdAt).run();
+  } catch (_) {
+    // Best-effort: a failed auto-post never blocks joining.
+  }
+}
+
+export async function familyPosts(db, familyId, viewerUserId, limitValue = 50) {
+  await ensureTinniSocialSchema(db);
+  const family = await db.prepare("SELECT id FROM families WHERE id=?").bind(familyId).first();
+  if (!family) throw new Error("family_not_found");
+  const limit = Math.max(1, Math.min(100, Math.floor(Number(limitValue) || 50)));
+  const rows = await db.prepare(
+    `SELECT p.id,p.user_id,p.text,p.created_at,u.display_name,u.avatar_key,
+            (SELECT COUNT(*) FROM family_post_likes l WHERE l.post_id=p.id) AS like_count,
+            (SELECT COUNT(*) FROM family_post_comments c WHERE c.post_id=p.id) AS comment_count,
+            EXISTS(SELECT 1 FROM family_post_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked_by_me
+       FROM family_posts p JOIN users u ON u.id=p.user_id
+      WHERE p.family_id=? ORDER BY p.created_at DESC LIMIT ?`
+  ).bind(viewerUserId ?? "", familyId, limit).all();
+  return (rows.results ?? []).map((row) => ({
+    id: String(row.id),
+    user_id: String(row.user_id),
+    display_name: String(row.display_name ?? ""),
+    avatar_key: row.avatar_key ?? "",
+    text: String(row.text ?? ""),
+    created_at: Number(row.created_at ?? 0),
+    like_count: Number(row.like_count ?? 0),
+    comment_count: Number(row.comment_count ?? 0),
+    liked_by_me: Number(row.liked_by_me ?? 0) === 1,
+  }));
+}
+
+export async function familyCreatePost(db, userId, textValue) {
+  await ensureTinniSocialSchema(db);
+  const member = await familyMembership(db, userId);
+  if (!member) throw new Error("not_in_family");
+  const text = clean(textValue, 500);
+  if (text.length < 1) throw new Error("invalid_post_text");
+  const hit = checkContent(text);
+  if (hit.blocked) throw new Error("content_blocked");
+  const createdAt = ts();
+  const postId = uid("family-post-");
+  await db.prepare(
+    "INSERT INTO family_posts(id,family_id,user_id,text,created_at) VALUES(?,?,?,?,?)"
+  ).bind(postId, member.family_id, userId, text, createdAt).run();
+  return { ok: true, post_id: postId };
+}
+
+export async function familyLikePost(db, userId, postId) {
+  await ensureTinniSocialSchema(db);
+  const post = await db.prepare("SELECT family_id FROM family_posts WHERE id=?").bind(postId).first();
+  if (!post) throw new Error("family_post_not_found");
+  const member = await familyMembership(db, userId);
+  if (!member || String(member.family_id) !== String(post.family_id)) {
+    throw new Error("not_in_family");
+  }
+  const existing = await db.prepare(
+    "SELECT 1 AS yes FROM family_post_likes WHERE post_id=? AND user_id=?"
+  ).bind(postId, userId).first();
+  if (existing) {
+    await db.prepare("DELETE FROM family_post_likes WHERE post_id=? AND user_id=?").bind(postId, userId).run();
+    return { ok: true, liked: false };
+  }
+  await db.prepare(
+    "INSERT INTO family_post_likes(post_id,user_id,created_at) VALUES(?,?,?)"
+  ).bind(postId, userId, ts()).run();
+  return { ok: true, liked: true };
+}
+
+export async function familyPostComments(db, postId) {
+  await ensureTinniSocialSchema(db);
+  const post = await db.prepare("SELECT id FROM family_posts WHERE id=?").bind(postId).first();
+  if (!post) throw new Error("family_post_not_found");
+  const rows = await db.prepare(
+    `SELECT c.id,c.user_id,c.text,c.created_at,u.display_name,u.avatar_key
+       FROM family_post_comments c JOIN users u ON u.id=c.user_id
+      WHERE c.post_id=? ORDER BY c.created_at ASC LIMIT 100`
+  ).bind(postId).all();
+  return (rows.results ?? []).map((row) => ({
+    id: String(row.id),
+    user_id: String(row.user_id),
+    display_name: String(row.display_name ?? ""),
+    avatar_key: row.avatar_key ?? "",
+    text: String(row.text ?? ""),
+    created_at: Number(row.created_at ?? 0),
+  }));
+}
+
+export async function familyCommentPost(db, userId, postId, textValue) {
+  await ensureTinniSocialSchema(db);
+  const post = await db.prepare("SELECT family_id FROM family_posts WHERE id=?").bind(postId).first();
+  if (!post) throw new Error("family_post_not_found");
+  const member = await familyMembership(db, userId);
+  if (!member || String(member.family_id) !== String(post.family_id)) {
+    throw new Error("not_in_family");
+  }
+  const text = clean(textValue, 500);
+  if (text.length < 1) throw new Error("invalid_post_text");
+  const hit = checkContent(text);
+  if (hit.blocked) throw new Error("content_blocked");
+  const createdAt = ts();
+  const commentId = uid("family-comment-");
+  await db.prepare(
+    "INSERT INTO family_post_comments(id,post_id,user_id,text,created_at) VALUES(?,?,?,?,?)"
+  ).bind(commentId, postId, userId, text, createdAt).run();
+  return { ok: true, comment_id: commentId };
 }
 
 function relationLevelTarget(levelValue) {

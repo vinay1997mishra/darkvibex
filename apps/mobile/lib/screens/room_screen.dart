@@ -149,6 +149,7 @@ class _RoomScreenState extends State<RoomScreen>
   // Room polling is split by data freshness needs. Polling every 4 seconds
   // for all four resources multiplied Worker requests for every connected user.
   Timer? roomPollTimer;
+  Timer? _familyTaskTimer;
   Timer? arrivalEffectTimer;
   Map<String, dynamic>? arrivalEffectMember;
   String? roomAvatarKey;
@@ -378,6 +379,36 @@ class _RoomScreenState extends State<RoomScreen>
     roomPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (appIsActive()) _loadRoomSeparate();
     });
+
+    // Family daily tasks (Mr. Wrong, 2026-11-24): staying in a family
+    // room 20 minutes and mic on 10 minutes each award EXP + coins once
+    // a day. Report one minute at a time; the worker only counts minutes
+    // while this room is a family room (its owner is a member of my
+    // family) and ignores the rest, so this is safe in any room.
+    // Best-effort: a failed report never shows an error in the room.
+    _familyTaskTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!appIsActive()) return;
+      unawaited(_reportFamilyTaskMinutes());
+    });
+  }
+
+  Future<void> _reportFamilyTaskMinutes() async {
+    try {
+      await widget.state.backend.familyTaskProgress(
+        userId: widget.state.userId,
+        kind: 'stay',
+        minutes: 1,
+      );
+      if (mySeat != null && !muted) {
+        await widget.state.backend.familyTaskProgress(
+          userId: widget.state.userId,
+          kind: 'mic',
+          minutes: 1,
+        );
+      }
+    } catch (_) {
+      // Best-effort: task reporting never breaks the room.
+    }
   }
 
   Future<void> _loadRoomMembers() async {
@@ -2397,6 +2428,7 @@ class _RoomScreenState extends State<RoomScreen>
       rocketOverlay.dispose();
     }
     roomPollTimer?.cancel();
+    _familyTaskTimer?.cancel();
     arrivalEffectTimer?.cancel();
     giftEffectTimer?.cancel();
     giftRibbonTimer?.cancel();

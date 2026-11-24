@@ -2,9 +2,10 @@ import 'dart:async';
 
 import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
-import 'package:darkvibex/screens/mine_social_screens.dart';
 import 'package:darkvibex/ui/tinni_style.dart';
 import 'package:darkvibex/widgets/ranking_shield.dart';
+import 'package:darkvibex/screens/create_family_screen.dart';
+import 'package:darkvibex/screens/family_join_screen.dart';
 import 'package:flutter/material.dart';
 
 /// Top Families of the Month (Mr. Wrong, 2026-11-24 — approved v9 design
@@ -17,7 +18,8 @@ import 'package:flutter/material.dart';
 ///
 /// This page PERMANENTLY REPLACES the old FamilyRankingScreen (a plain
 /// dark list, deleted 2026-11-24 on Mr. Wrong's order). The family home
-/// / create / join flows themselves live in FamilyScreen (untouched).
+/// lives in FamilyScreen (untouched); create and join open the full
+/// CreateFamilyScreen / FamilyJoinScreen pages.
 /// Data comes from the existing separate routes — familyList() for the
 /// ranking and familyState() for "has the user joined a family" (no
 /// combined API, per PR #214). The Local scope filters by the leader's
@@ -139,24 +141,18 @@ class _TopFamiliesScreenState extends State<TopFamiliesScreen> {
   }
 
   Future<void> _create() async {
-    final result = await showDialog<(String, String)>(
-      context: context,
-      builder: (_) => const _CreateFamilyDialog(),
-    );
-    if (result == null || result.$1.length < 2 || result.$2.length < 2) return;
-    final value = await _backend.createFamily(
-      userId: widget.state.userId,
-      name: result.$1,
-      tag: result.$2,
+    // The full Create Family page (Mr. Wrong, 2026-11-24). The small
+    // dialog below (_CreateFamilyDialog) is superseded and stays
+    // unwired in this file.
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            CreateFamilyScreen(state: widget.state, backend: _backend),
+      ),
     );
     if (!mounted) return;
-    if (value?['ok'] == true) {
-      await _load();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not create family')),
-      );
-    }
+    await _load();
   }
 
   Future<void> _join(String familyId) async {
@@ -725,8 +721,10 @@ class _TopFamiliesScreenState extends State<TopFamiliesScreen> {
                             onPressed: () => Navigator.push<void>(
                               context,
                               MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    FamilyScreen(state: widget.state),
+                                builder: (_) => FamilyJoinScreen(
+                                  state: widget.state,
+                                  backend: _backend,
+                                ),
                               ),
                             ),
                             child: const Text(
@@ -759,7 +757,11 @@ class _TopFamiliesScreenState extends State<TopFamiliesScreen> {
 
 /// The create-family dialog owns its TextEditingControllers, so they are
 /// disposed only when the dialog route is really gone — disposing them
-/// in _create() while the dialog animates out throws "controller used
+/// SUPERSEDED by CreateFamilyScreen (the full create page) — kept
+/// here unwired. The dialog used to be opened from _create(); the
+/// create button now opens the full page. Original note: the dialog
+/// owns its controllers because disposing them in the caller while
+/// the dialog animates out throws "controller used
 /// after being disposed".
 class _CreateFamilyDialog extends StatefulWidget {
   const _CreateFamilyDialog();
