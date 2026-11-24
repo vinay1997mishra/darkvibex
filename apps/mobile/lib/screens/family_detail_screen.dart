@@ -165,7 +165,11 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
 
   // Member list tap (Mr. Wrong, 2026-11-24): tapping the "N members"
   // section opens the full members page, like in the reference video.
+  // The members page also carries everything the Management page has
+  // (admin controls, join requests, Leave Family), so it gets the
+  // viewer's role and the pending requests from this detail snapshot.
   void _openMembers(List<Map<String, dynamic>> members) {
+    final requests = _detail?['join_requests'];
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -174,10 +178,17 @@ class _FamilyDetailScreenState extends State<FamilyDetailScreen>
           familyId: widget.familyId,
           familyName: _family['name']?.toString() ?? 'Family',
           members: members,
+          myRole: _family['my_role']?.toString(),
+          joinRequests: requests is List
+              ? requests
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e))
+                  .toList()
+              : const [],
           backend: widget.backend,
         ),
       ),
-    );
+    ).then((_) => _load());
   }
 
   void _openRecords() {

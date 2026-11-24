@@ -1676,6 +1676,19 @@ export async function familyDetail(db, familyId, viewerUserId) {
   ).bind(familyId, viewerUserId ?? "").first();
   const topMembers = await familyTopMembers(db, familyId);
   const room = await familyRoomFor(db, familyId);
+  // Join requests (Mr. Wrong, 2026-11-24): the members page shows them
+  // too, exactly like the Management page — but only to the leader and
+  // admins of this family, never to plain members or outsiders.
+  let joinRequests = [];
+  if (isMember && (viewer.role === "leader" || viewer.role === "admin")) {
+    const requests = await db.prepare(
+      `SELECT r.user_id,r.created_at,u.display_name,u.avatar_key
+         FROM family_join_requests r JOIN users u ON u.id=r.user_id
+        WHERE r.family_id=? AND r.status='pending'
+        ORDER BY r.created_at ASC`
+    ).bind(familyId).all();
+    joinRequests = requests.results ?? [];
+  }
   return {
     ok: true,
     family: {
@@ -1714,6 +1727,12 @@ export async function familyDetail(db, familyId, viewerUserId) {
       joined_at: Number(row.joined_at ?? 0),
       received_coins: Number(row.received_coins ?? 0),
       last_seen_at: Number(row.last_seen_at ?? 0),
+    })),
+    join_requests: joinRequests.map((row) => ({
+      user_id: String(row.user_id),
+      display_name: String(row.display_name ?? ""),
+      avatar_key: row.avatar_key ?? "",
+      created_at: Number(row.created_at ?? 0),
     })),
     room,
   };

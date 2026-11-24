@@ -451,6 +451,35 @@ test("family detail: level, rank, members, room, vault for members only", async 
   assert.equal(publicDetail.body.family.wallet_coins, null);
 });
 
+test("family detail: join requests only for leader and admin", async () => {
+  const fx = await fixture();
+  const leader = await makeUser(fx, "leader", { vipLevel: 6 });
+  const member = await makeUser(fx, "member");
+  const applicant = await makeUser(fx, "applicant");
+  const outsider = await makeUser(fx, "outsider");
+  // Approval required: the member's request stays pending until the
+  // leader approves it, and the applicant's stays pending.
+  const familyId = await createFamily(fx, leader, { approval_required: true });
+  await joinFamily(fx, member, familyId);
+  const resolve = await fx.request("/api/family/join-request/resolve", {
+    method: "POST",
+    userId: leader,
+    body: { user_id: leader, target_user_id: member, approve: true },
+  });
+  assert.equal(resolve.status, 200, JSON.stringify(resolve.body));
+  await joinFamily(fx, applicant, familyId);
+  // Leader sees the pending applicant.
+  const leaderDetail = await fx.request(`/api/family/detail?family_id=${familyId}`, { method: "GET", userId: leader });
+  assert.equal(leaderDetail.body.join_requests.length, 1);
+  assert.equal(leaderDetail.body.join_requests[0].user_id, applicant);
+  // Plain member sees none.
+  const memberDetail = await fx.request(`/api/family/detail?family_id=${familyId}`, { method: "GET", userId: member });
+  assert.deepEqual(memberDetail.body.join_requests, []);
+  // Outsider sees none.
+  const outsiderDetail = await fx.request(`/api/family/detail?family_id=${familyId}`, { method: "GET", userId: outsider });
+  assert.deepEqual(outsiderDetail.body.join_requests, []);
+});
+
 test("lucky draw records: empty until the event runs", async () => {
   const fx = await fixture();
   const leader = await makeUser(fx, "leader", { vipLevel: 6 });
