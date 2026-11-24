@@ -4,11 +4,11 @@ import '../app/app_state.dart';
 import '../ui/weekly_signin_panel_data.dart';
 import '../ui/weekly_reward_images_b64.dart';
 
-/// Daily light colour for the weekly sign-in panel (Vinay, 2026-11-20):
-/// the glow on top of the panel changes every day — 7 premium colours
-/// rotating by the UTC claim day, so the light is never the same two
-/// days in a row. The approved panel artwork itself is untouched; only
-/// this overlay glow changes.
+/// Daily light colour for the weekly sign-in panel (Vinay, 2026-11-24):
+/// the glow on top of the panel follows the SIGN-IN day — Day 1 gets
+/// the first colour, Day 2 the second, ... Day 7 the seventh — so the
+/// light changes every day of the week. The approved panel artwork
+/// itself is untouched; only this overlay glow changes.
 const List<Color> weeklySignInLightColors = <Color>[
   Color(0xFFFFD88A), // gold
   Color(0xFFB388FF), // purple
@@ -19,11 +19,9 @@ const List<Color> weeklySignInLightColors = <Color>[
   Color(0xFF7ED491), // green
 ];
 
-Color weeklySignInLightColor(DateTime now) {
-  final utcDay = DateTime.utc(now.year, now.month, now.day);
-  final epochDay =
-      utcDay.millisecondsSinceEpoch ~/ const Duration(days: 1).inMilliseconds;
-  return weeklySignInLightColors[epochDay % weeklySignInLightColors.length];
+Color weeklySignInLightColorForDay(int day) {
+  final signInDay = day.clamp(1, 7).toInt();
+  return weeklySignInLightColors[signInDay - 1];
 }
 
 Future<void> showWeeklySignInDialog(
@@ -38,14 +36,16 @@ Future<void> showWeeklySignInDialog(
   );
 }
 
-Future<void> _showWeeklyRewardReceipt(
+Future<bool> _showWeeklyRewardReceipt(
   BuildContext context, {
   required int day,
 }) async {
   final rewardDay = day.clamp(1, 7).toInt();
   final imageBytes = weeklyRewardImageBytes(rewardDay);
 
-  await showDialog<void>(
+  // Returns true when the user taps OK (close the whole popup) and
+  // false when the user taps X (close only this receipt).
+  final confirmed = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
     barrierColor: const Color(0xB800020C),
@@ -85,7 +85,8 @@ Future<void> _showWeeklyRewardReceipt(
                       child: GestureDetector(
                         key: const Key('weekly-signin-reward-close'),
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.of(dialogContext).pop(),
+                        onTap: () =>
+                            Navigator.of(dialogContext).pop(false),
                         child: const SizedBox.expand(),
                       ),
                     ),
@@ -93,7 +94,8 @@ Future<void> _showWeeklyRewardReceipt(
                 ),
 
                 // Invisible touch target over the OK button drawn inside
-                // each day-specific picture. OK closes only this reward panel.
+                // each day-specific picture. OK closes the whole popup
+                // (Vinay, 2026-11-24); X above closes only this receipt.
                 Positioned(
                   left: 0,
                   right: 0,
@@ -107,7 +109,8 @@ Future<void> _showWeeklyRewardReceipt(
                       child: GestureDetector(
                         key: const Key('weekly-signin-reward-ok'),
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.of(dialogContext).pop(),
+                        onTap: () =>
+                            Navigator.of(dialogContext).pop(true),
                         child: const SizedBox.expand(),
                       ),
                     ),
@@ -120,6 +123,7 @@ Future<void> _showWeeklyRewardReceipt(
       );
     },
   );
+  return confirmed ?? false;
 }
 
 class _WeeklySignInDialog extends StatelessWidget {
@@ -141,6 +145,10 @@ class _WeeklySignInDialog extends StatelessWidget {
             builder: (context, constraints) {
               final width = constraints.maxWidth.clamp(280.0, 520.0).toDouble();
               final height = width * (450 / 360);
+              // Sign-in-day light (Vinay, 2026-11-24): Day 1 gold,
+              // Day 2 purple, ... Day 7 green.
+              final light =
+                  weeklySignInLightColorForDay(state.weeklySignInDay);
 
               return SizedBox(
                 width: width,
@@ -158,9 +166,9 @@ class _WeeklySignInDialog extends StatelessWidget {
                       ),
                     ),
 
-                    // Daily light (Vinay, 2026-11-20): a glow over the top
-                    // of the panel whose colour changes every day. The
-                    // artwork underneath is not touched.
+                    // Daily light (Vinay, 2026-11-24): a glow over the top
+                    // of the panel whose colour follows the sign-in day.
+                    // The artwork underneath is not touched.
                     Positioned(
                       left: 0,
                       right: 0,
@@ -173,10 +181,8 @@ class _WeeklySignInDialog extends StatelessWidget {
                               center: const Alignment(0, -1),
                               radius: 1.05,
                               colors: [
-                                weeklySignInLightColor(DateTime.now())
-                                    .withValues(alpha: .55),
-                                weeklySignInLightColor(DateTime.now())
-                                    .withValues(alpha: 0),
+                                light.withValues(alpha: .55),
+                                light.withValues(alpha: 0),
                               ],
                             ),
                           ),
@@ -184,13 +190,42 @@ class _WeeklySignInDialog extends StatelessWidget {
                       ),
                     ),
 
+                    // 7th-day light (Vinay, 2026-11-24): the Day 7 box
+                    // has no permanent highlight in the artwork any
+                    // more — the light comes on only when the user is
+                    // on the 7th sign-in day.
+                    if (state.weeklySignInDay == 7)
+                      Positioned(
+                        key: const Key('weekly-signin-day7-light'),
+                        left: width * .63,
+                        top: height * .51,
+                        width: width * .31,
+                        height: height * .21,
+                        child: IgnorePointer(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: Alignment.center,
+                                radius: .75,
+                                colors: [
+                                  light.withValues(alpha: .7),
+                                  light.withValues(alpha: 0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
                     // Invisible hit target over the X already drawn in the
                     // approved artwork. No extra close button is painted.
+                    // Measured on the new purple+gold panel (2026-11-24):
+                    // the X glyph sits at x .86-.92, y .06-.10.
                     Positioned(
                       left: width * .845,
-                      top: height * .075,
+                      top: height * .055,
                       width: width * .12,
-                      height: height * .11,
+                      height: height * .10,
                       child: GestureDetector(
                         key: const Key('weekly-signin-close'),
                         behavior: HitTestBehavior.opaque,
@@ -202,11 +237,13 @@ class _WeeklySignInDialog extends StatelessWidget {
                     // Invisible hit target over the gold Sign in button
                     // already present in the approved artwork. This keeps the
                     // button visually 100% identical to the supplied picture.
+                    // Measured on the new purple+gold panel (2026-11-24):
+                    // the pill spans x .21-.79, y .82-.90.
                     Positioned(
                       left: width * .18,
-                      top: height * .745,
+                      top: height * .815,
                       width: width * .64,
-                      height: height * .125,
+                      height: height * .10,
                       child: GestureDetector(
                         key: const Key('weekly-signin-claim'),
                         behavior: HitTestBehavior.opaque,
@@ -216,20 +253,27 @@ class _WeeklySignInDialog extends StatelessWidget {
                             : () async {
                                 final ok = await state.claimWeeklySignIn();
                                 if (!context.mounted || !ok) return;
-                                await _showWeeklyRewardReceipt(
+                                final receiptOk =
+                                    await _showWeeklyRewardReceipt(
                                   context,
                                   day: state.weeklySignInLastClaimedDay > 0
                                       ? state.weeklySignInLastClaimedDay
                                       : state.weeklySignInDay,
                                 );
+                                // OK on the received-coins receipt closes
+                                // the whole popup (Vinay, 2026-11-24); X
+                                // on the receipt closes only the receipt.
+                                if (receiptOk && context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
                               },
                         child: const SizedBox.expand(),
                       ),
                     ),
 
-                    // The approved artwork already contains the Day-1 tick.
-                    // For later claimed days, add the same gold right-mark
-                    // without changing the supplied card/button artwork.
+                    // Claimed-day ticks. The new purple+gold artwork has
+                    // no tick baked in any more, so Day 1 gets a marker
+                    // like every other day (Vinay, 2026-11-24).
                     for (final marker in _claimedMarkers(
                       state.weeklySignInClaimedThrough,
                     ))
@@ -239,11 +283,13 @@ class _WeeklySignInDialog extends StatelessWidget {
                         child: IgnorePointer(
                           child: Icon(
                             Icons.check_rounded,
-                            color: const Color(0xFF50D8FF),
+                            // Gold tick (Vinay, 2026-11-24): the old cyan
+                            // tick did not match the purple+gold panel.
+                            color: const Color(0xFFFFD88A),
                             size: width * .054,
                             shadows: const [
                               Shadow(
-                                color: Color(0x8850D8FF),
+                                color: Color(0x88FFD88A),
                                 blurRadius: 7,
                               ),
                             ],
@@ -262,10 +308,10 @@ class _WeeklySignInDialog extends StatelessWidget {
 
   List<Offset> _claimedMarkers(int claimedThrough) {
     final claimed = claimedThrough.clamp(0, 7).toInt();
-    if (claimed < 2) return const <Offset>[];
+    if (claimed < 1) return const <Offset>[];
 
     const positions = <Offset>[
-      // Day 1 tick is baked into the approved image.
+      Offset(.16, .455), // Day 1
       Offset(.381, .455), // Day 2
       Offset(.586, .455), // Day 3
       Offset(.805, .455), // Day 4
@@ -274,6 +320,6 @@ class _WeeklySignInDialog extends StatelessWidget {
       Offset(.728, .665), // Day 7
     ];
 
-    return positions.take(claimed - 1).toList(growable: false);
+    return positions.take(claimed).toList(growable: false);
   }
 }
