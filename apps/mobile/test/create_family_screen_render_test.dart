@@ -44,9 +44,25 @@ class _RenderBackend extends BackendApi {
   }
 }
 
-Future<void> _loadRealFonts() async {
-  const fontsDir =
-      '/home/hatch/workspace/flutter-sdk/bin/cache/artifacts/material_fonts';
+/// Loads the real Roboto + MaterialIcons fonts. Returns true when
+/// loaded. Resolves the SDK portably via FLUTTER_ROOT (set by the
+/// flutter tool for test processes, local + CI); falls back to this
+/// machine's SDK path. Returns false when no fonts dir exists — the
+/// caller skips the render instead of failing (these are screenshot
+/// generators, not regression gates; a missing SDK path must never
+/// turn CI red).
+Future<bool> _loadRealFonts() async {
+  final candidates = <String>[
+    if (Platform.environment['FLUTTER_ROOT'] != null &&
+        Platform.environment['FLUTTER_ROOT']!.isNotEmpty)
+      '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts',
+    '/home/hatch/workspace/flutter-sdk/bin/cache/artifacts/material_fonts',
+  ];
+  final fontsDir = candidates.firstWhere(
+    (dir) => Directory(dir).existsSync(),
+    orElse: () => '',
+  );
+  if (fontsDir.isEmpty) return false;
   Future<ByteData> bytes(String name) async =>
       ByteData.view(File('$fontsDir/$name').readAsBytesSync().buffer);
   final roboto = FontLoader('Roboto')
@@ -57,6 +73,7 @@ Future<void> _loadRealFonts() async {
   final icons = FontLoader('MaterialIcons')
     ..addFont(bytes('MaterialIcons-Regular.otf'));
   await icons.load();
+  return true;
 }
 
 void main() {
@@ -65,7 +82,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await _loadRealFonts();
+    if (!await _loadRealFonts()) {
+      markTestSkipped('Flutter SDK material fonts not found — render skipped');
+      return;
+    }
     final state = AppState()
       ..userId = 'user-1'
       ..vipLevel = 0;
