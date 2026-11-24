@@ -441,6 +441,10 @@ test("family detail: level, rank, members, room, vault for members only", async 
   assert.equal(detail.body.room.id, "room-1");
   assert.equal(detail.body.room.family_live_count, 1);
   assert.equal(detail.body.members.length, 2);
+  // Members carry coins + last login for the members page.
+  const leaderRow = detail.body.members.find((m) => m.role === 'leader');
+  assert.ok('received_coins' in leaderRow);
+  assert.ok('last_seen_at' in leaderRow);
   // Outsider sees the detail but no vault balance.
   const publicDetail = await fx.request(`/api/family/detail?family_id=${familyId}`, { method: "GET", userId: outsider });
   assert.equal(publicDetail.body.family.is_member, false);

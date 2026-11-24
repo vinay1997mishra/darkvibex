@@ -1650,7 +1650,14 @@ export async function familyDetail(db, familyId, viewerUserId) {
   const rankInfo = familyRankForMonthlyExp(monthlyExp);
   const members = await db.prepare(
     `SELECT fm.user_id,fm.role,fm.joined_at,u.display_name,u.avatar_key,
-            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id
+            CASE WHEN COALESCE(io.invisible_id,0)=1 THEN 'Hidden' ELSE u.public_id END AS public_id,
+            COALESCE((
+              SELECT SUM(t.coins)
+                FROM family_wallet_transfers t
+               WHERE t.family_id=fm.family_id
+                 AND t.receiver_user_id=fm.user_id
+            ),0) AS received_coins,
+            (SELECT MAX(d.last_seen_at) FROM owner_user_devices d WHERE d.user_id=fm.user_id) AS last_seen_at
        FROM family_members fm JOIN users u ON u.id=fm.user_id
        LEFT JOIN owner_user_overrides io ON io.user_id=fm.user_id
       WHERE fm.family_id=?
@@ -1705,6 +1712,8 @@ export async function familyDetail(db, familyId, viewerUserId) {
       avatar_key: row.avatar_key ?? "",
       public_id: row.public_id ?? "",
       joined_at: Number(row.joined_at ?? 0),
+      received_coins: Number(row.received_coins ?? 0),
+      last_seen_at: Number(row.last_seen_at ?? 0),
     })),
     room,
   };
