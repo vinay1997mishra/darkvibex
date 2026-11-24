@@ -450,7 +450,20 @@ CREATE TABLE IF NOT EXISTS user_feedback (
   user_id TEXT NOT NULL,
   category TEXT NOT NULL,
   message TEXT NOT NULL,
+  device_info TEXT NOT NULL DEFAULT '',
+  screenshot_key TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'submitted',
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS crash_reports (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  error TEXT NOT NULL,
+  stack TEXT NOT NULL DEFAULT '',
+  route TEXT NOT NULL DEFAULT '',
+  device_info TEXT NOT NULL DEFAULT '',
+  app_version TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 );
 

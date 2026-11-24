@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../background/message_push_service.dart';
 import '../core/app_identity.dart';
+import '../infra/app_route_observer.dart';
+import '../infra/crash_reporter.dart';
 import '../infra/invite_referral_service.dart';
 import '../i18n/darkvibex_localization.dart';
 import '../screens/home_shell.dart';
@@ -26,6 +28,10 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
   @override
   void initState() {
     super.initState();
+    CrashReporter.configure(
+      backend: state.backend,
+      userId: () => state.userId,
+    );
     state.addListener(_syncMessagePush);
     inviteReferral = InviteReferralService(state);
     unawaited(inviteReferral.initialize());
@@ -50,6 +56,7 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
       title: AppIdentity.appName,
       debugShowCheckedModeBanner: false,
       theme: buildTinniStyleTheme(),
+      navigatorObservers: <NavigatorObserver>[AppRouteObserver()],
       builder: (context, child) => Directionality(
         textDirection: darkVibeXIsRtlLanguage(state.languagePreference.value)
             ? TextDirection.rtl
