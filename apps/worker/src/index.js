@@ -64,6 +64,7 @@ import {
   claimTask as claimMineTask,
   feedbackHistory,
   submitFeedback,
+  submitCrashReport,
   medalState,
   familyList,
   familyCreate,
@@ -5612,11 +5613,30 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      const result=await submitFeedback(db, userId, body.category, body.message);
+      const result=await submitFeedback(db, userId, body.category, body.message, { deviceInfo: body.device_info, screenshotKey: body.screenshot_key });
       await ensureOwnerControlSchema(db);
       await db.prepare(
         "INSERT INTO owner_notifications(id,kind,title,body,user_id,read_at,created_at) VALUES(?,?,?,?,?,NULL,?)"
       ).bind(id(),"complaint","User feedback / complaint",String(body.category ?? "Feedback")+": "+String(body.message ?? "").slice(0,1600),userId,now()).run();
+      return json(result, { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Automatic crash reports (Mr. Wrong, 2026-11-24): the app sends
+  // uncaught errors here on its own, with the screen + device attached.
+  if (url.pathname === "/api/crash-report" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      const result=await submitCrashReport(db, userId, { error: body.error, stack: body.stack, route: body.route, deviceInfo: body.device_info, appVersion: body.app_version });
+      await ensureOwnerControlSchema(db);
+      await db.prepare(
+        "INSERT INTO owner_notifications(id,kind,title,body,user_id,read_at,created_at) VALUES(?,?,?,?,?,NULL,?)"
+      ).bind(id(),"crash","App crash report",String(body.error ?? "Crash").slice(0,1600),userId,now()).run();
       return json(result, { status: 201 });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });

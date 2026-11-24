@@ -72,7 +72,7 @@ const state = {
   ownerMessageThreadOtherId: null,
   staffEditingId: null,
 };
-const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gift Box / Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
+const viewTitles = {overview:"Dashboard",users:"Users",notifications:"Notifications",feedback:"Feedback & Crashes",messaging:"Messages & Tags",rooms:"Rooms",roles:"Roles / Posts",banners:"Banners",games:"Games",policies:"Policies",wallets:"Wallets / Treasury",economy:"Unique ID / Coin Rate",vip:"VIP Manager",gifts:"Gift Box / Gifts",assets:"Entries / Frames",store:"App Store",catalog:"Advanced Catalog",settings:"Master Switches",announcements:"Announcements",staff:"Custom Panels",support:"VIP Support",audit:"Audit Log"};
 const featureLabels = {"feature.voice":"Voice rooms","feature.gifts":"Gifts","feature.games":"Games","feature.messages":"Messages","feature.room_creation":"Room creation","feature.aladdin_lamp":"Aladdin's Lamp","feature.red_pocket":"Red Pocket / LP","feature.friends_call":"Friends call","feature.visitors":"Profile visitors"};
 // Vinay, 2026-11-22: coin-sending permissions are owner-only — staff
 // never send coins, so they are not offered here and never show in the
@@ -168,6 +168,8 @@ const staffPermissionOptions = [
   ["support.reply","VIP Support · reply"],
   ["support.close","VIP Support · close ticket"],
 
+  ["feedback.view","Feedback & crashes · view reports"],
+
   ["staff.view","Custom Staff Panels · view"],
   ["staff.create","Custom Staff Panels · create"],
   ["staff.permissions.edit","Custom Staff Panels · edit name/role/permissions"],
@@ -210,6 +212,7 @@ const frontendPermissionAliases = {
   "settings.maintenance":["settings.write"],
   "announcements.view":["announcements.read"],"announcements.save":["announcements.write"],"announcements.delete":["announcements.write"],
   "support.view":["support.read"],"support.reply":["support.write"],"support.close":["support.write"],
+  "feedback.view":["feedback.read"],
   "staff.view":["staff.read"],"staff.create":["staff.write"],"staff.permissions.edit":["staff.write"],"staff.toggle":["staff.write"],"staff.delete":["staff.write"],
   "audit.view":["audit.read"],"audit.export":["audit.read"]
 };
@@ -235,6 +238,7 @@ const viewPermissionMap = {
   announcements:["announcements.view","announcements.save","announcements.delete"],
   staff:["staff.view","staff.create","staff.permissions.edit","staff.toggle","staff.delete"],
   support:["support.view","support.reply","support.close"],
+  feedback:["feedback.view"],
   audit:["audit.view","audit.export"]
 };
 
@@ -458,7 +462,7 @@ function applyPermissions(){
   applyActionPermissions();
 }
 function setView(name){state.view=name;$("#viewTitle").textContent=viewTitles[name]||name;$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.dataset.viewPanel===name));loadView(name).catch(e=>toast(e.message,false));}
-async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
+async function loadView(name){if(name==="overview")return loadOverview();if(name==="users")return loadUsers();if(name==="notifications")return loadNotifications();if(name==="feedback")return loadFeedback();if(name==="messaging")return loadMessaging();if(name==="rooms")return loadRooms();if(name==="roles")return loadRolesPosts();if(name==="banners")return loadBanners();if(name==="games")return loadGames();if(name==="policies")return loadPolicies();if(name==="wallets")return loadWallets();if(name==="economy")return loadEconomy();if(name==="vip")return loadVipRules();if(name==="gifts")return loadGifts();if(name==="assets")return loadAssets();if(name==="store")return loadStore();if(name==="catalog")return loadCatalog();if(name==="settings")return loadSettings();if(name==="announcements")return loadAnnouncements();if(name==="staff")return loadStaff();if(name==="support")return loadSupport();if(name==="audit")return loadAudit();}
 
 async function connectWithToken(token){
   state.token=String(token||"").trim();
@@ -1685,6 +1689,8 @@ async function grantVipById(){
   $("#vipGrantResult").textContent=`VIP ${d.grant.level} granted to ${d.user.display_name||'user'} (ID ${d.user.public_id}) until ${time(d.grant.expires_at)}`;
   toast("VIP granted");
 }
+async function loadFeedback(){if(!can("feedback.view"))return;const [f,c]=await Promise.all([api("/api/owner/feedback"),api("/api/owner/crash-reports")]);const rows=f.feedback||[];$("#feedbackList").innerHTML=rows.length?rows.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.category||'General')} <span class="pill ${r.status==='submitted'?'active':'banned'}">${esc(r.status||'submitted')}</span></div><div class="item-meta">${esc(r.display_name||'User')} · Public ID ${esc(r.public_id||'—')} · ${esc(r.user_id)} · ${time(r.created_at)}<br>${esc(r.message||'')}${r.device_info?'<br>'+esc(r.device_info):''}</div></div>${r.screenshot_key?`<button class="secondary mini" data-feedback-shot="${esc(r.screenshot_key)}">View screenshot</button>`:''}</div></div>`).join(''):empty('No user reports yet');const crashes=c.crashes||[];$("#crashList").innerHTML=crashes.length?crashes.map(r=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(r.error||'Crash')}</div><div class="item-meta">${esc(r.display_name||'User')} · Public ID ${esc(r.public_id||'—')} · ${esc(r.user_id)} · ${time(r.created_at)}${r.route?'<br>Screen: '+esc(r.route):''}${r.app_version?'<br>App '+esc(r.app_version):''}${r.device_info?'<br>'+esc(r.device_info):''}${r.stack?'<br>'+esc(r.stack):''}</div></div></div></div>`).join(''):empty('No crash reports yet');$$('[data-feedback-shot]').forEach(b=>b.onclick=()=>openFeedbackScreenshot(b.dataset.feedbackShot).catch(e=>toast(e.message,false)));}
+async function openFeedbackScreenshot(key){const blob=await apiBlob("/api/owner/feedback-screenshot?key="+encodeURIComponent(key));const url=URL.createObjectURL(blob);window.open(url,"_blank");setTimeout(()=>URL.revokeObjectURL(url),60000);}
 
 async function loadSupport(){if(!can('support.view'))return;const status=$("#supportStatus").value;const d=await api('/api/owner/support-tickets?status='+encodeURIComponent(status));const rows=d.tickets||[];$("#supportList").innerHTML=rows.length?rows.map(t=>`<div class="item-card"><div class="item-main"><div><div class="item-title">${esc(t.subject)} <span class="pill ${t.status==='open'?'active':'banned'}">${esc(t.status)}</span></div><div class="item-meta">${esc(t.display_name||'VIP user')} · ID ${esc(t.user_id)} · VIP ${num(t.vip_level)} · ${time(t.updated_at)}<br>${t.last_message?esc(t.last_message):''}</div></div><button class="secondary mini" data-ticket-open="${esc(t.id)}">View thread</button></div></div>`).join(''):empty('No tickets for this status');$$('[data-ticket-open]').forEach(b=>b.onclick=()=>openSupportTicket(b.dataset.ticketOpen).catch(e=>toast(e.message,false)));}
 async function openSupportTicket(id){const d=await api('/api/owner/support-tickets/'+encodeURIComponent(id));state.selectedTicket=d.ticket;$("#supportThread").hidden=false;$("#supportThreadTitle").textContent=d.ticket.subject;$("#supportThreadMeta").textContent=`${d.ticket.display_name||'VIP user'} · ${d.ticket.user_id} · VIP ${num(d.ticket.vip_level)} · ${d.ticket.status} · ${time(d.ticket.created_at)}`;$("#supportMessages").innerHTML=(d.messages||[]).map(m=>`<div class="item-card"><div class="item-title">${m.sender_type==='staff'?'Support team':'VIP user'} · ${time(m.created_at)}</div><div>${esc(m.body)}</div></div>`).join('')||empty('No messages');$("#closeSupportTicket").hidden=d.ticket.status!=='open'||!can('support.close');$("#sendSupportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportReply").disabled=d.ticket.status!=='open'||!can('support.reply');$("#supportThread").scrollIntoView({behavior:'smooth',block:'start'});}
@@ -2271,6 +2277,7 @@ $("#saveUserOverrides").onclick=()=>saveUserOverrides().catch(e=>toast(e.message
 $("#loadOwnerMessageInbox").onclick=()=>loadOwnerMessageInbox().catch(e=>toast(e.message,false));
 $("#closeOwnerMessageThread").onclick=()=>{$("#ownerMessageThreadPanel").hidden=true;state.ownerMessageThreadOtherId=null;};
 $("#reloadNotifications").onclick=()=>loadNotifications().catch(e=>toast(e.message,false));
+$("#reloadFeedback").onclick=()=>loadFeedback().catch(e=>toast(e.message,false));
 $("#searchMessageUsers").onclick=()=>searchMessagingUsers().catch(e=>toast(e.message,false));$("#messageUserSearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchMessagingUsers().catch(x=>toast(x.message,false));});
 $("#sendOfficialSelected").onclick=()=>sendOfficialMessage(false).catch(e=>toast(e.message,false));$("#sendOfficialAll").onclick=()=>sendOfficialMessage(true).catch(e=>toast(e.message,false));$$("[data-role-tag]").forEach(b=>b.onclick=()=>{$$("[data-role-tag]").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");});$("#applyOwnerTag").onclick=()=>applyOwnerTag().catch(e=>toast(e.message,false));
 

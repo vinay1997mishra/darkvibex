@@ -15,6 +15,7 @@
         <button class="nav-btn active" data-view="overview">Dashboard</button>
         <button class="nav-btn" data-view="users">Users</button>
         <button class="nav-btn" data-view="notifications">Notifications</button>
+        <button class="nav-btn" data-view="feedback">Feedback & Crashes</button>
         <button class="nav-btn" data-view="messaging">Messages & Tags</button>
         <button class="nav-btn" data-view="rooms">Rooms</button>
         <button class="nav-btn" data-view="roles">Roles / Posts</button>
@@ -253,6 +254,10 @@
 
         <section class="view" data-view-panel="notifications">
           <article class="panel"><div class="panel-head"><div><h2>Owner Notifications</h2><p>User complaints/feedback and owner alerts.</p></div><button id="reloadNotifications" class="secondary">Refresh</button></div><div id="notificationList" class="stack"></div></article>
+        </section>
+
+        <section class="view" data-view-panel="feedback">
+          <article class="panel"><div class="panel-head"><div><h2>Feedback & Crashes</h2><p>User problem reports (with screenshots) and automatic crash reports from the app.</p></div><button id="reloadFeedback" class="secondary">Refresh</button></div><h3>User reports</h3><div id="feedbackList" class="stack"></div><h3>Crash reports</h3><div id="crashList" class="stack"></div></article>
         </section>
 
         <section class="view" data-view-panel="messaging">
