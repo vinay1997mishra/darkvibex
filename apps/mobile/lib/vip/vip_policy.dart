@@ -82,7 +82,6 @@ class VipPolicy {
     VipPrivilege(id: 'view_visitors', title: 'View Visitors', description: 'See profile visitors.', minLevel: 1),
     VipPrivilege(id: 'exp_boost_1_1x', title: 'EXP Boost 1.1x', description: 'Earn 1.1x VIP EXP on every coin purchase.', minLevel: 1),
     VipPrivilege(id: 'chat_bubble', title: 'Chat Bubble', description: 'VIP chat bubble with richer styles at higher levels.', minLevel: 2),
-    VipPrivilege(id: 'hide_last_online', title: 'Hide Last Online', description: 'Hide last-online information from the profile.', minLevel: 2),
     VipPrivilege(id: 'daily_rewards', title: 'Daily Rewards', description: 'Daily coin rewards, claimable every day from VIP5.', minLevel: 5),
     VipPrivilege(id: 'room_background', title: 'Change Room Background', description: 'Use a custom background in your own room.', minLevel: 3),
     // Friends Limit Expanded was REMOVED (Vinay, 2026-11-19):
@@ -99,7 +98,6 @@ class VipPolicy {
     VipPrivilege(id: 'exclusive_gifts', title: 'Exclusive Gifts', description: 'Send special VIP gifts with exclusive effects.', minLevel: 3),
     VipPrivilege(id: 'red_envelope', title: 'Message Red Envelope', description: 'Send red-envelope rewards in private messages.', minLevel: 6),
     VipPrivilege(id: 'dynamic_avatar', title: 'Dynamic Avatar', description: 'Use an animated/dynamic avatar.', minLevel: 7),
-    VipPrivilege(id: 'many_seats', title: 'Room With Many Seats', description: 'DarkVibeX rooms use the Tinnistar 8–42 seat layouts.', minLevel: 7),
     VipPrivilege(id: 'nickname_light', title: 'Nickname Light Effect', description: 'Exclusive nickname light effect from VIP8 through VIP17.', minLevel: 8, maxLevel: 17),
     VipPrivilege(id: 'disable_say_hi', title: 'Disable Say Hi', description: 'Prevent other users from initiating Say Hi with you.', minLevel: 8),
     VipPrivilege(id: 'gift_discount_10', title: 'Gift Discount 10%', description: 'Pay 10% less for every gift you send.', minLevel: 8),
@@ -114,14 +112,12 @@ class VipPolicy {
     VipPrivilege(id: 'anonymous_ranking', title: 'Anonymous on Ranking List', description: 'Appear as a mysterious/anonymous user on rankings.', minLevel: 11),
     VipPrivilege(id: 'exp_boost_1_4x', title: 'EXP Boost 1.4x', description: 'Earn 1.4x VIP EXP on every coin purchase.', minLevel: 11),
     VipPrivilege(id: 'coins_bonus_10', title: 'Coins Bonus +10%', description: 'Get 10% extra coins free on every coin purchase.', minLevel: 11),
-    VipPrivilege(id: 'vip_news', title: 'Display in News', description: 'VIP upgrades can be highlighted in DarkVibeX News.', minLevel: 12),
     VipPrivilege(id: 'seat_protection', title: 'Remove From Seat Protection', description: 'Protect your occupied seat from forced removal.', minLevel: 13),
     VipPrivilege(id: 'anti_mute', title: 'Anti-Mute', description: 'Protection from being muted in rooms.', minLevel: 13),
     VipPrivilege(id: 'invisible_entry', title: 'Enter Chat Room Invisible', description: 'Enter rooms without a public join notice.', minLevel: 14),
     VipPrivilege(id: 'kick_protection', title: 'Kick Out Protection', description: 'Protection from normal room kick actions.', minLevel: 14),
     VipPrivilege(id: 'gift_discount_20', title: 'Gift Discount 20%', description: 'Pay 20% less for every gift you send.', minLevel: 14),
     VipPrivilege(id: 'unique_id', title: 'Unique ID', description: 'Unique ID customization unlocked from VIP15.', minLevel: 15),
-    VipPrivilege(id: 'splash_recommend', title: 'Recommend on Splash', description: 'One-day featured recommendation on the splash surface.', minLevel: 15),
     VipPrivilege(id: 'privacy_protection', title: 'Privacy Protection', description: 'Protect profile/avatar media from ordinary save/screenshot flows where supported.', minLevel: 15),
     // Custom Avatar Frame (was minLevel 16): the per-level avatar
     // headframe is the same frame every VIP gets from level 1

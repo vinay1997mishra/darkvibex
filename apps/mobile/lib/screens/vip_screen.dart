@@ -165,14 +165,6 @@ class VipScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  _TogglePrivilege(
-                    title: 'Hide Last Online',
-                    subtitle: 'Hide your last-online time on the profile.',
-                    value: state.vipPreference('hide_last_online'),
-                    enabled: active && level >= 2,
-                    onChanged: (value) =>
-                        state.setVipPreference('hide_last_online', value),
-                  ),
                   if (level >= 8)
                     _TogglePrivilege(
                       title: 'Disable Say Hi',
@@ -403,7 +395,6 @@ class VipScreen extends StatelessWidget {
         'display_front' => Icons.vertical_align_top_rounded,
         'view_visitors' => Icons.visibility_rounded,
         'chat_bubble' => Icons.chat_bubble_rounded,
-        'hide_last_online' => Icons.schedule_rounded,
         'room_background' => Icons.wallpaper_rounded,
         'entrance_effect' => Icons.auto_awesome_rounded,
         'fantasy_card' => Icons.badge_rounded,
@@ -413,7 +404,6 @@ class VipScreen extends StatelessWidget {
         'show_id' => Icons.badge_outlined,
         'red_envelope' => Icons.card_giftcard_rounded,
         'dynamic_avatar' => Icons.motion_photos_on_rounded,
-        'many_seats' => Icons.chair_alt_rounded,
         'hide_country' => Icons.public_off_rounded,
         'nickname_light' => Icons.light_mode_rounded,
         'disable_say_hi' => Icons.front_hand_rounded,
@@ -423,12 +413,10 @@ class VipScreen extends StatelessWidget {
         'hide_charm' => Icons.favorite_border_rounded,
         'hide_visitors' => Icons.person_off_rounded,
         'anonymous_ranking' => Icons.theater_comedy_rounded,
-        'vip_news' => Icons.local_fire_department_rounded,
         'seat_protection' => Icons.chair_rounded,
         'invisible_entry' => Icons.visibility_off_rounded,
         'kick_protection' => Icons.security_rounded,
         'unique_id' => Icons.fingerprint_rounded,
-        'splash_recommend' => Icons.recommend_rounded,
         'privacy_protection' => Icons.shield_rounded,
         'custom_avatar_frame' => Icons.filter_frames_rounded,
         'exclusive_mic_effect' => Icons.mic_external_on_rounded,

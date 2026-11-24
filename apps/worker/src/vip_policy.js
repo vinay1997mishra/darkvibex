@@ -37,7 +37,6 @@ export const VIP_LEVELS = Object.freeze(
 );
 
 export const VIP_PREF_LEVEL = Object.freeze({
-  hide_last_online:2,
   hide_country:8,
   disable_say_hi:8,
   hide_charm:10,
