@@ -166,6 +166,29 @@ void main() {
     expect(vipEntryEffectCircles[4]?.diameter, 0.240);
   });
 
+  test('VIP17 entry effect uses the new golden-phoenix bundled banner '
+      '(Mr. Wrong, 2026-11-24: complete the 3 models)', () {
+    // The bundled WebP replaces the R2 banner; the R2 URL still decides
+    // the level HAS an entry banner.
+    expect(
+      vipEntryEffectLocalAssetForVipLevel(17),
+      'assets/images/vip17_entry_new.webp',
+    );
+    expect(vipEntryEffectUrlForVipLevel(17), isNotNull);
+    // No other level has a bundled entry banner.
+    for (var level = 1; level <= 18; level++) {
+      if (level == 17) continue;
+      expect(vipEntryEffectLocalAssetForVipLevel(level), isNull);
+    }
+    // Circle re-measured from the new banner's golden ring inner opening
+    // (centre 0.193/0.506, diameter 0.566 of height).
+    expect(vipEntryEffectCircles[17]?.centerX, 0.193);
+    expect(vipEntryEffectCircles[17]?.centerY, 0.506);
+    expect(vipEntryEffectCircles[17]?.diameter, 0.566);
+    // Aspect unchanged: the new banner is 2455x992 = 2.475.
+    expect(vipEntryEffectAspectRatios[17], 2.475);
+  });
+
   test('tag URLs point at the R2 vip-tags/ PNGs', () {
     expect(
       vipTagUrlForVipLevel(18),

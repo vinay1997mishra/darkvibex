@@ -307,6 +307,20 @@ String? vipEntryEffectUrlForVipLevel(int level) {
   return '$kVipVisualR2PublicBaseUrl/$key';
 }
 
+/// Bundled Flutter asset that REPLACES the R2 entry banner for a level
+/// (Mr. Wrong, 2026-11-24: complete the 3 models). VIP17's phoenix banner
+/// is the new golden-phoenix entry effect, remade in the transparent
+/// entry-effect format (transparent bg + DP circle left, phoenix right).
+/// Levels not listed here keep their R2 banner.
+const Map<int, String> vipEntryEffectLocalAssets = <int, String>{
+  17: 'assets/images/vip17_entry_new.webp',
+};
+
+/// Bundled entry banner asset for [level], or null when the level keeps
+/// its R2 banner.
+String? vipEntryEffectLocalAssetForVipLevel(int level) =>
+    vipEntryEffectLocalAssets[level];
+
 /// Transparent DP circle inside an entry banner, as fractions of the
 /// banner image (measured from the PNGs, 2026-11-18 — the circle sits
 /// in a different place on each banner, so this is per level).
@@ -372,7 +386,11 @@ const Map<int, EntryEffectCircle> vipEntryEffectCircles =
   14: EntryEffectCircle(centerX: 0.174, centerY: 0.549, diameter: 0.475),
   15: EntryEffectCircle(centerX: 0.148, centerY: 0.493, diameter: 0.353),
   16: EntryEffectCircle(centerX: 0.133, centerY: 0.533, diameter: 0.392),
-  17: EntryEffectCircle(centerX: 0.127, centerY: 0.528, diameter: 0.468),
+  // VIP17 re-measured 2026-11-24 for the new golden-phoenix banner
+  // (vip17_entry_new.webp): ring inner opening measured from the PNG
+  // (centre 0.193/0.506, diameter 0.566 of height). Old R2 banner was
+  // 0.127/0.528/0.468.
+  17: EntryEffectCircle(centerX: 0.193, centerY: 0.506, diameter: 0.566),
   18: EntryEffectCircle(centerX: 0.121, centerY: 0.533, diameter: 0.434),
 };
 

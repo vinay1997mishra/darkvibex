@@ -27,6 +27,11 @@ class VipEntryEffectBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? url = vipEntryEffectUrlForVipLevel(vipLevel);
+    // A bundled asset replaces the R2 banner for a level (VIP17's new
+    // golden-phoenix banner, Mr. Wrong 2026-11-24). The R2 URL still
+    // decides whether the level HAS an entry banner at all.
+    final String? localAsset =
+        vipEntryEffectLocalAssetForVipLevel(vipLevel);
     final EntryEffectCircle? circle = vipEntryEffectCircles[vipLevel];
     final double aspectRatio =
         vipEntryEffectAspectRatios[vipLevel] ?? 3.0;
@@ -81,13 +86,23 @@ class VipEntryEffectBanner extends StatelessWidget {
                 ),
               ),
               Positioned.fill(
-                child: Image.network(
-                  url,
-                  width: width,
-                  height: height,
-                  fit: BoxFit.fill,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
+                child: localAsset != null
+                    ? Image.asset(
+                        localAsset,
+                        width: width,
+                        height: height,
+                        fit: BoxFit.fill,
+                        errorBuilder: (_, __, ___) =>
+                            const SizedBox.shrink(),
+                      )
+                    : Image.network(
+                        url,
+                        width: width,
+                        height: height,
+                        fit: BoxFit.fill,
+                        errorBuilder: (_, __, ___) =>
+                            const SizedBox.shrink(),
+                      ),
               ),
             ],
           ),
