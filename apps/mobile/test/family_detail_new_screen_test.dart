@@ -207,6 +207,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('wheel card writes out all 8 prize coin values',
+      (tester) async {
+    // Mr. Wrong, 2026-11-24: "Spin per coins bhi likhe nhi dikh rahe
+    // hain" — the wheel artwork has no numbers on its segments, so
+    // the 8 server-driven prize values are shown as chips under it.
+    final backend = _FakeBackend();
+    await _pumpPage(tester, backend);
+    await tester.ensureVisible(find.byKey(const Key('family-wheel-prizes')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('family-wheel-prizes')), findsOneWidget);
+    expect(find.text('34.83K coins'), findsOneWidget);
+    expect(find.text('217.69K coins'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping the wheel itself spins it and lands on the win',
+      (tester) async {
+    // Mr. Wrong, 2026-11-24: "Wheel ghumna bhi chahiye" + "Random
+    // coins amount win ke liye" — the wheel turns 5 rounds and stops
+    // on the randomly-rolled prize segment, then shows the win.
+    final backend = _FakeBackend();
+    await _pumpPage(tester, backend);
+    await tester.ensureVisible(find.byKey(const Key('family-wheel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('family-wheel')));
+    await tester.pumpAndSettle(const Duration(seconds: 10));
+    expect(backend.spinCalls, 1);
+    expect(find.textContaining('You won 58.05K coins!'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('member search filters the list', (tester) async {
     final backend = _FakeBackend();
     await _pumpPage(tester, backend);

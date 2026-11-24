@@ -156,17 +156,23 @@ class _TopFamiliesScreenState extends State<TopFamiliesScreen> {
   }
 
   Future<void> _join(String familyId) async {
-    final ok = await _backend.requestFamilyJoin(
+    final result = await _backend.requestFamilyJoin(
       userId: widget.state.userId,
       familyId: familyId,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'Join request sent' : 'Could not send request'),
+        content: Text(
+          result.joined
+              ? 'Joined the family!'
+              : result.ok
+                  ? 'Join request sent'
+                  : 'Could not send request',
+        ),
       ),
     );
-    if (ok) await _load();
+    if (result.ok) await _load();
   }
 
   Future<void> _showFamilyDialog(Map<String, dynamic> row) async {
@@ -718,15 +724,31 @@ class _TopFamiliesScreenState extends State<TopFamiliesScreen> {
                                 ),
                               ),
                             ),
-                            onPressed: () => Navigator.push<void>(
-                              context,
-                              MaterialPageRoute<void>(
-                                builder: (_) => FamilyJoinScreen(
-                                  state: widget.state,
-                                  backend: _backend,
+                            // Back from the Join page: reload, so a
+                            // direct join shows the family right away
+                            // instead of the stale "not joined yet" page
+                            // (Mr. Wrong, 2026-11-24). The Join page pops
+                            // `true` when the user joined directly.
+                            onPressed: () async {
+                              final joined = await Navigator.push<bool>(
+                                context,
+                                MaterialPageRoute<bool>(
+                                  builder: (_) => FamilyJoinScreen(
+                                    state: widget.state,
+                                    backend: _backend,
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                              if (!mounted) return;
+                              if (joined == true) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Joined the family!'),
+                                  ),
+                                );
+                              }
+                              await _load();
+                            },
                             child: const Text(
                               'join',
                               style: TextStyle(fontWeight: FontWeight.w900),

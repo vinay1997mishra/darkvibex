@@ -55,12 +55,21 @@ class _FamilyJoinScreenState extends State<FamilyJoinScreen> {
   Future<void> _apply(Map<String, dynamic> family) async {
     final familyId = family['id']?.toString() ?? '';
     if (familyId.isEmpty) return;
-    final ok = await _backend.requestFamilyJoin(
+    final result = await _backend.requestFamilyJoin(
       userId: widget.state.userId,
       familyId: familyId,
     );
     if (!mounted) return;
-    if (ok) {
+    // Direct join (open family): the user is a member right now — pop
+    // back to Top Families with `true` so it reloads and shows the
+    // family instead of the stale "not joined yet" page (Mr. Wrong,
+    // 2026-11-24: join dabane ke baad bhi family me join nahi dikh
+    // raha tha — the old code stayed on this page saying "Applied").
+    if (result.joined) {
+      Navigator.pop(context, true);
+      return;
+    }
+    if (result.ok) {
       setState(() => _applied.add(familyId));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Application sent')),

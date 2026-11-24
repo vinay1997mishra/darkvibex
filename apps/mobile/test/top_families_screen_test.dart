@@ -2,10 +2,13 @@
 // family page that PERMANENTLY REPLACES the old FamilyRankingScreen.
 // Top-3 shields + rank rows + countdown + Local/Global scope + create /
 // join for users who have not joined a family yet.
+import 'dart:io';
+
 import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/screens/top_families_screen.dart';
 import 'package:darkvibex/screens/create_family_screen.dart';
+import 'package:darkvibex/screens/family_join_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,10 +16,15 @@ class _FakeFamilyBackend extends BackendApi {
   _FakeFamilyBackend({
     required this.rows,
     this.hasFamily = false,
+    this.joinReturnsJoined = false,
   });
 
   final List<Map<String, dynamic>> rows;
   bool hasFamily;
+
+  /// When true, requestFamilyJoin reports a direct join (open family)
+  /// and flips hasFamily, like the server would.
+  final bool joinReturnsJoined;
 
   /// The country each familyList() call asked for (null = Global).
   final List<String?> countryCalls = [];
@@ -73,12 +81,13 @@ class _FakeFamilyBackend extends BackendApi {
   }
 
   @override
-  Future<bool> requestFamilyJoin({
+  Future<({bool ok, bool joined})> requestFamilyJoin({
     required String userId,
     required String familyId,
   }) async {
     joinCalls.add(familyId);
-    return true;
+    if (joinReturnsJoined) hasFamily = true;
+    return (ok: true, joined: joinReturnsJoined);
   }
 
   @override
@@ -276,6 +285,71 @@ void main() {
     expect(find.text('Join request sent'), findsOneWidget);
   });
 
+  testWidgets('direct join (open family) says Joined, not request sent',
+      (tester) async {
+    // Mr. Wrong, 2026-11-24: Join dabane ke baad family me join nahi
+    // dikh raha tha — the old bool-only return made every join look
+    // like a request. An open family joins directly.
+    final backend = _FakeFamilyBackend(
+      rows: _rows(),
+      joinReturnsJoined: true,
+    );
+    final state = AppState()
+      ..userId = 'user-1'
+      ..countryCode = 'IN';
+    await _pumpPage(tester, state, backend);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('top-family-row-4')),
+      500,
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('top-family-row-4')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const Key('top-family-dialog-join')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(backend.joinCalls, <String>['family-5']);
+    expect(find.text('Joined the family!'), findsOneWidget);
+    expect(find.text('Join request sent'), findsNothing);
+  });
+
+  testWidgets('joining from the Join page reloads Top Families as joined',
+      (tester) async {
+    // Mr. Wrong, 2026-11-24: Join page se join karke wapas aane par
+    // bhi "not joined yet" dikh raha tha — the Join push never
+    // reloaded on return. Now the Join page pops `true` on a direct
+    // join and Top Families reloads (bottom bar goes away).
+    final backend = _FakeFamilyBackend(
+      rows: _rows(),
+      joinReturnsJoined: true,
+    );
+    final state = AppState()
+      ..userId = 'user-1'
+      ..countryCode = 'IN';
+    await _pumpPage(tester, state, backend);
+    expect(find.byKey(const Key('top-family-bottom-bar')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('top-family-join')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(FamilyJoinScreen), findsOneWidget);
+    // ensureVisible, not scrollUntilVisible: the Join page has more
+    // than one Scrollable and scrollUntilVisible fails "Too many
+    // elements" (same lesson as the detail-page tests).
+    await tester.ensureVisible(
+      find.byKey(const Key('family-join-apply-family-1')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('family-join-apply-family-1')));
+    await tester.pump();
+    // The pop transition takes ~300ms: pump past it (not pumpAndSettle
+    // — Top Families runs a 1s countdown timer, so it never settles).
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(FamilyJoinScreen), findsNothing);
+    expect(find.text('Joined the family!'), findsOneWidget);
+    expect(find.byKey(const Key('top-family-bottom-bar')), findsNothing);
+  });
+
   testWidgets('create opens the full create family page',
       (tester) async {
     final backend = _FakeFamilyBackend(rows: _rows());
@@ -339,5 +413,14 @@ void main() {
       ),
       4,
     );
+  });
+
+  test('Mine page Family tile opens the NEW Top Families page', () {
+    // Mine > Family used to open the old FamilyScreen (dark, own create
+    // dialog + ranking list). It now opens TopFamiliesScreen — the same
+    // v9 page the Party tab opens (Mr. Wrong, 2026-11-24).
+    final source = File('lib/screens/profile_screen.dart').readAsStringSync();
+    expect(source, contains('TopFamiliesScreen(state: state)'));
+    expect(source, isNot(contains('FamilyScreen(state: state)')));
   });
 }

@@ -12,6 +12,7 @@ import 'invite_share_screen.dart';
 import 'recharge_screen.dart';
 import 'cosmetics_shop_screen.dart';
 import 'mine_social_screens.dart';
+import 'top_families_screen.dart';
 import 'conversation_screen.dart';
 import 'direct_call_screen.dart';
 import 'personal_profile_screen.dart';
@@ -833,10 +834,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.home_work_rounded,
                 accent: _MineMenuPalette.purple,
                 title: darkVibeXText(language, 'family'),
+                // Mine > Family opens the NEW Top Families page (Mr.
+                // Wrong, 2026-11-24) — the same v9 page the Party tab
+                // opens. The old FamilyScreen stays in the repo,
+                // unwired; it is no longer opened from anywhere.
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) => FamilyScreen(state: state),
+                    builder: (_) => TopFamiliesScreen(state: state),
                   ),
                 ),
               ),

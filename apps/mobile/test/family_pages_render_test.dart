@@ -291,11 +291,11 @@ class _RenderBackend extends BackendApi {
       ];
 
   @override
-  Future<bool> requestFamilyJoin({
+  Future<({bool ok, bool joined})> requestFamilyJoin({
     required String userId,
     required String familyId,
   }) async =>
-      true;
+      (ok: true, joined: false);
 
   @override
   Future<Map<String, dynamic>?> familyCheckIn({
