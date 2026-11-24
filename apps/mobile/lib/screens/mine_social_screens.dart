@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_state.dart';
+import '../infra/backend_api.dart';
+import '../infra/family_rules.dart';
 import '../ui/tinni_style.dart';
 import '../utils/public_user_id.dart';
 import '../widgets/cosmetic_store_previews.dart';
+import 'family_detail_screen.dart';
 import 'family_wallet_screen.dart';
 
 class TrendsScreen extends StatefulWidget {
@@ -721,19 +724,38 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 }
 
 class FamilyScreen extends StatefulWidget {
-  const FamilyScreen({super.key, required this.state});
+  const FamilyScreen({super.key, required this.state, this.backend});
   final AppState state;
+
+  /// Test seam: a fake backend. Defaults to [AppState.backend].
+  final BackendApi? backend;
 
   @override
   State<FamilyScreen> createState() => _FamilyScreenState();
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
+  BackendApi get _backend => widget.backend ?? widget.state.backend;
   bool loading = true;
   Map<String, dynamic>? family;
   List<Map<String, dynamic>> members = const [];
   List<Map<String, dynamic>> requests = const [];
   List<Map<String, dynamic>> available = const [];
+
+  int _asInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
+
+  // Management page (Mr. Wrong, 2026-11-24): members show their last
+  // login like the other app — "Today", "1 day ago", "Never".
+  String _lastLoginText(int lastSeenAt) {
+    if (lastSeenAt <= 0) return 'Never logged in';
+    final days =
+        DateTime.now().difference(
+          DateTime.fromMillisecondsSinceEpoch(lastSeenAt),
+        ).inDays;
+    if (days <= 0) return 'Today';
+    if (days == 1) return '1 day ago';
+    return '$days days ago';
+  }
 
   @override
   void initState() {
@@ -742,7 +764,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _load() async {
-    final value = await widget.state.backend.familyState(
+    final value = await _backend.familyState(
       userId: widget.state.userId,
     );
     final rawFamily = value?['family'];
@@ -764,7 +786,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       loading = false;
     });
     if (family == null && available.isEmpty) {
-      final list = await widget.state.backend.familyList();
+      final list = await _backend.familyList();
       if (mounted) setState(() => available = list);
     }
   }
@@ -799,7 +821,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
     name.dispose();
     tag.dispose();
     if (result == null || result.$1.length < 2 || result.$2.length < 2) return;
-    final value = await widget.state.backend.createFamily(
+    final value = await _backend.createFamily(
       userId: widget.state.userId,
       name: result.$1,
       tag: result.$2,
@@ -809,7 +831,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _join(String familyId) async {
-    final ok = await widget.state.backend.requestFamilyJoin(
+    final ok = await _backend.requestFamilyJoin(
       userId: widget.state.userId,
       familyId: familyId,
     );
@@ -834,9 +856,82 @@ class _FamilyScreenState extends State<FamilyScreen> {
     );
     controller.dispose();
     if (text == null) return;
-    if (await widget.state.backend.updateFamilyNotice(userId: widget.state.userId, notice: text)) {
+    if (await _backend.updateFamilyNotice(userId: widget.state.userId, notice: text)) {
       await _load();
     }
+  }
+
+  // Rename (Mr. Wrong, 2026-11-24): the family name and tag can each
+  // only be changed once a month (30 days). Only the leader sees this.
+  // The server enforces the rule; the dialog shows the next-change date
+  // from the last-change timestamps the server returns.
+  String _nextChangeText(int changedAt) {
+    if (changedAt <= 0) return 'You can change it now';
+    final next = DateTime.fromMillisecondsSinceEpoch(
+      changedAt + 30 * 24 * 60 * 60 * 1000,
+    );
+    if (DateTime.now().isAfter(next)) return 'You can change it now';
+    return 'You can change it again on ${next.day}/${next.month}/${next.year}';
+  }
+
+  Future<void> _rename() async {
+    final currentName = family?['name']?.toString() ?? '';
+    final currentTag = family?['tag']?.toString() ?? '';
+    final nameChangedAt =
+        int.tryParse(family?['name_changed_at']?.toString() ?? '') ?? 0;
+    final tagChangedAt =
+        int.tryParse(family?['tag_changed_at']?.toString() ?? '') ?? 0;
+    final result = await showDialog<(String, String)?>(
+      context: context,
+      builder: (dialogContext) => _RenameFamilyDialog(
+        initialName: currentName,
+        initialTag: currentTag,
+        nameHint: _nextChangeText(nameChangedAt),
+        tagHint: _nextChangeText(tagChangedAt),
+      ),
+    );
+    if (result == null) return;
+    final newName = result.$1;
+    final newTag = result.$2.toUpperCase();
+    if (newName.length < 2 || newTag.length < 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Family name and tag must be at least 2 characters'),
+        ),
+      );
+      return;
+    }
+    // Only send the fields that actually changed — the server charges
+    // the once-a-month rule per field.
+    final value = await _backend.updateFamilyNameTag(
+      userId: widget.state.userId,
+      name: newName == currentName ? null : newName,
+      tag: newTag == currentTag ? null : newTag,
+    );
+    if (!mounted) return;
+    if (value?['ok'] == true) {
+      await _load();
+      return;
+    }
+    final error = value?['error']?.toString() ?? '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (error) {
+          'family_name_change_too_soon' =>
+            'Family name can only be changed once a month',
+          'family_tag_change_too_soon' =>
+            'Family tag can only be changed once a month',
+          'family_name_or_tag_in_use' =>
+            'That family name or tag is already in use',
+          'content_blocked' =>
+            'Family name or tag has a word that is not allowed',
+          'family_leader_required' => 'Only the family leader can rename',
+          'nothing_to_update' => 'Nothing changed',
+          _ => 'Could not update family name or tag',
+        }),
+      ),
+    );
   }
 
   @override
@@ -938,10 +1033,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
               if (canManage)
                 Align(
                   alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: _notice,
-                    icon: const Icon(Icons.edit_rounded),
-                    label: const Text('Edit notice'),
+                  child: Wrap(
+                    children: [
+                      if (role == 'leader')
+                        TextButton.icon(
+                          key: const Key('family-rename-open'),
+                          onPressed: _rename,
+                          icon: const Icon(Icons.edit_rounded),
+                          label: const Text('Edit name & tag'),
+                        ),
+                      TextButton.icon(
+                        onPressed: _notice,
+                        icon: const Icon(Icons.edit_rounded),
+                        label: const Text('Edit notice'),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -953,7 +1059,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             Expanded(
               child: FilledButton.icon(
                 onPressed: () async {
-                  final value = await widget.state.backend.familyCheckIn(
+                  final value = await _backend.familyCheckIn(
                     userId: widget.state.userId,
                   );
                   if (!mounted) return;
@@ -991,6 +1097,22 @@ class _FamilyScreenState extends State<FamilyScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          key: const Key('family-detail-open'),
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => FamilyDetailScreen(
+                state: widget.state,
+                familyId: family?['id']?.toString() ?? '',
+                backend: widget.backend,
+              ),
+            ),
+          ).then((_) => _load()),
+          icon: const Icon(Icons.home_rounded),
+          label: const Text('Family Detail'),
+        ),
         if (requests.isNotEmpty) ...[
           const SizedBox(height: 14),
           const Text(
@@ -1004,7 +1126,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 children: [
                   IconButton(
                     onPressed: () async {
-                      await widget.state.backend.resolveFamilyJoin(
+                      await _backend.resolveFamilyJoin(
                         userId: widget.state.userId,
                         targetUserId: row['user_id'].toString(),
                         approve: true,
@@ -1015,7 +1137,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   ),
                   IconButton(
                     onPressed: () async {
-                      await widget.state.backend.resolveFamilyJoin(
+                      await _backend.resolveFamilyJoin(
                         userId: widget.state.userId,
                         targetUserId: row['user_id'].toString(),
                         approve: false,
@@ -1035,12 +1157,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
         ),
         for (final member in members)
           TinniPanel(
-            child: ListTile(
-              leading: CircleAvatar(
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                leading: CircleAvatar(
                 backgroundImage: member['avatar_key']?.toString().isNotEmpty == true
                     ? NetworkImage(
-                        widget.state.backend.fileUrl(member['avatar_key'].toString()),
-                        headers: widget.state.backend.fileHeaders,
+                        _backend.fileUrl(member['avatar_key'].toString()),
+                        headers: _backend.fileHeaders,
                       )
                     : null,
                 child: member['avatar_key']?.toString().isNotEmpty == true
@@ -1048,20 +1172,26 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     : const Icon(Icons.person_rounded),
               ),
               title: Text(member['display_name']?.toString() ?? 'User'),
-              subtitle: Text(member['role']?.toString() ?? 'member'),
+              subtitle: Text(
+                [
+                  member['role']?.toString() ?? 'member',
+                  'Coins: ${formatFamilyCoins(_asInt(member['received_coins']))}',
+                  _lastLoginText(_asInt(member['last_seen_at'])),
+                ].join(' • '),
+              ),
               trailing: canManage &&
                       member['user_id']?.toString() != widget.state.userId &&
                       member['role']?.toString() != 'leader'
                   ? PopupMenuButton<String>(
                       onSelected: (action) async {
                         if (action == 'admin') {
-                          await widget.state.backend.setFamilyAdmin(
+                          await _backend.setFamilyAdmin(
                             userId: widget.state.userId,
                             targetUserId: member['user_id'].toString(),
                             admin: member['role'] != 'admin',
                           );
                         } else if (action == 'remove') {
-                          await widget.state.backend.removeFamilyMember(
+                          await _backend.removeFamilyMember(
                             userId: widget.state.userId,
                             targetUserId: member['user_id'].toString(),
                           );
@@ -1077,13 +1207,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ],
                     )
                   : null,
+              ),
             ),
           ),
         if (role != 'leader') ...[
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: () async {
-              if (await widget.state.backend.leaveFamily(userId: widget.state.userId)) {
+              if (await _backend.leaveFamily(userId: widget.state.userId)) {
                 await _load();
               }
             },
@@ -1094,6 +1225,82 @@ class _FamilyScreenState extends State<FamilyScreen> {
       ],
     );
   }
+}
+
+/// The rename dialog owns its TextEditingControllers: disposing them in
+/// the caller while the dialog animates out throws "controller used
+/// after being disposed".
+class _RenameFamilyDialog extends StatefulWidget {
+  const _RenameFamilyDialog({
+    required this.initialName,
+    required this.initialTag,
+    required this.nameHint,
+    required this.tagHint,
+  });
+
+  final String initialName;
+  final String initialTag;
+  final String nameHint;
+  final String tagHint;
+
+  @override
+  State<_RenameFamilyDialog> createState() => _RenameFamilyDialogState();
+}
+
+class _RenameFamilyDialogState extends State<_RenameFamilyDialog> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initialName);
+  late final TextEditingController _tag =
+      TextEditingController(text: widget.initialTag);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _tag.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Edit name & tag'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              maxLength: 20,
+              decoration: const InputDecoration(labelText: 'Family name'),
+            ),
+            Text(widget.nameHint, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _tag,
+              maxLength: 10,
+              decoration: const InputDecoration(labelText: 'Family tag'),
+            ),
+            Text(widget.tagHint, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 8),
+            const Text(
+              'Family names and tags can only be changed once a month.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('family-rename-save'),
+            onPressed: () => Navigator.pop(
+              context,
+              (_name.text.trim(), _tag.text.trim()),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      );
 }
 
 class CpScreen extends StatefulWidget {

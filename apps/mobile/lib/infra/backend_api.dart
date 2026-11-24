@@ -2373,6 +2373,8 @@ class BackendApi {
     required String userId,
     required String name,
     required String tag,
+    bool approvalRequired = true,
+    String? logoKey,
   }) =>
       _json(
         'POST',
@@ -2381,6 +2383,8 @@ class BackendApi {
           'user_id': userId,
           'name': name,
           'tag': tag,
+          'approval_required': approvalRequired,
+          if (logoKey != null && logoKey.isNotEmpty) 'logo_key': logoKey,
         },
         returnErrorBody: true,
       );
@@ -2465,6 +2469,22 @@ class BackendApi {
     return value?['ok'] == true;
   }
 
+  Future<Map<String, dynamic>?> updateFamilyNameTag({
+    required String userId,
+    String? name,
+    String? tag,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/update',
+        body: <String, dynamic>{
+          'user_id': userId,
+          if (name != null) 'name': name,
+          if (tag != null) 'tag': tag,
+        },
+        returnErrorBody: true,
+      );
+
   Future<bool> updateFamilyNotice({
     required String userId,
     required String notice,
@@ -2520,6 +2540,172 @@ class BackendApi {
         body: <String, dynamic>{'user_id': userId},
         returnErrorBody: true,
       );
+
+  /// Family detail page (Mr. Wrong, 2026-11-24): HOME tab — EXP card,
+  /// rank, announcement, top members, member list, family room.
+  Future<Map<String, dynamic>?> familyDetail({
+    required String familyId,
+  }) =>
+      _json(
+        'GET',
+        '/api/family/detail?family_id=${Uri.encodeQueryComponent(familyId)}',
+        returnErrorBody: true,
+      );
+
+  /// Ranking of the Month (Mr. Wrong, 2026-11-24): Charm / Wealth /
+  /// Active Star tabs inside one family.
+  Future<Map<String, dynamic>?> familyMonthlyRanking({
+    required String familyId,
+    required String kind,
+  }) =>
+      _json(
+        'GET',
+        '/api/family/monthly-ranking?family_id=${Uri.encodeQueryComponent(familyId)}&kind=${Uri.encodeQueryComponent(kind)}',
+        returnErrorBody: true,
+      );
+
+  /// Family daily tasks (Mr. Wrong, 2026-11-24): sign-in / stay / mic.
+  Future<Map<String, dynamic>?> familyTasks() => _json(
+        'GET',
+        '/api/family/tasks',
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> familyTaskProgress({
+    required String userId,
+    required String kind,
+    required int minutes,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/task/progress',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'kind': kind,
+          'minutes': minutes,
+        },
+        returnErrorBody: true,
+      );
+
+  /// Family vault reward history (level-up + monthly top-10).
+  Future<List<Map<String, dynamic>>> familyVault({
+    required String familyId,
+    int limit = 50,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/family/vault?family_id=${Uri.encodeQueryComponent(familyId)}&limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['history'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  /// Family Trends feed (Mr. Wrong, 2026-11-24).
+  Future<List<Map<String, dynamic>>> familyTrends({
+    required String familyId,
+    int limit = 50,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/family/trends?family_id=${Uri.encodeQueryComponent(familyId)}&limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['posts'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>?> createFamilyTrendPost({
+    required String userId,
+    required String text,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/trends/post',
+        body: <String, dynamic>{'user_id': userId, 'text': text},
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> likeFamilyTrendPost({
+    required String userId,
+    required String postId,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/trends/like',
+        body: <String, dynamic>{'user_id': userId, 'post_id': postId},
+        returnErrorBody: true,
+      );
+
+  Future<Map<String, dynamic>?> commentFamilyTrendPost({
+    required String userId,
+    required String postId,
+    required String text,
+  }) =>
+      _json(
+        'POST',
+        '/api/family/trends/comment',
+        body: <String, dynamic>{
+          'user_id': userId,
+          'post_id': postId,
+          'text': text,
+        },
+        returnErrorBody: true,
+      );
+
+  Future<List<Map<String, dynamic>>> familyTrendComments({
+    required String postId,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/family/trends/comments?post_id=${Uri.encodeQueryComponent(postId)}',
+      returnErrorBody: true,
+    );
+    final rows = value?['comments'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  /// Family Weekly Rewards (Mr. Wrong, 2026-11-24): this week's
+  /// gifting, tiers, and the This/Last period member rankings.
+  Future<Map<String, dynamic>?> familyWeekly({
+    required String familyId,
+  }) =>
+      _json(
+        'GET',
+        '/api/family/weekly?family_id=${Uri.encodeQueryComponent(familyId)}',
+        returnErrorBody: true,
+      );
+
+  /// Today's Family Lucky Draw Records (Mr. Wrong, 2026-11-24). The
+  /// wheel SPIN is on HOLD (event) — empty until the event is built.
+  Future<List<Map<String, dynamic>>> familyLuckyDrawRecords({
+    required String familyId,
+    int limit = 100,
+  }) async {
+    final value = await _json(
+      'GET',
+      '/api/family/lucky-draw-records?family_id=${Uri.encodeQueryComponent(familyId)}&limit=$limit',
+      returnErrorBody: true,
+    );
+    final rows = value?['records'];
+    if (rows is! List) return const <Map<String, dynamic>>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
 
   Future<Map<String, dynamic>?> cpState({
     required String userId,

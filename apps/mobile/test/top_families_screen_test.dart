@@ -5,6 +5,7 @@
 import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/screens/top_families_screen.dart';
+import 'package:darkvibex/screens/create_family_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -63,6 +64,8 @@ class _FakeFamilyBackend extends BackendApi {
     required String userId,
     required String name,
     required String tag,
+    bool approvalRequired = true,
+    String? logoKey,
   }) async {
     createCalls.add((name, tag));
     hasFamily = true;
@@ -77,6 +80,12 @@ class _FakeFamilyBackend extends BackendApi {
     joinCalls.add(familyId);
     return true;
   }
+
+  @override
+  Future<Map<String, dynamic>?> socialStats({
+    required String userId,
+  }) async =>
+      <String, dynamic>{'wealth': <String, dynamic>{'level': 0}};
 }
 
 List<Map<String, dynamic>> _rows() => <Map<String, dynamic>>[
@@ -267,7 +276,7 @@ void main() {
     expect(find.text('Join request sent'), findsOneWidget);
   });
 
-  testWidgets('create opens the dialog and creates the family',
+  testWidgets('create opens the full create family page',
       (tester) async {
     final backend = _FakeFamilyBackend(rows: _rows());
     final state = AppState()
@@ -277,20 +286,9 @@ void main() {
     await tester.tap(find.byKey(const Key('top-family-create')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.enterText(
-      find.byKey(const Key('top-family-create-name')),
-      'Moon Family',
-    );
-    await tester.enterText(
-      find.byKey(const Key('top-family-create-tag')),
-      'MOON',
-    );
-    await tester.tap(find.text('Create').last);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(backend.createCalls, <(String, String)>[('Moon Family', 'MOON')]);
-    // After creating, the user has a family: the bottom bar goes away.
-    expect(find.byKey(const Key('top-family-bottom-bar')), findsNothing);
+    // The full Create Family page opens (the small dialog is superseded).
+    expect(find.byType(CreateFamilyScreen), findsOneWidget);
+    expect(find.byKey(const Key('create-family-submit')), findsOneWidget);
   });
 
   testWidgets('a user with a family sees no create/join bar',

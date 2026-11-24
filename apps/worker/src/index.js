@@ -67,6 +67,8 @@ import {
   medalState,
   familyList,
   familyCreate,
+  familyUpdateNameTag,
+  transferInactiveFamilyLeaders,
   familyState,
   familyRequestJoin,
   familyResolveJoin,
@@ -77,6 +79,24 @@ import {
   familyCheckIn,
   familyTransferCoins,
   familyWalletTransfers,
+  familyMonthKey,
+  familyDetail,
+  familyMonthlyRanking,
+  familyTaskStatus,
+  familyTaskProgress,
+  familyPosts,
+  familyCreatePost,
+  familyLikePost,
+  familyCommentPost,
+  familyPostComments,
+  familyVaultHistory,
+  settleFamilyMonthly,
+  settleFamilyWeekly,
+  familyWeekBounds,
+  familyWeeklyState,
+  familyLuckyDrawRecords,
+  awardFamilyGiftExp,
+  awardFamilyGameExp,
   cpState,
   cpRequest,
   cpRespond,
@@ -5618,7 +5638,32 @@ async function handleApi(request, env, url) {
     const authError = await requireSession(request, env, userId);
     if (authError) return authError;
     try {
-      return json(await familyCreate(db, userId, body.name, body.tag), { status: 201 });
+      return json(
+        await familyCreate(db, userId, body.name, body.tag, {
+          approvalRequired: body.approval_required !== false,
+          logoKey: body.logo_key,
+        }),
+        { status: 201 },
+      );
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Family rename (Mr. Wrong, 2026-11-24): name and tag can each only
+  // be changed once a month; only the leader can rename.
+  if (url.pathname === "/api/family/update" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(
+        await familyUpdateNameTag(db, userId, {
+          name: body.name,
+          tag: body.tag,
+        }),
+      );
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -5756,6 +5801,176 @@ async function handleApi(request, env, url) {
     if (authError) return authError;
     try {
       return json(await familyCheckIn(db, userId));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Family detail page (Mr. Wrong, 2026-11-24): public detail for the
+  // HOME tab — EXP card, rank, announcement, top members, members, room.
+  if (url.pathname === "/api/family/detail" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const familyId = String(url.searchParams.get("family_id") ?? "").trim();
+    try {
+      return json(await familyDetail(db, familyId, String(session.sub)));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Ranking of the Month (Mr. Wrong, 2026-11-24): Charm / Wealth /
+  // Active Star tabs, this month's members of one family.
+  if (url.pathname === "/api/family/monthly-ranking" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const familyId = String(url.searchParams.get("family_id") ?? "").trim();
+    const kind = String(url.searchParams.get("kind") ?? "charm").trim();
+    try {
+      return json(await familyMonthlyRanking(db, familyId, kind));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Family daily tasks (Mr. Wrong, 2026-11-24): sign-in / stay / mic.
+  if (url.pathname === "/api/family/tasks" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    try {
+      return json(await familyTaskStatus(db, String(session.sub)));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/task/progress" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyTaskProgress(
+        db,
+        userId,
+        String(body.kind ?? "stay"),
+        body.minutes,
+      ));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Family vault (members only): balance comes with /api/family/detail;
+  // this is the reward history (level-up + monthly top-10).
+  if (url.pathname === "/api/family/vault" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const familyId = String(url.searchParams.get("family_id") ?? "").trim();
+    try {
+      return json({
+        ok: true,
+        history: await familyVaultHistory(db, familyId, Number(url.searchParams.get("limit") ?? 50)),
+      });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Family Trends (Mr. Wrong, 2026-11-24): posts feed on the family
+  // detail page, with likes and comments. Only family members may post,
+  // like or comment.
+  if (url.pathname === "/api/family/trends" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const familyId = String(url.searchParams.get("family_id") ?? "").trim();
+    try {
+      return json({
+        ok: true,
+        posts: await familyPosts(db, familyId, String(session.sub), Number(url.searchParams.get("limit") ?? 50)),
+      });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/trends/post" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyCreatePost(db, userId, body.text), { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/trends/like" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyLikePost(db, userId, String(body.post_id ?? "")));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/trends/comment" && request.method === "POST") {
+    const body = await bodyJson(request);
+    const userId = String(body.user_id ?? "").trim();
+    const authError = await requireSession(request, env, userId);
+    if (authError) return authError;
+    try {
+      return json(await familyCommentPost(db, userId, String(body.post_id ?? ""), body.text), { status: 201 });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  if (url.pathname === "/api/family/trends/comments" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const postId = String(url.searchParams.get("post_id") ?? "").trim();
+    try {
+      return json({ ok: true, comments: await familyPostComments(db, postId) });
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Family Weekly Rewards (Mr. Wrong, 2026-11-24): "Send gifts and win
+  // rewards!" — this week's gifting, tiers, and the This/Last period
+  // member rankings. The week runs Monday 00:00 to Sunday 23:59 UTC+3.
+  if (url.pathname === "/api/family/weekly" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const session = await verifySessionToken(bearerToken(request), String(env.SESSION_SECRET));
+    const familyId = String(url.searchParams.get("family_id") ?? "").trim();
+    try {
+      return json(await familyWeeklyState(db, familyId, String(session.sub)));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
+    }
+  }
+
+  // Today's Family Lucky Draw Records (Mr. Wrong, 2026-11-24). The
+  // wheel SPIN is on HOLD (event) — this list is empty until the event
+  // is built; the endpoint exists so the detail page can show it.
+  if (url.pathname === "/api/family/lucky-draw-records" && request.method === "GET") {
+    const authError = await requireSession(request, env);
+    if (authError) return authError;
+    const familyId = String(url.searchParams.get("family_id") ?? "").trim();
+    try {
+      return json({
+        ok: true,
+        records: await familyLuckyDrawRecords(db, familyId, Number(url.searchParams.get("limit") ?? 100)),
+      });
     } catch (error) {
       return json({ ok: false, error: String(error?.message ?? error) }, { status: 400 });
     }
@@ -10858,6 +11073,10 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
       await awardIdLevelGift(db, sender, comboTotal, eventId, giftCreatedAt);
       await recordLampGiftActivity(db, String(body.room_id ?? ""), sender, receiver, giftCreatedAt);
       cpProgress = await recordCpGiftProgress(db, sender, receiver, comboTotal, eventId);
+      // Family EXP (Mr. Wrong, 2026-11-24): 1 coin = 1 EXP for both
+      // families, x2 when giver and receiver are in the same family,
+      // 10% only for Lucky gifts.
+      await awardFamilyGiftExp(db, sender, receiver, comboTotal, String(gift.category ?? ""));
     } catch (error) {
       progressPending = true;
       console.error("gift_post_commit_processing_failed", {
@@ -11223,6 +11442,11 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         { status:409 },
       );
     }
+    // Family EXP (Mr. Wrong, 2026-11-24): 100 coins bet = 1 EXP.
+    // Best-effort — a failure here must not fail the accepted bet.
+    try {
+      await awardFamilyGameExp(db, userId, amount);
+    } catch (_) {}
     return json(await fruitPartyBetState(db, userId, now()), { status:201 });
   }
 
@@ -11408,6 +11632,11 @@ async function loadRoomGiftEventsState(db, roomId, viewerId, after, afterId, eve
         { status:409 },
       );
     }
+    // Family EXP (Mr. Wrong, 2026-11-24): 100 coins bet = 1 EXP.
+    // Best-effort — a failure here must not fail the accepted bet.
+    try {
+      await awardFamilyGameExp(db, userId, amount);
+    } catch (_) {}
     if (!compactResponse) {
       return json(await greedyGirlBetState(db, userId, now()), { status:201 });
     }
@@ -11747,6 +11976,60 @@ export default {
           }
         })(),
       );
+      // Family leader auto-transfer (Mr. Wrong, 2026-11-24): if a
+      // family leader has not logged in for 15 days, the leader
+      // position moves to the longest-joined admin, else the
+      // longest-joined member. Separate try/catch so one cleanup
+      // failing never blocks the other.
+      ctx.waitUntil(
+        (async () => {
+          try {
+            await transferInactiveFamilyLeaders(requireDb(env));
+          } catch (_) {
+            // Best-effort: a failed cleanup never breaks the schedule.
+          }
+        })(),
+      );
+      // Family monthly settlement (Mr. Wrong, 2026-11-24): on the 1st
+      // of each month the top-10 families of LAST month by monthly EXP
+      // receive their vault coins (idempotent per family+month).
+      if (nowDate.getUTCDate() === 1) {
+        ctx.waitUntil(
+          (async () => {
+            try {
+              const lastMonth = new Date(Date.UTC(
+                nowDate.getUTCFullYear(),
+                nowDate.getUTCMonth() - 1,
+                1,
+              ));
+              await settleFamilyMonthly(
+                requireDb(env),
+                familyMonthKey(lastMonth),
+              );
+            } catch (_) {
+              // Best-effort: a failed settlement never breaks the schedule.
+            }
+          })(),
+        );
+      }
+      // Family weekly settlement (Mr. Wrong, 2026-11-24): on Monday the
+      // finished week settles — tier leader coins + top-15 member coins
+      // (idempotent per family+week+user+kind). 03:00 UTC Monday is
+      // 06:00 UTC+3, after the week ended at midnight UTC+3.
+      if (nowDate.getUTCDay() === 1) {
+        ctx.waitUntil(
+          (async () => {
+            try {
+              const lastWeek = familyWeekBounds(
+                new Date(nowDate.getTime() - 24 * 3600 * 1000),
+              );
+              await settleFamilyWeekly(requireDb(env), lastWeek.weekKey);
+            } catch (_) {
+              // Best-effort: a failed settlement never breaks the schedule.
+            }
+          })(),
+        );
+      }
     }
   },
   async fetch(request, env) {
