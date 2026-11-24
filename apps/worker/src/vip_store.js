@@ -213,11 +213,55 @@ export async function activeVipGrant(db,userId,ts=Date.now()){
   }
 }
 
+// Welcome pack (Vinay, 2026-11-24): every NEW user gets, once, at
+// signup — 500,000 coins (the starting balance ensureUser already
+// credits) + VIP1 free for 15 days. The trial is a temporary grant
+// (same mechanism as the Play first-recharge grant): it never touches
+// EXP, so it earns no EXP and never triggers the first-recharge
+// double — those apply to PURCHASES only. UNIQUE(user_id, source)
+// makes the grant once per user ever; the wallet_ledger row is
+// guarded by its reference_id so a retry can never double-record it.
+export const WELCOME_PACK_COINS = 500000;
+export const WELCOME_PACK_VIP_LEVEL = 1;
+export const WELCOME_PACK_VIP_DAYS = 15;
+export const WELCOME_PACK_SOURCE = "welcome_pack";
+
+export async function grantWelcomePack(db, userId, ts = Date.now()) {
+  await ensureVipSchema(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS wallet_ledger (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    reference_id TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`).run();
+  const user = await db.prepare("SELECT coins FROM users WHERE id=?").bind(userId).first();
+  if (!user) throw new Error("user_not_found");
+  const referenceId = `${WELCOME_PACK_SOURCE}:${userId}`;
+  const grant = await createVipGrant(db, userId, WELCOME_PACK_VIP_LEVEL, WELCOME_PACK_VIP_DAYS, WELCOME_PACK_SOURCE, userId, ts);
+  await db.prepare(
+    "INSERT INTO wallet_ledger (id,user_id,kind,amount,balance_after,reference_id,created_at) " +
+    "SELECT ?,?,?,?,u.coins,?,? FROM users u WHERE u.id=? AND NOT EXISTS (SELECT 1 FROM wallet_ledger WHERE user_id=? AND reference_id=?)"
+  ).bind(crypto.randomUUID(), userId, WELCOME_PACK_SOURCE, WELCOME_PACK_COINS, referenceId, ts, userId, userId, referenceId).run();
+  return { coins: WELCOME_PACK_COINS, vip_level: grant.level, vip_expires_at: grant.expires_at, source: WELCOME_PACK_SOURCE };
+}
+
 // Create a temporary VIP grant. INSERT OR IGNORE on UNIQUE(user_id,
 // source) makes a re-grant a no-op (first recharge is once per user
 // ever). Raises the users.vip_level mirror when the grant is higher.
 export async function createVipGrant(db,userId,level,days,source,referenceId=null,ts=Date.now()){
   await ensureVipSchema(db);
+  // The user_vip row MUST exist before the mirror is raised: ensureRow
+  // seeds the EXP level from users.vip_level (the mirror), so creating
+  // the row after the raise would bake the GRANT level into the EXP
+  // row for 30 days — the trial would outlive the grant and hide its
+  // source. (The Play flow never hit this because awardSellerVipExp
+  // creates the row first; the welcome pack has no EXP award, so the
+  // grant itself must create it.)
+  await ensureRow(db,userId,ts);
   const grantLevel=Math.max(0,Math.min(18,Number(level??0)));
   const expiresAt=ts+Math.max(1,Number(days??0))*DAY_MS;
   await db.prepare(
