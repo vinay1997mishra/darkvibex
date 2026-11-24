@@ -10,6 +10,7 @@ import '../app/app_state.dart';
 import '../i18n/darkvibex_localization.dart';
 import '../utils/public_user_id.dart';
 import '../ui/tinni_style.dart';
+import 'family_common.dart';
 import '../vip/vip_policy.dart';
 import '../widgets/top_front_pill.dart';
 import 'messages_screen.dart';
@@ -1901,9 +1902,23 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
               formatPublicUserId(room.roomNumber).toLowerCase().contains(q) ||
               room.ownerName.toLowerCase().contains(q),
         )
-        .toList();
+        .toList()
+      // Liveliest rooms first, so the list opens on the rooms where
+      // people actually are (Mr. Wrong, 2026-11-24: main page, everything
+      // like the other app).
+      ..sort((a, b) => b.online.compareTo(a.online));
+    // Trending now: the 5 liveliest rooms, as a horizontal strip.
+    // Hidden while searching, so a search shows only its matches.
+    final trending = q.isEmpty
+        ? (List<RoomSummary>.from(rooms)
+          ..sort((a, b) => b.online.compareTo(a.online))).take(5).toList()
+        : const <RoomSummary>[];
 
-    return TinniBackground(
+    // Light glass purple+gold background (Mr. Wrong, 2026-11-24):
+    // same as the Family pages (family_bg_light.png, light with glow),
+    // not the dark Tinni background. Titles + search go dark so they
+    // read on the light glass.
+    return FamilyBackground(
       child: RefreshIndicator(
         onRefresh: widget.state.refreshRooms,
         child: ListView(
@@ -1915,7 +1930,7 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
               Text(
                 'Discover',
                 style: TextStyle(
-                  color: TinniPalette.gold,
+                  color: Color(0xFF2A2140),
                   fontSize: 27,
                   fontWeight: FontWeight.w900,
                 ),
@@ -1930,13 +1945,55 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
             decoration: const InputDecoration(
               hintText: 'Search room, ID or user',
               prefixIcon: Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(),
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
           ),
+          if (trending.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Trending now',
+              style: TextStyle(
+                color: Color(0xFF2A2140),
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 158,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: trending.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 9),
+                itemBuilder: (context, index) {
+                  final room = trending[index];
+                  return SizedBox(
+                    width: 150,
+                    child: _RoomCard(
+                      state: widget.state,
+                      room: room,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              RoomScreen(state: widget.state, room: room),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           const Text(
             'Rooms for you',
             style: TextStyle(
-              color: TinniPalette.gold,
+              color: Color(0xFF2A2140),
               fontSize: 17,
               fontWeight: FontWeight.w900,
             ),
@@ -1945,14 +2002,21 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
           for (final room in rooms)
             Padding(
               padding: const EdgeInsets.only(bottom: 9),
-              child: _RoomCard(
-                state: widget.state,
-                room: room,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        RoomScreen(state: widget.state, room: room),
+              // _RoomCard uses Expanded inside, so it needs a bounded
+              // height (same 190 as the Mine tab's room cards). Without
+              // this the Discover list threw an unbounded-height layout
+              // error.
+              child: SizedBox(
+                height: 190,
+                child: _RoomCard(
+                  state: widget.state,
+                  room: room,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          RoomScreen(state: widget.state, room: room),
+                    ),
                   ),
                 ),
               ),
