@@ -19,41 +19,41 @@ class FamilyBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/family_bg_light.png'),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: vivid
-            ? Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0x667B2FBE),
-                      Color(0x338B5CF6),
-                      Color(0x59FFD54A),
-                      Color(0x88E8A91C),
-                    ],
-                    stops: [0, .3, .6, 1],
-                  ),
-                ),
-                child: child,
-              )
-            : child,
-      );
+    decoration: const BoxDecoration(
+      image: DecorationImage(
+        image: AssetImage('assets/images/family_bg_light.png'),
+        fit: BoxFit.cover,
+      ),
+    ),
+    child: vivid
+        ? Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0x667B2FBE),
+                  Color(0x338B5CF6),
+                  Color(0x59FFD54A),
+                  Color(0x88E8A91C),
+                ],
+                stops: [0, .3, .6, 1],
+              ),
+            ),
+            child: child,
+          )
+        : child,
+  );
 }
 
 /// Dark app bar shared by the Family pages (same as the Create page).
 AppBar familyAppBar(String title, {List<Widget>? actions}) => AppBar(
-      title: Text(title),
-      centerTitle: true,
-      backgroundColor: const Color(0xFF17112E),
-      foregroundColor: Colors.white,
-      actions: actions,
-    );
+  title: Text(title),
+  centerTitle: true,
+  backgroundColor: const Color(0xFF17112E),
+  foregroundColor: Colors.white,
+  actions: actions,
+);
 
 /// A frosted-glass card on the light background.
 class FamilyCard extends StatelessWidget {
@@ -64,21 +64,45 @@ class FamilyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: padding ?? const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.88),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE8C96A), width: 1),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
+    padding: padding ?? const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      // Black glass (Mr. Wrong, 2026-11-25): the VIP black-glass
+      // card style everywhere. Single-colour gradient, not a solid
+      // color (same ListTile debug-assertion reason as TinniPanel).
+      gradient: const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xA6000000), Color(0xA6000000)],
+      ),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0xFFE8C96A), width: 1),
+      boxShadow: const [
+        BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2)),
+      ],
+    ),
+    child: DefaultTextStyle.merge(
+      // .merge, NOT a plain DefaultTextStyle: a plain one REPLACES
+      // the ambient style (theme font included), so unstyled text
+      // inside a card would fall back to the test/platform default
+      // font (Ahem bars in renders). .merge keeps the theme font
+      // and only recolours the text.
+      style: const TextStyle(color: Color(0xFFF0F2FF)),
+      child: IconTheme(
+        data: const IconThemeData(color: Color(0xFFFFD700)),
+        // ListTile paints its title/subtitle/icons from the theme,
+        // not from the DefaultTextStyle/IconTheme above — without
+        // this, ListTile rows inside a black card get dark text
+        // (light theme) on black. Explicit colours still win.
+        child: ListTileTheme(
+          data: const ListTileThemeData(
+            textColor: Color(0xFFF0F2FF),
+            iconColor: Color(0xFFFFD700),
+          ),
+          child: child,
         ),
-        child: child,
-      );
+      ),
+    ),
+  );
 }
 
 /// Gold gradient button (same as the Create page's create button).
@@ -96,37 +120,30 @@ class FamilyGoldButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: 280,
-        height: 48,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: <Color>[Color(0xFFFFD54A), Color(0xFFE8A91C)],
-            ),
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 6,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            onPressed: enabled ? onPressed : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              foregroundColor: const Color(0xFF5A3E00),
-              textStyle: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            child: Text(label),
-          ),
+    width: 280,
+    height: 48,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFFFFD54A), Color(0xFFE8A91C)],
         ),
-      );
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: enabled ? onPressed : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          foregroundColor: const Color(0xFF5A3E00),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        child: Text(label),
+      ),
+    ),
+  );
 }
 
 /// A user's avatar from an R2 key, with a fallback person icon.
@@ -170,16 +187,16 @@ class FamilySectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 16, bottom: 8),
-        child: Text(
-          text,
-          style: const TextStyle(
-            color: Color(0xFF2A2140),
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(top: 16, bottom: 8),
+    child: Text(
+      text,
+      style: const TextStyle(
+        color: Color(0xFF2A2140),
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  );
 }
 
 /// A small gold progress bar (family EXP / rank progress).
@@ -191,24 +208,24 @@ class FamilyProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 10,
+    height: 10,
+    decoration: BoxDecoration(
+      color: const Color(0xFFE8DFF5),
+      borderRadius: BorderRadius.circular(5),
+    ),
+    child: FractionallySizedBox(
+      alignment: Alignment.centerLeft,
+      widthFactor: progress.clamp(0.0, 1.0),
+      child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFE8DFF5),
+          gradient: const LinearGradient(
+            colors: <Color>[Color(0xFFFFD54A), Color(0xFFE8A91C)],
+          ),
           borderRadius: BorderRadius.circular(5),
         ),
-        child: FractionallySizedBox(
-          alignment: Alignment.centerLeft,
-          widthFactor: progress.clamp(0.0, 1.0),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: <Color>[Color(0xFFFFD54A), Color(0xFFE8A91C)],
-              ),
-              borderRadius: BorderRadius.circular(5),
-            ),
-          ),
-        ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Open the Family Rules screen ("?" button).
@@ -224,43 +241,43 @@ class FamilyRulesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: familyAppBar('Family Rules'),
-        body: FamilyBackground(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            itemCount: familyRulesSections.length,
-            itemBuilder: (context, index) {
-              final section = familyRulesSections[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: FamilyCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        section.title,
-                        style: const TextStyle(
-                          color: Color(0xFF2A2140),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        section.body,
-                        style: const TextStyle(
-                          color: Color(0xFF4A4458),
-                          fontSize: 14,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
+    backgroundColor: Colors.transparent,
+    appBar: familyAppBar('Family Rules'),
+    body: FamilyBackground(
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        itemCount: familyRulesSections.length,
+        itemBuilder: (context, index) {
+          final section = familyRulesSections[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: FamilyCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    section.title,
+                    style: const TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-        ),
-      );
+                  const SizedBox(height: 6),
+                  Text(
+                    section.body,
+                    style: const TextStyle(
+                      color: Color(0xFFF0F2FF),
+                      fontSize: 14,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
 }

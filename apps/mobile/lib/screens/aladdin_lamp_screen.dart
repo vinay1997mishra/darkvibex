@@ -487,7 +487,7 @@ class _AladdinLampScreenState extends State<AladdinLampScreen> {
                             'Only the room host can complete and claim these rewards.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Color(0xFF50D8FF),
+                              color: Color(0xFF9D7BFF),
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -631,7 +631,7 @@ class _LampTaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFF50D8FF);
+    const gold = Color(0xFF9D7BFF);
     final showGoFinish =
         isHost && !task.completed && !task.claimed;
     return Container(
@@ -747,7 +747,7 @@ class _ProgressPill extends StatelessWidget {
                 ),
           border: Border.all(
             color:
-                enabled ? Colors.white70 : const Color(0xFF50D8FF),
+                enabled ? Colors.white70 : const Color(0xFF9D7BFF),
           ),
         ),
         child: Text(

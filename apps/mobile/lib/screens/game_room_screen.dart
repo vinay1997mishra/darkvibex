@@ -36,8 +36,9 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
 
   Future<void> _refresh() async {
     try {
-      final result =
-          await widget.state.backend.gameRooms(userId: widget.state.userId);
+      final result = await widget.state.backend.gameRooms(
+        userId: widget.state.userId,
+      );
       if (!mounted) return;
       setState(() {
         rooms = result;
@@ -48,7 +49,8 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
       if (!mounted) return;
       setState(() {
         loading = false;
-        loadError = 'Game rooms could not be loaded. Check your connection and retry.';
+        loadError =
+            'Game rooms could not be loaded. Check your connection and retry.';
       });
     }
   }
@@ -96,7 +98,9 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Game Room could not be created. Check your connection and retry.'),
+            content: Text(
+              'Game Room could not be created. Check your connection and retry.',
+            ),
           ),
         );
       }
@@ -109,15 +113,16 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
         final message = switch (code) {
           'games_disabled' =>
             'Game Rooms are temporarily disabled by the owner.',
-          'unauthorized' || 'forbidden' =>
-            'Your login session expired. Sign in again and retry.',
+          'unauthorized' ||
+          'forbidden' => 'Your login session expired. Sign in again and retry.',
           'user_banned' || 'user_suspended' =>
             'This account cannot create a Game Room right now.',
-          _ => 'Game Room could not be created. Check your connection and retry.',
+          _ =>
+            'Game Room could not be created. Check your connection and retry.',
         };
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
       return;
     }
@@ -153,63 +158,61 @@ class _GameRoomLobbyScreenState extends State<GameRoomLobbyScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Shared Game Rooms'),
-          actions: [
-            IconButton(
-              onPressed: _refresh,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-          ],
+    appBar: AppBar(
+      title: const Text('Shared Game Rooms'),
+      actions: [
+        IconButton(
+          onPressed: _refresh,
+          icon: const Icon(Icons.refresh_rounded),
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _create,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Create room'),
-        ),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _refresh,
-                child: rooms.isEmpty
-                    ? ListView(
-                        children: [
-                          const SizedBox(height: 180),
-                          Center(
-                            child: Text(
-                              loadError ?? 'No public game rooms yet. Create one to start.',
-                            ),
-                          ),
-                        ],
-                      )
-                    : ListView.builder(
-                        itemCount: rooms.length,
-                        itemBuilder: (context, index) {
-                          final room = rooms[index];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 5,
-                            ),
-                            child: ListTile(
-                              leading: const CircleAvatar(child: Text('🎮')),
-                              title: Text(
-                                room['name']?.toString() ?? 'Game room',
-                              ),
-                              subtitle: Text(
-                                '${room['owner_name'] ?? 'Player'} • '
-                                '${room['member_count'] ?? 0}/15 seats • '
-                                'Shared score ${room['shared_score'] ?? 0}',
-                              ),
-                              trailing:
-                                  const Icon(Icons.chevron_right_rounded),
-                              onTap: () => _open(room['id'].toString()),
-                            ),
-                          );
-                        },
+      ],
+    ),
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: _create,
+      icon: const Icon(Icons.add_rounded),
+      label: const Text('Create room'),
+    ),
+    body: loading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _refresh,
+            child: rooms.isEmpty
+                ? ListView(
+                    children: [
+                      const SizedBox(height: 180),
+                      Center(
+                        child: Text(
+                          loadError ??
+                              'No public game rooms yet. Create one to start.',
+                        ),
                       ),
-              ),
-      );
+                    ],
+                  )
+                : ListView.builder(
+                    itemCount: rooms.length,
+                    itemBuilder: (context, index) {
+                      final room = rooms[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 5,
+                        ),
+                        child: ListTile(
+                          leading: const CircleAvatar(child: Text('🎮')),
+                          title: Text(room['name']?.toString() ?? 'Game room'),
+                          subtitle: Text(
+                            '${room['owner_name'] ?? 'Player'} • '
+                            '${room['member_count'] ?? 0}/15 seats • '
+                            'Shared score ${room['shared_score'] ?? 0}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => _open(room['id'].toString()),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+  );
 }
 
 class SharedGameRoomScreen extends StatefulWidget {
@@ -246,13 +249,12 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
 
   List<Map<String, dynamic>> get members => data?['members'] is List
       ? (data!['members'] as List)
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .toList(growable: false)
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false)
       : const <Map<String, dynamic>>[];
 
-  bool get isOwner =>
-      room['owner_user_id']?.toString() == widget.state.userId;
+  bool get isOwner => room['owner_user_id']?.toString() == widget.state.userId;
 
   @override
   void initState() {
@@ -272,9 +274,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
     final currentRtc = rtc;
     rtc = null;
     if (currentRtc != null) {
-      unawaited(
-        currentRtc.leave().whenComplete(currentRtc.dispose),
-      );
+      unawaited(currentRtc.leave().whenComplete(currentRtc.dispose));
     }
     if (widget.state.backendConnected) {
       unawaited(
@@ -303,11 +303,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
       deviceKey: BackendApi.deviceKey ?? '',
     );
     try {
-      await adapter.join(
-        widget.roomId,
-        widget.state.userId,
-        authToken: token,
-      );
+      await adapter.join(widget.roomId, widget.state.userId, authToken: token);
       if (!mounted) {
         await adapter.leave();
         adapter.dispose();
@@ -460,11 +456,13 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
   }
 
   Future<void> _shareRoom() async {
-    await Clipboard.setData(ClipboardData(text: formatPublicUserId(widget.roomId)));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Game Room ID copied')),
+    await Clipboard.setData(
+      ClipboardData(text: formatPublicUserId(widget.roomId)),
     );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Game Room ID copied')));
   }
 
   Future<void> _openInbox() async {
@@ -472,10 +470,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => MessagesScreen(
-          state: widget.state,
-          standalone: true,
-        ),
+        builder: (_) => MessagesScreen(state: widget.state, standalone: true),
       ),
     );
   }
@@ -492,11 +487,9 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
             itemCount: members.length,
             itemBuilder: (context, index) {
               final member = members[index];
-              final name =
-                  member['display_name']?.toString() ?? 'User';
+              final name = member['display_name']?.toString() ?? 'User';
               final avatar = member['avatar_key']?.toString();
-              final seat =
-                  int.tryParse(member['seat_index']?.toString() ?? '');
+              final seat = int.tryParse(member['seat_index']?.toString() ?? '');
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: TinniPalette.panel2,
@@ -547,9 +540,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                     Icons.person_rounded,
                     color: TinniPalette.gold,
                   ),
-                  title: Text(
-                    member['display_name']?.toString() ?? 'User',
-                  ),
+                  title: Text(member['display_name']?.toString() ?? 'User'),
                   subtitle: Text(
                     member['user_id']?.toString() == widget.state.userId
                         ? 'Send to yourself'
@@ -597,9 +588,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                   style: const TextStyle(fontSize: 28),
                 ),
                 title: Text(item['name']?.toString() ?? 'Gift'),
-                subtitle: Text(
-                  '${item['coin_cost'] ?? 0} coins',
-                ),
+                subtitle: Text('${item['coin_cost'] ?? 0} coins'),
                 onTap: () => Navigator.pop(
                   sheetContext,
                   Map<String, dynamic>.from(item),
@@ -661,9 +650,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                subtitle: Text(
-                  'Choose a game without leaving this Game Room',
-                ),
+                subtitle: Text('Choose a game without leaving this Game Room'),
               ),
               ListTile(
                 key: const Key('game-room-play-fruit-party'),
@@ -803,7 +790,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
       return const Center(
         child: Text(
           'Room chat',
-          style: TextStyle(color: TinniPalette.muted),
+          style: TextStyle(color: const Color(0xFF6E6880)),
         ),
       );
     }
@@ -818,7 +805,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
           child: RichText(
             text: TextSpan(
               style: const TextStyle(
-                color: TinniPalette.cream,
+                color: const Color(0xFF2A2140),
                 fontSize: 12,
               ),
               children: [
@@ -839,97 +826,91 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
   }
 
   Widget _roomActions() => Container(
-        key: const Key('game-room-normal-controls'),
-        padding: const EdgeInsets.fromLTRB(4, 3, 4, 5),
-        decoration: const BoxDecoration(
-          color: Color(0xDD09090D),
-          border: Border(
-            top: BorderSide(color: Colors.white12),
+    key: const Key('game-room-normal-controls'),
+    padding: const EdgeInsets.fromLTRB(4, 3, 4, 5),
+    decoration: const BoxDecoration(
+      color: Color(0xDD09090D),
+      border: Border(top: BorderSide(color: Colors.white12)),
+    ),
+    child: Row(
+      children: [
+        IconButton(
+          key: const Key('game-room-play-games-button'),
+          tooltip: 'Play Games',
+          onPressed: _openGames,
+          icon: const TinniGlowIcon(
+            icon: Icons.sports_esports_rounded,
+            size: 20,
+            boxSize: 36,
           ),
         ),
-        child: Row(
-          children: [
-            IconButton(
-              key: const Key('game-room-play-games-button'),
-              tooltip: 'Play Games',
-              onPressed: _openGames,
-              icon: const TinniGlowIcon(
-                icon: Icons.sports_esports_rounded,
-                size: 20,
-                boxSize: 36,
-              ),
-            ),
-            IconButton(
-              key: const Key('game-room-mic-button'),
-              tooltip: muted ? 'Turn microphone on' : 'Turn microphone off',
-              onPressed: _toggleMic,
-              icon: TinniGlowIcon(
-                icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                size: 20,
-                boxSize: 36,
-              ),
-            ),
-            IconButton(
-              key: const Key('game-room-speaker-button'),
-              tooltip: speakerphoneOn ? 'Use earpiece' : 'Use speaker',
-              onPressed: rtc == null ? null : _toggleSpeaker,
-              icon: TinniGlowIcon(
-                icon: speakerphoneOn
-                    ? Icons.volume_up_rounded
-                    : Icons.hearing_rounded,
-                size: 20,
-                boxSize: 36,
-              ),
-            ),
-            IconButton(
-              key: const Key('game-room-gift-button'),
-              tooltip: 'Gifts',
-              onPressed: _sendGift,
-              icon: const TinniGlowIcon(
-                icon: Icons.card_giftcard_rounded,
-                size: 20,
-                boxSize: 36,
-              ),
-            ),
-            IconButton(
-              key: const Key('game-room-messages-button'),
-              tooltip: 'Messages',
-              onPressed: _openInbox,
-              icon: const TinniGlowIcon(
-                icon: Icons.mark_chat_unread_rounded,
-                size: 20,
-                boxSize: 36,
-              ),
-            ),
-            IconButton(
-              key: const Key('game-room-4box-button'),
-              tooltip: '4-Box',
-              onPressed: _showRoomTools,
-              icon: const TinniGlowIcon(
-                icon: Icons.grid_view_rounded,
-                size: 20,
-                boxSize: 36,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              muted ? voiceStatus : 'Mic on',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: TinniPalette.muted,
-                fontSize: 9,
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
+        IconButton(
+          key: const Key('game-room-mic-button'),
+          tooltip: muted ? 'Turn microphone on' : 'Turn microphone off',
+          onPressed: _toggleMic,
+          icon: TinniGlowIcon(
+            icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            size: 20,
+            boxSize: 36,
+          ),
         ),
-      );
+        IconButton(
+          key: const Key('game-room-speaker-button'),
+          tooltip: speakerphoneOn ? 'Use earpiece' : 'Use speaker',
+          onPressed: rtc == null ? null : _toggleSpeaker,
+          icon: TinniGlowIcon(
+            icon: speakerphoneOn
+                ? Icons.volume_up_rounded
+                : Icons.hearing_rounded,
+            size: 20,
+            boxSize: 36,
+          ),
+        ),
+        IconButton(
+          key: const Key('game-room-gift-button'),
+          tooltip: 'Gifts',
+          onPressed: _sendGift,
+          icon: const TinniGlowIcon(
+            icon: Icons.card_giftcard_rounded,
+            size: 20,
+            boxSize: 36,
+          ),
+        ),
+        IconButton(
+          key: const Key('game-room-messages-button'),
+          tooltip: 'Messages',
+          onPressed: _openInbox,
+          icon: const TinniGlowIcon(
+            icon: Icons.mark_chat_unread_rounded,
+            size: 20,
+            boxSize: 36,
+          ),
+        ),
+        IconButton(
+          key: const Key('game-room-4box-button'),
+          tooltip: '4-Box',
+          onPressed: _showRoomTools,
+          icon: const TinniGlowIcon(
+            icon: Icons.grid_view_rounded,
+            size: 20,
+            boxSize: 36,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          muted ? voiceStatus : 'Mic on',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: const Color(0xFF6E6880), fontSize: 9),
+        ),
+        const SizedBox(width: 6),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final score =
-        int.tryParse(room['shared_score']?.toString() ?? '') ?? 0;
+    final score = int.tryParse(room['shared_score']?.toString() ?? '') ?? 0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1016,7 +997,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                                 Text(
                                   '$score',
                                   style: const TextStyle(
-                                    color: TinniPalette.cream,
+                                    color: const Color(0xFFFFD700),
                                     fontSize: 18,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -1025,8 +1006,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                                 SizedBox(
                                   height: 32,
                                   child: FilledButton.tonalIcon(
-                                    onPressed:
-                                        tapping ? null : _tapTogether,
+                                    onPressed: tapping ? null : _tapTogether,
                                     icon: const Icon(
                                       Icons.touch_app_rounded,
                                       size: 16,
@@ -1056,8 +1036,9 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                                   maxLength: 500,
                                   maxLines: 1,
                                   textInputAction: TextInputAction.send,
-                                  onSubmitted:
-                                      sendingChat ? null : (_) => _sendChat(),
+                                  onSubmitted: sendingChat
+                                      ? null
+                                      : (_) => _sendChat(),
                                   decoration: const InputDecoration(
                                     counterText: '',
                                     hintText: 'Type a room message…',
@@ -1067,8 +1048,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                               ),
                               IconButton(
                                 key: const Key('game-room-chat-send'),
-                                onPressed:
-                                    sendingChat ? null : _sendChat,
+                                onPressed: sendingChat ? null : _sendChat,
                                 icon: const Icon(Icons.send_rounded),
                               ),
                             ],
@@ -1082,9 +1062,7 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                     width: 68,
                     decoration: const BoxDecoration(
                       color: Color(0x22111122),
-                      border: Border(
-                        left: BorderSide(color: Colors.white12),
-                      ),
+                      border: Border(left: BorderSide(color: Colors.white12)),
                     ),
                     child: ListView.builder(
                       key: const Key('game-room-15-seat-list'),
@@ -1100,10 +1078,10 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                                   index,
                             )
                             .toList();
-                        final player =
-                            seatMembers.isEmpty ? null : seatMembers.first;
-                        final name =
-                            player?['display_name']?.toString() ?? '';
+                        final player = seatMembers.isEmpty
+                            ? null
+                            : seatMembers.first;
+                        final name = player?['display_name']?.toString() ?? '';
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 3),
                           child: Tooltip(
@@ -1119,8 +1097,8 @@ class _SharedGameRoomScreenState extends State<SharedGameRoomScreen> {
                                 player == null
                                     ? '${index + 1}'
                                     : (name.isEmpty
-                                        ? 'U'
-                                        : name[0].toUpperCase()),
+                                          ? 'U'
+                                          : name[0].toUpperCase()),
                                 style: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -1149,24 +1127,24 @@ class _GameRoomTool extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TinniPanel(
-        onTap: onTap,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TinniGlowIcon(icon: icon, size: 20, boxSize: 34),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: TinniPalette.cream,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                ),
-              ),
+    onTap: onTap,
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        TinniGlowIcon(icon: icon, size: 20, boxSize: 34),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: const Color(0xFFFFD700),
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
             ),
-          ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }

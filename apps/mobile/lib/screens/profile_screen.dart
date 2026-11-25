@@ -264,7 +264,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       : null,
                   border: Border.all(
                     color: profileCardId != null
-                        ? Color(0xFF50D8FF)
+                        ? Color(0xFF9D7BFF)
                         : TinniPalette.bronze,
                     width: profileCardId != null ? 1.6 : 1,
                   ),
@@ -316,10 +316,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ? null
                             : const SweepGradient(
                                 colors: <Color>[
-                                  Color(0xFF50D8FF),
+                                  Color(0xFF9D7BFF),
                                   Color(0xFFFF6FB7),
                                   Color(0xFF8C6CFF),
-                                  Color(0xFF50D8FF),
+                                  Color(0xFF9D7BFF),
                                 ],
                               ),
                         border: ringId == null
@@ -381,7 +381,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               'ID: ${formatPublicUserId(state.publicId)}',
                           vipLevel: state.vipIsActive ? state.vipLevel : 0,
                           style: const TextStyle(
-                            color: TinniPalette.muted,
+                            color: const Color(0xFF6E6880),
                             fontSize: 11,
                           ),
                         ),
@@ -479,7 +479,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Text(
                               'Visitors',
                               style: TextStyle(
-                                color: TinniPalette.muted,
+                                color: const Color(0xFF6E6880),
                                 fontSize: 10,
                               ),
                             ),
@@ -536,7 +536,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const Text(
                             'Coins',
                             style: TextStyle(
-                              color: TinniPalette.muted,
+                              color: const Color(0xFF6E6880),
                               fontSize: 10,
                             ),
                           ),
@@ -925,7 +925,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   label,
                   style: const TextStyle(
-                    color: TinniPalette.muted,
+                    color: const Color(0xFF6E6880),
                     fontSize: 10,
                   ),
                 ),
@@ -1837,7 +1837,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   color: color,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Color(0xFF50D8FF),
+                    color: Color(0xFF9D7BFF),
                     width: 1,
                   ),
                 ),
@@ -2233,9 +2233,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (room == null || !mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => RoomScreen(
-          state: widget.state,
-          room: room,
+        builder: (_) => Theme(
+          data: buildTinniStyleTheme(),
+          child: RoomScreen(
+            state: widget.state,
+            room: room,
+          ),
         ),
       ),
     );
@@ -2345,7 +2348,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ),
               child: const Icon(
                 Icons.workspace_premium_rounded,
-                color: Color(0xFF50D8FF),
+                color: Color(0xFF9D7BFF),
                 size: 22,
               ),
             ),
@@ -3452,7 +3455,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       };
     }
     const palettes = <List<Color>>[
-      <Color>[Color(0xFF50D8FF), Color(0xFF8B4D18), Color(0xFF150D18)],
+      <Color>[Color(0xFF9D7BFF), Color(0xFF8B4D18), Color(0xFF150D18)],
       <Color>[Color(0xFFFF3D98), Color(0xFF7B1B7C), Color(0xFF140B21)],
       <Color>[Color(0xFF52C7FF), Color(0xFF4B36C9), Color(0xFF100D24)],
       <Color>[Color(0xFFE9C4FF), Color(0xFFAD49FF), Color(0xFF220B3D)],
@@ -3463,7 +3466,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       <Color>[Color(0xFFD7BDFF), Color(0xFF6332C4), Color(0xFF160B2A)],
       <Color>[Color(0xFFB7F4FF), Color(0xFF1677B8), Color(0xFF06182A)],
       <Color>[Color(0xFFFFB0B0), Color(0xFF9F1637), Color(0xFF21070D)],
-      <Color>[Color(0xFF50D8FF), Color(0xFFB94A0C), Color(0xFF2A1000)],
+      <Color>[Color(0xFF9D7BFF), Color(0xFFB94A0C), Color(0xFF2A1000)],
       <Color>[Color(0xFFE2B5FF), Color(0xFF7028C4), Color(0xFF1C0930)],
       <Color>[Color(0xFFEAF5FF), Color(0xFFC17A05), Color(0xFF2B1900)],
       <Color>[Color(0xFFFFA8FF), Color(0xFF7131C7), Color(0xFF1A0730)],

@@ -51,8 +51,10 @@ class _FamilyMonthlyRankingScreenState
   void initState() {
     super.initState();
     _updateCountdown();
-    _countdownTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
+    _countdownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateCountdown(),
+    );
     _load();
   }
 
@@ -192,58 +194,57 @@ class _FamilyMonthlyRankingScreenState
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null
-                      ? Center(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(color: Color(0xFF2A2140)),
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                          child: Column(
-                            children: [
-                              if (top3.isNotEmpty)
-                                _Podium(
-                                  top3: top3,
+                  ? Center(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Color(0xFF2A2140)),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      child: Column(
+                        children: [
+                          if (top3.isNotEmpty)
+                            _Podium(
+                              top3: top3,
+                              backend: _backend,
+                              valueText: _valueText,
+                            ),
+                          const SizedBox(height: 12),
+                          for (final member in rest)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: FamilyCard(
+                                child: _RankingRow(
+                                  member: member,
                                   backend: _backend,
                                   valueText: _valueText,
                                 ),
-                              const SizedBox(height: 12),
-                              for (final member in rest)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: FamilyCard(
-                                    child: _RankingRow(
-                                      member: member,
-                                      backend: _backend,
-                                      valueText: _valueText,
-                                    ),
-                                  ),
+                              ),
+                            ),
+                          if (me.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: FamilyCard(
+                                child: _RankingRow(
+                                  member: me,
+                                  backend: _backend,
+                                  valueText: _valueText,
+                                  highlight: true,
                                 ),
-                              if (me.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: FamilyCard(
-                                    child: _RankingRow(
-                                      member: me,
-                                      backend: _backend,
-                                      valueText: _valueText,
-                                      highlight: true,
-                                    ),
-                                  ),
-                                ),
-                              if (_members.isEmpty)
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 32),
-                                  child: Text(
-                                    'No rankings this month yet',
-                                    style:
-                                        TextStyle(color: Color(0xFF2A2140)),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
+                              ),
+                            ),
+                          if (_members.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 32),
+                              child: Text(
+                                'No rankings this month yet',
+                                style: TextStyle(color: Color(0xFF2A2140)),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
             ),
           ],
         ),

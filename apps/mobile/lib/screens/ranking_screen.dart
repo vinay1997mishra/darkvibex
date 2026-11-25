@@ -174,7 +174,7 @@ class _RankingScreenState extends State<RankingScreen> {
                             style: TextStyle(
                               color: _period == value
                                   ? TinniPalette.gold
-                                  : TinniPalette.muted,
+                                  : const Color(0xFF6E6880),
                               fontWeight: _period == value
                                   ? FontWeight.w900
                                   : FontWeight.w600,
@@ -295,7 +295,7 @@ class _RankingScreenState extends State<RankingScreen> {
                                           _ => 'Sending',
                                         },
                                         style: const TextStyle(
-                                          color: TinniPalette.muted,
+                                          color: const Color(0xFF6E6880),
                                           fontSize: 9,
                                         ),
                                       ),

@@ -55,7 +55,7 @@ class _DarkVibeXAppState extends State<DarkVibeXApp> {
     return MaterialApp(
       title: AppIdentity.appName,
       debugShowCheckedModeBanner: false,
-      theme: buildTinniStyleTheme(),
+      theme: buildLightTinniStyleTheme(),
       navigatorObservers: <NavigatorObserver>[AppRouteObserver()],
       builder: (context, child) => Directionality(
         textDirection: darkVibeXIsRtlLanguage(state.languagePreference.value)

@@ -241,7 +241,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('rocket-room-help-dialog'),
-        backgroundColor: const Color(0xFF0B2564),
+        backgroundColor: const Color(0xFF2A2140),
         title: const Text(
           'How Rocket rewards work',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
@@ -271,7 +271,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
       context: context,
       builder: (context) => AlertDialog(
         key: const Key('rocket-room-record-dialog'),
-        backgroundColor: const Color(0xFF0B2564),
+        backgroundColor: const Color(0xFF2A2140),
         title: const Text(
           'Rocket records',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
@@ -588,7 +588,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
       child: Column(
         children: [
           const Icon(Icons.arrow_drop_up_rounded,
-              color: Color(0xFF50D8FF), size: 26),
+              color: Color(0xFF9D7BFF), size: 26),
           Expanded(
             child: ListView.builder(
               key: const Key('rocket-room-ladder'),
@@ -613,7 +613,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
                       color: current
                           ? const Color(0xFFFFB11B)
                           : done
-                              ? const Color(0xFF50D8FF)
+                              ? const Color(0xFF9D7BFF)
                               : const Color(0xFF56627E),
                       width: current ? 2 : 1,
                     ),
@@ -629,7 +629,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(
                             Icons.rocket_launch_rounded,
-                            color: Color(0xFF50D8FF),
+                            color: Color(0xFF9D7BFF),
                             size: 28,
                           ),
                         ),
@@ -642,7 +642,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
                             color: current
                                 ? const Color(0xFFFFB11B)
                                 : done
-                                    ? const Color(0xFF50D8FF)
+                                    ? const Color(0xFF9D7BFF)
                                     : Colors.white,
                             fontWeight: FontWeight.w900,
                             fontSize: 12,
@@ -656,7 +656,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
             ),
           ),
           const Icon(Icons.arrow_drop_down_rounded,
-              color: Color(0xFF50D8FF), size: 26),
+              color: Color(0xFF9D7BFF), size: 26),
         ],
       ),
     );
@@ -706,9 +706,9 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
           padding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
           decoration: BoxDecoration(
-            color: const Color(0xFF0B2564),
+            color: const Color(0xFF2A2140),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF50D8FF)),
+            border: Border.all(color: const Color(0xFF9D7BFF)),
           ),
           child: Text(
             _countdownText,
@@ -737,7 +737,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
               decoration: BoxDecoration(
                 color: const Color(0xFF1B2340),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF50D8FF)),
+                border: Border.all(color: const Color(0xFF9D7BFF)),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
@@ -751,8 +751,8 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
                           colors: <Color>[
-                            Color(0xFF1768D2),
-                            Color(0xFF50D8FF),
+                            Color(0xFF5E35B1),
+                            Color(0xFF9D7BFF),
                           ],
                         ),
                       ),
@@ -770,8 +770,8 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0xFF0B2564),
-              border: Border.all(color: const Color(0xFF50D8FF)),
+              color: const Color(0xFF2A2140),
+              border: Border.all(color: const Color(0xFF9D7BFF)),
             ),
             child: Text(
               percentText,
@@ -893,7 +893,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
             onPressed: _showRecords,
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFF50D8FF)),
+              side: const BorderSide(color: Color(0xFF9D7BFF)),
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
@@ -941,7 +941,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
                           side: BorderSide(
                             color: _selectedTab == i
                                 ? const Color(0xFFFFD36A)
-                                : const Color(0xFF50D8FF),
+                                : const Color(0xFF9D7BFF),
                           ),
                         ),
                       ),
@@ -962,7 +962,7 @@ class _RocketRoomPageState extends State<RocketRoomPage> {
                   color: Colors.white,
                 ),
                 style: IconButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF50D8FF)),
+                  side: const BorderSide(color: Color(0xFF9D7BFF)),
                 ),
               ),
             ],
@@ -1173,8 +1173,8 @@ class _LaunchPadPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height * 0.62);
     final rings = <double>[0.46, 0.38, 0.30];
     final colors = <Color>[
-      const Color(0xFF50D8FF).withValues(alpha: 0.85),
-      const Color(0xFF50D8FF).withValues(alpha: 0.55),
+      const Color(0xFF9D7BFF).withValues(alpha: 0.85),
+      const Color(0xFF9D7BFF).withValues(alpha: 0.55),
       const Color(0xFF8B7CFF).withValues(alpha: 0.45),
     ];
     for (var i = 0; i < rings.length; i++) {
@@ -1192,7 +1192,7 @@ class _LaunchPadPainter extends CustomPainter {
       );
     }
     final glowPaint = Paint()
-      ..color = const Color(0xFF50D8FF).withValues(alpha: 0.30)
+      ..color = const Color(0xFF9D7BFF).withValues(alpha: 0.30)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
     canvas.drawOval(
       Rect.fromCenter(

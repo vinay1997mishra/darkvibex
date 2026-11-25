@@ -182,9 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _validateProfile() {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your name')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter your name')));
       return false;
     }
     if (_dateOfBirth == null) {
@@ -200,9 +200,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return false;
     }
     if (_selectedGender == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select male or female')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select male or female')));
       return false;
     }
     if (!darkVibeXIsSupportedLanguage(_selectedLanguage)) {
@@ -235,7 +235,9 @@ class _LoginScreenState extends State<LoginScreen> {
         _notice(state.authError!);
       }
     } catch (error) {
-      _notice('Profile could not be saved. Check your connection and try again.');
+      _notice(
+        'Profile could not be saved. Check your connection and try again.',
+      );
     } finally {
       if (mounted) setState(() => _savingProfile = false);
     }
@@ -252,9 +254,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _notice(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.replaceAll('_', ' '))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text.replaceAll('_', ' '))));
   }
 
   Future<void> _emailLogin() async {
@@ -273,9 +275,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
-              decoration: const InputDecoration(
-                labelText: 'Email / Gmail ID',
-              ),
+              decoration: const InputDecoration(labelText: 'Email / Gmail ID'),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -315,10 +315,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (action == 'reset') {
       final result = await Navigator.of(context).push<String>(
         MaterialPageRoute<String>(
-          builder: (_) => ResetPasswordScreen(
-            state: state,
-            initialEmail: email,
-          ),
+          builder: (_) =>
+              ResetPasswordScreen(state: state, initialEmail: email),
         ),
       );
       if (result != null && mounted) {
@@ -364,9 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
           autofillHints: const [AutofillHints.email],
-          decoration: const InputDecoration(
-            labelText: 'Email / Gmail ID',
-          ),
+          decoration: const InputDecoration(labelText: 'Email / Gmail ID'),
         ),
         actions: [
           TextButton(
@@ -408,9 +404,7 @@ class _LoginScreenState extends State<LoginScreen> {
           controller: otpController,
           keyboardType: TextInputType.number,
           maxLength: 6,
-          decoration: const InputDecoration(
-            labelText: '6-digit OTP',
-          ),
+          decoration: const InputDecoration(labelText: '6-digit OTP'),
         ),
         actions: [
           TextButton(
@@ -469,9 +463,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: confirmController,
               obscureText: true,
               autofillHints: const [AutofillHints.newPassword],
-              decoration: const InputDecoration(
-                labelText: 'Confirm Password',
-              ),
+              decoration: const InputDecoration(labelText: 'Confirm Password'),
             ),
           ],
         ),
@@ -542,291 +534,299 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? 'Complete your profile to continue'
                             : 'Sign in or create your account',
                         style: const TextStyle(
-                          color: TinniPalette.muted,
+                          color: const Color(0xFF6E6880),
                           fontSize: 12,
                         ),
                       ),
                       if (_showProfileForm) ...[
-                      const SizedBox(height: 22),
-                      GestureDetector(
-                        onTap: busy ? null : _pickAvatar,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 98,
-                              height: 98,
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: TinniPalette.brightGold,
-                                  width: 2,
+                        const SizedBox(height: 22),
+                        GestureDetector(
+                          onTap: busy ? null : _pickAvatar,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 98,
+                                height: 98,
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: TinniPalette.brightGold,
+                                    width: 2,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x55D09A0A),
+                                      blurRadius: 16,
+                                    ),
+                                  ],
                                 ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x55D09A0A),
-                                    blurRadius: 16,
+                                child: CircleAvatar(
+                                  backgroundColor: TinniPalette.panel2,
+                                  backgroundImage: _avatarBytes == null
+                                      ? null
+                                      : MemoryImage(_avatarBytes!),
+                                  child: _avatarBytes == null
+                                      ? const Icon(
+                                          Icons.person_rounded,
+                                          size: 46,
+                                          color: TinniPalette.gold,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              const Positioned(
+                                right: -2,
+                                bottom: 2,
+                                child: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: TinniPalette.gold,
+                                  child: Icon(
+                                    Icons.camera_alt_rounded,
+                                    size: 17,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Tap to add DP',
+                          style: TextStyle(
+                            color: const Color(0xFF6E6880),
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        TinniPanel(
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _nameController,
+                                textInputAction: TextInputAction.next,
+                                maxLength: 60,
+                                decoration: const InputDecoration(
+                                  labelText: 'Name',
+                                  prefixIcon: Icon(Icons.badge_rounded),
+                                  counterText: '',
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              InkWell(
+                                key: const Key('create-id-date-of-birth'),
+                                onTap: busy ? null : _pickDateOfBirth,
+                                borderRadius: BorderRadius.circular(12),
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Date of birth',
+                                    prefixIcon: Icon(Icons.cake_rounded),
+                                    suffixIcon: Icon(
+                                      Icons.calendar_month_rounded,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _dobLabel,
+                                    style: TextStyle(
+                                      color: _dateOfBirth == null
+                                          ? const Color(0xFFF0F2FF)
+                                          : const Color(0xFFFFD700),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              InkWell(
+                                key: const Key('create-id-country'),
+                                onTap: busy ? null : _pickCountry,
+                                borderRadius: BorderRadius.circular(12),
+                                child: InputDecorator(
+                                  decoration: const InputDecoration(
+                                    labelText: 'Country',
+                                    prefixIcon: Icon(Icons.public_rounded),
+                                    suffixIcon: Icon(
+                                      Icons.arrow_drop_down_rounded,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _selectedCountry == null
+                                        ? 'Choose country'
+                                        : '${_selectedCountry!.flagEmoji} ${_selectedCountry!.name}',
+                                    style: TextStyle(
+                                      color: _selectedCountry == null
+                                          ? const Color(0xFFF0F2FF)
+                                          : const Color(0xFFFFD700),
+                                      fontWeight: _selectedCountry == null
+                                          ? FontWeight.w500
+                                          : FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ChoiceChip(
+                                      key: const Key('create-id-gender-male'),
+                                      label: const Text('Male'),
+                                      selected: _selectedGender == 'male',
+                                      onSelected: busy
+                                          ? null
+                                          : (_) => setState(
+                                              () => _selectedGender = 'male',
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: ChoiceChip(
+                                      key: const Key('create-id-gender-female'),
+                                      label: const Text('Female'),
+                                      selected: _selectedGender == 'female',
+                                      onSelected: busy
+                                          ? null
+                                          : (_) => setState(
+                                              () => _selectedGender = 'female',
+                                            ),
+                                    ),
                                   ),
                                 ],
                               ),
-                              child: CircleAvatar(
-                                backgroundColor: TinniPalette.panel2,
-                                backgroundImage: _avatarBytes == null
-                                    ? null
-                                    : MemoryImage(_avatarBytes!),
-                                child: _avatarBytes == null
-                                    ? const Icon(
-                                        Icons.person_rounded,
-                                        size: 46,
-                                        color: TinniPalette.gold,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            const Positioned(
-                              right: -2,
-                              bottom: 2,
-                              child: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: TinniPalette.gold,
-                                child: Icon(
-                                  Icons.camera_alt_rounded,
-                                  size: 17,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Tap to add DP',
-                        style: TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      TinniPanel(
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _nameController,
-                              textInputAction: TextInputAction.next,
-                              maxLength: 60,
-                              decoration: const InputDecoration(
-                                labelText: 'Name',
-                                prefixIcon: Icon(Icons.badge_rounded),
-                                counterText: '',
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            InkWell(
-                              key: const Key('create-id-date-of-birth'),
-                              onTap: busy ? null : _pickDateOfBirth,
-                              borderRadius: BorderRadius.circular(12),
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Date of birth',
-                                  prefixIcon: Icon(Icons.cake_rounded),
-                                  suffixIcon: Icon(Icons.calendar_month_rounded),
-                                ),
-                                child: Text(
-                                  _dobLabel,
-                                  style: TextStyle(
-                                    color: _dateOfBirth == null
-                                        ? TinniPalette.muted
-                                        : TinniPalette.cream,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            InkWell(
-                              key: const Key('create-id-country'),
-                              onTap: busy ? null : _pickCountry,
-                              borderRadius: BorderRadius.circular(12),
-                              child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Country',
-                                  prefixIcon: Icon(Icons.public_rounded),
-                                  suffixIcon: Icon(Icons.arrow_drop_down_rounded),
-                                ),
-                                child: Text(
-                                  _selectedCountry == null
-                                      ? 'Choose country'
-                                      : '${_selectedCountry!.flagEmoji} ${_selectedCountry!.name}',
-                                  style: TextStyle(
-                                    color: _selectedCountry == null
-                                        ? TinniPalette.muted
-                                        : TinniPalette.cream,
-                                    fontWeight: _selectedCountry == null
-                                        ? FontWeight.w500
-                                        : FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ChoiceChip(
-                                    key: const Key('create-id-gender-male'),
-                                    label: const Text('Male'),
-                                    selected: _selectedGender == 'male',
-                                    onSelected: busy
-                                        ? null
-                                        : (_) => setState(
-                                              () => _selectedGender = 'male',
-                                            ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: ChoiceChip(
-                                    key: const Key('create-id-gender-female'),
-                                    label: const Text('Female'),
-                                    selected: _selectedGender == 'female',
-                                    onSelected: busy
-                                        ? null
-                                        : (_) => setState(
-                                              () => _selectedGender = 'female',
-                                            ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: busy
-                              ? null
-                              : () => Navigator.of(context).push(
+                        const SizedBox(height: 18),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: busy
+                                ? null
+                                : () => Navigator.of(context).push(
                                     MaterialPageRoute<void>(
                                       builder: (_) => const LegalPolicyScreen(),
                                     ),
                                   ),
-                          child: const Text('Read Terms & Privacy'),
-                        ),
-                      ),
-                      CheckboxListTile(
-                        key: const Key('create-id-agree-terms'),
-                        contentPadding: EdgeInsets.zero,
-                        value: _agreedToTerms,
-                        onChanged: busy
-                            ? null
-                            : (value) => setState(
-                                  () => _agreedToTerms = value ?? false,
-                                ),
-                        title: const Text(
-                          'I have read and agree to the Terms and Privacy notice, including the Refunds policy.',
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: FilledButton.icon(
-                          key: const Key('complete-profile-button'),
-                          onPressed: busy || !_agreedToTerms
-                              ? null
-                              : _emailSignupDraft
-                                  ? () => _createEmailAccount(
-                                        initialEmail: _pendingSignupEmail,
-                                        profileAlreadyCollected: true,
-                                      )
-                                  : _finishProfile,
-                          icon: _savingProfile
-                              ? const SizedBox.square(
-                                  dimension: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.black,
-                                  ),
-                                )
-                              : const Icon(Icons.check_circle_outline_rounded),
-                          label: Text(
-                            _emailSignupDraft
-                                ? 'Continue to Email Sign-up'
-                                : 'Save Profile & Enter DarkVibeX',
+                            child: const Text('Read Terms & Privacy'),
                           ),
                         ),
-                      ),
-                      if (_emailSignupDraft)
-                        TextButton(
-                          onPressed: busy
+                        CheckboxListTile(
+                          key: const Key('create-id-agree-terms'),
+                          contentPadding: EdgeInsets.zero,
+                          value: _agreedToTerms,
+                          onChanged: busy
                               ? null
-                              : () => setState(() {
+                              : (value) => setState(
+                                  () => _agreedToTerms = value ?? false,
+                                ),
+                          title: const Text(
+                            'I have read and agree to the Terms and Privacy notice, including the Refunds policy.',
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: FilledButton.icon(
+                            key: const Key('complete-profile-button'),
+                            onPressed: busy || !_agreedToTerms
+                                ? null
+                                : _emailSignupDraft
+                                ? () => _createEmailAccount(
+                                    initialEmail: _pendingSignupEmail,
+                                    profileAlreadyCollected: true,
+                                  )
+                                : _finishProfile,
+                            icon: _savingProfile
+                                ? const SizedBox.square(
+                                    dimension: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.check_circle_outline_rounded,
+                                  ),
+                            label: Text(
+                              _emailSignupDraft
+                                  ? 'Continue to Email Sign-up'
+                                  : 'Save Profile & Enter DarkVibeX',
+                            ),
+                          ),
+                        ),
+                        if (_emailSignupDraft)
+                          TextButton(
+                            onPressed: busy
+                                ? null
+                                : () => setState(() {
                                     _emailSignupDraft = false;
                                     _pendingSignupEmail = '';
                                   }),
-                          child: const Text('Back to Login'),
-                        ),
+                            child: const Text('Back to Login'),
+                          ),
                       ],
                       if (!_showProfileForm) ...[
-                      const SizedBox(height: 18),
-                      TinniPanel(
-                        child: DropdownButtonFormField<String>(
-                          key: const Key('login-language-selector'),
-                          initialValue: _selectedLanguage,
-                          decoration: const InputDecoration(
-                            labelText: 'Language',
-                            prefixIcon: Icon(Icons.language_rounded),
-                          ),
-                          items: darkVibeXSupportedLanguages
-                              .map(
-                                (language) => DropdownMenuItem<String>(
-                                  value: language,
-                                  child: Text(language),
-                                ),
-                              )
-                              .toList(growable: false),
-                          onChanged: busy
-                              ? null
-                              : (value) async {
-                                  if (value == null) return;
-                                  setState(() => _selectedLanguage = value);
-                                  await state.saveLoginLanguagePreference(value);
-                                },
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: FilledButton.icon(
-                          onPressed: busy ? null : _googleLogin,
-                          icon: busy
-                              ? const SizedBox.square(
-                                  dimension: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.black,
+                        const SizedBox(height: 18),
+                        TinniPanel(
+                          child: DropdownButtonFormField<String>(
+                            key: const Key('login-language-selector'),
+                            initialValue: _selectedLanguage,
+                            decoration: const InputDecoration(
+                              labelText: 'Language',
+                              prefixIcon: Icon(Icons.language_rounded),
+                            ),
+                            items: darkVibeXSupportedLanguages
+                                .map(
+                                  (language) => DropdownMenuItem<String>(
+                                    value: language,
+                                    child: Text(language),
                                   ),
                                 )
-                              : const Icon(Icons.login_rounded),
-                          label: const Text('Continue with Google'),
+                                .toList(growable: false),
+                            onChanged: busy
+                                ? null
+                                : (value) async {
+                                    if (value == null) return;
+                                    setState(() => _selectedLanguage = value);
+                                    await state.saveLoginLanguagePreference(
+                                      value,
+                                    );
+                                  },
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          key: const Key('email-login-button'),
-                          onPressed: busy ? null : _emailLogin,
-                          icon: const Icon(Icons.email_rounded),
-                          label: const Text('Email / Gmail Login'),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: FilledButton.icon(
+                            onPressed: busy ? null : _googleLogin,
+                            icon: busy
+                                ? const SizedBox.square(
+                                    dimension: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : const Icon(Icons.login_rounded),
+                            label: const Text('Continue with Google'),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 11),
+                        const SizedBox(height: 11),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            key: const Key('email-login-button'),
+                            onPressed: busy ? null : _emailLogin,
+                            icon: const Icon(Icons.email_rounded),
+                            label: const Text('Email / Gmail Login'),
+                          ),
+                        ),
+                        const SizedBox(height: 11),
                       ],
                       if (state.authError != null) ...[
                         const SizedBox(height: 16),
@@ -856,7 +856,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         'By continuing, you agree to use DarkVibeX responsibly.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: TinniPalette.muted,
+                          color: const Color(0xFF6E6880),
                           fontSize: 11,
                         ),
                       ),

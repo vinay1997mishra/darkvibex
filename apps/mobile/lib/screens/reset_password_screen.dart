@@ -44,9 +44,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   void _notice(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.replaceAll('_', ' '))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text.replaceAll('_', ' '))));
   }
 
   Future<void> _sendOtp() async {
@@ -243,7 +243,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       'Your Gmail password is never requested or stored.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: TinniPalette.muted,
+                        color: const Color(0xFFF0F2FF),
                         fontSize: 10,
                       ),
                     ),

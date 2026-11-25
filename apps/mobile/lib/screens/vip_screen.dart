@@ -101,7 +101,7 @@ class VipScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(
                         Icons.support_agent_rounded,
-                        color: Color(0xFF50D8FF),
+                        color: Color(0xFF9D7BFF),
                       ),
                       title: const Text('VIP Customer Service'),
                       subtitle: const Text('Private VIP support tickets'),
@@ -128,7 +128,7 @@ class VipScreen extends StatelessWidget {
                 const Text(
                   'VIP exclusive privileges',
                   style: TextStyle(
-                    color: Color(0xFF50D8FF),
+                    color: Color(0xFF9D7BFF),
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
@@ -159,7 +159,7 @@ class VipScreen extends StatelessWidget {
                   const Text(
                     'VIP controls',
                     style: TextStyle(
-                      color: Color(0xFF50D8FF),
+                      color: Color(0xFF9D7BFF),
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
@@ -237,7 +237,7 @@ class VipScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(
                         Icons.badge_rounded,
-                        color: Color(0xFF50D8FF),
+                        color: Color(0xFF9D7BFF),
                       ),
                       title: const Text('Unique ID'),
                       subtitle: Text(
@@ -358,7 +358,7 @@ class VipScreen extends StatelessWidget {
               child: Icon(
                 _iconFor(privilege.id),
                 size: 34,
-                color: const Color(0xFF50D8FF),
+                color: const Color(0xFF9D7BFF),
               ),
             ),
             const SizedBox(height: 16),
@@ -368,7 +368,7 @@ class VipScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
-            Text(levelText, style: const TextStyle(color: Color(0xFF50D8FF))),
+            Text(levelText, style: const TextStyle(color: Color(0xFF9D7BFF))),
             const SizedBox(height: 12),
             Text(
               privilege.description,
@@ -565,7 +565,7 @@ class _HeroCard extends StatelessWidget {
             value: progress,
             minHeight: 6,
             borderRadius: BorderRadius.circular(30),
-            color: const Color(0xFF50D8FF),
+            color: const Color(0xFF9D7BFF),
             backgroundColor: Colors.white12,
           ),
           const SizedBox(height: 9),
@@ -1061,7 +1061,7 @@ class _PrivilegeTile extends StatelessWidget {
                   backgroundColor: const Color(0xFF222222),
                   child: Icon(
                     VipScreen._iconFor(privilege.id),
-                    color: unlocked ? const Color(0xFF50D8FF) : Colors.white38,
+                    color: unlocked ? const Color(0xFF9D7BFF) : Colors.white38,
                   ),
                 ),
                 if (!unlocked)
@@ -1118,7 +1118,7 @@ class _TogglePrivilege extends StatelessWidget {
     return Card(
       color: const Color(0xFF151515),
       child: SwitchListTile(
-        activeThumbColor: const Color(0xFF50D8FF),
+        activeThumbColor: const Color(0xFF9D7BFF),
         title: Text(title),
         subtitle: Text(subtitle),
         value: value,
@@ -1161,7 +1161,7 @@ class VipRulesScreen extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: DataTable(
               headingTextStyle: const TextStyle(
-                color: Color(0xFF50D8FF),
+                color: Color(0xFF9D7BFF),
                 fontWeight: FontWeight.w800,
               ),
               columns: const [

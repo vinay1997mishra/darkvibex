@@ -1266,11 +1266,11 @@ class _RoomScreenState extends State<RoomScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: const LinearGradient(
-                      colors: <Color>[Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFFEC6B2D)],
+                      colors: <Color>[Color(0xFFBFA7FF), Color(0xFF9D7BFF), Color(0xFFEC6B2D)],
                     ),
                     boxShadow: <BoxShadow>[
                       BoxShadow(
-                        color: Color(0xFF53D9FF).withValues(alpha: .3),
+                        color: Color(0xFF9D7BFF).withValues(alpha: .3),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
@@ -1287,7 +1287,7 @@ class _RoomScreenState extends State<RoomScreen>
                   'ROCKET REWARD CHEST',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFF50D8FF),
+                    color: Color(0xFF9D7BFF),
                     fontWeight: FontWeight.w900,
                     fontSize: 18,
                   ),
@@ -1325,7 +1325,7 @@ class _RoomScreenState extends State<RoomScreen>
                     rewardFrame['name'] ?? 'Rocket Animated Frame',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Color(0xFF50D8FF),
+                      color: Color(0xFF9D7BFF),
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1358,7 +1358,7 @@ class _RoomScreenState extends State<RoomScreen>
                     message,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Color(0xFF50D8FF),
+                      color: Color(0xFF9D7BFF),
                       fontWeight: FontWeight.w800,
                       height: 1.35,
                     ),
@@ -2947,7 +2947,7 @@ class _RoomScreenState extends State<RoomScreen>
                                                     child: Icon(
                                                       Icons.check_rounded,
                                                       size: 29,
-                                                      color: Color(0xFF50D8FF),
+                                                      color: Color(0xFF9D7BFF),
                                                     ),
                                                   ),
                                                 ),
@@ -3219,7 +3219,7 @@ class _RoomScreenState extends State<RoomScreen>
                           children: [
                             const Icon(
                               Icons.monetization_on_rounded,
-                              color: Color(0xFF50D8FF),
+                              color: Color(0xFF9D7BFF),
                               size: 21,
                             ),
                             const SizedBox(width: 5),
@@ -3237,7 +3237,7 @@ class _RoomScreenState extends State<RoomScreen>
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: Color(0xFF50D8FF),
+                                      color: Color(0xFF9D7BFF),
                                       fontSize: 11,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -5244,7 +5244,7 @@ class _RoomScreenState extends State<RoomScreen>
                                       if (widget.state.hasVipPrivilege('free_say_hi') && widget.state.vipFreeSayHiRemaining > 0)
                                         IconButton(
                                           tooltip: 'Free Say Hi (${widget.state.vipFreeSayHiRemaining} left)',
-                                          icon: const Icon(Icons.waving_hand_rounded, color: Color(0xFF50D8FF)),
+                                          icon: const Icon(Icons.waving_hand_rounded, color: Color(0xFF9D7BFF)),
                                           onPressed: () => _composeVipSayHi(context, userId, name?.isNotEmpty == true ? name! : 'User'),
                                         ),
                                       if (canModerate)

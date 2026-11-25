@@ -6,7 +6,7 @@ abstract final class TinniPalette {
   static const panel = Color(0xE6121230);
   static const panel2 = Color(0xE61A123A);
   static const gold = Color(0xFF8B7CFF);
-  static const brightGold = Color(0xFF50D8FF);
+  static const brightGold = Color(0xFF9D7BFF);
   static const deepGold = Color(0xFF5146A8);
   static const bronze = Color(0xFF37376F);
   static const cream = Color(0xFFF0F2FF);
@@ -36,11 +36,10 @@ abstract final class TinniPalette {
   }
 }
 
-
 /// Semantic, non-yellow accent colours used for DarkVibeX feature logos.
 abstract final class DarkVibeXIconPalette {
-  static const cyan = Color(0xFF53D9FF);
-  static const electricBlue = Color(0xFF4BA8FF);
+  static const cyan = Color(0xFFAB8CFF);
+  static const electricBlue = Color(0xFF7E57C2);
   static const violet = Color(0xFF8B7CFF);
   static const lavender = Color(0xFFBFA7FF);
   static const pink = Color(0xFFFF83D8);
@@ -121,6 +120,120 @@ class DarkVibeXIconAccent {
 
   final Color primary;
   final Color secondary;
+}
+
+/// Light purple-gold glass theme (Mr. Wrong, 2026-11-25): the whole
+/// app uses the new light look — dark text on the purple-gold glass
+/// background. The dark theme below (buildTinniStyleTheme) stays for
+/// the voice room only: RoomScreen is wrapped in it at every push
+/// site, so the room main background is untouched.
+ThemeData buildLightTinniStyleTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: TinniPalette.gold,
+    brightness: Brightness.light,
+    primary: TinniPalette.deepGold,
+    secondary: TinniPalette.brightGold,
+    surface: Colors.white,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: Colors.transparent,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Color(0xB3080B20),
+      foregroundColor: TinniPalette.cream,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      height: 70,
+      backgroundColor: TinniPalette.nearBlack,
+      indicatorColor: TinniPalette.gold.withValues(alpha: .14),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          color: states.contains(WidgetState.selected)
+              ? TinniPalette.gold
+              : TinniPalette.muted,
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w800
+              : FontWeight.w500,
+        ),
+      ),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected)
+              ? TinniPalette.gold
+              : TinniPalette.muted,
+        ),
+      ),
+    ),
+    cardTheme: CardThemeData(
+      // Black glass (Mr. Wrong, 2026-11-25): the VIP black-glass card
+      // style everywhere — dark translucent black, gold border.
+      color: const Color(0xA6000000),
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: Color(0xFFE8C96A)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+    ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: Color(0xF2FFFFFF),
+      surfaceTintColor: Colors.transparent,
+      titleTextStyle: TextStyle(
+        color: Color(0xFF2A2140),
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
+      ),
+      contentTextStyle: TextStyle(color: Color(0xFF4A4458), fontSize: 14),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Color(0xFFE8C96A), width: 1.2),
+        borderRadius: BorderRadius.all(Radius.circular(22)),
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xF2FFFFFF),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Color(0xFFE8C96A)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.white,
+      labelStyle: const TextStyle(color: TinniPalette.deepGold),
+      hintStyle: const TextStyle(color: Color(0xFF6E6880)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE8C96A)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: TinniPalette.deepGold, width: 1.5),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFFE8A91C),
+        foregroundColor: const Color(0xFF5A3E00),
+        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: TinniPalette.deepGold,
+        side: const BorderSide(color: TinniPalette.deepGold),
+      ),
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: Color(0xFF2A2140),
+      contentTextStyle: TextStyle(color: Colors.white),
+    ),
+    dividerColor: TinniPalette.bronze,
+  );
 }
 
 ThemeData buildTinniStyleTheme() {
@@ -234,14 +347,8 @@ class TinniGlowIcon extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: primary.withValues(alpha: .68)),
         boxShadow: [
-          BoxShadow(
-            color: primary.withValues(alpha: .22),
-            blurRadius: 12,
-          ),
-          BoxShadow(
-            color: secondary.withValues(alpha: .10),
-            blurRadius: 16,
-          ),
+          BoxShadow(color: primary.withValues(alpha: .22), blurRadius: 12),
+          BoxShadow(color: secondary.withValues(alpha: .10), blurRadius: 16),
         ],
         gradient: RadialGradient(
           colors: [
@@ -273,22 +380,58 @@ class TinniPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Black glass 3D panel (Mr. Wrong, 2026-11-25): the VIP black-glass
+    // card style everywhere — dark translucent black (the page background
+    // shows faintly through), gold border, top gloss highlight and bottom
+    // shadow. Text inside panels is light (gold titles, cream body) — the
+    // DefaultTextStyle below covers unstyled text; explicitly dark text
+    // was flipped per file when the panels went black.
     final body = Container(
       padding: padding,
       decoration: BoxDecoration(
+        // Single-colour gradient, NOT a solid color: a solid
+        // `BoxDecoration.color` makes Flutter's ListTile debug check fire
+        // ("background color or ink splashes may be invisible") for the
+        // ListTiles inside panels (Messages rows, feed panel). A gradient
+        // with identical stops paints the same black glass.
         gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xE6161740), Color(0xD90A0D28)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xA6000000), Color(0xA6000000)],
         ),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: TinniPalette.bronze),
+        border: Border.all(color: const Color(0xFFE8C96A)),
         boxShadow: const [
-          BoxShadow(color: Color(0x442F36FF), blurRadius: 10),
-          BoxShadow(color: Color(0x332A0B54), blurRadius: 16),
+          BoxShadow(
+            color: Color(0xFFFFFFFF),
+            blurRadius: 4,
+            offset: Offset(0, -1),
+          ),
+          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
-      child: child,
+      child: DefaultTextStyle.merge(
+        // .merge, NOT a plain DefaultTextStyle: a plain one REPLACES
+        // the ambient style (theme font included), so unstyled text
+        // inside a panel would fall back to the test/platform default
+        // font (Ahem bars in renders). .merge keeps the theme font
+        // and only recolours the text.
+        style: const TextStyle(color: Color(0xFFF0F2FF)),
+        child: IconTheme(
+          data: const IconThemeData(color: Color(0xFFFFD700)),
+          // ListTile paints its title/subtitle/icons from the theme,
+          // NOT from the DefaultTextStyle/IconTheme above — so without
+          // this, ListTile rows inside a black panel get dark text
+          // (light theme) on black. Explicit colours on a row still win.
+          child: ListTileTheme(
+            data: const ListTileThemeData(
+              textColor: Color(0xFFF0F2FF),
+              iconColor: Color(0xFFFFD700),
+            ),
+            child: child,
+          ),
+        ),
+      ),
     );
     if (onTap == null) return body;
     return InkWell(
@@ -300,42 +443,32 @@ class TinniPanel extends StatelessWidget {
 }
 
 class DarkVibeXGlobalBackground extends StatelessWidget {
-  const DarkVibeXGlobalBackground({
-    super.key,
-    required this.child,
-  });
+  const DarkVibeXGlobalBackground({super.key, required this.child});
 
-  static const assetPath = 'assets/images/darkvibex_global_bg.webp';
+  /// Family background everywhere (Mr. Wrong, 2026-11-25): the whole
+  /// app uses the SAME background as the Family pages — the
+  /// `family_bg_light.png` image, plain, with NO gold wash and NO
+  /// gold glow ("har jagah aise hi add kar de" + "light purple kar
+  /// de, yellow achha nhi lag raha"). Soft light purple, blended
+  /// like the Family pages. The room paints its own opaque
+  /// background over this (Scaffold backgroundColor `_roomThemeColor`),
+  /// so the room main background is untouched.
+  static const assetPath = 'assets/images/family_bg_light.png';
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
-        decoration: const BoxDecoration(
-          color: TinniPalette.black,
-          image: DecorationImage(
-            image: AssetImage(assetPath),
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
-            filterQuality: FilterQuality.medium,
-          ),
-        ),
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0x2601061A),
-                Color(0x120A0B28),
-                Color(0x42020518),
-              ],
-              stops: [0, .48, 1],
-            ),
-          ),
-          child: child,
-        ),
-      );
+    decoration: const BoxDecoration(
+      image: DecorationImage(
+        image: AssetImage(assetPath),
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+      ),
+    ),
+    child: child,
+  );
 }
 
 class TinniBackground extends StatelessWidget {

@@ -60,7 +60,7 @@ class TopRoomBanner extends StatelessWidget {
     TopBannerKind.gift: [Color(0xFFE91E63), Color(0xFF9C27B0)],
     TopBannerKind.lucky: [Color(0xFFD32F2F), Color(0xFFFF8F00)],
     TopBannerKind.game: [Color(0xFF7B1FA2), Color(0xFF512DA8)],
-    TopBannerKind.rocket: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+    TopBannerKind.rocket: [Color(0xFF7E57C2), Color(0xFF5E35B1)],
     TopBannerKind.vip: [Color(0xFFFFB300), Color(0xFF6A1B9A)],
     TopBannerKind.event: [Color(0xFFFF6D00), Color(0xFFE65100)],
   };
@@ -72,7 +72,7 @@ class TopRoomBanner extends StatelessWidget {
   /// pink → orange → gold.
   static List<Color> rocketGradientForLevel(int level) {
     return switch (level) {
-      <= 3 => [const Color(0xFF1565C0), const Color(0xFF0D47A1)],
+      <= 3 => [const Color(0xFF7E57C2), const Color(0xFF5E35B1)],
       <= 6 => [const Color(0xFF00897B), const Color(0xFF00695C)],
       <= 9 => [const Color(0xFF7B1FA2), const Color(0xFF4A148C)],
       <= 12 => [const Color(0xFFE91E63), const Color(0xFF880E4F)],

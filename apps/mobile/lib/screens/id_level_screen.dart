@@ -125,7 +125,7 @@ class _IdLevelScreenState extends State<IdLevelScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Icon(Icons.military_tech_rounded, color: Color(0xFF50D8FF), size: 34),
+            const Icon(Icons.military_tech_rounded, color: Color(0xFF9D7BFF), size: 34),
             const SizedBox(width: 10),
             Expanded(child: Text('LV. $level', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900))),
             Text('$total total EXP', style: const TextStyle(color: Colors.white70)),
@@ -215,7 +215,7 @@ class _SourceRow extends StatelessWidget {
           Icon(icon, color: TinniPalette.gold, size: 20),
           const SizedBox(width: 10),
           Expanded(child: Text(title)),
-          Text(detail, style: const TextStyle(color: Color(0xFF50D8FF), fontSize: 12)),
+          Text(detail, style: const TextStyle(color: Color(0xFF9D7BFF), fontSize: 12)),
         ]),
       );
 }

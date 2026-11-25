@@ -36,9 +36,9 @@ class SharingScreen extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: formatPublicUserId(roomId)));
     await _record('copy');
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Room ID copied.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Room ID copied.')));
   }
 
   Future<void> _launchOrShare(
@@ -65,16 +65,8 @@ class SharingScreen extends StatelessWidget {
     );
 
     final actions = <(String, IconData, Future<void> Function())>[
-      (
-        'Android Share',
-        Icons.share_rounded,
-        () => _systemShare('system'),
-      ),
-      (
-        'Copy Room ID',
-        Icons.link_rounded,
-        () => _copy(context),
-      ),
+      ('Android Share', Icons.share_rounded, () => _systemShare('system')),
+      ('Copy Room ID', Icons.link_rounded, () => _copy(context)),
       (
         'WhatsApp',
         Icons.chat_rounded,
@@ -90,21 +82,11 @@ class SharingScreen extends StatelessWidget {
         () => _launchOrShare(
           context,
           platform: 'telegram',
-          uri: Uri.parse(
-            'https://t.me/share/url?url=&text=$telegramText',
-          ),
+          uri: Uri.parse('https://t.me/share/url?url=&text=$telegramText'),
         ),
       ),
-      (
-        'Facebook',
-        Icons.facebook_rounded,
-        () => _systemShare('facebook'),
-      ),
-      (
-        'Instagram',
-        Icons.camera_alt_rounded,
-        () => _systemShare('instagram'),
-      ),
+      ('Facebook', Icons.facebook_rounded, () => _systemShare('facebook')),
+      ('Instagram', Icons.camera_alt_rounded, () => _systemShare('instagram')),
       (
         'Snapchat',
         Icons.photo_camera_front_rounded,
@@ -141,17 +123,13 @@ class SharingScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  TinniGlowIcon(
-                    icon: item.$2,
-                    size: 30,
-                    boxSize: 54,
-                  ),
+                  TinniGlowIcon(icon: item.$2, size: 30, boxSize: 54),
                   const SizedBox(height: 8),
                   Text(
                     item.$1,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: TinniPalette.cream,
+                      color: const Color(0xFFFFD700),
                       fontWeight: FontWeight.w900,
                     ),
                   ),

@@ -118,98 +118,90 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: const Text(
-            'Trends',
-            style: TextStyle(
-              color: TinniPalette.gold,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          actions: [
-            IconButton(
-              tooltip: 'New Trend',
-              onPressed: posting ? null : _post,
-              icon: const Icon(Icons.add_rounded),
-            ),
-          ],
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(
+      title: const Text(
+        'Trends',
+        style: TextStyle(color: TinniPalette.gold, fontWeight: FontWeight.w900),
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'New Trend',
+          onPressed: posting ? null : _post,
+          icon: const Icon(Icons.add_rounded),
         ),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
-                    children: [
-                      TinniPanel(
-                        onTap: posting ? null : _post,
-                        child: const Row(
-                          children: [
-                            TinniGlowIcon(
-                              icon: Icons.auto_awesome_rounded,
-                              size: 22,
-                              boxSize: 42,
-                            ),
-                            SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Share something on your profile…',
-                                style: TextStyle(
-                                  color: TinniPalette.muted,
+      ],
+    ),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                children: [
+                  TinniPanel(
+                    onTap: posting ? null : _post,
+                    child: const Row(
+                      children: [
+                        TinniGlowIcon(
+                          icon: Icons.auto_awesome_rounded,
+                          size: 22,
+                          boxSize: 42,
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Share something on your profile…',
+                            style: TextStyle(color: const Color(0xFFF0F2FF)),
+                          ),
+                        ),
+                        Icon(Icons.edit_rounded, color: TinniPalette.gold),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (trends.isEmpty)
+                    const TinniPanel(
+                      child: Text(
+                        'No Trends yet.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: const Color(0xFFF0F2FF)),
+                      ),
+                    )
+                  else
+                    for (final row in trends)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TinniPanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                row['text']?.toString() ?? '',
+                                style: const TextStyle(
+                                  color: const Color(0xFFFFD700),
+                                  fontSize: 14,
                                 ),
                               ),
-                            ),
-                            Icon(
-                              Icons.edit_rounded,
-                              color: TinniPalette.gold,
-                            ),
-                          ],
+                              const SizedBox(height: 8),
+                              Text(
+                                _time(row['created_at']),
+                                style: const TextStyle(
+                                  color: const Color(0xFFF0F2FF),
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      if (trends.isEmpty)
-                        const TinniPanel(
-                          child: Text(
-                            'No Trends yet.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: TinniPalette.muted),
-                          ),
-                        )
-                      else
-                        for (final row in trends)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: TinniPanel(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    row['text']?.toString() ?? '',
-                                    style: const TextStyle(
-                                      color: TinniPalette.cream,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _time(row['created_at']),
-                                    style: const TextStyle(
-                                      color: TinniPalette.muted,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                    ],
-                  ),
-                ),
-        ),
-      );
+                ],
+              ),
+            ),
+    ),
+  );
 }
 
 class WealthLevelScreen extends StatefulWidget {
@@ -231,7 +223,9 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
   }
 
   Future<void> _load() async {
-    final value = await widget.state.backend.socialStats(userId: widget.state.userId);
+    final value = await widget.state.backend.socialStats(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
     setState(() {
       stats = value?['stats'] is Map
@@ -242,7 +236,8 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
   }
 
   String _compact(int value) {
-    if (value >= 1000000000) return '${(value / 1000000000).toStringAsFixed(1)}B';
+    if (value >= 1000000000)
+      return '${(value / 1000000000).toStringAsFixed(1)}B';
     if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
     if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
     return value.toString();
@@ -256,7 +251,8 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
         ? Map<String, dynamic>.from(stats['wealth'] as Map)
         : const <String, dynamic>{};
     final level = int.tryParse(wealth['level']?.toString() ?? '') ?? 0;
-    final sent = int.tryParse(stats['lifetime_sent_coins']?.toString() ?? '') ?? 0;
+    final sent =
+        int.tryParse(stats['lifetime_sent_coins']?.toString() ?? '') ?? 0;
     final next = int.tryParse(wealth['next_threshold']?.toString() ?? '');
     final dollar = stats['dollar_level'] is Map
         ? Map<String, dynamic>.from(stats['dollar_level'] as Map)
@@ -264,8 +260,7 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
     final dollarLevel = int.tryParse(dollar['level']?.toString() ?? '') ?? 0;
     final rechargedCents =
         int.tryParse(stats['total_recharged_usd_cents']?.toString() ?? '') ?? 0;
-    final nextDollar =
-        int.tryParse(dollar['next_threshold']?.toString() ?? '');
+    final nextDollar = int.tryParse(dollar['next_threshold']?.toString() ?? '');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -303,7 +298,7 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
                                 Text(
                                   'Lifetime sending: ${_compact(sent)} coins',
                                   style: const TextStyle(
-                                    color: TinniPalette.muted,
+                                    color: const Color(0xFFF0F2FF),
                                   ),
                                 ),
                               ],
@@ -335,8 +330,7 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
                           const SizedBox(width: 13),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'LV.$dollarLevel',
@@ -349,7 +343,7 @@ class _WealthLevelScreenState extends State<WealthLevelScreen> {
                                 Text(
                                   'Lifetime recharge: ${_dollars(rechargedCents)}',
                                   style: const TextStyle(
-                                    color: TinniPalette.muted,
+                                    color: const Color(0xFFF0F2FF),
                                   ),
                                 ),
                               ],
@@ -396,7 +390,9 @@ class _MedalOfHonorScreenState extends State<MedalOfHonorScreen> {
   }
 
   Future<void> _load() async {
-    final values = await widget.state.backend.medals(userId: widget.state.userId);
+    final values = await widget.state.backend.medals(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
     setState(() {
       medals = values;
@@ -412,54 +408,54 @@ class _MedalOfHonorScreenState extends State<MedalOfHonorScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Medal of Honor')),
-        body: TinniBackground(
-          child: RefreshIndicator(
-            onRefresh: _load,
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(14),
-                    children: [
-                      if (medals.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 80),
-                          child: Center(
-                            child: Text(
-                              'No medals yet',
-                              style: TextStyle(color: TinniPalette.muted),
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('Medal of Honor')),
+    body: TinniBackground(
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(14),
+                children: [
+                  if (medals.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 80),
+                      child: Center(
+                        child: Text(
+                          'No medals yet',
+                          style: TextStyle(color: const Color(0xFF6E6880)),
+                        ),
+                      ),
+                    ),
+                  for (final medal in medals)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TinniPanel(
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: _color(medal['color']?.toString()),
+                            child: const Icon(
+                              Icons.workspace_premium_rounded,
+                              color: Colors.white,
+                            ),
+                          ),
+                          title: Text(
+                            medal['name']?.toString() ?? 'Medal',
+                            style: const TextStyle(
+                              color: const Color(0xFFFFD700),
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                      for (final medal in medals)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: TinniPanel(
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: _color(medal['color']?.toString()),
-                                child: const Icon(
-                                  Icons.workspace_premium_rounded,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              title: Text(
-                                medal['name']?.toString() ?? 'Medal',
-                                style: const TextStyle(
-                                  color: TinniPalette.cream,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-          ),
-        ),
-      );
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    ),
+  );
 }
 
 class TaskScreen extends StatefulWidget {
@@ -482,7 +478,9 @@ class _TaskScreenState extends State<TaskScreen> {
   }
 
   Future<void> _load() async {
-    final values = await widget.state.backend.mineTasks(userId: widget.state.userId);
+    final values = await widget.state.backend.mineTasks(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
     setState(() {
       tasks = values;
@@ -517,7 +515,8 @@ class _TaskScreenState extends State<TaskScreen> {
         content: Text(
           result?['ok'] == true
               ? 'Task reward claimed'
-              : (result?['error']?.toString() ?? 'Task reward could not be claimed'),
+              : (result?['error']?.toString() ??
+                    'Task reward could not be claimed'),
         ),
       ),
     );
@@ -525,66 +524,65 @@ class _TaskScreenState extends State<TaskScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Task')),
-        body: TinniBackground(
-          child: RefreshIndicator(
-            onRefresh: _load,
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      for (final task in tasks)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: TinniPanel(
-                            child: ListTile(
-                              leading: TinniGlowIcon(
-                                icon: task['completed'] == true
-                                    ? Icons.task_alt_rounded
-                                    : Icons.bolt_rounded,
-                                size: 18,
-                                boxSize: 36,
-                              ),
-                              title: Text(
-                                task['title']?.toString() ?? 'Task',
-                                style: const TextStyle(
-                                  color: TinniPalette.cream,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              subtitle: Text(
-                                'Reward: ${task['reward_coins'] ?? 0} coins',
-                              ),
-                              trailing: task['claimed'] == true
-                                  ? const Text(
-                                      'Claimed',
-                                      style: TextStyle(
-                                        color: TinniPalette.gold,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    )
-                                  : FilledButton(
-                                      onPressed: task['completed'] == true &&
-                                              claiming == null
-                                          ? () => _claim(task)
-                                          : null,
-                                      child: Text(
-                                        claiming == task['id']
-                                            ? '…'
-                                            : 'Claim',
-                                      ),
-                                    ),
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('Task')),
+    body: TinniBackground(
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                children: [
+                  for (final task in tasks)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TinniPanel(
+                        child: ListTile(
+                          leading: TinniGlowIcon(
+                            icon: task['completed'] == true
+                                ? Icons.task_alt_rounded
+                                : Icons.bolt_rounded,
+                            size: 18,
+                            boxSize: 36,
+                          ),
+                          title: Text(
+                            task['title']?.toString() ?? 'Task',
+                            style: const TextStyle(
+                              color: const Color(0xFFFFD700),
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
+                          subtitle: Text(
+                            'Reward: ${task['reward_coins'] ?? 0} coins',
+                          ),
+                          trailing: task['claimed'] == true
+                              ? const Text(
+                                  'Claimed',
+                                  style: TextStyle(
+                                    color: TinniPalette.gold,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                )
+                              : FilledButton(
+                                  onPressed:
+                                      task['completed'] == true &&
+                                          claiming == null
+                                      ? () => _claim(task)
+                                      : null,
+                                  child: Text(
+                                    claiming == task['id'] ? '…' : 'Claim',
+                                  ),
+                                ),
                         ),
-                    ],
-                  ),
-          ),
-        ),
-      );
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    ),
+  );
 }
 
 class FeedbackScreen extends StatefulWidget {
@@ -624,9 +622,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<void> _load() async {
-    final values = await _backend.feedbackHistory(
-      userId: widget.state.userId,
-    );
+    final values = await _backend.feedbackHistory(userId: widget.state.userId);
     if (!mounted) return;
     setState(() {
       history = values;
@@ -715,7 +711,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     if (!mounted) return;
     setState(() => sending = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'Feedback submitted' : 'Feedback could not be submitted')),
+      SnackBar(
+        content: Text(
+          ok ? 'Feedback submitted' : 'Feedback could not be submitted',
+        ),
+      ),
     );
   }
 
@@ -728,149 +728,148 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Feedback')),
-        body: TinniBackground(
-          child: ListView(
-            padding: const EdgeInsets.all(14),
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('Feedback')),
+    body: TinniBackground(
+      child: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: category,
+            decoration: const InputDecoration(labelText: 'Category'),
+            items: const [
+              DropdownMenuItem(value: 'General', child: Text('General')),
+              DropdownMenuItem(value: 'Bug', child: Text('Bug')),
+              DropdownMenuItem(value: 'Account', child: Text('Account')),
+              DropdownMenuItem(value: 'Room', child: Text('Room')),
+              DropdownMenuItem(value: 'Payment', child: Text('Payment')),
+              DropdownMenuItem(value: 'Safety', child: Text('Safety')),
+            ],
+            onChanged: sending
+                ? null
+                : (value) => setState(() => category = value ?? 'General'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: controller,
+            maxLines: 5,
+            maxLength: 2000,
+            decoration: const InputDecoration(
+              labelText: 'Tell us what happened',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
             children: [
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                decoration: const InputDecoration(labelText: 'Category'),
-                items: const [
-                  DropdownMenuItem(value: 'General', child: Text('General')),
-                  DropdownMenuItem(value: 'Bug', child: Text('Bug')),
-                  DropdownMenuItem(value: 'Account', child: Text('Account')),
-                  DropdownMenuItem(value: 'Room', child: Text('Room')),
-                  DropdownMenuItem(value: 'Payment', child: Text('Payment')),
-                  DropdownMenuItem(value: 'Safety', child: Text('Safety')),
-                ],
-                onChanged: sending
+              OutlinedButton.icon(
+                key: const Key('feedback-attach-screenshot'),
+                onPressed: (sending || uploadingScreenshot)
                     ? null
-                    : (value) => setState(() => category = value ?? 'General'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: controller,
-                maxLines: 5,
-                maxLength: 2000,
-                decoration: const InputDecoration(
-                  labelText: 'Tell us what happened',
-                  alignLabelWithHint: true,
+                    : _pickScreenshot,
+                icon: const Icon(Icons.image_rounded),
+                label: Text(
+                  uploadingScreenshot
+                      ? 'Uploading…'
+                      : screenshotKey == null
+                      ? 'Attach screenshot'
+                      : 'Change screenshot',
                 ),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    key: const Key('feedback-attach-screenshot'),
-                    onPressed:
-                        (sending || uploadingScreenshot) ? null : _pickScreenshot,
-                    icon: const Icon(Icons.image_rounded),
-                    label: Text(
-                      uploadingScreenshot
-                          ? 'Uploading…'
-                          : screenshotKey == null
-                              ? 'Attach screenshot'
-                              : 'Change screenshot',
+              if (screenshotBytes != null) ...[
+                const SizedBox(width: 10),
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        screenshotBytes!,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                      ),
                     ),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: GestureDetector(
+                        key: const Key('feedback-remove-screenshot'),
+                        onTap: () => setState(() {
+                          screenshotBytes = null;
+                          screenshotKey = null;
+                        }),
+                        child: const CircleAvatar(
+                          radius: 10,
+                          child: Icon(Icons.close_rounded, size: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: sending ? null : _submit,
+            icon: const Icon(Icons.send_rounded),
+            label: Text(sending ? 'Submitting…' : 'Submit'),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'My feedback',
+            style: TextStyle(
+              color: TinniPalette.gold,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (loading) const LinearProgressIndicator(),
+          for (final row in history)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: TinniPanel(
+                child: ListTile(
+                  title: Text(row['category']?.toString() ?? 'General'),
+                  subtitle: Text(
+                    '${row['message'] ?? ''}\n${_date(row['created_at'])}',
                   ),
-                  if (screenshotBytes != null) ...[
-                    const SizedBox(width: 10),
-                    Stack(
-                      children: [
-                        ClipRRect(
+                  isThreeLine: true,
+                  leading: (row['screenshot_key']?.toString() ?? '').isEmpty
+                      ? null
+                      : ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            screenshotBytes!,
+                          child: Image.network(
+                            _backend.userFileUrl(
+                              row['screenshot_key'].toString(),
+                            ),
+                            headers: BackendApi.sessionToken == null
+                                ? null
+                                : {
+                                    'Authorization':
+                                        'Bearer ${BackendApi.sessionToken!}',
+                                  },
                             width: 56,
                             height: 56,
                             fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const Icon(Icons.broken_image_rounded),
                           ),
                         ),
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: GestureDetector(
-                            key: const Key('feedback-remove-screenshot'),
-                            onTap: () => setState(() {
-                              screenshotBytes = null;
-                              screenshotKey = null;
-                            }),
-                            child: const CircleAvatar(
-                              radius: 10,
-                              child: Icon(Icons.close_rounded, size: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                onPressed: sending ? null : _submit,
-                icon: const Icon(Icons.send_rounded),
-                label: Text(sending ? 'Submitting…' : 'Submit'),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'My feedback',
-                style: TextStyle(
-                  color: TinniPalette.gold,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              if (loading) const LinearProgressIndicator(),
-              for (final row in history)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: TinniPanel(
-                    child: ListTile(
-                      title: Text(row['category']?.toString() ?? 'General'),
-                      subtitle: Text(
-                        '${row['message'] ?? ''}\n${_date(row['created_at'])}',
-                      ),
-                      isThreeLine: true,
-                      leading:
-                          (row['screenshot_key']?.toString() ?? '').isEmpty
-                              ? null
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(
-                                    _backend.userFileUrl(
-                                      row['screenshot_key'].toString(),
-                                    ),
-                                    headers: BackendApi.sessionToken == null
-                                        ? null
-                                        : {
-                                            'Authorization':
-                                                'Bearer ${BackendApi.sessionToken!}',
-                                          },
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => const Icon(
-                                      Icons.broken_image_rounded,
-                                    ),
-                                  ),
-                                ),
-                      trailing: Text(
-                        row['status']?.toString() ?? 'submitted',
-                        style: const TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 11,
-                        ),
-                      ),
+                  trailing: Text(
+                    row['status']?.toString() ?? 'submitted',
+                    style: const TextStyle(
+                      color: TinniPalette.gold,
+                      fontSize: 11,
                     ),
                   ),
                 ),
-            ],
-          ),
-        ),
-      );
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 class FamilyScreen extends StatefulWidget {
@@ -898,10 +897,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
   // login like the other app — "Today", "1 day ago", "Never".
   String _lastLoginText(int lastSeenAt) {
     if (lastSeenAt <= 0) return 'Never logged in';
-    final days =
-        DateTime.now().difference(
-          DateTime.fromMillisecondsSinceEpoch(lastSeenAt),
-        ).inDays;
+    final days = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(lastSeenAt))
+        .inDays;
     if (days <= 0) return 'Today';
     if (days == 1) return '1 day ago';
     return '$days days ago';
@@ -914,9 +912,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _load() async {
-    final value = await _backend.familyState(
-      userId: widget.state.userId,
-    );
+    final value = await _backend.familyState(userId: widget.state.userId);
     final rawFamily = value?['family'];
     final rawMembers = value?['members'];
     final rawRequests = value?['join_requests'];
@@ -925,13 +921,22 @@ class _FamilyScreenState extends State<FamilyScreen> {
     setState(() {
       family = rawFamily is Map ? Map<String, dynamic>.from(rawFamily) : null;
       members = rawMembers is List
-          ? rawMembers.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          ? rawMembers
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : const [];
       requests = rawRequests is List
-          ? rawRequests.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          ? rawRequests
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : const [];
       available = rawAvailable is List
-          ? rawAvailable.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          ? rawAvailable
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : const [];
       loading = false;
     });
@@ -951,18 +956,28 @@ class _FamilyScreenState extends State<FamilyScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Family name')),
+            TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'Family name'),
+            ),
             const SizedBox(height: 8),
-            TextField(controller: tag, maxLength: 12, decoration: const InputDecoration(labelText: 'Family tag')),
+            TextField(
+              controller: tag,
+              maxLength: 12,
+              decoration: const InputDecoration(labelText: 'Family tag'),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              (name.text.trim(), tag.text.trim()),
-            ),
+            onPressed: () => Navigator.pop(dialogContext, (
+              name.text.trim(),
+              tag.text.trim(),
+            )),
             child: const Text('Create'),
           ),
         ],
@@ -992,29 +1007,41 @@ class _FamilyScreenState extends State<FamilyScreen> {
           result.joined
               ? 'Joined the family!'
               : result.ok
-                  ? 'Join request sent'
-                  : 'Could not send request',
+              ? 'Join request sent'
+              : 'Could not send request',
         ),
       ),
     );
   }
 
   Future<void> _notice() async {
-    final controller = TextEditingController(text: family?['notice']?.toString() ?? '');
+    final controller = TextEditingController(
+      text: family?['notice']?.toString() ?? '',
+    );
     final text = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Family notice'),
         content: TextField(controller: controller, maxLength: 300, maxLines: 4),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
     controller.dispose();
     if (text == null) return;
-    if (await _backend.updateFamilyNotice(userId: widget.state.userId, notice: text)) {
+    if (await _backend.updateFamilyNotice(
+      userId: widget.state.userId,
+      notice: text,
+    )) {
       await _load();
     }
   }
@@ -1094,74 +1121,78 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Family')),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: family == null ? _noFamily() : _familyHome(),
-                ),
-        ),
-      );
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('Family')),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: family == null ? _noFamily() : _familyHome(),
+            ),
+    ),
+  );
 
   Widget _noFamily() => ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(14),
-        children: [
-          TinniPanel(
-            onTap: _create,
-            child: const Row(
-              children: [
-                TinniGlowIcon(icon: Icons.add_home_work_rounded, size: 26, boxSize: 50),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Create Family',
-                    style: TextStyle(
-                      color: TinniPalette.cream,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded, color: TinniPalette.gold),
-              ],
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.all(14),
+    children: [
+      TinniPanel(
+        onTap: _create,
+        child: const Row(
+          children: [
+            TinniGlowIcon(
+              icon: Icons.add_home_work_rounded,
+              size: 26,
+              boxSize: 50,
             ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Family Ranking',
-            style: TextStyle(
-              color: TinniPalette.gold,
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (var index = 0; index < available.length; index++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: TinniPanel(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: TinniPalette.panel2,
-                    child: Text('${index + 1}'),
-                  ),
-                  title: Text(available[index]['name']?.toString() ?? 'Family'),
-                  subtitle: Text(
-                    '${available[index]['tag'] ?? ''} • ${available[index]['member_count'] ?? 0} members',
-                  ),
-                  trailing: FilledButton(
-                    onPressed: () => _join(available[index]['id'].toString()),
-                    child: const Text('Join'),
-                  ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Create Family',
+                style: TextStyle(
+                  color: const Color(0xFFFFD700),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
-        ],
-      );
+            Icon(Icons.chevron_right_rounded, color: TinniPalette.gold),
+          ],
+        ),
+      ),
+      const SizedBox(height: 14),
+      const Text(
+        'Family Ranking',
+        style: TextStyle(
+          color: TinniPalette.gold,
+          fontSize: 17,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      const SizedBox(height: 8),
+      for (var index = 0; index < available.length; index++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TinniPanel(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: TinniPalette.panel2,
+                child: Text('${index + 1}'),
+              ),
+              title: Text(available[index]['name']?.toString() ?? 'Family'),
+              subtitle: Text(
+                '${available[index]['tag'] ?? ''} • ${available[index]['member_count'] ?? 0} members',
+              ),
+              trailing: FilledButton(
+                onPressed: () => _join(available[index]['id'].toString()),
+                child: const Text('Join'),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 
   Widget _familyHome() {
     final role = family?['my_role']?.toString() ?? 'member';
@@ -1184,7 +1215,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ),
               Text(
                 '${family?['tag'] ?? ''} • LV.${family?['level'] ?? 1} • ${members.length} members',
-                style: const TextStyle(color: TinniPalette.muted),
+                style: const TextStyle(color: const Color(0xFFF0F2FF)),
               ),
               const SizedBox(height: 9),
               Text(family?['notice']?.toString() ?? ''),
@@ -1275,11 +1306,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
           const SizedBox(height: 14),
           const Text(
             'Join requests',
-            style: TextStyle(color: TinniPalette.gold, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              color: TinniPalette.gold,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           for (final row in requests)
             ListTile(
-              title: Text(row['display_name']?.toString() ?? row['user_id'].toString()),
+              title: Text(
+                row['display_name']?.toString() ?? row['user_id'].toString(),
+              ),
               trailing: Wrap(
                 children: [
                   IconButton(
@@ -1311,7 +1347,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
         const SizedBox(height: 14),
         const Text(
           'Members',
-          style: TextStyle(color: TinniPalette.gold, fontWeight: FontWeight.w900),
+          style: TextStyle(
+            color: TinniPalette.gold,
+            fontWeight: FontWeight.w900,
+          ),
         ),
         for (final member in members)
           TinniPanel(
@@ -1319,52 +1358,61 @@ class _FamilyScreenState extends State<FamilyScreen> {
               color: Colors.transparent,
               child: ListTile(
                 leading: CircleAvatar(
-                backgroundImage: member['avatar_key']?.toString().isNotEmpty == true
-                    ? NetworkImage(
-                        _backend.fileUrl(member['avatar_key'].toString()),
-                        headers: _backend.fileHeaders,
+                  backgroundImage:
+                      member['avatar_key']?.toString().isNotEmpty == true
+                      ? NetworkImage(
+                          _backend.fileUrl(member['avatar_key'].toString()),
+                          headers: _backend.fileHeaders,
+                        )
+                      : null,
+                  child: member['avatar_key']?.toString().isNotEmpty == true
+                      ? null
+                      : const Icon(Icons.person_rounded),
+                ),
+                title: Text(member['display_name']?.toString() ?? 'User'),
+                subtitle: Text(
+                  [
+                    member['role']?.toString() ?? 'member',
+                    'Coins: ${formatFamilyCoins(_asInt(member['received_coins']))}',
+                    _lastLoginText(_asInt(member['last_seen_at'])),
+                  ].join(' • '),
+                ),
+                trailing:
+                    canManage &&
+                        member['user_id']?.toString() != widget.state.userId &&
+                        member['role']?.toString() != 'leader'
+                    ? PopupMenuButton<String>(
+                        onSelected: (action) async {
+                          if (action == 'admin') {
+                            await _backend.setFamilyAdmin(
+                              userId: widget.state.userId,
+                              targetUserId: member['user_id'].toString(),
+                              admin: member['role'] != 'admin',
+                            );
+                          } else if (action == 'remove') {
+                            await _backend.removeFamilyMember(
+                              userId: widget.state.userId,
+                              targetUserId: member['user_id'].toString(),
+                            );
+                          }
+                          await _load();
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: 'admin',
+                            child: Text(
+                              member['role'] == 'admin'
+                                  ? 'Remove admin'
+                                  : 'Make admin',
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Text('Remove member'),
+                          ),
+                        ],
                       )
                     : null,
-                child: member['avatar_key']?.toString().isNotEmpty == true
-                    ? null
-                    : const Icon(Icons.person_rounded),
-              ),
-              title: Text(member['display_name']?.toString() ?? 'User'),
-              subtitle: Text(
-                [
-                  member['role']?.toString() ?? 'member',
-                  'Coins: ${formatFamilyCoins(_asInt(member['received_coins']))}',
-                  _lastLoginText(_asInt(member['last_seen_at'])),
-                ].join(' • '),
-              ),
-              trailing: canManage &&
-                      member['user_id']?.toString() != widget.state.userId &&
-                      member['role']?.toString() != 'leader'
-                  ? PopupMenuButton<String>(
-                      onSelected: (action) async {
-                        if (action == 'admin') {
-                          await _backend.setFamilyAdmin(
-                            userId: widget.state.userId,
-                            targetUserId: member['user_id'].toString(),
-                            admin: member['role'] != 'admin',
-                          );
-                        } else if (action == 'remove') {
-                          await _backend.removeFamilyMember(
-                            userId: widget.state.userId,
-                            targetUserId: member['user_id'].toString(),
-                          );
-                        }
-                        await _load();
-                      },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'admin',
-                          child: Text(member['role'] == 'admin' ? 'Remove admin' : 'Make admin'),
-                        ),
-                        const PopupMenuItem(value: 'remove', child: Text('Remove member')),
-                      ],
-                    )
-                  : null,
               ),
             ),
           ),
@@ -1406,10 +1454,12 @@ class _RenameFamilyDialog extends StatefulWidget {
 }
 
 class _RenameFamilyDialogState extends State<_RenameFamilyDialog> {
-  late final TextEditingController _name =
-      TextEditingController(text: widget.initialName);
-  late final TextEditingController _tag =
-      TextEditingController(text: widget.initialTag);
+  late final TextEditingController _name = TextEditingController(
+    text: widget.initialName,
+  );
+  late final TextEditingController _tag = TextEditingController(
+    text: widget.initialTag,
+  );
 
   @override
   void dispose() {
@@ -1420,45 +1470,43 @@ class _RenameFamilyDialogState extends State<_RenameFamilyDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Edit name & tag'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _name,
-              maxLength: 20,
-              decoration: const InputDecoration(labelText: 'Family name'),
-            ),
-            Text(widget.nameHint, style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tag,
-              maxLength: 10,
-              decoration: const InputDecoration(labelText: 'Family tag'),
-            ),
-            Text(widget.tagHint, style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            const Text(
-              'Family names and tags can only be changed once a month.',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
+    title: const Text('Edit name & tag'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _name,
+          maxLength: 20,
+          decoration: const InputDecoration(labelText: 'Family name'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('family-rename-save'),
-            onPressed: () => Navigator.pop(
-              context,
-              (_name.text.trim(), _tag.text.trim()),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
-      );
+        Text(widget.nameHint, style: const TextStyle(fontSize: 12)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _tag,
+          maxLength: 10,
+          decoration: const InputDecoration(labelText: 'Family tag'),
+        ),
+        Text(widget.tagHint, style: const TextStyle(fontSize: 12)),
+        const SizedBox(height: 8),
+        const Text(
+          'Family names and tags can only be changed once a month.',
+          style: TextStyle(fontSize: 12),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('family-rename-save'),
+        onPressed: () =>
+            Navigator.pop(context, (_name.text.trim(), _tag.text.trim())),
+        child: const Text('Save'),
+      ),
+    ],
+  );
 }
 
 class CpScreen extends StatefulWidget {
@@ -1497,9 +1545,9 @@ class _CpScreenState extends State<CpScreen> {
 
   void _notice(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text.replaceAll('_', ' '))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text.replaceAll('_', ' '))));
   }
 
   Future<void> _load() async {
@@ -1519,15 +1567,15 @@ class _CpScreenState extends State<CpScreen> {
       cp = next;
       friends = values[0] is List
           ? (values[0] as List)
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(growable: false)
+                .whereType<Map>()
+                .map((row) => Map<String, dynamic>.from(row))
+                .toList(growable: false)
           : const <Map<String, dynamic>>[];
       memories = values[1] is List
           ? (values[1] as List)
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(growable: false)
+                .whereType<Map>()
+                .map((row) => Map<String, dynamic>.from(row))
+                .toList(growable: false)
           : const <Map<String, dynamic>>[];
       loading = false;
     });
@@ -1587,8 +1635,7 @@ class _CpScreenState extends State<CpScreen> {
       );
       if (!mounted) return;
       if (result?['ok'] == true) {
-        final balance =
-            int.tryParse(result?['coin_balance']?.toString() ?? '');
+        final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
         if (balance != null) widget.state.setCoinBalance(balance);
         _notice('CP invitation sent.');
       } else {
@@ -1686,7 +1733,9 @@ class _CpScreenState extends State<CpScreen> {
           memories = const <Map<String, dynamic>>[];
         }
       } else {
-        _notice(result?['error']?.toString() ?? 'CP disconnect response failed');
+        _notice(
+          result?['error']?.toString() ?? 'CP disconnect response failed',
+        );
       }
     } catch (_) {
       _notice('Could not reach the server. Please try again.');
@@ -1708,7 +1757,9 @@ class _CpScreenState extends State<CpScreen> {
       if (result?['ok'] == true && result?['cp'] is Map) {
         setState(() => cp = Map<String, dynamic>.from(result!['cp'] as Map));
       } else {
-        _notice(result?['error']?.toString() ?? 'Heartbeat could not be updated');
+        _notice(
+          result?['error']?.toString() ?? 'Heartbeat could not be updated',
+        );
       }
     } catch (_) {
       _notice('Could not reach the server. Please try again.');
@@ -1727,9 +1778,7 @@ class _CpScreenState extends State<CpScreen> {
           controller: controller,
           maxLength: 500,
           maxLines: 4,
-          decoration: const InputDecoration(
-            hintText: 'Write a CP memory',
-          ),
+          decoration: const InputDecoration(hintText: 'Write a CP memory'),
         ),
         actions: [
           TextButton(
@@ -1737,10 +1786,8 @@ class _CpScreenState extends State<CpScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              controller.text.trim(),
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -1792,7 +1839,7 @@ class _CpScreenState extends State<CpScreen> {
                 child: Text(
                   'No CP memories yet.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: TinniPalette.muted),
+                  style: TextStyle(color: const Color(0xFF6E6880)),
                 ),
               )
             else
@@ -1819,18 +1866,18 @@ class _CpScreenState extends State<CpScreen> {
     final rawOwned = value?['owned'];
     final items = rawItems is List
         ? rawItems
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .where((row) => row['kind']?.toString() == 'ring')
-            .toList(growable: false)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .where((row) => row['kind']?.toString() == 'ring')
+              .toList(growable: false)
         : const <Map<String, dynamic>>[];
     final ownedIds = rawOwned is List
         ? rawOwned
-            .whereType<Map>()
-            .where((row) => row['kind']?.toString() == 'ring')
-            .map((row) => row['item_id']?.toString() ?? '')
-            .where((id) => id.isNotEmpty)
-            .toSet()
+              .whereType<Map>()
+              .where((row) => row['kind']?.toString() == 'ring')
+              .map((row) => row['item_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
         : <String>{};
     final rings = items
         .where((item) => ownedIds.contains(item['id']?.toString()))
@@ -1862,7 +1909,7 @@ class _CpScreenState extends State<CpScreen> {
                 child: Text(
                   'No owned rings yet. Buy a ring from Shop first.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: TinniPalette.muted),
+                  style: TextStyle(color: const Color(0xFF6E6880)),
                 ),
               )
             else
@@ -1873,13 +1920,13 @@ class _CpScreenState extends State<CpScreen> {
                     size: 48,
                     imageProvider:
                         ring['asset_key']?.toString().isNotEmpty == true
-                            ? NetworkImage(
-                                widget.state.backend.fileUrl(
-                                  ring['asset_key'].toString(),
-                                ),
-                                headers: widget.state.backend.fileHeaders,
-                              )
-                            : null,
+                        ? NetworkImage(
+                            widget.state.backend.fileUrl(
+                              ring['asset_key'].toString(),
+                            ),
+                            headers: widget.state.backend.fileHeaders,
+                          )
+                        : null,
                   ),
                   title: Text(
                     ring['name']?.toString() ??
@@ -1896,8 +1943,7 @@ class _CpScreenState extends State<CpScreen> {
                   onTap: selected == ring['id']?.toString()
                       ? null
                       : () async {
-                          final result =
-                              await widget.state.backend.cpSetRing(
+                          final result = await widget.state.backend.cpSetRing(
                             userId: widget.state.userId,
                             ringId: ring['id']?.toString(),
                           );
@@ -1942,10 +1988,7 @@ class _CpScreenState extends State<CpScreen> {
               ),
               SizedBox(height: 14),
               ListTile(
-                leading: Icon(
-                  Icons.favorite_rounded,
-                  color: TinniPalette.gold,
-                ),
+                leading: Icon(Icons.favorite_rounded, color: TinniPalette.gold),
                 title: Text('Become CP'),
                 subtitle: Text(
                   'Invite a mutual friend. The CP invitation costs 20,000,000 coins.',
@@ -1962,20 +2005,14 @@ class _CpScreenState extends State<CpScreen> {
                 ),
               ),
               ListTile(
-                leading: Icon(
-                  Icons.layers_rounded,
-                  color: TinniPalette.gold,
-                ),
+                leading: Icon(Icons.layers_rounded, color: TinniPalette.gold),
                 title: Text('Sending + receiving required'),
                 subtitle: Text(
                   'Both partners must complete the current level target in both directions. Lv.1→2 needs 150M sent and 150M received; Lv.2→3 needs 250M each; every next level adds 100M. After level-up both counters reset to 0.',
                 ),
               ),
               ListTile(
-                leading: Icon(
-                  Icons.diamond_rounded,
-                  color: TinniPalette.gold,
-                ),
+                leading: Icon(Icons.diamond_rounded, color: TinniPalette.gold),
                 title: Text('Ring Cabinet'),
                 subtitle: Text(
                   'An owned ring can be selected for the active CP relationship.',
@@ -2001,24 +2038,29 @@ class _CpScreenState extends State<CpScreen> {
   @override
   Widget build(BuildContext context) {
     final relationState = cp?['state']?.toString();
-    final pendingForMe = relationState == 'pending' &&
+    final pendingForMe =
+        relationState == 'pending' &&
         cp?['requested_by']?.toString() != widget.state.userId;
     final intimacy = int.tryParse(cp?['intimacy']?.toString() ?? '') ?? 0;
     final levelSending =
         int.tryParse(cp?['level_sending']?.toString() ?? '') ?? 0;
     final levelReceiving =
         int.tryParse(cp?['level_receiving']?.toString() ?? '') ?? 0;
-    final next = int.tryParse(cp?['next_level_target']?.toString() ?? '') ??
-        150000000;
-    final sendingProgress =
-        next <= 0 ? 0.0 : (levelSending / next).clamp(0.0, 1.0);
-    final receivingProgress =
-        next <= 0 ? 0.0 : (levelReceiving / next).clamp(0.0, 1.0);
+    final next =
+        int.tryParse(cp?['next_level_target']?.toString() ?? '') ?? 150000000;
+    final sendingProgress = next <= 0
+        ? 0.0
+        : (levelSending / next).clamp(0.0, 1.0);
+    final receivingProgress = next <= 0
+        ? 0.0
+        : (levelReceiving / next).clamp(0.0, 1.0);
     final loveDays = int.tryParse(cp?['love_days']?.toString() ?? '') ?? 0;
     final disconnectState = cp?['disconnect_state']?.toString() ?? 'none';
-    final disconnectIncoming = disconnectState == 'requested' &&
+    final disconnectIncoming =
+        disconnectState == 'requested' &&
         cp?['disconnect_requested_by']?.toString() != widget.state.userId;
-    final disconnectOutgoing = disconnectState == 'requested' &&
+    final disconnectOutgoing =
+        disconnectState == 'requested' &&
         cp?['disconnect_requested_by']?.toString() == widget.state.userId;
     final heartbeatState = cp?['heartbeat_state']?.toString() ?? 'idle';
     final heartbeatChoice = cp?['heartbeat_choice']?.toString() ?? '';
@@ -2078,7 +2120,7 @@ class _CpScreenState extends State<CpScreen> {
                             Text(
                               'CP invitations can only be sent to mutual friends.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: TinniPalette.muted),
+                              style: TextStyle(color: const Color(0xFFF0F2FF)),
                             ),
                           ],
                         ),
@@ -2088,7 +2130,7 @@ class _CpScreenState extends State<CpScreen> {
                         const TinniPanel(
                           child: Text(
                             'No mutual friends available yet.',
-                            style: TextStyle(color: TinniPalette.muted),
+                            style: TextStyle(color: const Color(0xFFF0F2FF)),
                           ),
                         )
                       else
@@ -2099,34 +2141,34 @@ class _CpScreenState extends State<CpScreen> {
                               onTap: busy
                                   ? null
                                   : () => _requestTo(
-                                        friend['id']?.toString() ?? '',
-                                      ),
+                                      friend['id']?.toString() ?? '',
+                                    ),
                               child: Row(
                                 children: [
                                   CircleAvatar(
                                     backgroundColor: TinniPalette.panel2,
                                     backgroundImage:
                                         friend['avatar_key']
-                                                    ?.toString()
-                                                    .isNotEmpty ==
-                                                true
-                                            ? NetworkImage(
-                                                widget.state.backend.fileUrl(
-                                                  friend['avatar_key']
-                                                      .toString(),
-                                                ),
-                                                headers: widget.state.backend
-                                                    .fileHeaders,
-                                              )
-                                            : null,
-                                    child: friend['avatar_key']
+                                                ?.toString()
+                                                .isNotEmpty ==
+                                            true
+                                        ? NetworkImage(
+                                            widget.state.backend.fileUrl(
+                                              friend['avatar_key'].toString(),
+                                            ),
+                                            headers: widget
+                                                .state
+                                                .backend
+                                                .fileHeaders,
+                                          )
+                                        : null,
+                                    child:
+                                        friend['avatar_key']
                                                 ?.toString()
                                                 .isNotEmpty ==
                                             true
                                         ? null
-                                        : const Icon(
-                                            Icons.person_rounded,
-                                          ),
+                                        : const Icon(Icons.person_rounded),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -2138,14 +2180,14 @@ class _CpScreenState extends State<CpScreen> {
                                           friend['display_name']?.toString() ??
                                               'Friend',
                                           style: const TextStyle(
-                                            color: TinniPalette.cream,
+                                            color: const Color(0xFFFFD700),
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
                                         Text(
                                           'ID ${formatPublicUserId(friend['public_id'])}',
                                           style: const TextStyle(
-                                            color: TinniPalette.muted,
+                                            color: const Color(0xFFF0F2FF),
                                             fontSize: 10,
                                           ),
                                         ),
@@ -2177,18 +2219,26 @@ class _CpScreenState extends State<CpScreen> {
                                         CircleAvatar(
                                           radius: 34,
                                           backgroundColor: TinniPalette.panel2,
-                                          backgroundImage: widget.state.avatarKey
+                                          backgroundImage:
+                                              widget
+                                                      .state
+                                                      .avatarKey
                                                       ?.isNotEmpty ==
                                                   true
                                               ? NetworkImage(
                                                   widget.state.backend.fileUrl(
                                                     widget.state.avatarKey!,
                                                   ),
-                                                  headers: widget.state.backend
+                                                  headers: widget
+                                                      .state
+                                                      .backend
                                                       .fileHeaders,
                                                 )
                                               : null,
-                                          child: widget.state.avatarKey
+                                          child:
+                                              widget
+                                                      .state
+                                                      .avatarKey
                                                       ?.isNotEmpty ==
                                                   true
                                               ? null
@@ -2203,14 +2253,14 @@ class _CpScreenState extends State<CpScreen> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
-                                            color: TinniPalette.cream,
+                                            color: const Color(0xFFFFD700),
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
                                         Text(
                                           'ID ${formatPublicUserId(widget.state.publicId)}',
                                           style: const TextStyle(
-                                            color: TinniPalette.muted,
+                                            color: const Color(0xFFF0F2FF),
                                             fontSize: 10,
                                           ),
                                         ),
@@ -2220,26 +2270,27 @@ class _CpScreenState extends State<CpScreen> {
                                   SizedBox(
                                     width: 92,
                                     height: 92,
-                                    child: cp?['ring_id']
-                                                ?.toString()
-                                                .isNotEmpty ==
+                                    child:
+                                        cp?['ring_id']?.toString().isNotEmpty ==
                                             true
                                         ? JewelryRingPreview(
-                                            styleId:
-                                                cp!['ring_id'].toString(),
+                                            styleId: cp!['ring_id'].toString(),
                                             size: 92,
-                                            imageProvider: cp![
-                                                            'ring_asset_key']
+                                            imageProvider:
+                                                cp!['ring_asset_key']
                                                         ?.toString()
                                                         .isNotEmpty ==
                                                     true
                                                 ? NetworkImage(
-                                                    widget.state.backend.fileUrl(
-                                                      cp!['ring_asset_key']
-                                                          .toString(),
-                                                    ),
-                                                    headers: widget.state
-                                                        .backend.fileHeaders,
+                                                    widget.state.backend
+                                                        .fileUrl(
+                                                          cp!['ring_asset_key']
+                                                              .toString(),
+                                                        ),
+                                                    headers: widget
+                                                        .state
+                                                        .backend
+                                                        .fileHeaders,
                                                   )
                                                 : null,
                                           )
@@ -2257,17 +2308,18 @@ class _CpScreenState extends State<CpScreen> {
                                           backgroundColor: TinniPalette.panel2,
                                           backgroundImage:
                                               partnerAvatar?.isNotEmpty == true
-                                                  ? NetworkImage(
-                                                      widget.state.backend
-                                                          .fileUrl(
-                                                        partnerAvatar!,
-                                                      ),
-                                                      headers: widget.state
-                                                          .backend.fileHeaders,
-                                                    )
-                                                  : null,
-                                          child: partnerAvatar?.isNotEmpty ==
-                                                  true
+                                              ? NetworkImage(
+                                                  widget.state.backend.fileUrl(
+                                                    partnerAvatar!,
+                                                  ),
+                                                  headers: widget
+                                                      .state
+                                                      .backend
+                                                      .fileHeaders,
+                                                )
+                                              : null,
+                                          child:
+                                              partnerAvatar?.isNotEmpty == true
                                               ? null
                                               : const Icon(
                                                   Icons.person_rounded,
@@ -2280,14 +2332,14 @@ class _CpScreenState extends State<CpScreen> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
-                                            color: TinniPalette.cream,
+                                            color: const Color(0xFFFFD700),
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
                                         Text(
                                           'ID ${_partnerPublicId()}',
                                           style: const TextStyle(
-                                            color: TinniPalette.muted,
+                                            color: const Color(0xFFF0F2FF),
                                             fontSize: 10,
                                           ),
                                         ),
@@ -2302,14 +2354,14 @@ class _CpScreenState extends State<CpScreen> {
                                 backgroundColor: TinniPalette.panel2,
                                 backgroundImage:
                                     partnerAvatar?.isNotEmpty == true
-                                        ? NetworkImage(
-                                            widget.state.backend.fileUrl(
-                                              partnerAvatar!,
-                                            ),
-                                            headers:
-                                                widget.state.backend.fileHeaders,
-                                          )
-                                        : null,
+                                    ? NetworkImage(
+                                        widget.state.backend.fileUrl(
+                                          partnerAvatar!,
+                                        ),
+                                        headers:
+                                            widget.state.backend.fileHeaders,
+                                      )
+                                    : null,
                                 child: partnerAvatar?.isNotEmpty == true
                                     ? null
                                     : const Icon(
@@ -2330,7 +2382,7 @@ class _CpScreenState extends State<CpScreen> {
                               Text(
                                 'ID ${_partnerPublicId()} • ${relationState ?? ''}',
                                 style: const TextStyle(
-                                  color: TinniPalette.muted,
+                                  color: const Color(0xFFF0F2FF),
                                 ),
                               ),
                             ],
@@ -2339,7 +2391,7 @@ class _CpScreenState extends State<CpScreen> {
                               Text(
                                 'CP Lv.${cp?['level'] ?? 1} • Intimacy $intimacy',
                                 style: const TextStyle(
-                                  color: TinniPalette.cream,
+                                  color: const Color(0xFFFFD700),
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -2347,7 +2399,7 @@ class _CpScreenState extends State<CpScreen> {
                               Text(
                                 'Love Days $loveDays',
                                 style: const TextStyle(
-                                  color: TinniPalette.muted,
+                                  color: const Color(0xFFF0F2FF),
                                   fontSize: 11,
                                 ),
                               ),
@@ -2359,7 +2411,7 @@ class _CpScreenState extends State<CpScreen> {
                                     child: Text(
                                       'Sending',
                                       style: TextStyle(
-                                        color: TinniPalette.muted,
+                                        color: const Color(0xFFF0F2FF),
                                         fontSize: 10,
                                       ),
                                     ),
@@ -2375,7 +2427,7 @@ class _CpScreenState extends State<CpScreen> {
                                   Text(
                                     '${_cpCompact(levelSending)} / ${_cpCompact(next)}',
                                     style: const TextStyle(
-                                      color: TinniPalette.muted,
+                                      color: const Color(0xFFF0F2FF),
                                       fontSize: 10,
                                     ),
                                   ),
@@ -2389,7 +2441,7 @@ class _CpScreenState extends State<CpScreen> {
                                     child: Text(
                                       'Receiving',
                                       style: TextStyle(
-                                        color: TinniPalette.muted,
+                                        color: const Color(0xFFF0F2FF),
                                         fontSize: 10,
                                       ),
                                     ),
@@ -2405,7 +2457,7 @@ class _CpScreenState extends State<CpScreen> {
                                   Text(
                                     '${_cpCompact(levelReceiving)} / ${_cpCompact(next)}',
                                     style: const TextStyle(
-                                      color: TinniPalette.muted,
+                                      color: const Color(0xFFF0F2FF),
                                       fontSize: 10,
                                     ),
                                   ),
@@ -2416,11 +2468,10 @@ class _CpScreenState extends State<CpScreen> {
                                 'Both must reach ${_cpCompact(next)} • next level resets both to 0',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
-                                  color: TinniPalette.muted,
+                                  color: const Color(0xFFF0F2FF),
                                   fontSize: 10,
                                 ),
                               ),
-
                             ],
                           ],
                         ),
@@ -2431,16 +2482,14 @@ class _CpScreenState extends State<CpScreen> {
                           children: [
                             Expanded(
                               child: FilledButton(
-                                onPressed:
-                                    busy ? null : () => _respond(true),
+                                onPressed: busy ? null : () => _respond(true),
                                 child: const Text('Accept CP'),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: OutlinedButton(
-                                onPressed:
-                                    busy ? null : () => _respond(false),
+                                onPressed: busy ? null : () => _respond(false),
                                 child: const Text('Reject'),
                               ),
                             ),
@@ -2452,7 +2501,7 @@ class _CpScreenState extends State<CpScreen> {
                         const TinniPanel(
                           child: Text(
                             'CP invitation sent. Waiting for your friend to accept.',
-                            style: TextStyle(color: TinniPalette.muted),
+                            style: TextStyle(color: const Color(0xFFF0F2FF)),
                           ),
                         ),
                       ],
@@ -2513,7 +2562,9 @@ class _CpScreenState extends State<CpScreen> {
                             Expanded(
                               child: TinniPanel(
                                 onTap: heartbeatState == 'idle'
-                                    ? (busy ? null : () => _heartbeatCp('start'))
+                                    ? (busy
+                                          ? null
+                                          : () => _heartbeatCp('start'))
                                     : null,
                                 child: Column(
                                   children: [
@@ -2550,8 +2601,8 @@ class _CpScreenState extends State<CpScreen> {
                                   heartbeatState == 'selecting'
                                       ? 'Choose heartbeat'
                                       : heartbeatState == 'matched'
-                                          ? 'Heartbeat matched ❤️'
-                                          : 'Heartbeat did not match',
+                                      ? 'Heartbeat matched ❤️'
+                                      : 'Heartbeat did not match',
                                   style: const TextStyle(
                                     color: TinniPalette.gold,
                                     fontWeight: FontWeight.w900,
@@ -2562,7 +2613,7 @@ class _CpScreenState extends State<CpScreen> {
                                   'You: ${heartbeatChoice.isEmpty ? 'waiting' : heartbeatChoice} • '
                                   'Partner: ${partnerHeartbeatChoice.isEmpty ? 'waiting' : partnerHeartbeatChoice}',
                                   style: const TextStyle(
-                                    color: TinniPalette.muted,
+                                    color: const Color(0xFFF0F2FF),
                                     fontSize: 11,
                                   ),
                                 ),
@@ -2575,9 +2626,9 @@ class _CpScreenState extends State<CpScreen> {
                                           onPressed: busy
                                               ? null
                                               : () => _heartbeatCp(
-                                                    'choose',
-                                                    choice: 'A',
-                                                  ),
+                                                  'choose',
+                                                  choice: 'A',
+                                                ),
                                           child: const Text('❤️ A'),
                                         ),
                                       ),
@@ -2587,9 +2638,9 @@ class _CpScreenState extends State<CpScreen> {
                                           onPressed: busy
                                               ? null
                                               : () => _heartbeatCp(
-                                                    'choose',
-                                                    choice: 'B',
-                                                  ),
+                                                  'choose',
+                                                  choice: 'B',
+                                                ),
                                           child: const Text('❤️ B'),
                                         ),
                                       ),
@@ -2651,7 +2702,7 @@ class _CpScreenState extends State<CpScreen> {
                           const TinniPanel(
                             child: Text(
                               'Disconnect request sent. Waiting for partner response.',
-                              style: TextStyle(color: TinniPalette.muted),
+                              style: TextStyle(color: const Color(0xFFF0F2FF)),
                             ),
                           )
                         else ...[
@@ -2664,7 +2715,7 @@ class _CpScreenState extends State<CpScreen> {
                                     ? 'Last disconnect request was refused.'
                                     : 'Last disconnect request timed out.',
                                 style: const TextStyle(
-                                  color: TinniPalette.muted,
+                                  color: const Color(0xFF6E6880),
                                   fontSize: 11,
                                 ),
                               ),
@@ -2684,7 +2735,6 @@ class _CpScreenState extends State<CpScreen> {
     );
   }
 }
-
 
 class CpRankingScreen extends StatefulWidget {
   const CpRankingScreen({super.key, required this.state});
@@ -2715,152 +2765,146 @@ class _CpRankingScreenState extends State<CpRankingScreen> {
   }
 
   Widget _tabs() => Row(
-        children: [
-          Expanded(
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    tab == 0 ? TinniPalette.gold : TinniPalette.panel2,
-                foregroundColor:
-                    tab == 0 ? Colors.black : TinniPalette.cream,
-              ),
-              onPressed: () => setState(() => tab = 0),
-              child: const Text('CP Ranking'),
-            ),
+    children: [
+      Expanded(
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: tab == 0 ? TinniPalette.gold : TinniPalette.panel2,
+            foregroundColor: tab == 0 ? Colors.black : TinniPalette.cream,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    tab == 1 ? TinniPalette.gold : TinniPalette.panel2,
-                foregroundColor:
-                    tab == 1 ? Colors.black : TinniPalette.cream,
-              ),
-              onPressed: () => setState(() => tab = 1),
-              child: const Text('CP Square'),
-            ),
+          onPressed: () => setState(() => tab = 0),
+          child: const Text('CP Ranking'),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: tab == 1 ? TinniPalette.gold : TinniPalette.panel2,
+            foregroundColor: tab == 1 ? Colors.black : TinniPalette.cream,
           ),
-        ],
-      );
+          onPressed: () => setState(() => tab = 1),
+          child: const Text('CP Square'),
+        ),
+      ),
+    ],
+  );
 
   Widget _rankingList() => ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
-        itemCount: rows.length,
-        itemBuilder: (context, index) {
-          final row = rows[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: TinniPanel(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: TinniPalette.gold,
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(color: Colors.black),
-                  ),
-                ),
-                title: Text(
-                  '${row['user_a_name'] ?? row['user_a']} ❤️ '
-                  '${row['user_b_name'] ?? row['user_b']}',
-                ),
-                subtitle: Text(
-                  'Lv.${row['level'] ?? 1} • '
-                  'Intimacy ${row['intimacy'] ?? 0}',
-                ),
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+    itemCount: rows.length,
+    itemBuilder: (context, index) {
+      final row = rows[index];
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: TinniPanel(
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: TinniPalette.gold,
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(color: Colors.black),
               ),
             ),
-          );
-        },
+            title: Text(
+              '${row['user_a_name'] ?? row['user_a']} ❤️ '
+              '${row['user_b_name'] ?? row['user_b']}',
+            ),
+            subtitle: Text(
+              'Lv.${row['level'] ?? 1} • '
+              'Intimacy ${row['intimacy'] ?? 0}',
+            ),
+          ),
+        ),
       );
+    },
+  );
 
   Widget _square() => ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
-        itemCount: rows.length,
-        itemBuilder: (context, index) {
-          final row = rows[index];
-          final a = row['user_a_name'] ?? row['user_a'] ?? 'User';
-          final b = row['user_b_name'] ?? row['user_b'] ?? 'User';
-          final createdAt =
-              int.tryParse(row['activated_at']?.toString() ?? '') ??
-                  int.tryParse(row['created_at']?.toString() ?? '') ??
-                  0;
-          final loveDays = createdAt <= 0
-              ? 0
-              : (DateTime.now()
-                          .difference(
-                            DateTime.fromMillisecondsSinceEpoch(createdAt),
-                          )
-                          .inDays +
-                      1)
-                  .clamp(1, 999999);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: TinniPanel(
-              child: Column(
-                children: [
-                  const TinniGlowIcon(
-                    icon: Icons.favorite_rounded,
-                    size: 24,
-                    boxSize: 46,
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    '$a  ❤️  $b',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: TinniPalette.gold,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'CP Lv.${row['level'] ?? 1} • Love Days $loveDays',
-                    style: const TextStyle(
-                      color: TinniPalette.muted,
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'Total intimacy ${row['intimacy'] ?? 0}',
-                    style: const TextStyle(
-                      color: TinniPalette.cream,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+    itemCount: rows.length,
+    itemBuilder: (context, index) {
+      final row = rows[index];
+      final a = row['user_a_name'] ?? row['user_a'] ?? 'User';
+      final b = row['user_b_name'] ?? row['user_b'] ?? 'User';
+      final createdAt =
+          int.tryParse(row['activated_at']?.toString() ?? '') ??
+          int.tryParse(row['created_at']?.toString() ?? '') ??
+          0;
+      final loveDays = createdAt <= 0
+          ? 0
+          : (DateTime.now()
+                        .difference(
+                          DateTime.fromMillisecondsSinceEpoch(createdAt),
+                        )
+                        .inDays +
+                    1)
+                .clamp(1, 999999);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TinniPanel(
+          child: Column(
+            children: [
+              const TinniGlowIcon(
+                icon: Icons.favorite_rounded,
+                size: 24,
+                boxSize: 46,
               ),
-            ),
-          );
-        },
+              const SizedBox(height: 7),
+              Text(
+                '$a  ❤️  $b',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'CP Lv.${row['level'] ?? 1} • Love Days $loveDays',
+                style: const TextStyle(
+                  color: const Color(0xFFF0F2FF),
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Total intimacy ${row['intimacy'] ?? 0}',
+                style: const TextStyle(
+                  color: const Color(0xFFFFD700),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
+    },
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('CP')),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                        child: _tabs(),
-                      ),
-                      const SizedBox(height: 2),
-                      Expanded(
-                        child: tab == 0 ? _rankingList() : _square(),
-                      ),
-                    ],
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('CP')),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                    child: _tabs(),
                   ),
-                ),
-        ),
-      );
+                  const SizedBox(height: 2),
+                  Expanded(child: tab == 0 ? _rankingList() : _square()),
+                ],
+              ),
+            ),
+    ),
+  );
 }

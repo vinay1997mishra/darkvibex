@@ -53,6 +53,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _inviteCodePromptScheduled = false;
   Timer? _cpInvitePollTimer;
   bool _cpInviteChecking = false;
+
   /// True while any HomeShell dialog is open (CP invite, weekly
   /// sign-in, VIP daily reward). All three are scheduled on post-frame
   /// / timers, so without this they stack on top of each other
@@ -192,8 +193,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // bound is asked for the code right after login. Skipping (or
   // joining) records the flag, so it never nags again; the code can
   // still be entered later on the Share screen.
-  static const String _invitePromptFlag =
-      'darkvibex.invite_code_prompt_shown';
+  static const String _invitePromptFlag = 'darkvibex.invite_code_prompt_shown';
 
   Future<void> _scheduleInviteCodePrompt() async {
     if (!mounted || _inviteCodePromptScheduled) return;
@@ -203,8 +203,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_invitePromptFlag) == true) return;
     _inviteCodePromptScheduled = true;
-    final summary =
-        await widget.state.backend.inviteSummary(userId: widget.state.userId);
+    final summary = await widget.state.backend.inviteSummary(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
     if (summary == null) {
       // Server unreachable right now — retry on the next app open.
@@ -268,10 +269,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               ),
               if (error != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  error!,
-                  style: const TextStyle(color: Colors.redAccent),
-                ),
+                Text(error!, style: const TextStyle(color: Colors.redAccent)),
               ],
             ],
           ),
@@ -295,27 +293,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         joining = true;
                         error = null;
                       });
-                      final result =
-                          await widget.state.backend.bindInvitationCode(
-                        userId: widget.state.userId,
-                        invitationCode: code,
-                      );
+                      final result = await widget.state.backend
+                          .bindInvitationCode(
+                            userId: widget.state.userId,
+                            invitationCode: code,
+                          );
                       if (!context.mounted) return;
                       setDialogState(() => joining = false);
                       if (result?['ok'] == true) {
                         Navigator.of(dialogContext).pop(true);
                         return;
                       }
-                      final code_error = result?['error']?.toString() ??
+                      final code_error =
+                          result?['error']?.toString() ??
                           'Unable to join invitation code.';
                       setDialogState(
                         () => error = code_error == 'cannot_invite_self'
                             ? 'You cannot use your own invitation code.'
                             : code_error == 'invite_window_expired'
-                                ? 'Invite codes can only be entered within 48 hours of creating your ID.'
-                                : code_error == 'device_already_used_invite'
-                                    ? 'This device has already used an invite code.'
-                                    : code_error.replaceAll('_', ' '),
+                            ? 'Invite codes can only be entered within 48 hours of creating your ID.'
+                            : code_error == 'device_already_used_invite'
+                            ? 'This device has already used an invite code.'
+                            : code_error.replaceAll('_', ' '),
                       );
                     },
               child: Text(joining ? 'Joining...' : 'Join'),
@@ -431,19 +430,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       if (!mounted) return;
       final cp = value?['cp'];
       if (cp is! Map) return;
-      final pendingForMe = cp['state']?.toString() == 'pending' &&
+      final pendingForMe =
+          cp['state']?.toString() == 'pending' &&
           cp['requested_by']?.toString() != widget.state.userId;
       if (!pendingForMe) return;
-      final key =
-          '${cp['user_a']}|${cp['user_b']}|${cp['created_at']}';
+      final key = '${cp['user_a']}|${cp['user_b']}|${cp['created_at']}';
       if (_cpInvitesSeen.contains(key)) return;
       _cpInvitesSeen.add(key);
-      final partnerName = ((cp['user_a']?.toString() ?? '') ==
-                  widget.state.userId
-              ? cp['user_b_name']
-              : cp['user_a_name'])
-          ?.toString()
-          .trim();
+      final partnerName =
+          ((cp['user_a']?.toString() ?? '') == widget.state.userId
+                  ? cp['user_b_name']
+                  : cp['user_a_name'])
+              ?.toString()
+              .trim();
       final name = (partnerName == null || partnerName.isEmpty)
           ? 'Someone'
           : partnerName;
@@ -451,28 +450,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       bool? accept;
       try {
         accept = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.favorite_rounded, color: Color(0xFFFF5C8A)),
-              SizedBox(width: 8),
-              Text('CP invite'),
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.favorite_rounded, color: Color(0xFFFF5C8A)),
+                SizedBox(width: 8),
+                Text('CP invite'),
+              ],
+            ),
+            content: Text('$name wants to be your CP'),
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Reject'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Accept'),
+              ),
             ],
           ),
-          content: Text('$name wants to be your CP'),
-          actions: [
-            OutlinedButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Reject'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Accept'),
-            ),
-          ],
-        ),
-      );
+        );
       } finally {
         _anyDialogOpen = false;
       }
@@ -487,7 +486,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           content: Text(
             result?['ok'] == true
                 ? (accept ? 'You are CP now ❤️' : 'CP invite rejected')
-                : (result?['error']?.toString() ?? 'Could not respond to the invite'),
+                : (result?['error']?.toString() ??
+                      'Could not respond to the invite'),
           ),
         ),
       );
@@ -501,10 +501,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      _RoomsHome(
-        state: widget.state,
-        onSelect: _selectMainTab,
-      ),
+      _RoomsHome(state: widget.state, onSelect: _selectMainTab),
       _DiscoverHome(state: widget.state),
       MessagesScreen(
         state: widget.state,
@@ -667,8 +664,14 @@ class MinimizedRoomBubbleState extends State<MinimizedRoomBubble> {
   bool closing = false;
 
   Offset _clampPosition(Offset value, BoxConstraints constraints) {
-    final maxX = (constraints.maxWidth - _bubbleExtent).clamp(4.0, double.infinity);
-    final maxY = (constraints.maxHeight - _bubbleExtent).clamp(4.0, double.infinity);
+    final maxX = (constraints.maxWidth - _bubbleExtent).clamp(
+      4.0,
+      double.infinity,
+    );
+    final maxY = (constraints.maxHeight - _bubbleExtent).clamp(
+      4.0,
+      double.infinity,
+    );
     return Offset(
       value.dx.clamp(4.0, maxX).toDouble(),
       value.dy.clamp(4.0, maxY).toDouble(),
@@ -703,8 +706,10 @@ class MinimizedRoomBubbleState extends State<MinimizedRoomBubble> {
               )
               .toDouble(),
         );
-        final bubblePosition =
-            _clampPosition(position ?? defaultPosition, constraints);
+        final bubblePosition = _clampPosition(
+          position ?? defaultPosition,
+          constraints,
+        );
 
         return Stack(
           clipBehavior: Clip.none,
@@ -842,21 +847,21 @@ class _RoomsHomeState extends State<_RoomsHome> {
   static const int _promoBannerCount = 3;
 
   bool get _hasConfiguredWelcomeBanner => ownerBanners.any((banner) {
-        final id = banner['id']?.toString().trim().toLowerCase() ?? '';
-        final link = banner['link']?.toString().trim().toLowerCase() ?? '';
-        return id == 'welcome-banner' ||
-            link == 'welcome' ||
-            link == 'welcome-info';
-      });
+    final id = banner['id']?.toString().trim().toLowerCase() ?? '';
+    final link = banner['link']?.toString().trim().toLowerCase() ?? '';
+    return id == 'welcome-banner' ||
+        link == 'welcome' ||
+        link == 'welcome-info';
+  });
 
   bool get _hasConfiguredOfficialBanner => ownerBanners.any((banner) {
-        final id = banner['id']?.toString().trim().toLowerCase() ?? '';
-        final link = banner['link']?.toString().trim().toLowerCase() ?? '';
-        return id == 'official-banner' ||
-            link == 'officials' ||
-            link == 'official' ||
-            link == 'official-info';
-      });
+    final id = banner['id']?.toString().trim().toLowerCase() ?? '';
+    final link = banner['link']?.toString().trim().toLowerCase() ?? '';
+    return id == 'official-banner' ||
+        link == 'officials' ||
+        link == 'official' ||
+        link == 'official-info';
+  });
 
   int get _bannerSlideCount =>
       (_hasConfiguredWelcomeBanner ? 0 : 1) +
@@ -869,8 +874,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
     super.initState();
     _loadBanners();
     _loadTopFamilies();
-    _bannerAutoSlideTimer =
-        Timer.periodic(const Duration(seconds: 5), (_) {
+    _bannerAutoSlideTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted || !_bannerPageController.hasClients) return;
       final count = _bannerSlideCount;
       if (count < 2) return;
@@ -904,10 +908,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
           _loadTopFamilies(),
         ]);
       } else {
-        await Future.wait<void>([
-          state.refreshVip(),
-          state.refreshCosmetics(),
-        ]);
+        await Future.wait<void>([state.refreshVip(), state.refreshCosmetics()]);
       }
     } catch (error) {
       debugPrint('DarkVibeX Party tab refresh failed ($tab): $error');
@@ -956,24 +957,29 @@ class _RoomsHomeState extends State<_RoomsHome> {
     if (!state.backendConnected) return;
     try {
       final rows = await state.backend.followedRooms(userId: state.userId);
-      final values = rows.map((row) {
-        return RoomSummary(
-          id: row['id']?.toString() ?? '',
-          displayId: row['display_id']?.toString(),
-          name: row['name']?.toString() ?? 'Room',
-          ownerName: row['owner_name']?.toString() ?? 'Owner',
-          ownerUserId: row['owner_user_id']?.toString() ?? '',
-          online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
-          seatCount: int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
-          avatarKey: row['avatar_key']?.toString().isNotEmpty == true
-              ? row['avatar_key']?.toString()
-              : null,
-          partyMode:
-              row['party_mode']?.toString() ?? 'Friends-making Party',
-          roomMode: row['room_mode']?.toString() ?? 'voice',
-          vipOnlyLevel: int.tryParse(row['vip_only']?.toString() ?? '') ?? 0,
-        );
-      }).where((room) => room.id.isNotEmpty).toList(growable: false);
+      final values = rows
+          .map((row) {
+            return RoomSummary(
+              id: row['id']?.toString() ?? '',
+              displayId: row['display_id']?.toString(),
+              name: row['name']?.toString() ?? 'Room',
+              ownerName: row['owner_name']?.toString() ?? 'Owner',
+              ownerUserId: row['owner_user_id']?.toString() ?? '',
+              online: int.tryParse(row['online']?.toString() ?? '') ?? 0,
+              seatCount:
+                  int.tryParse(row['seat_count']?.toString() ?? '') ?? 12,
+              avatarKey: row['avatar_key']?.toString().isNotEmpty == true
+                  ? row['avatar_key']?.toString()
+                  : null,
+              partyMode:
+                  row['party_mode']?.toString() ?? 'Friends-making Party',
+              roomMode: row['room_mode']?.toString() ?? 'voice',
+              vipOnlyLevel:
+                  int.tryParse(row['vip_only']?.toString() ?? '') ?? 0,
+            );
+          })
+          .where((room) => room.id.isNotEmpty)
+          .toList(growable: false);
       if (!mounted) return;
       setState(() => followedRooms = values);
     } catch (error) {
@@ -982,6 +988,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
       debugPrint('DarkVibeX followed rooms refresh failed: $error');
     }
   }
+
   int topPage = 1;
   final List<String> recentRoomIds = <String>[];
   List<RoomSummary> followedRooms = const <RoomSummary>[];
@@ -1001,19 +1008,15 @@ class _RoomsHomeState extends State<_RoomsHome> {
   }
 
   void _openWelcomePage() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const _WelcomeInfoPage(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const _WelcomeInfoPage()));
   }
 
   void _openOfficialInfoPage() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const _OfficialInfoPage(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const _OfficialInfoPage()));
   }
 
   void _openOwnerBanner(Map<String, dynamic> banner) {
@@ -1060,16 +1063,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
   // offline rooms, which previously made followed rooms disappear from Mine.
   List<RoomSummary> get visibleFollowedRooms => followedRooms;
 
-  Future<void> _openRankings(
-    BuildContext context, {
-    int initialTab = 1,
-  }) async {
+  Future<void> _openRankings(BuildContext context, {int initialTab = 1}) async {
     final room = await Navigator.of(context).push<RoomSummary>(
       MaterialPageRoute<RoomSummary>(
-        builder: (_) => RankingScreen(
-          state: state,
-          initialTab: initialTab,
-        ),
+        builder: (_) => RankingScreen(state: state, initialTab: initialTab),
       ),
     );
     if (!mounted || room == null) return;
@@ -1119,11 +1116,13 @@ class _RoomsHomeState extends State<_RoomsHome> {
       RoomSummary room = created;
       if (draft.avatarBytes != null && draft.avatarBytes!.isNotEmpty) {
         final key = await state.backend.uploadImage(
-          key: 'rooms/${created.id}/avatar-${DateTime.now().microsecondsSinceEpoch}.${draft.avatarExtension}',
+          key:
+              'rooms/${created.id}/avatar-${DateTime.now().microsecondsSinceEpoch}.${draft.avatarExtension}',
           bytes: draft.avatarBytes!,
           contentType: draft.avatarContentType,
         );
-        final avatarSaved = key != null &&
+        final avatarSaved =
+            key != null &&
             await state.backend.setRoomAvatar(
               roomId: created.id,
               userId: state.userId,
@@ -1147,7 +1146,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
         } else if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Room created, but the room photo could not be saved.'),
+              content: Text(
+                'Room created, but the room photo could not be saved.',
+              ),
             ),
           );
         }
@@ -1157,7 +1158,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => RoomScreen(state: state, room: room),
+          builder: (_) => Theme(
+            data: buildTinniStyleTheme(),
+            child: RoomScreen(state: state, room: room),
+          ),
         ),
       );
     } catch (error) {
@@ -1184,7 +1188,10 @@ class _RoomsHomeState extends State<_RoomsHome> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RoomScreen(state: state, room: room),
+        builder: (_) => Theme(
+          data: buildTinniStyleTheme(),
+          child: RoomScreen(state: state, room: room),
+        ),
       ),
     ).then((result) async {
       try {
@@ -1197,8 +1204,7 @@ class _RoomsHomeState extends State<_RoomsHome> {
       // pops with the target room id when the user taps a Rocket /
       // big-gift banner for another room — open that room now.
       if (result is String && result.isNotEmpty && context.mounted) {
-        final targets =
-            state.rooms.where((r) => r.id == result).toList();
+        final targets = state.rooms.where((r) => r.id == result).toList();
         if (targets.isNotEmpty) _openRoom(targets.first);
       }
     });
@@ -1215,8 +1221,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
       builder: (context, _) => RefreshIndicator(
         onRefresh: () => _refreshPartyTab(1),
         child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -1244,7 +1250,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
                             _BuiltInBannerCard(
                               badge: 'WELCOME',
                               title: 'WELCOME TO DARKVIBEX',
-                              subtitle: 'Voice • Chat • Vibe — your community starts here',
+                              subtitle:
+                                  'Voice • Chat • Vibe — your community starts here',
                               icon: Icons.waving_hand_rounded,
                               accent: const Color(0xFF70E8FF),
                               onTap: _openWelcomePage,
@@ -1253,7 +1260,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
                             _BuiltInBannerCard(
                               badge: 'OFFICIAL',
                               title: 'DARKVIBEX OFFICIALS',
-                              subtitle: 'Official contact number and ID information',
+                              subtitle:
+                                  'Official contact number and ID information',
                               icon: Icons.verified_rounded,
                               accent: const Color(0xFFB1A6FF),
                               onTap: _openOfficialInfoPage,
@@ -1288,7 +1296,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: List<Widget>.generate(_bannerSlideCount, (page) {
+                      children: List<Widget>.generate(_bannerSlideCount, (
+                        page,
+                      ) {
                         final selected = page == _currentBannerPage;
                         return Semantics(
                           button: true,
@@ -1311,7 +1321,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
                                 curve: Curves.easeOut,
                                 width: selected ? 16 : 6,
                                 height: 6,
-                                margin: const EdgeInsets.symmetric(horizontal: 3),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   color: selected
                                       ? const Color(0xFFD09A0A)
@@ -1431,23 +1443,20 @@ class _RoomsHomeState extends State<_RoomsHome> {
                   mainAxisSpacing: 16,
                   childAspectRatio: .82,
                 ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, roomIndex) {
-                    final rooms = [...publicRooms];
-                    if (popular) {
-                      rooms.sort((a, b) => b.online.compareTo(a.online));
-                    } else {
-                      rooms.sort((a, b) => b.id.compareTo(a.id));
-                    }
-                    final room = rooms[roomIndex];
-                    return _RoomCard(
-                      state: state,
-                      room: room,
-                      onTap: () => _openRoom(room),
-                    );
-                  },
-                  childCount: publicRooms.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, roomIndex) {
+                  final rooms = [...publicRooms];
+                  if (popular) {
+                    rooms.sort((a, b) => b.online.compareTo(a.online));
+                  } else {
+                    rooms.sort((a, b) => b.id.compareTo(a.id));
+                  }
+                  final room = rooms[roomIndex];
+                  return _RoomCard(
+                    state: state,
+                    room: room,
+                    onTap: () => _openRoom(room),
+                  );
+                }, childCount: publicRooms.length),
               ),
             ),
           ],
@@ -1618,159 +1627,156 @@ class _RoomsHomeState extends State<_RoomsHome> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
-        const Text(
-          'My room',
-          style: TextStyle(
-            color: Color(0xFF2A2140),
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
+          const Text(
+            'My room',
+            style: TextStyle(
+              color: Color(0xFF2A2140),
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
-        if (owned.isEmpty)
-          TinniPanel(
-            onTap: () => _createRoom(context),
-            child: const Row(
-              children: [
-                TinniGlowIcon(
-                  icon: Icons.add_home_rounded,
-                  size: 28,
-                  boxSize: 54,
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Create my room',
-                        style: TextStyle(
-                          color: TinniPalette.cream,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
+          const SizedBox(height: 10),
+          if (owned.isEmpty)
+            TinniPanel(
+              onTap: () => _createRoom(context),
+              child: const Row(
+                children: [
+                  TinniGlowIcon(
+                    icon: Icons.add_home_rounded,
+                    size: 28,
+                    boxSize: 54,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Create my room',
+                          style: TextStyle(
+                            color: const Color(0xFFFFD700),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      Text(
-                        'Your own room will appear here.',
-                        style: TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 11,
+                        Text(
+                          'Your own room will appear here.',
+                          style: TextStyle(
+                            color: const Color(0xFFF0F2FF),
+                            fontSize: 11,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: TinniPalette.gold),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              height: 190,
+              child: _RoomCard(
+                state: state,
+                room: owned.first,
+                onTap: () => _openRoom(owned.first),
+              ),
+            ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Recents',
+                  style: TextStyle(
+                    color: Color(0xFF2A2140),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: TinniPalette.gold,
+              ),
+              if (recent.isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear recents',
+                  onPressed: () => setState(recentRoomIds.clear),
+                  icon: const Icon(
+                    Icons.delete_sweep_rounded,
+                    color: Color(0xFF2A2140),
+                  ),
                 ),
-              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (recent.isEmpty)
+            TinniPanel(
+              onTap: () => setState(() => topPage = 1),
+              child: const Text(
+                'No recent rooms yet. Tap to open Party.',
+                style: TextStyle(color: const Color(0xFFFFD700)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 120,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: recent.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 9),
+                itemBuilder: (context, index) {
+                  final room = recent[index];
+                  return SizedBox(
+                    width: 156,
+                    child: _TopRoomCard(
+                      state: state,
+                      room: room,
+                      rank: index + 1,
+                      onTap: () => _openRoom(room),
+                    ),
+                  );
+                },
+              ),
             ),
-          )
-        else
-          SizedBox(
-            height: 190,
-            child: _RoomCard(
-              state: state,
-              room: owned.first,
-              onTap: () => _openRoom(owned.first),
+          const SizedBox(height: 20),
+          const Text(
+            'My followings',
+            style: TextStyle(
+              color: Color(0xFF2A2140),
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
             ),
           ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Recents',
-                style: TextStyle(
-                  color: Color(0xFF2A2140),
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
+          const SizedBox(height: 10),
+          if (visibleFollowedRooms.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 42),
+              child: Column(
+                children: [
+                  TinniGlowIcon(
+                    icon: Icons.inventory_2_outlined,
+                    size: 36,
+                    boxSize: 62,
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'No following rooms yet',
+                    style: TextStyle(color: Color(0xFF6B7194)),
+                  ),
+                ],
               ),
-            ),
-            if (recent.isNotEmpty)
-              IconButton(
-                tooltip: 'Clear recents',
-                onPressed: () => setState(recentRoomIds.clear),
-                icon: const Icon(
-                  Icons.delete_sweep_rounded,
-                  color: Color(0xFF2A2140),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (recent.isEmpty)
-          TinniPanel(
-            onTap: () => setState(() => topPage = 1),
-            child: const Text(
-              'No recent rooms yet. Tap to open Party.',
-              style: TextStyle(color: TinniPalette.cream),
-            ),
-          )
-        else
-          SizedBox(
-            height: 120,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: recent.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 9),
-              itemBuilder: (context, index) {
-                final room = recent[index];
-                return SizedBox(
-                  width: 156,
-                  child: _TopRoomCard(
+            )
+          else
+            for (final room in visibleFollowedRooms)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: SizedBox(
+                  height: 190,
+                  child: _RoomCard(
                     state: state,
                     room: room,
-                    rank: index + 1,
                     onTap: () => _openRoom(room),
                   ),
-                );
-              },
-            ),
-          ),
-        const SizedBox(height: 20),
-        const Text(
-          'My followings',
-          style: TextStyle(
-            color: Color(0xFF2A2140),
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (visibleFollowedRooms.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 42),
-            child: Column(
-              children: [
-                TinniGlowIcon(
-                  icon: Icons.inventory_2_outlined,
-                  size: 36,
-                  boxSize: 62,
-                ),
-                SizedBox(height: 10),
-                Text(
-                  'No following rooms yet',
-                  style: TextStyle(color: Color(0xFF6B7194)),
-                ),
-              ],
-            ),
-          )
-        else
-          for (final room in visibleFollowedRooms)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: SizedBox(
-                height: 190,
-                child: _RoomCard(
-                  state: state,
-                  room: room,
-                  onTap: () => _openRoom(room),
                 ),
               ),
-            ),
         ],
       ),
     );
@@ -1797,9 +1803,9 @@ class _RoomsHomeState extends State<_RoomsHome> {
           context,
           MaterialPageRoute<void>(
             builder: (_) => VipSectionScreen(
-              currentLevel:
-                  state.vipLevel.clamp(0, VipPolicy.maxLevel).toInt(),
-              active: state.vipActiveUntil == null ||
+              currentLevel: state.vipLevel.clamp(0, VipPolicy.maxLevel).toInt(),
+              active:
+                  state.vipActiveUntil == null ||
                   state.vipActiveUntil!.isAfter(DateTime.now()),
               vipExpBalance: state.vipExpBalance.toInt(),
               monthlyPoints: state.vipExpBalance.toInt(),
@@ -1825,86 +1831,82 @@ class _RoomsHomeState extends State<_RoomsHome> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
-        const TinniPanel(
-          child: Row(
-            children: [
-              TinniGlowIcon(
-                icon: Icons.celebration_rounded,
-                size: 30,
-                boxSize: 56,
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const TinniPanel(
+            child: Row(
+              children: [
+                TinniGlowIcon(
+                  icon: Icons.celebration_rounded,
+                  size: 30,
+                  boxSize: 56,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Royal Events',
+                        style: TextStyle(
+                          color: TinniPalette.gold,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        'DarkVibeX events and social activities.',
+                        style: TextStyle(color: const Color(0xFFF0F2FF)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (final item in events)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TinniPanel(
+                onTap: item.$4,
+                child: Row(
                   children: [
-                    Text(
-                      'Royal Events',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
+                    TinniGlowIcon(icon: item.$3, size: 26, boxSize: 50),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.$1,
+                            style: const TextStyle(
+                              color: const Color(0xFFFFD700),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Text(
+                            item.$2,
+                            style: const TextStyle(
+                              color: const Color(0xFFF0F2FF),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      'DarkVibeX events and social activities.',
-                      style: TextStyle(color: TinniPalette.muted),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: TinniPalette.gold,
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        for (final item in events)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: TinniPanel(
-              onTap: item.$4,
-              child: Row(
-                children: [
-                  TinniGlowIcon(
-                    icon: item.$3,
-                    size: 26,
-                    boxSize: 50,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.$1,
-                          style: const TextStyle(
-                            color: TinniPalette.cream,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          item.$2,
-                          style: const TextStyle(
-                            color: TinniPalette.muted,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: TinniPalette.gold,
-                  ),
-                ],
-              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: state,
@@ -1936,8 +1938,8 @@ class _RoomsHomeState extends State<_RoomsHome> {
       ),
     );
   }
-
 }
+
 class _DiscoverHome extends StatefulWidget {
   const _DiscoverHome({required this.state});
   final AppState state;
@@ -1952,25 +1954,29 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
   @override
   Widget build(BuildContext context) {
     final q = query.trim().toLowerCase();
-    final rooms = widget.state.rooms
-        .where((room) => room.online > 0)
-        .where(
-          (room) =>
-              q.isEmpty ||
-              room.name.toLowerCase().contains(q) ||
-              formatPublicUserId(room.roomNumber).toLowerCase().contains(q) ||
-              room.ownerName.toLowerCase().contains(q),
-        )
-        .toList()
-      // Liveliest rooms first, so the list opens on the rooms where
-      // people actually are (Mr. Wrong, 2026-11-24: main page, everything
-      // like the other app).
-      ..sort((a, b) => b.online.compareTo(a.online));
+    final rooms =
+        widget.state.rooms
+            .where((room) => room.online > 0)
+            .where(
+              (room) =>
+                  q.isEmpty ||
+                  room.name.toLowerCase().contains(q) ||
+                  formatPublicUserId(
+                    room.roomNumber,
+                  ).toLowerCase().contains(q) ||
+                  room.ownerName.toLowerCase().contains(q),
+            )
+            .toList()
+          // Liveliest rooms first, so the list opens on the rooms where
+          // people actually are (Mr. Wrong, 2026-11-24: main page, everything
+          // like the other app).
+          ..sort((a, b) => b.online.compareTo(a.online));
     // Trending now: the 5 liveliest rooms, as a horizontal strip.
     // Hidden while searching, so a search shows only its matches.
     final trending = q.isEmpty
-        ? (List<RoomSummary>.from(rooms)
-          ..sort((a, b) => b.online.compareTo(a.online))).take(5).toList()
+        ? (List<RoomSummary>.from(
+            rooms,
+          )..sort((a, b) => b.online.compareTo(a.online))).take(5).toList()
         : const <RoomSummary>[];
 
     // Light glass purple+gold background (Mr. Wrong, 2026-11-24):
@@ -1983,38 +1989,81 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
-        children: [
-          const Row(
-            children: [
-              Text(
-                'Discover',
+          children: [
+            const Row(
+              children: [
+                Text(
+                  'Discover',
+                  style: TextStyle(
+                    color: Color(0xFF2A2140),
+                    fontSize: 27,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Spacer(),
+                TinniGlowIcon(icon: Icons.explore_rounded),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              onChanged: (value) => setState(() => query = value),
+              decoration: const InputDecoration(
+                hintText: 'Search room, ID or user',
+                prefixIcon: Icon(Icons.search_rounded),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+            ),
+            if (trending.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Trending now',
                 style: TextStyle(
                   color: Color(0xFF2A2140),
-                  fontSize: 27,
+                  fontSize: 17,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              Spacer(),
-              TinniGlowIcon(icon: Icons.explore_rounded),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 158,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: trending.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 9),
+                  itemBuilder: (context, index) {
+                    final room = trending[index];
+                    return SizedBox(
+                      width: 150,
+                      child: _RoomCard(
+                        state: widget.state,
+                        room: room,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => Theme(
+                              data: buildTinniStyleTheme(),
+                              child: RoomScreen(
+                                state: widget.state,
+                                room: room,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            onChanged: (value) => setState(() => query = value),
-            decoration: const InputDecoration(
-              hintText: 'Search room, ID or user',
-              prefixIcon: Icon(Icons.search_rounded),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(),
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-          ),
-          if (trending.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             const Text(
-              'Trending now',
+              'Rooms for you',
               style: TextStyle(
                 color: Color(0xFF2A2140),
                 fontSize: 17,
@@ -2022,65 +2071,31 @@ class _DiscoverHomeState extends State<_DiscoverHome> {
               ),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              height: 158,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: trending.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 9),
-                itemBuilder: (context, index) {
-                  final room = trending[index];
-                  return SizedBox(
-                    width: 150,
-                    child: _RoomCard(
-                      state: widget.state,
-                      room: room,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              RoomScreen(state: widget.state, room: room),
+            for (final room in rooms)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                // _RoomCard uses Expanded inside, so it needs a bounded
+                // height (same 190 as the Mine tab's room cards). Without
+                // this the Discover list threw an unbounded-height layout
+                // error.
+                child: SizedBox(
+                  height: 190,
+                  child: _RoomCard(
+                    state: widget.state,
+                    room: room,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => Theme(
+                          data: buildTinniStyleTheme(),
+                          child: RoomScreen(state: widget.state, room: room),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          const Text(
-            'Rooms for you',
-            style: TextStyle(
-              color: Color(0xFF2A2140),
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final room in rooms)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              // _RoomCard uses Expanded inside, so it needs a bounded
-              // height (same 190 as the Mine tab's room cards). Without
-              // this the Discover list threw an unbounded-height layout
-              // error.
-              child: SizedBox(
-                height: 190,
-                child: _RoomCard(
-                  state: widget.state,
-                  room: room,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          RoomScreen(state: widget.state, room: room),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
         ),
       ),
     );
@@ -2108,11 +2123,7 @@ class _PartyPanel extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xE61D2452),
-            Color(0xE6121836),
-            Color(0xDD171638),
-          ],
+          colors: [Color(0xE61D2452), Color(0xE6121836), Color(0xDD171638)],
         ),
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: const Color(0x664F59AD)),
@@ -2194,102 +2205,92 @@ class _TopRoomCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PartyPanel(
-        onTap: onTap,
-        padding: const EdgeInsets.fromLTRB(7, 8, 7, 9),
-        radius: 15,
-        child: Column(
+    onTap: onTap,
+    padding: const EdgeInsets.fromLTRB(7, 8, 7, 9),
+    radius: 15,
+    child: Column(
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        Color(0xFF9B8CFF),
-                        Color(0xFF4D91FF),
-                        Color(0xFF70E8FF),
-                      ],
-                    ),
-                  ),
-                  child: CircleAvatar(
-                    radius: 27,
-                    backgroundColor: const Color(0xFF171E3D),
-                    backgroundImage: room.avatarKey == null
-                        ? null
-                        : NetworkImage(
-                            state.backend.fileUrl(room.avatarKey!),
-                            headers: state.backend.fileHeaders,
-                          ),
-                    child: room.avatarKey == null
-                        ? const Icon(
-                            Icons.mic_rounded,
-                            color: Color(0xFF9B91FF),
-                          )
-                        : null,
-                  ),
+            Container(
+              width: 60,
+              height: 60,
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF9B8CFF),
+                    Color(0xFF4D91FF),
+                    Color(0xFF70E8FF),
+                  ],
                 ),
-                Positioned(
-                  right: -4,
-                  top: -5,
-                  child: Container(
-                    width: 23,
-                    height: 23,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: rank == 1
-                            ? const [Color(0xFF70E8FF), Color(0xFF4D91FF)]
-                            : rank == 2
-                                ? const [Color(0xFFB9B0FF), Color(0xFF7567E8)]
-                                : const [Color(0xFF718BFF), Color(0xFF5148C8)],
+              ),
+              child: CircleAvatar(
+                radius: 27,
+                backgroundColor: const Color(0xFF171E3D),
+                backgroundImage: room.avatarKey == null
+                    ? null
+                    : NetworkImage(
+                        state.backend.fileUrl(room.avatarKey!),
+                        headers: state.backend.fileHeaders,
                       ),
-                      border: Border.all(
-                        color: const Color(0xFF111831),
-                        width: 2,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      rank.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 7),
-            Text(
-              room.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFFF1F4FF),
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
+                child: room.avatarKey == null
+                    ? const Icon(Icons.mic_rounded, color: Color(0xFF9B91FF))
+                    : null,
               ),
             ),
-            Text(
-              '${room.online} online',
-              style: const TextStyle(
-                color: Color(0xFF8ECFFF),
-                fontSize: 9,
+            Positioned(
+              right: -4,
+              top: -5,
+              child: Container(
+                width: 23,
+                height: 23,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: rank == 1
+                        ? const [Color(0xFF70E8FF), Color(0xFF4D91FF)]
+                        : rank == 2
+                        ? const [Color(0xFFB9B0FF), Color(0xFF7567E8)]
+                        : const [Color(0xFF718BFF), Color(0xFF5148C8)],
+                  ),
+                  border: Border.all(color: const Color(0xFF111831), width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  rank.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
             ),
           ],
         ),
-      );
+        const SizedBox(height: 7),
+        Text(
+          room.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFFF1F4FF),
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        Text(
+          '${room.online} online',
+          style: const TextStyle(color: Color(0xFF8ECFFF), fontSize: 9),
+        ),
+      ],
+    ),
+  );
 }
-
 
 class _BuiltInBannerCard extends StatelessWidget {
   const _BuiltInBannerCard({
@@ -2310,135 +2311,127 @@ class _BuiltInBannerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: _PartyPanel(
-          onTap: onTap,
-          padding: EdgeInsets.zero,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF101A45),
-                    Color(0xFF30236D),
-                    Color(0xFF06465A),
-                  ],
+    padding: const EdgeInsets.symmetric(horizontal: 2),
+    child: _PartyPanel(
+      onTap: onTap,
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF101A45), Color(0xFF30236D), Color(0xFF06465A)],
+            ),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned(
+                right: -12,
+                top: -28,
+                child: Container(
+                  width: 118,
+                  height: 118,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accent.withValues(alpha: .20),
+                      width: 18,
+                    ),
+                  ),
                 ),
               ),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Positioned(
-                    right: -12,
-                    top: -28,
-                    child: Container(
-                      width: 118,
-                      height: 118,
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 90,
+                      height: 90,
+                      padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: accent.withValues(alpha: .20),
-                          width: 18,
+                          color: accent.withValues(alpha: .9),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(alpha: .20),
+                            blurRadius: 14,
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/branding/darkvibex_launcher.webp',
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: const Color(0xFF111A42),
+                            alignment: Alignment.center,
+                            child: Icon(icon, color: accent, size: 46),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 90,
-                          height: 90,
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: accent.withValues(alpha: .9),
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: accent.withValues(alpha: .20),
-                                blurRadius: 14,
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: Image.asset(
-                              'assets/branding/darkvibex_launcher.webp',
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: const Color(0xFF111A42),
-                                alignment: Alignment.center,
-                                child: Icon(icon, color: accent, size: 46),
-                              ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            badge,
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                badge,
-                                style: TextStyle(
-                                  color: accent,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  height: 1.05,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: .2,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                subtitle,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFFD3DCFF),
-                                  fontSize: 14,
-                                  height: 1.15,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 3),
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              height: 1.05,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: .2,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: accent,
-                          size: 32,
-                        ),
-                      ],
+                          const SizedBox(height: 5),
+                          Text(
+                            subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFFD3DCFF),
+                              fontSize: 14,
+                              height: 1.15,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Icon(Icons.chevron_right_rounded, color: accent, size: 32),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _WelcomeInfoPage extends StatelessWidget {
@@ -2446,184 +2439,62 @@ class _WelcomeInfoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFF070B24),
-        appBar: AppBar(
-          title: const Text('Welcome to DarkVibeX'),
-          backgroundColor: const Color(0xD90A0D24),
-          foregroundColor: Colors.white,
-        ),
-        body: DarkVibeXGlobalBackground(
-          child: SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-              children: [
-                const Center(child: _DarkVibeXLogo(size: 88)),
-                const SizedBox(height: 16),
-                const Center(
-                  child: Text(
-                    'WELCOME TO DARKVIBEX',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF70E8FF),
-                      fontSize: 23,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: .6,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Center(
-                  child: Text(
-                    'Voice • Chat • Vibe',
-                    style: TextStyle(
-                      color: Color(0xFFD3DCFF),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 22),
-                TinniPanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Your community starts here',
-                        style: TextStyle(
-                          color: Color(0xFFB1A6FF),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Join live voice rooms, chat with people, and discover new communities on DarkVibeX.',
-                        style: TextStyle(
-                          color: Color(0xFFD3DCFF),
-                          fontSize: 14,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-}
-
-class _OfficialInfoPage extends StatelessWidget {
-  const _OfficialInfoPage();
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFF070B24),
-        appBar: AppBar(
-          title: const Text('Official Information'),
-          backgroundColor: const Color(0xD90A0D24),
-          foregroundColor: Colors.white,
-        ),
-        body: DarkVibeXGlobalBackground(
-          child: SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-              children: [
-                const Center(child: _DarkVibeXLogo(size: 80)),
-                const SizedBox(height: 16),
-                const Center(
-                  child: Text(
-                    'DARKVIBEX OFFICIALS',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFFB1A6FF),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Center(
-                  child: Text(
-                    'Verified official contact details will appear here.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFFD3DCFF),
-                      fontSize: 13,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const _OfficialDetailPlaceholder(
-                  icon: Icons.call_rounded,
-                  label: 'Official Contact Number',
-                ),
-                const SizedBox(height: 10),
-                const _OfficialDetailPlaceholder(
-                  icon: Icons.badge_rounded,
-                  label: 'Official ID Number',
-                ),
-                const SizedBox(height: 16),
-                const TinniPanel(
-                  child: Text(
-                    'Official number and ID details will be added later. No official contact details are published on this page yet.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFFB7C2E8),
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-}
-
-class _OfficialDetailPlaceholder extends StatelessWidget {
-  const _OfficialDetailPlaceholder({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => TinniPanel(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(
+      title: const Text('Welcome to DarkVibeX'),
+      backgroundColor: const Color(0xD90A0D24),
+      foregroundColor: Colors.white,
+    ),
+    body: DarkVibeXGlobalBackground(
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           children: [
-            _PartyGlowIcon(
-              icon: icon,
-              size: 20,
-              boxSize: 40,
-              color: const Color(0xFF70E8FF),
+            const Center(child: _DarkVibeXLogo(size: 88)),
+            const SizedBox(height: 16),
+            const Center(
+              child: Text(
+                'WELCOME TO DARKVIBEX',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF70E8FF),
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .6,
+                ),
+              ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            const SizedBox(height: 8),
+            const Center(
+              child: Text(
+                'Voice • Chat • Vibe',
+                style: TextStyle(
+                  color: Color(0xFFD3DCFF),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+            TinniPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                children: const [
                   Text(
-                    label,
-                    style: const TextStyle(
-                      color: Color(0xFFD3DCFF),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
+                    'Your community starts here',
+                    style: TextStyle(
+                      color: Color(0xFFB1A6FF),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  const Text(
-                    'Coming soon',
+                  SizedBox(height: 8),
+                  Text(
+                    'Join live voice rooms, chat with people, and discover new communities on DarkVibeX.',
                     style: TextStyle(
-                      color: Color(0xFF70E8FF),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFD3DCFF),
+                      fontSize: 14,
+                      height: 1.45,
                     ),
                   ),
                 ],
@@ -2631,7 +2502,126 @@ class _OfficialDetailPlaceholder extends StatelessWidget {
             ),
           ],
         ),
-      );
+      ),
+    ),
+  );
+}
+
+class _OfficialInfoPage extends StatelessWidget {
+  const _OfficialInfoPage();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(
+      title: const Text('Official Information'),
+      backgroundColor: const Color(0xD90A0D24),
+      foregroundColor: Colors.white,
+    ),
+    body: DarkVibeXGlobalBackground(
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+          children: [
+            const Center(child: _DarkVibeXLogo(size: 80)),
+            const SizedBox(height: 16),
+            const Center(
+              child: Text(
+                'DARKVIBEX OFFICIALS',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFFB1A6FF),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Center(
+              child: Text(
+                'Verified official contact details will appear here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFFD3DCFF),
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const _OfficialDetailPlaceholder(
+              icon: Icons.call_rounded,
+              label: 'Official Contact Number',
+            ),
+            const SizedBox(height: 10),
+            const _OfficialDetailPlaceholder(
+              icon: Icons.badge_rounded,
+              label: 'Official ID Number',
+            ),
+            const SizedBox(height: 16),
+            const TinniPanel(
+              child: Text(
+                'Official number and ID details will be added later. No official contact details are published on this page yet.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFFB7C2E8),
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _OfficialDetailPlaceholder extends StatelessWidget {
+  const _OfficialDetailPlaceholder({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => TinniPanel(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    child: Row(
+      children: [
+        _PartyGlowIcon(
+          icon: icon,
+          size: 20,
+          boxSize: 40,
+          color: const Color(0xFF70E8FF),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFFD3DCFF),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Coming soon',
+                style: TextStyle(
+                  color: Color(0xFF70E8FF),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _DarkVibeXLogo extends StatelessWidget {
@@ -2641,30 +2631,25 @@ class _DarkVibeXLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        padding: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFF70E8FF), width: 1.5),
-          boxShadow: const [
-            BoxShadow(color: Color(0x334FD8FF), blurRadius: 16),
-          ],
+    width: size,
+    height: size,
+    padding: const EdgeInsets.all(2),
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(color: const Color(0xFF70E8FF), width: 1.5),
+      boxShadow: const [BoxShadow(color: Color(0x334FD8FF), blurRadius: 16)],
+    ),
+    child: ClipOval(
+      child: Image.asset(
+        'assets/branding/darkvibex_launcher.webp',
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const ColoredBox(
+          color: Color(0xFF111A42),
+          child: Icon(Icons.graphic_eq_rounded, color: Color(0xFF70E8FF)),
         ),
-        child: ClipOval(
-          child: Image.asset(
-            'assets/branding/darkvibex_launcher.webp',
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const ColoredBox(
-              color: Color(0xFF111A42),
-              child: Icon(
-                Icons.graphic_eq_rounded,
-                color: Color(0xFF70E8FF),
-              ),
-            ),
-          ),
-        ),
-      );
+      ),
+    ),
+  );
 }
 
 class _OwnerBannerCard extends StatelessWidget {
@@ -2686,8 +2671,8 @@ class _OwnerBannerCard extends StatelessWidget {
     final imageUrl = asset.isEmpty
         ? ''
         : (asset.startsWith('http://') || asset.startsWith('https://')
-            ? asset
-            : state.backend.fileUrl(asset));
+              ? asset
+              : state.backend.fileUrl(asset));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: _PartyPanel(
@@ -2701,7 +2686,9 @@ class _OwnerBannerCard extends StatelessWidget {
               if (imageUrl.isNotEmpty)
                 Image.network(
                   imageUrl,
-                  headers: asset.startsWith('http') ? null : state.backend.fileHeaders,
+                  headers: asset.startsWith('http')
+                      ? null
+                      : state.backend.fileHeaders,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
@@ -2719,7 +2706,10 @@ class _OwnerBannerCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 child: Row(
                   children: [
                     if (imageUrl.isEmpty) ...[
@@ -2745,7 +2735,10 @@ class _OwnerBannerCard extends StatelessWidget {
                             const SizedBox(height: 5),
                             const Text(
                               'Tap to open',
-                              style: TextStyle(color: Colors.white70, fontSize: 14),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
                             ),
                           ],
                         ],
@@ -2777,51 +2770,47 @@ class _PromoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: _PartyPanel(
-          onTap: onTap,
-          child: Row(
-            children: [
-              _PartyGlowIcon(
-                icon: icon,
-                size: 42,
-                boxSize: 84,
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: const Color(0xFFB1A6FF),
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: .4,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: const Color(0xFFA9B5DD),
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
+    padding: const EdgeInsets.symmetric(horizontal: 2),
+    child: _PartyPanel(
+      onTap: onTap,
+      child: Row(
+        children: [
+          _PartyGlowIcon(icon: icon, size: 42, boxSize: 84),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: const Color(0xFFB1A6FF),
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .4,
+                  ),
                 ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: const Color(0xFF70E8FF),
-                size: 30,
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: const Color(0xFFA9B5DD),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: const Color(0xFF70E8FF),
+            size: 30,
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _RoomCard extends StatelessWidget {
@@ -2894,7 +2883,10 @@ class _RoomCard extends StatelessWidget {
                     top: 9,
                     right: 9,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xD9162440),
                         borderRadius: BorderRadius.circular(20),
@@ -3010,7 +3002,10 @@ class _CreateRoomDraft {
 }
 
 class _CreateRoomSheet extends StatefulWidget {
-  const _CreateRoomSheet({required this.maxSeats, required this.canMakeVipOnly});
+  const _CreateRoomSheet({
+    required this.maxSeats,
+    required this.canMakeVipOnly,
+  });
   final int maxSeats;
 
   /// Only a VIP10+ member can mark a room VIP-only.
@@ -3102,9 +3097,9 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
   void _submit() {
     final name = _title.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Room name is required')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Room name is required')));
       return;
     }
     Navigator.pop(
@@ -3125,8 +3120,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
   @override
   Widget build(BuildContext context) {
     final allowedSeats = <int>[
-      for (var value = 8; value <= widget.maxSeats.clamp(8, 42); value++)
-        value,
+      for (var value = 8; value <= widget.maxSeats.clamp(8, 42); value++) value,
     ];
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
     return AnimatedPadding(
@@ -3159,7 +3153,10 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                       decoration: BoxDecoration(
                         color: TinniPalette.black,
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: TinniPalette.gold, width: 1.5),
+                        border: Border.all(
+                          color: TinniPalette.gold,
+                          width: 1.5,
+                        ),
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(14),
@@ -3176,15 +3173,20 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      _avatarBytes == null ? 'Add room photo' : 'Change room DP',
+                      _avatarBytes == null
+                          ? 'Add room photo'
+                          : 'Change room DP',
                       style: const TextStyle(
-                        color: TinniPalette.cream,
+                        color: const Color(0xFF2A2140),
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const Text(
                       'Gallery or Camera',
-                      style: TextStyle(color: TinniPalette.muted, fontSize: 11),
+                      style: TextStyle(
+                        color: const Color(0xFF6E6880),
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -3194,7 +3196,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
             const Text(
               'Room type',
               style: TextStyle(
-                color: TinniPalette.cream,
+                color: const Color(0xFF2A2140),
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -3205,21 +3207,16 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
               children: [
                 for (final mode in const ['voice', 'game', 'live'])
                   ChoiceChip(
-                    avatar: Icon(
-                      switch (mode) {
-                        'game' => Icons.sports_esports_rounded,
-                        'live' => Icons.videocam_rounded,
-                        _ => Icons.mic_rounded,
-                      },
-                      size: 18,
-                    ),
-                    label: Text(
-                      switch (mode) {
-                        'game' => 'Game Room',
-                        'live' => 'Live Room',
-                        _ => 'Voice Room',
-                      },
-                    ),
+                    avatar: Icon(switch (mode) {
+                      'game' => Icons.sports_esports_rounded,
+                      'live' => Icons.videocam_rounded,
+                      _ => Icons.mic_rounded,
+                    }, size: 18),
+                    label: Text(switch (mode) {
+                      'game' => 'Game Room',
+                      'live' => 'Live Room',
+                      _ => 'Voice Room',
+                    }),
                     selected: _roomMode == mode,
                     onSelected: (_) => setState(() => _roomMode = mode),
                   ),
@@ -3229,7 +3226,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
             const Text(
               'Choose party mode',
               style: TextStyle(
-                color: TinniPalette.cream,
+                color: const Color(0xFF2A2140),
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -3267,7 +3264,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
             const Text(
               'Number of mics',
               style: TextStyle(
-                color: TinniPalette.cream,
+                color: const Color(0xFF2A2140),
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -3289,7 +3286,7 @@ class _CreateRoomSheetState extends State<_CreateRoomSheet> {
               const Text(
                 'VIP-only room',
                 style: TextStyle(
-                  color: TinniPalette.cream,
+                  color: const Color(0xFF2A2140),
                   fontWeight: FontWeight.w800,
                 ),
               ),

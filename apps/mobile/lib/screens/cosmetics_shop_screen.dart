@@ -381,7 +381,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                               item.icon,
                               color: selected
                                   ? TinniPalette.gold
-                                  : TinniPalette.muted,
+                                  : const Color(0xFF6E6880),
                               size: 20,
                             ),
                             const SizedBox(height: 5),
@@ -391,7 +391,7 @@ class _CosmeticsShopScreenState extends State<CosmeticsShopScreen> {
                               style: TextStyle(
                                 color: selected
                                     ? TinniPalette.gold
-                                    : TinniPalette.muted,
+                                    : const Color(0xFF6E6880),
                                 fontSize: 9,
                                 fontWeight: FontWeight.w800,
                               ),

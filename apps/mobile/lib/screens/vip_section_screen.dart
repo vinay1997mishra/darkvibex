@@ -29,6 +29,7 @@ import 'package:flutter/material.dart';
 
 import '../vip/vip_policy.dart';
 import '../vip/vip_visual_assets.dart';
+import '../widgets/vip_frame_alpha_video.dart';
 import '../widgets/vip_tag_image.dart';
 
 /// One animal (or crown) emblem per VIP level, from the DarkVibeX
@@ -52,28 +53,135 @@ class VipAnimal {
 }
 
 const List<VipAnimal> vipAnimals = <VipAnimal>[
-  VipAnimal(level: 1, name: 'Crown', emoji: '👑', category: 'Emblem', rarity: 'Rare'),
-  VipAnimal(level: 2, name: 'Crown', emoji: '👑', category: 'Emblem', rarity: 'Rare'),
-  VipAnimal(level: 3, name: 'Crown', emoji: '👑', category: 'Emblem', rarity: 'Rare'),
-  VipAnimal(level: 4, name: 'Crown', emoji: '👑', category: 'Emblem', rarity: 'Rare'),
-  VipAnimal(level: 5, name: 'Deer', emoji: '🦌', category: 'Land', rarity: 'Rare'),
-  VipAnimal(level: 6, name: 'Wolf', emoji: '🐺', category: 'Land', rarity: 'Rare'),
-  VipAnimal(level: 7, name: 'Eagle', emoji: '🦅', category: 'Air', rarity: 'Rare'),
-  VipAnimal(level: 8, name: 'Panther', emoji: '🐆', category: 'Land', rarity: 'Epic'),
-  VipAnimal(level: 9, name: 'Cobra', emoji: '🐍', category: 'Land', rarity: 'Epic'),
-  VipAnimal(level: 10, name: 'Lion', emoji: '🦁', category: 'Land', rarity: 'Epic'),
-  VipAnimal(level: 11, name: 'Tiger', emoji: '🐯', category: 'Land', rarity: 'Epic'),
-  VipAnimal(level: 12, name: 'Mammoth', emoji: '🦣', category: 'Land', rarity: 'Legendary'),
-  VipAnimal(level: 13, name: 'Gorilla', emoji: '🦍', category: 'Land', rarity: 'Legendary'),
-  VipAnimal(level: 14, name: 'Bear', emoji: '🐻', category: 'Land', rarity: 'Legendary'),
-  VipAnimal(level: 15, name: 'Kraken', emoji: '🐙', category: 'Water', rarity: 'Legendary'),
-  VipAnimal(level: 16, name: 'Leviathan', emoji: '🐉', category: 'Water', rarity: 'Mythic'),
-  VipAnimal(level: 17, name: 'Phoenix', emoji: '🐦‍🔥', category: 'Air', rarity: 'Mythic'),
-  VipAnimal(level: 18, name: 'Dragon', emoji: '🐉', category: 'Air', rarity: 'Mythic'),
+  VipAnimal(
+    level: 1,
+    name: 'Crown',
+    emoji: '👑',
+    category: 'Emblem',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 2,
+    name: 'Crown',
+    emoji: '👑',
+    category: 'Emblem',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 3,
+    name: 'Crown',
+    emoji: '👑',
+    category: 'Emblem',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 4,
+    name: 'Crown',
+    emoji: '👑',
+    category: 'Emblem',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 5,
+    name: 'Deer',
+    emoji: '🦌',
+    category: 'Land',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 6,
+    name: 'Wolf',
+    emoji: '🐺',
+    category: 'Land',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 7,
+    name: 'Eagle',
+    emoji: '🦅',
+    category: 'Air',
+    rarity: 'Rare',
+  ),
+  VipAnimal(
+    level: 8,
+    name: 'Panther',
+    emoji: '🐆',
+    category: 'Land',
+    rarity: 'Epic',
+  ),
+  VipAnimal(
+    level: 9,
+    name: 'Cobra',
+    emoji: '🐍',
+    category: 'Land',
+    rarity: 'Epic',
+  ),
+  VipAnimal(
+    level: 10,
+    name: 'Lion',
+    emoji: '🦁',
+    category: 'Land',
+    rarity: 'Epic',
+  ),
+  VipAnimal(
+    level: 11,
+    name: 'Tiger',
+    emoji: '🐯',
+    category: 'Land',
+    rarity: 'Epic',
+  ),
+  VipAnimal(
+    level: 12,
+    name: 'Mammoth',
+    emoji: '🦣',
+    category: 'Land',
+    rarity: 'Legendary',
+  ),
+  VipAnimal(
+    level: 13,
+    name: 'Gorilla',
+    emoji: '🦍',
+    category: 'Land',
+    rarity: 'Legendary',
+  ),
+  VipAnimal(
+    level: 14,
+    name: 'Bear',
+    emoji: '🐻',
+    category: 'Land',
+    rarity: 'Legendary',
+  ),
+  VipAnimal(
+    level: 15,
+    name: 'Kraken',
+    emoji: '🐙',
+    category: 'Water',
+    rarity: 'Legendary',
+  ),
+  VipAnimal(
+    level: 16,
+    name: 'Leviathan',
+    emoji: '🐉',
+    category: 'Water',
+    rarity: 'Mythic',
+  ),
+  VipAnimal(
+    level: 17,
+    name: 'Phoenix',
+    emoji: '🐦‍🔥',
+    category: 'Air',
+    rarity: 'Mythic',
+  ),
+  VipAnimal(
+    level: 18,
+    name: 'Dragon',
+    emoji: '🐉',
+    category: 'Air',
+    rarity: 'Mythic',
+  ),
 ];
 
-VipAnimal vipAnimalFor(int level) =>
-    vipAnimals[(level.clamp(1, 18)) - 1];
+VipAnimal vipAnimalFor(int level) => vipAnimals[(level.clamp(1, 18)) - 1];
 
 Color _rarityColor(String rarity) {
   switch (rarity) {
@@ -109,6 +217,15 @@ class VipSectionColors {
   static const Color textDim = Color(0xFFBFBFBF);
   static const Color divider = Color(0xFF2A2A2A);
 
+  /// Dark text for use on the gold background (Mr. Wrong, 2026-11-25:
+  /// the VIP screen background is his gold texture pic).
+  static const Color onGold = Color(0xFF2A2140);
+
+  /// Black-glass card surface: 65% black over the gold background, so
+  /// the gold texture shows faintly through (Mr. Wrong, 2026-11-25:
+  /// black glass, picked from the preview).
+  static const Color cardGlass = Color(0xA6000000);
+
   // Purple accent: deep purple, main purple, bright purple, soft purple.
   static const Color purple = Color(0xFF7B2FBE);
   static const Color purpleDeep = Color(0xFF6A1B9A);
@@ -124,12 +241,24 @@ class VipSectionColors {
   /// and gold; VIP16-18 are purple-dominant with a gold ring kept.
   static List<Color> emblemGradient(int level) {
     if (level >= 16) {
-      return const <Color>[Color(0xFF6A1B9A), Color(0xFF2A0A44), Color(0xFF000000)];
+      return const <Color>[
+        Color(0xFF6A1B9A),
+        Color(0xFF2A0A44),
+        Color(0xFF000000),
+      ];
     }
     if (level >= 10) {
-      return const <Color>[Color(0xFF4A1D6B), Color(0xFF2A2200), Color(0xFF000000)];
+      return const <Color>[
+        Color(0xFF4A1D6B),
+        Color(0xFF2A2200),
+        Color(0xFF000000),
+      ];
     }
-    return const <Color>[Color(0xFF2A2200), Color(0xFF1A0B2E), Color(0xFF000000)];
+    return const <Color>[
+      Color(0xFF2A2200),
+      Color(0xFF1A0B2E),
+      Color(0xFF000000),
+    ];
   }
 
   /// Emblem glow colour for a VIP level: gold at low tiers, purple at
@@ -144,9 +273,27 @@ class VipSectionColors {
   /// higher tiers.
   static List<Color> progressGradient(int level) {
     if (level >= 16) {
-      return const <Color>[Color(0xFFFFD700), Color(0xFF7B2FBE), Color(0xFF9B32FF)];
+      return const <Color>[
+        Color(0xFFFFD700),
+        Color(0xFF7B2FBE),
+        Color(0xFF9B32FF),
+      ];
     }
-    return const <Color>[Color(0xFFFFD700), Color(0xFFFFB11B), Color(0xFF7B2FBE)];
+    return const <Color>[
+      Color(0xFFFFD700),
+      Color(0xFFFFB11B),
+      Color(0xFF7B2FBE),
+    ];
+  }
+
+  /// Progress-bar fill on the gold background (Mr. Wrong, 2026-11-25):
+  /// the gold start would vanish into the gold background, so the fill
+  /// runs dark purple into purple instead.
+  static List<Color> progressGradientOnGold(int level) {
+    if (level >= 16) {
+      return const <Color>[onGold, Color(0xFF7B2FBE), Color(0xFF9B32FF)];
+    }
+    return const <Color>[onGold, Color(0xFF7B2FBE)];
   }
 
   /// Dragon-frame glow: purple fire, stronger at the top tiers.
@@ -234,51 +381,61 @@ class _VipSectionScreenState extends State<VipSectionScreen> {
     final isCurrent = _selectedLevel == widget.currentLevel;
 
     return Scaffold(
-      backgroundColor: VipSectionColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _TopBar(
-                onBack: widget.onBack,
-                onHelp: widget.onHelp,
-                onSettings: widget.onSettings,
-              ),
-              if (widget.win != null) _WinBanner(win: widget.win!),
-              _LevelTabs(
-                selected: _selectedLevel,
-                onSelect: (level) => setState(() => _selectedLevel = level),
-              ),
-              _Emblem(animal: animal, selectedLevel: _selectedLevel),
-              _ProgressBar(
-                progress: progress,
-                selectedLevel: _selectedLevel,
-                pointsNeeded: pointsNeeded,
-                isMax: _selectedLevel >= VipPolicy.maxLevel,
-              ),
-              const _GoldDivider(),
-              _SectionTitle(title: 'VIP Identity'),
-              _IdentityGrid(
-                selectedLevel: _selectedLevel,
-                animal: animal,
-                currentLevel: widget.currentLevel,
-              ),
-              _SectionTitle(title: 'Exclusive Privileges'),
-              _PrivilegesGrid(
-                selectedLevel: _selectedLevel,
-                currentLevel: widget.currentLevel,
-                active: widget.active,
-              ),
-              _RechargeBanner(
-                active: widget.active && isCurrent,
-                monthlyPoints: widget.monthlyPoints,
-                selectedLevel: _selectedLevel,
-                onRecharge: widget.onRecharge,
-                onRecord: widget.onRecord,
-              ),
-              const SizedBox(height: 24),
-            ],
+      backgroundColor: Colors.transparent,
+      // Gold background (Mr. Wrong, 2026-11-25): his gold silk texture
+      // pic, same 2 same. The image stays fixed while the content scrolls.
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/vip_gold_bg.jpg'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _TopBar(
+                  onBack: widget.onBack,
+                  onHelp: widget.onHelp,
+                  onSettings: widget.onSettings,
+                ),
+                if (widget.win != null) _WinBanner(win: widget.win!),
+                _LevelTabs(
+                  selected: _selectedLevel,
+                  onSelect: (level) => setState(() => _selectedLevel = level),
+                ),
+                _Emblem(animal: animal, selectedLevel: _selectedLevel),
+                _ProgressBar(
+                  progress: progress,
+                  selectedLevel: _selectedLevel,
+                  pointsNeeded: pointsNeeded,
+                  isMax: _selectedLevel >= VipPolicy.maxLevel,
+                ),
+                const _GoldDivider(),
+                _SectionTitle(title: 'VIP Identity'),
+                _IdentityGrid(
+                  selectedLevel: _selectedLevel,
+                  animal: animal,
+                  currentLevel: widget.currentLevel,
+                ),
+                _SectionTitle(title: 'Exclusive Privileges'),
+                _PrivilegesGrid(
+                  selectedLevel: _selectedLevel,
+                  currentLevel: widget.currentLevel,
+                  active: widget.active,
+                ),
+                _RechargeBanner(
+                  active: widget.active && isCurrent,
+                  monthlyPoints: widget.monthlyPoints,
+                  selectedLevel: _selectedLevel,
+                  onRecharge: widget.onRecharge,
+                  onRecord: widget.onRecord,
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),
@@ -301,19 +458,28 @@ class _TopBar extends StatelessWidget {
         children: <Widget>[
           IconButton(
             onPressed: onBack ?? () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.chevron_left_rounded,
-                color: VipSectionColors.gold, size: 34),
+            icon: const Icon(
+              Icons.chevron_left_rounded,
+              color: VipSectionColors.onGold,
+              size: 34,
+            ),
           ),
           const Spacer(),
           IconButton(
             onPressed: onHelp,
-            icon: const Icon(Icons.help_outline_rounded,
-                color: VipSectionColors.gold, size: 28),
+            icon: const Icon(
+              Icons.help_outline_rounded,
+              color: VipSectionColors.onGold,
+              size: 28,
+            ),
           ),
           IconButton(
             onPressed: onSettings,
-            icon: const Icon(Icons.settings_outlined,
-                color: VipSectionColors.gold, size: 28),
+            icon: const Icon(
+              Icons.settings_outlined,
+              color: VipSectionColors.onGold,
+              size: 28,
+            ),
           ),
         ],
       ),
@@ -334,7 +500,11 @@ class _WinBanner extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           // Gold + black with a purple tint; no red, per the palette.
-          colors: <Color>[Color(0xFF161616), Color(0xFF1A0B2E), Color(0xFF000000)],
+          colors: <Color>[
+            Color(0xFF161616),
+            Color(0xFF1A0B2E),
+            Color(0xFF000000),
+          ],
         ),
         border: Border.all(color: VipSectionColors.gold, width: 2),
         borderRadius: BorderRadius.circular(14),
@@ -423,8 +593,7 @@ class _LevelTabs extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: isSelected
                     ? BoxDecoration(
                         color: VipSectionColors.purpleSurface,
@@ -440,14 +609,13 @@ class _LevelTabs extends StatelessWidget {
                     : null,
                 child: Text(
                   'VIP$level',
-                style: TextStyle(
-                  color: isSelected
-                      ? VipSectionColors.gold
-                      : VipSectionColors.textDim,
-                  fontSize: isSelected ? 20 : 16,
-                  fontWeight:
-                      isSelected ? FontWeight.w900 : FontWeight.w600,
-                ),
+                  style: TextStyle(
+                    color: isSelected
+                        ? VipSectionColors.gold
+                        : VipSectionColors.textDim,
+                    fontSize: isSelected ? 20 : 16,
+                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -466,11 +634,12 @@ class _Emblem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Real animal artwork: the level's transparent frame still from R2
-    // (frames/vip<N>-<animal>-transparent.png). Falls back to the animal
-    // emoji only if the R2 image fails to load.
-    final String? frameStillUrl =
-        vipFrameStillUrlForVipLevel(selectedLevel);
+    // Real animal artwork: the level's R2 animation video (VAP mp4,
+    // vap/vip<N>-<animal>.mp4) plays once (5 s, ends calmly), with the
+    // transparent frame still as the poster while it loads and the
+    // fallback if the video errors or ends. VIP1-4 have no video
+    // (still only, by design). Photo nahi, video (Mr. Wrong, 2026-11-25).
+    final String? frameStillUrl = vipFrameStillUrlForVipLevel(selectedLevel);
     return Column(
       children: <Widget>[
         const SizedBox(height: 12),
@@ -486,15 +655,14 @@ class _Emblem extends StatelessWidget {
               height: 254,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(
-                    color: VipSectionColors.goldDeep, width: 2),
+                border: Border.all(color: VipSectionColors.goldDeep, width: 2),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
                     color: VipSectionColors.emblemGlow(selectedLevel),
-                    blurRadius:
-                        VipSectionColors.dragonFrameBlur(selectedLevel),
-                    spreadRadius:
-                        VipSectionColors.dragonFrameSpread(selectedLevel),
+                    blurRadius: VipSectionColors.dragonFrameBlur(selectedLevel),
+                    spreadRadius: VipSectionColors.dragonFrameSpread(
+                      selectedLevel,
+                    ),
                   ),
                 ],
               ),
@@ -522,30 +690,55 @@ class _Emblem extends StatelessWidget {
               alignment: Alignment.center,
               child: frameStillUrl != null
                   ? ClipOval(
-                      child: Image.network(
-                        frameStillUrl,
+                      child: SizedBox(
                         width: 220,
                         height: 220,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Text(animal.emoji,
-                            style: const TextStyle(fontSize: 110)),
+                        child: VipFrameAlphaVideo(
+                          videoUrl: vipFrameVapUrlForVipLevel(selectedLevel),
+                          stillUrl: frameStillUrl,
+                          fit: BoxFit.contain,
+                          fallback: Text(
+                            animal.emoji,
+                            style: const TextStyle(fontSize: 110),
+                          ),
+                        ),
                       ),
                     )
-                  : Text(animal.emoji,
-                      style: const TextStyle(fontSize: 110)),
+                  : Text(animal.emoji, style: const TextStyle(fontSize: 110)),
             ),
           ],
         ),
         const SizedBox(height: 10),
         // Golden VIP tag image for all 18 levels, loaded from R2.
-        VipTagImage(vipLevel: selectedLevel, fontSize: 20),
+        // Black-glass pill behind it (Mr. Wrong, 2026-11-25): the gold
+        // tag would vanish into the gold background without a dark ground.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: VipSectionColors.cardGlass,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: VipSectionColors.gold, width: 1),
+          ),
+          child: VipTagImage(vipLevel: selectedLevel, fontSize: 20),
+        ),
         const SizedBox(height: 8),
-        Text(
-          '${animal.name}  •  ${animal.category}  •  ${animal.rarity}',
-          style: TextStyle(
-            color: _rarityColor(animal.rarity),
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
+        // Rarity line on a black-glass pill: the per-rarity colours
+        // (Epic lavender, Legendary gold, Mythic red) stay as they are —
+        // on the gold background they need a dark ground to read.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: VipSectionColors.cardGlass,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: VipSectionColors.gold, width: 1),
+          ),
+          child: Text(
+            '${animal.name}  •  ${animal.category}  •  ${animal.rarity}',
+            style: TextStyle(
+              color: _rarityColor(animal.rarity),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -600,11 +793,14 @@ class _ProgressBar extends StatelessWidget {
                       child: FractionallySizedBox(
                         widthFactor: progress,
                         child: Container(
-                          // Gold-to-purple progress fill.
+                          // Dark-purple-to-purple fill on the gold
+                          // background (Mr. Wrong, 2026-11-25): a gold
+                          // fill would vanish into the gold background.
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: VipSectionColors.progressGradient(
-                                  selectedLevel),
+                              colors: VipSectionColors.progressGradientOnGold(
+                                selectedLevel,
+                              ),
                             ),
                           ),
                         ),
@@ -617,7 +813,7 @@ class _ProgressBar extends StatelessWidget {
               Text(
                 'VIP$selectedLevel',
                 style: const TextStyle(
-                  color: VipSectionColors.gold,
+                  color: VipSectionColors.onGold,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -629,7 +825,7 @@ class _ProgressBar extends StatelessWidget {
                 ? 'You have reached the highest VIP level.'
                 : 'Need ${_formatNumber(pointsNeeded)} points more to VIP${selectedLevel + 1}',
             style: const TextStyle(
-              color: VipSectionColors.text,
+              color: VipSectionColors.onGold,
               fontSize: 14,
             ),
           ),
@@ -660,19 +856,19 @@ class _GoldDivider extends StatelessWidget {
       child: Row(
         children: <Widget>[
           const Expanded(
-            child: Divider(color: VipSectionColors.goldDark, thickness: 2),
+            child: Divider(color: VipSectionColors.onGold, thickness: 2),
           ),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 8),
             width: 14,
             height: 14,
             decoration: BoxDecoration(
-              color: VipSectionColors.gold,
+              color: VipSectionColors.onGold,
               borderRadius: BorderRadius.circular(3),
             ),
           ),
           const Expanded(
-            child: Divider(color: VipSectionColors.goldDark, thickness: 2),
+            child: Divider(color: VipSectionColors.onGold, thickness: 2),
           ),
         ],
       ),
@@ -692,20 +888,24 @@ class _SectionTitle extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          const Text('—  ◆  —',
-              style: TextStyle(color: VipSectionColors.gold)),
+          const Text(
+            '—  ◆  —',
+            style: TextStyle(color: VipSectionColors.onGold),
+          ),
           const SizedBox(width: 10),
           Text(
             title,
             style: const TextStyle(
-              color: VipSectionColors.gold,
+              color: VipSectionColors.onGold,
               fontSize: 22,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(width: 10),
-          const Text('—  ◆  —',
-              style: TextStyle(color: VipSectionColors.gold)),
+          const Text(
+            '—  ◆  —',
+            style: TextStyle(color: VipSectionColors.onGold),
+          ),
         ],
       ),
     );
@@ -734,10 +934,10 @@ List<_IdentityItem> _identityItems(VipAnimal animal) {
   final int coinsBonus = animal.level >= 16
       ? 20
       : animal.level >= 11
-          ? 10
-          : animal.level >= 5
-              ? 5
-              : 0;
+      ? 10
+      : animal.level >= 5
+      ? 5
+      : 0;
   return <_IdentityItem>[
     _IdentityItem(
       label: coinsBonus > 0 ? 'Coins Bonus +$coinsBonus%' : 'Coins Bonus',
@@ -745,11 +945,7 @@ List<_IdentityItem> _identityItems(VipAnimal animal) {
       minLevel: 5,
       note: coinsBonus > 0 ? 'On every purchase' : 'From VIP5',
     ),
-    const _IdentityItem(
-      label: 'Label',
-      icon: Icons.label_rounded,
-      minLevel: 1,
-    ),
+    const _IdentityItem(label: 'Label', icon: Icons.label_rounded, minLevel: 1),
     const _IdentityItem(
       label: 'VIP Medal',
       icon: Icons.military_tech_rounded,
@@ -833,23 +1029,15 @@ class _RewardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        // Unlocked cards get a purple tint over the black surface;
-        // locked cards stay plain black. Gold border is kept.
-        gradient: unlocked
-            ? const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[
-                  VipSectionColors.purpleSurface,
-                  VipSectionColors.surface,
-                ],
-              )
-            : null,
-        color: unlocked ? null : VipSectionColors.surface,
+        // Black glass (Mr. Wrong, 2026-11-25): every card — locked or
+        // unlocked — shows on the gold background, so the surface is the
+        // same translucent black and the border is always gold. The lock
+        // state shows only in the dimmed icon/title, never by hiding the
+        // card: VIP Identity items (Frame, Label, Ride, all of them) must
+        // all be visible.
+        color: VipSectionColors.cardGlass,
         border: Border.all(
-          color: unlocked
-              ? VipSectionColors.gold
-              : VipSectionColors.divider,
+          color: VipSectionColors.gold,
           width: unlocked ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(14),
@@ -859,8 +1047,7 @@ class _RewardCard extends StatelessWidget {
         children: <Widget>[
           if (item.isNew)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: VipSectionColors.gold,
                 borderRadius: BorderRadius.circular(6),
@@ -876,9 +1063,7 @@ class _RewardCard extends StatelessWidget {
             ),
           Icon(
             item.icon,
-            color: unlocked
-                ? VipSectionColors.gold
-                : VipSectionColors.textDim,
+            color: unlocked ? VipSectionColors.gold : VipSectionColors.textDim,
             size: 34,
           ),
           const SizedBox(height: 8),
@@ -889,7 +1074,7 @@ class _RewardCard extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: unlocked
-                    ? VipSectionColors.text
+                    ? VipSectionColors.gold
                     : VipSectionColors.textDim,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -996,26 +1181,15 @@ class _PrivilegesGrid extends StatelessWidget {
         ),
         itemBuilder: (context, index) {
           final item = _privilegeItems[index];
-          final unlocked =
-              active && currentLevel >= item.minLevel;
+          final unlocked = active && currentLevel >= item.minLevel;
           return Container(
             decoration: BoxDecoration(
-              // Unlocked privileges get a purple tint; gold border kept.
-              gradient: unlocked
-                  ? const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        VipSectionColors.purpleSurface,
-                        VipSectionColors.surface,
-                      ],
-                    )
-                  : null,
-              color: unlocked ? null : VipSectionColors.surface,
+              // Black glass (Mr. Wrong, 2026-11-25): every privilege card
+              // shows on the gold background, locked or unlocked. The
+              // lock state shows only in the dimmed icon/title.
+              color: VipSectionColors.cardGlass,
               border: Border.all(
-                color: unlocked
-                    ? VipSectionColors.gold
-                    : VipSectionColors.divider,
+                color: VipSectionColors.gold,
                 width: unlocked ? 2 : 1,
               ),
               borderRadius: BorderRadius.circular(14),
@@ -1050,7 +1224,7 @@ class _PrivilegesGrid extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: unlocked
-                          ? VipSectionColors.text
+                          ? VipSectionColors.gold
                           : VipSectionColors.textDim,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1115,8 +1289,11 @@ class _RechargeBanner extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    Icon(Icons.chevron_right_rounded,
-                        color: VipSectionColors.text, size: 18),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: VipSectionColors.text,
+                      size: 18,
+                    ),
                   ],
                 ),
               ),
@@ -1145,9 +1322,7 @@ class _RechargeBanner extends StatelessWidget {
                     ),
                     Text(
                       'VIP Points: $monthlyPoints',
-                      style: const TextStyle(
-                        color: VipSectionColors.textDim,
-                      ),
+                      style: const TextStyle(color: VipSectionColors.textDim),
                     ),
                   ],
                 ),

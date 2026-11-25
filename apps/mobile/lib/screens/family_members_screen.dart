@@ -53,9 +53,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   @override
   void initState() {
     super.initState();
-    _members = widget.members
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    _members = widget.members.map((e) => Map<String, dynamic>.from(e)).toList();
     _requests = widget.joinRequests
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
@@ -104,10 +102,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     await Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => PublicProfileScreen(
-          state: widget.state,
-          userId: userId,
-        ),
+        builder: (_) =>
+            PublicProfileScreen(state: widget.state, userId: userId),
       ),
     );
   }
@@ -239,7 +235,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                   request['user_id'].toString(),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF2A2140),
+                                color: Color(0xFFFFD700),
                               ),
                             ),
                           ),
@@ -270,9 +266,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     child: Row(
                       children: [
                         GestureDetector(
-                          key: Key(
-                            'family-member-dp-${member['user_id']}',
-                          ),
+                          key: Key('family-member-dp-${member['user_id']}'),
                           onTap: () => _openMemberProfile(member),
                           child: FamilyAvatar(
                             backend: _backend,
@@ -289,7 +283,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                 member['display_name']?.toString() ?? 'User',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF2A2140),
+                                  color: Color(0xFFFFD700),
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -305,7 +299,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                 ].join(' • '),
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF7A7390),
+                                  color: Color(0xFFF0F2FF),
                                 ),
                               ),
                             ],
@@ -316,9 +310,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                 widget.state.userId &&
                             member['role']?.toString() != 'leader')
                           PopupMenuButton<String>(
-                            key: Key(
-                              'family-member-menu-${member['user_id']}',
-                            ),
+                            key: Key('family-member-menu-${member['user_id']}'),
                             onSelected: (action) async {
                               if (action == 'admin') {
                                 await _setAdmin(

@@ -238,7 +238,7 @@ class _BoardPainter extends CustomPainter {
     for (var i = 0; i < _cells.length; i++) {
       final point = _cells[i];
       cellPaint.color = (const {0,8,13,21,26,34,39,47}.contains(i))
-          ? const Color(0xFF50D8FF)
+          ? const Color(0xFF9D7BFF)
           : Colors.white;
       canvas.drawRRect(
         RRect.fromRectAndRadius(

@@ -217,7 +217,7 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
                     widget.peerName,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: TinniPalette.cream,
+                      color: const Color(0xFF2A2140),
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
                     ),
@@ -226,7 +226,7 @@ class _DirectCallScreenState extends State<DirectCallScreen> {
                   Text(
                     statusText,
                     style: const TextStyle(
-                      color: TinniPalette.muted,
+                      color: const Color(0xFF6E6880),
                       fontSize: 14,
                     ),
                   ),

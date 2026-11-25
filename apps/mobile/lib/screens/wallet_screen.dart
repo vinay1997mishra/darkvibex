@@ -30,10 +30,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (role != 'coin_seller' && role != 'merchant') return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => RoleWalletDetailScreen(
-          state: state,
-          walletType: role,
-        ),
+        builder: (_) => RoleWalletDetailScreen(state: state, walletType: role),
       ),
     );
     await state.refreshWallet();
@@ -55,8 +52,7 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
           actions: [
             IconButton(
-              onPressed:
-                  state.backendConnected ? state.refreshWallet : null,
+              onPressed: state.backendConnected ? state.refreshWallet : null,
               icon: const Icon(Icons.refresh_rounded),
               tooltip: 'Refresh wallet',
             ),
@@ -79,8 +75,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         value: state.coins.toString(),
                         onTap: () => Navigator.of(context).push<void>(
                           MaterialPageRoute<void>(
-                            builder: (_) =>
-                                CoinsHistoryScreen(state: state),
+                            builder: (_) => CoinsHistoryScreen(state: state),
                           ),
                         ),
                       ),
@@ -94,8 +89,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         value: state.diamonds.toString(),
                         onTap: () => Navigator.of(context).push<void>(
                           MaterialPageRoute<void>(
-                            builder: (_) =>
-                                DiamondsWalletScreen(state: state),
+                            builder: (_) => DiamondsWalletScreen(state: state),
                           ),
                         ),
                       ),
@@ -119,8 +113,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 state.userRole == 'merchant'
@@ -137,7 +130,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                     ? 'Separate merchant coins, USD and permanent ledger'
                                     : 'Separate seller coins, USD, PIN and permanent ledger',
                                 style: const TextStyle(
-                                  color: TinniPalette.muted,
+                                  color: const Color(0xFFF0F2FF),
                                   fontSize: 10,
                                 ),
                               ),
@@ -161,19 +154,15 @@ class _WalletScreenState extends State<WalletScreen> {
                         ),
                         title: Text(
                           'Recent transactions',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
+                          style: TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
                       if (state.walletLedger.isEmpty)
                         const Padding(
-                          padding:
-                              EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                           child: Align(
                             alignment: Alignment.centerLeft,
-                            child:
-                                Text('No synced transactions yet.'),
+                            child: Text('No synced transactions yet.'),
                           ),
                         )
                       else
@@ -181,11 +170,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ListTile(
                             dense: true,
                             leading: Icon(
-                              (int.tryParse(
-                                            row['amount']
-                                                    ?.toString() ??
-                                                '',
-                                          ) ??
+                              (int.tryParse(row['amount']?.toString() ?? '') ??
                                           0) >=
                                       0
                                   ? Icons.south_west_rounded
@@ -194,8 +179,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               color: TinniPalette.gold,
                             ),
                             title: Text(
-                              row['kind']?.toString() ??
-                                  'transaction',
+                              row['kind']?.toString() ?? 'transaction',
                             ),
                             subtitle: Text(
                               'Balance: ${row['balance_after'] ?? '-'}',
@@ -215,7 +199,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Text(
                     'Normal Coins, Diamonds, Coin Seller coins, Merchant coins and role USD balances stay separate. Role USD never auto-converts to Coins.',
                     style: TextStyle(
-                      color: TinniPalette.muted,
+                      color: const Color(0xFFF0F2FF),
                       fontSize: 10,
                     ),
                   ),
@@ -254,21 +238,25 @@ class _BalanceCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-            children: [
-              CurrencyBadge(icon: icon, isDiamond: label == 'Diamonds', size: 36),
-              const Spacer(),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: TinniPalette.muted,
-                size: 20,
-              ),
-            ],
-          ),
-          const Spacer(),
+              children: [
+                CurrencyBadge(
+                  icon: icon,
+                  isDiamond: label == 'Diamonds',
+                  size: 36,
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: const Color(0xFFF0F2FF),
+                  size: 20,
+                ),
+              ],
+            ),
+            const Spacer(),
             Text(
               label,
               style: const TextStyle(
-                color: TinniPalette.muted,
+                color: const Color(0xFFF0F2FF),
                 fontSize: 10,
               ),
             ),

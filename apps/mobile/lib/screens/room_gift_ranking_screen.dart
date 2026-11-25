@@ -181,7 +181,7 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
                 Text(
                   'ID ${formatPublicUserId(publicId)}',
                   style: const TextStyle(
-                    color: TinniPalette.cream,
+                    color: const Color(0xFF2A2140),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -210,7 +210,7 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
               const Text(
                 'Sending',
                 style: TextStyle(
-                  color: TinniPalette.muted,
+                  color: const Color(0xFF6E6880),
                   fontSize: 9,
                 ),
               ),
@@ -249,7 +249,7 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: TinniPalette.cream,
+                        color: const Color(0xFF2A2140),
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -294,7 +294,7 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
                             style: TextStyle(
                               color: _period == value
                                   ? TinniPalette.gold
-                                  : TinniPalette.muted,
+                                  : const Color(0xFF6E6880),
                               fontWeight: _period == value
                                   ? FontWeight.w900
                                   : FontWeight.w600,
@@ -383,7 +383,7 @@ class _RoomGiftRankingScreenState extends State<RoomGiftRankingScreen> {
                                       const Text(
                                         'Sending',
                                         style: TextStyle(
-                                          color: TinniPalette.muted,
+                                          color: const Color(0xFF6E6880),
                                           fontSize: 9,
                                         ),
                                       ),

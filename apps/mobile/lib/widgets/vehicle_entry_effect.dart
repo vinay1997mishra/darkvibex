@@ -66,7 +66,7 @@ List<Color> _vehicleColorsFor(int level, String? styleId) {
   if (level >= 12) {
     return const [Color(0xFFBFA7FF), Color(0xFFFFB52E), Color(0xFFB675FF)];
   }
-  return const [Color(0xFFBFA7FF), Color(0xFF53D9FF), Color(0xFF50D8FF)];
+  return const [Color(0xFFBFA7FF), Color(0xFF9D7BFF), Color(0xFF9D7BFF)];
 }
 
 class VehicleShowcase extends StatefulWidget {

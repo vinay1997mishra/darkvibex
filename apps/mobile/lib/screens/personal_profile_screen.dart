@@ -39,8 +39,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
   @override
   void initState() {
     super.initState();
-    nameController =
-        TextEditingController(text: widget.state.displayName);
+    nameController = TextEditingController(text: widget.state.displayName);
     bioController = TextEditingController(text: widget.state.bio);
     final raw = widget.state.dateOfBirth?.trim() ?? '';
     dob = raw.isEmpty ? null : DateTime.tryParse(raw);
@@ -78,8 +77,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     final now = DateTime.now();
     final selected = await showDatePicker(
       context: context,
-      initialDate:
-          dob ?? DateTime(now.year - 18, now.month, now.day),
+      initialDate: dob ?? DateTime(now.year - 18, now.month, now.day),
       firstDate: DateTime(1900),
       lastDate: DateTime(now.year, now.month, now.day),
       helpText: 'Select date of birth',
@@ -117,14 +115,12 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
             ListTile(
               leading: const Icon(Icons.photo_library_rounded),
               title: const Text('Gallery'),
-              onTap: () =>
-                  Navigator.pop(sheetContext, ImageSource.gallery),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
             ListTile(
               leading: const Icon(Icons.photo_camera_rounded),
               title: const Text('Camera'),
-              onTap: () =>
-                  Navigator.pop(sheetContext, ImageSource.camera),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
           ],
         ),
@@ -149,9 +145,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     if (type == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Choose a JPG, PNG or WebP photo'),
-          ),
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP photo')),
         );
       }
       return;
@@ -185,7 +179,8 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     );
   }
 
-  Future<ImageSource?> _chooseMediaSource() => showModalBottomSheet<ImageSource>(
+  Future<ImageSource?> _chooseMediaSource() =>
+      showModalBottomSheet<ImageSource>(
         context: context,
         backgroundColor: TinniPalette.nearBlack,
         showDragHandle: true,
@@ -195,18 +190,12 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
               ListTile(
                 leading: const Icon(Icons.photo_library_rounded),
                 title: const Text('Select from phone album'),
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  ImageSource.gallery,
-                ),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_camera_rounded),
                 title: const Text('Take photo'),
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  ImageSource.camera,
-                ),
+                onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
               ),
             ],
           ),
@@ -236,9 +225,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     if (type == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Choose a JPG, PNG or WebP photo'),
-          ),
+          const SnackBar(content: Text('Choose a JPG, PNG or WebP photo')),
         );
       }
       return;
@@ -247,9 +234,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     if (bytes.length > 5 * 1024 * 1024) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Choose a photo smaller than 5 MB'),
-          ),
+          const SnackBar(content: Text('Choose a photo smaller than 5 MB')),
         );
       }
       return;
@@ -262,11 +247,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
       bytes: bytes,
       contentType: type,
     );
-    final ok = key != null &&
-        await widget.state.backend.saveProfileMedia(
-          slot: slot,
-          assetKey: key,
-        );
+    final ok =
+        key != null &&
+        await widget.state.backend.saveProfileMedia(slot: slot, assetKey: key);
     if (!mounted) return;
     if (ok) {
       setState(() {
@@ -287,9 +270,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(slot == 'cover' ? 'Remove cover photo?' : 'Remove photo?'),
-        content: const Text(
-          'This removes the photo from your profile.',
-        ),
+        content: const Text('This removes the photo from your profile.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -349,8 +330,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
               right: 8,
               bottom: 7,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: .62),
                   borderRadius: BorderRadius.circular(8),
@@ -360,7 +340,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: TinniPalette.cream,
+                    color: const Color(0xFF2A2140),
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
@@ -380,8 +360,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                   ),
                 ),
               ),
-            if (busy)
-              const Center(child: CircularProgressIndicator()),
+            if (busy) const Center(child: CircularProgressIndicator()),
           ],
         ),
       ),
@@ -415,9 +394,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     if (!mounted) return;
     setState(() => saving = false);
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile updated')));
       Navigator.pop(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -471,10 +450,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                   border: Border.all(color: TinniPalette.bronze),
                   image: cover == null
                       ? null
-                      : DecorationImage(
-                          image: cover,
-                          fit: BoxFit.cover,
-                        ),
+                      : DecorationImage(image: cover, fit: BoxFit.cover),
                 ),
                 child: Stack(
                   children: [
@@ -509,10 +485,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                           uploadingSlot == 'cover'
                               ? 'Uploading…'
                               : cover == null
-                                  ? 'Add cover'
-                                  : 'Change cover',
+                              ? 'Add cover'
+                              : 'Change cover',
                           style: const TextStyle(
-                            color: TinniPalette.cream,
+                            color: const Color(0xFF2A2140),
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -587,7 +563,9 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                       tooltip: 'Copy ID',
                       onPressed: () async {
                         await Clipboard.setData(
-                          ClipboardData(text: formatPublicUserId(widget.state.publicId)),
+                          ClipboardData(
+                            text: formatPublicUserId(widget.state.publicId),
+                          ),
                         );
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -667,7 +645,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                         Text(
                           'Gender • ${widget.state.genderChangesRemaining} changes left',
                           style: const TextStyle(
-                            color: TinniPalette.cream,
+                            color: const Color(0xFFFFD700),
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -678,7 +656,8 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                               child: ChoiceChip(
                                 label: const Text('Male'),
                                 selected: gender == 'male',
-                                onSelected: saving ||
+                                onSelected:
+                                    saving ||
                                         widget.state.genderChangesRemaining <= 0
                                     ? null
                                     : (_) => setState(() => gender = 'male'),
@@ -689,7 +668,8 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                               child: ChoiceChip(
                                 label: const Text('Female'),
                                 selected: gender == 'female',
-                                onSelected: saving ||
+                                onSelected:
+                                    saving ||
                                         widget.state.genderChangesRemaining <= 0
                                     ? null
                                     : (_) => setState(() => gender = 'female'),
@@ -753,9 +733,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                   ListTile(
                     leading: const Icon(Icons.workspace_premium_rounded),
                     title: const Text('VIP'),
-                    subtitle: Text(
-                      'VIP ${widget.state.vipLevel}/18',
-                    ),
+                    subtitle: Text('VIP ${widget.state.vipLevel}/18'),
                   ),
                 ],
               ),

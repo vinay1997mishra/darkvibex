@@ -67,9 +67,9 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
       setState(() {
         members = rawMembers is List
             ? rawMembers
-                .whereType<Map>()
-                .map((row) => Map<String, dynamic>.from(row))
-                .toList(growable: false)
+                  .whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(growable: false)
             : const [];
         transfers = List<Map<String, dynamic>>.from(
           results[1] as List<Map<String, dynamic>>,
@@ -145,8 +145,7 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
       );
       return;
     }
-    final balance =
-        int.tryParse(result?['coin_balance']?.toString() ?? '');
+    final balance = int.tryParse(result?['coin_balance']?.toString() ?? '');
     if (balance != null) widget.state.setCoinBalance(balance);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -169,138 +168,135 @@ class _FamilyWalletScreenState extends State<FamilyWalletScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: const Text('Family Wallet'),
-        ),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(14),
-                    children: [
-                      if (error != null)
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('Family Wallet')),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(14),
+                children: [
+                  if (error != null)
+                    Text(
+                      error!,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  TinniPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          error!,
-                          style: const TextStyle(color: Colors.redAccent),
-                        ),
-                      TinniPanel(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.familyName,
-                              style: const TextStyle(
-                                color: TinniPalette.gold,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 7),
-                            Text(
-                              'My Coins: ${widget.state.coins}',
-                              style: const TextStyle(
-                                color: TinniPalette.gold,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            Text(
-                              'Family Bonus Wallet: $familyBonusWallet',
-                              style: const TextStyle(
-                                color: TinniPalette.muted,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'Family member transfer: receiver adds Family EXP 1:1. Sender gets no Family EXP.',
-                              style: TextStyle(
-                                color: TinniPalette.muted,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Send coins to Family members',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      for (final member in members)
-                        TinniPanel(
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              backgroundImage: _avatar(member),
-                              child: _avatar(member) == null
-                                  ? const Icon(Icons.person_rounded)
-                                  : null,
-                            ),
-                            title: Text(
-                              member['display_name']?.toString() ?? 'User',
-                            ),
-                            subtitle: Text(
-                              'ID ${formatPublicUserId(member['public_id'])} • Received ${_compact(int.tryParse(member['received_coins']?.toString() ?? '') ?? 0)}',
-                            ),
-                            trailing:
-                                member['user_id']?.toString() ==
-                                        widget.state.userId
-                                    ? null
-                                    : TextButton(
-                                        key: Key(
-                                          'family-wallet-send-${member['user_id']}',
-                                        ),
-                                        onPressed: () => _sendCoins(member),
-                                        child: const Text('Send'),
-                                      ),
-                          ),
-                        ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Transfer Records',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (transfers.isEmpty)
-                        const TinniPanel(
-                          child: Text(
-                            'No Family Wallet transfers yet.',
-                            style: TextStyle(color: TinniPalette.muted),
-                          ),
-                        ),
-                      for (final row in transfers)
-                        ListTile(
-                          leading: const Icon(
-                            Icons.swap_horiz_rounded,
+                          widget.familyName,
+                          style: const TextStyle(
                             color: TinniPalette.gold,
-                          ),
-                          title: Text(
-                            '${row['sender_name'] ?? 'User'} → '
-                            '${row['receiver_name'] ?? 'User'}',
-                          ),
-                          subtitle: Text(_date(row['created_at'])),
-                          trailing: Text(
-                            _compact(
-                              int.tryParse(row['coins']?.toString() ?? '') ?? 0,
-                            ),
-                            style: const TextStyle(
-                              color: TinniPalette.gold,
-                              fontWeight: FontWeight.w900,
-                            ),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 7),
+                        Text(
+                          'My Coins: ${widget.state.coins}',
+                          style: const TextStyle(
+                            color: TinniPalette.gold,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          'Family Bonus Wallet: $familyBonusWallet',
+                          style: const TextStyle(
+                            color: const Color(0xFFF0F2FF),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Family member transfer: receiver adds Family EXP 1:1. Sender gets no Family EXP.',
+                          style: TextStyle(
+                            color: const Color(0xFFF0F2FF),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-        ),
-      );
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Send coins to Family members',
+                    style: TextStyle(
+                      color: TinniPalette.gold,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final member in members)
+                    TinniPanel(
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundImage: _avatar(member),
+                          child: _avatar(member) == null
+                              ? const Icon(Icons.person_rounded)
+                              : null,
+                        ),
+                        title: Text(
+                          member['display_name']?.toString() ?? 'User',
+                        ),
+                        subtitle: Text(
+                          'ID ${formatPublicUserId(member['public_id'])} • Received ${_compact(int.tryParse(member['received_coins']?.toString() ?? '') ?? 0)}',
+                        ),
+                        trailing:
+                            member['user_id']?.toString() == widget.state.userId
+                            ? null
+                            : TextButton(
+                                key: Key(
+                                  'family-wallet-send-${member['user_id']}',
+                                ),
+                                onPressed: () => _sendCoins(member),
+                                child: const Text('Send'),
+                              ),
+                      ),
+                    ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Transfer Records',
+                    style: TextStyle(
+                      color: TinniPalette.gold,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (transfers.isEmpty)
+                    const TinniPanel(
+                      child: Text(
+                        'No Family Wallet transfers yet.',
+                        style: TextStyle(color: const Color(0xFFF0F2FF)),
+                      ),
+                    ),
+                  for (final row in transfers)
+                    ListTile(
+                      leading: const Icon(
+                        Icons.swap_horiz_rounded,
+                        color: TinniPalette.gold,
+                      ),
+                      title: Text(
+                        '${row['sender_name'] ?? 'User'} → '
+                        '${row['receiver_name'] ?? 'User'}',
+                      ),
+                      subtitle: Text(_date(row['created_at'])),
+                      trailing: Text(
+                        _compact(
+                          int.tryParse(row['coins']?.toString() ?? '') ?? 0,
+                        ),
+                        style: const TextStyle(
+                          color: TinniPalette.gold,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+    ),
+  );
 }

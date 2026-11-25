@@ -38,8 +38,7 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      roomNotifications =
-          prefs.getBool('dvx.notifications.rooms') ?? true;
+      roomNotifications = prefs.getBool('dvx.notifications.rooms') ?? true;
       messageNotifications =
           prefs.getBool('dvx.notifications.messages') ?? true;
       voice = prefs.getBool('dvx.notifications.voice') ?? true;
@@ -60,77 +59,85 @@ class _MessageNotificationScreenState extends State<MessageNotificationScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(_settingsText(widget.state, 'message_title'))),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                  children: [
-                    TinniPanel(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          SwitchListTile(
-                            title: Text(_settingsText(widget.state, 'message_title')),
-                            subtitle:
-                                Text(_settingsText(widget.state, 'private_chat_alerts')),
-                            value: messageNotifications,
-                            onChanged: (value) => _set(
-                              'dvx.notifications.messages',
-                              value,
-                              () => setState(
-                                () => messageNotifications = value,
-                              ),
-                            ),
-                          ),
-                          SwitchListTile(
-                            title: Text(_settingsText(widget.state, 'room_notifications')),
-                            subtitle:
-                                Text(_settingsText(widget.state, 'room_activity')),
-                            value: roomNotifications,
-                            onChanged: (value) => _set(
-                              'dvx.notifications.rooms',
-                              value,
-                              () => setState(() => roomNotifications = value),
-                            ),
-                          ),
-                          SwitchListTile(
-                            title: Text(_settingsText(widget.state, 'voice')),
-                            subtitle: Text(_settingsText(widget.state, 'notification_sound')),
-                            value: voice,
-                            onChanged: (value) => _set(
-                              'dvx.notifications.voice',
-                              value,
-                              () => setState(() => voice = value),
-                            ),
-                          ),
-                          SwitchListTile(
-                            title: Text(_settingsText(widget.state, 'vibration')),
-                            value: vibration,
-                            onChanged: (value) => _set(
-                              'dvx.notifications.vibration',
-                              value,
-                              () => setState(() => vibration = value),
-                            ),
-                          ),
-                          SwitchListTile(
-                            title: Text(_settingsText(widget.state, 'floating_room')),
-                            value: floatingRoomOnly,
-                            onChanged: (value) => _set(
-                              'dvx.notifications.floating_room_only',
-                              value,
-                              () => setState(() => floatingRoomOnly = value),
-                            ),
-                          ),
-                        ],
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: Text(_settingsText(widget.state, 'message_title'))),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+              children: [
+                TinniPanel(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        title: Text(
+                          _settingsText(widget.state, 'message_title'),
+                        ),
+                        subtitle: Text(
+                          _settingsText(widget.state, 'private_chat_alerts'),
+                        ),
+                        value: messageNotifications,
+                        onChanged: (value) => _set(
+                          'dvx.notifications.messages',
+                          value,
+                          () => setState(() => messageNotifications = value),
+                        ),
                       ),
-                    ),
-                  ],
+                      SwitchListTile(
+                        title: Text(
+                          _settingsText(widget.state, 'room_notifications'),
+                        ),
+                        subtitle: Text(
+                          _settingsText(widget.state, 'room_activity'),
+                        ),
+                        value: roomNotifications,
+                        onChanged: (value) => _set(
+                          'dvx.notifications.rooms',
+                          value,
+                          () => setState(() => roomNotifications = value),
+                        ),
+                      ),
+                      SwitchListTile(
+                        title: Text(_settingsText(widget.state, 'voice')),
+                        subtitle: Text(
+                          _settingsText(widget.state, 'notification_sound'),
+                        ),
+                        value: voice,
+                        onChanged: (value) => _set(
+                          'dvx.notifications.voice',
+                          value,
+                          () => setState(() => voice = value),
+                        ),
+                      ),
+                      SwitchListTile(
+                        title: Text(_settingsText(widget.state, 'vibration')),
+                        value: vibration,
+                        onChanged: (value) => _set(
+                          'dvx.notifications.vibration',
+                          value,
+                          () => setState(() => vibration = value),
+                        ),
+                      ),
+                      SwitchListTile(
+                        title: Text(
+                          _settingsText(widget.state, 'floating_room'),
+                        ),
+                        value: floatingRoomOnly,
+                        onChanged: (value) => _set(
+                          'dvx.notifications.floating_room_only',
+                          value,
+                          () => setState(() => floatingRoomOnly = value),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-        ),
-      );
+              ],
+            ),
+    ),
+  );
 }
 
 class BindAccountScreen extends StatefulWidget {
@@ -155,7 +162,8 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
         content: Text(
           ok
               ? 'Google account linked to ID ${formatPublicUserId(widget.state.publicId)}'
-              : widget.state.authError ?? _settingsText(widget.state, 'google_bind_failed'),
+              : widget.state.authError ??
+                    _settingsText(widget.state, 'google_bind_failed'),
         ),
       ),
     );
@@ -163,67 +171,69 @@ class _BindAccountScreenState extends State<BindAccountScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(_settingsText(widget.state, 'google_bind_title'))),
-        body: TinniBackground(
-          child: ListView(
-            padding: const EdgeInsets.all(14),
-            children: [
-              TinniPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'DarkVibeX ID',
-                      style: TextStyle(color: TinniPalette.muted),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.state.userId,
-                      style: const TextStyle(
-                        color: TinniPalette.gold,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      widget.state.authProvider == 'google'
-                          ? _settingsText(widget.state, 'google_linked')
-                          : 'Email account',
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _settingsText(widget.state, 'binding_note'),
-                      style: TextStyle(
-                        color: TinniPalette.muted,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(
+      title: Text(_settingsText(widget.state, 'google_bind_title')),
+    ),
+    body: TinniBackground(
+      child: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          TinniPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'DarkVibeX ID',
+                  style: TextStyle(color: const Color(0xFFF0F2FF)),
                 ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: widget.state.authProvider == 'google' || busy
-                    ? null
-                    : _bindGoogle,
-                icon: busy
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.account_circle_rounded),
-                label: Text(
+                const SizedBox(height: 4),
+                Text(
+                  widget.state.userId,
+                  style: const TextStyle(
+                    color: TinniPalette.gold,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
                   widget.state.authProvider == 'google'
-                      ? _settingsText(widget.state, 'google_linked_short')
-                      : _settingsText(widget.state, 'bind_google'),
+                      ? _settingsText(widget.state, 'google_linked')
+                      : 'Email account',
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  _settingsText(widget.state, 'binding_note'),
+                  style: TextStyle(
+                    color: const Color(0xFFF0F2FF),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: widget.state.authProvider == 'google' || busy
+                ? null
+                : _bindGoogle,
+            icon: busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.account_circle_rounded),
+            label: Text(
+              widget.state.authProvider == 'google'
+                  ? _settingsText(widget.state, 'google_linked_short')
+                  : _settingsText(widget.state, 'bind_google'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class LanguageSettingsScreen extends StatefulWidget {
@@ -263,9 +273,12 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
       SnackBar(
         content: Text(
           ok
-              ? _settingsText(widget.state, 'language_saved').replaceAll('{value}', value)
+              ? _settingsText(
+                  widget.state,
+                  'language_saved',
+                ).replaceAll('{value}', value)
               : (widget.state.authError ??
-                  _settingsText(widget.state, 'language_save_failed')),
+                    _settingsText(widget.state, 'language_save_failed')),
         ),
       ),
     );
@@ -273,58 +286,58 @@ class _LanguageSettingsScreenState extends State<LanguageSettingsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(_settingsText(widget.state, 'language_title'))),
-        body: TinniBackground(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-            children: [
-              for (final value in darkVibeXSupportedLanguages)
-                Card(
-                  color: const Color(0xE60A0804),
-                  child: RadioListTile<String>(
-                    key: Key('language-' + value.toLowerCase()),
-                    value: value,
-                    groupValue: selected,
-                    title: Text(
-                      value,
-                      style: TextStyle(
-                        color: selected == value
-                            ? TinniPalette.gold
-                            : TinniPalette.cream,
-                        fontWeight: selected == value
-                            ? FontWeight.w900
-                            : FontWeight.w600,
-                      ),
-                    ),
-                    secondary: saving && selected == value
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : null,
-                    onChanged: saving
-                        ? null
-                        : (next) {
-                            if (next != null) _select(next);
-                          },
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Text(
-                  _settingsText(widget.state, 'language_note'),
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: Text(_settingsText(widget.state, 'language_title'))),
+    body: TinniBackground(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+        children: [
+          for (final value in darkVibeXSupportedLanguages)
+            Card(
+              color: const Color(0xE60A0804),
+              child: RadioListTile<String>(
+                key: Key('language-' + value.toLowerCase()),
+                value: value,
+                groupValue: selected,
+                title: Text(
+                  value,
                   style: TextStyle(
-                    color: TinniPalette.muted,
-                    fontSize: 11,
-                    height: 1.4,
+                    color: selected == value
+                        ? TinniPalette.gold
+                        : const Color(0xFF2A2140),
+                    fontWeight: selected == value
+                        ? FontWeight.w900
+                        : FontWeight.w600,
                   ),
                 ),
+                secondary: saving && selected == value
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+                onChanged: saving
+                    ? null
+                    : (next) {
+                        if (next != null) _select(next);
+                      },
               ),
-            ],
+            ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              _settingsText(widget.state, 'language_note'),
+              style: TextStyle(
+                color: const Color(0xFF6E6880),
+                fontSize: 11,
+                height: 1.4,
+              ),
+            ),
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }
 
 class AboutDarkVibeXScreen extends StatelessWidget {
@@ -334,46 +347,44 @@ class AboutDarkVibeXScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<String>(
-        valueListenable: state.languagePreference,
-        builder: (context, language, _) => Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            title: Text(darkVibeXText(language, 'about_title')),
-          ),
-          body: TinniBackground(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                TinniPanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'DarkVibeX',
-                        style: TextStyle(
-                          color: TinniPalette.gold,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(darkVibeXText(language, 'about_description')),
-                      const SizedBox(height: 12),
-                      Text(
-                        darkVibeXText(language, 'modules_note'),
-                        style: const TextStyle(
-                          color: TinniPalette.muted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+    valueListenable: state.languagePreference,
+    builder: (context, language, _) => Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: Text(darkVibeXText(language, 'about_title'))),
+      body: TinniBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            TinniPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'DarkVibeX',
+                    style: TextStyle(
+                      color: TinniPalette.gold,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(darkVibeXText(language, 'about_description')),
+                  const SizedBox(height: 12),
+                  Text(
+                    darkVibeXText(language, 'modules_note'),
+                    style: const TextStyle(
+                      color: const Color(0xFFF0F2FF),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class BlocklistScreen extends StatefulWidget {
@@ -396,8 +407,9 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
   }
 
   Future<void> _load() async {
-    final values =
-        await widget.state.backend.blockedUsers(userId: widget.state.userId);
+    final values = await widget.state.backend.blockedUsers(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
     setState(() {
       rows = values;
@@ -420,69 +432,71 @@ class _BlocklistScreenState extends State<BlocklistScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(_settingsText(widget.state, 'blocklist_title')),
-          actions: [
-            IconButton(
-              onPressed: loading ? null : _load,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-          ],
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(
+      title: Text(_settingsText(widget.state, 'blocklist_title')),
+      actions: [
+        IconButton(
+          onPressed: loading ? null : _load,
+          icon: const Icon(Icons.refresh_rounded),
         ),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : rows.isEmpty
-                  ? Center(child: Text(_settingsText(widget.state, 'no_blocked_users')))
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                      itemCount: rows.length,
-                      itemBuilder: (context, index) {
-                        final row = rows[index];
-                        final id = row['user_id']?.toString() ?? '';
-                        final avatar = row['avatar_key']?.toString() ?? '';
-                        return Card(
-                          color: const Color(0xE60A0804),
-                          child: ListTile(
-                            onTap: id.isEmpty
-                                ? null
-                                : () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => PublicProfileScreen(
-                                          state: widget.state,
-                                          userId: id,
-                                        ),
-                                      ),
-                                    ),
-                            leading: CircleAvatar(
-                              backgroundImage: avatar.isEmpty
-                                  ? null
-                                  : NetworkImage(
-                                      widget.state.backend.fileUrl(avatar),
-                                      headers:
-                                          widget.state.backend.fileHeaders,
-                                    ),
-                              child: avatar.isEmpty
-                                  ? const Icon(Icons.person_rounded)
-                                  : null,
-                            ),
-                            title: Text(
-                              row['display_name']?.toString() ?? _settingsText(widget.state, 'user'),
-                            ),
-                            subtitle: Text('ID ${formatPublicUserId(row['public_id'])}'),
-                            trailing: TextButton(
-                              onPressed: id.isEmpty || busy.contains(id)
-                                  ? null
-                                  : () => _unblock(id),
-                              child: Text(_settingsText(widget.state, 'unblock')),
+      ],
+    ),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : rows.isEmpty
+          ? Center(child: Text(_settingsText(widget.state, 'no_blocked_users')))
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+              itemCount: rows.length,
+              itemBuilder: (context, index) {
+                final row = rows[index];
+                final id = row['user_id']?.toString() ?? '';
+                final avatar = row['avatar_key']?.toString() ?? '';
+                return Card(
+                  color: const Color(0xE60A0804),
+                  child: ListTile(
+                    onTap: id.isEmpty
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => PublicProfileScreen(
+                                state: widget.state,
+                                userId: id,
+                              ),
                             ),
                           ),
-                        );
-                      },
+                    leading: CircleAvatar(
+                      backgroundImage: avatar.isEmpty
+                          ? null
+                          : NetworkImage(
+                              widget.state.backend.fileUrl(avatar),
+                              headers: widget.state.backend.fileHeaders,
+                            ),
+                      child: avatar.isEmpty
+                          ? const Icon(Icons.person_rounded)
+                          : null,
                     ),
-        ),
-      );
+                    title: Text(
+                      row['display_name']?.toString() ??
+                          _settingsText(widget.state, 'user'),
+                    ),
+                    subtitle: Text(
+                      'ID ${formatPublicUserId(row['public_id'])}',
+                    ),
+                    trailing: TextButton(
+                      onPressed: id.isEmpty || busy.contains(id)
+                          ? null
+                          : () => _unblock(id),
+                      child: Text(_settingsText(widget.state, 'unblock')),
+                    ),
+                  ),
+                );
+              },
+            ),
+    ),
+  );
 }
 
 class PropsScreen extends StatefulWidget {
@@ -505,8 +519,9 @@ class _PropsScreenState extends State<PropsScreen> {
   }
 
   Future<void> _load() async {
-    final result =
-        await widget.state.backend.cosmetics(userId: widget.state.userId);
+    final result = await widget.state.backend.cosmetics(
+      userId: widget.state.userId,
+    );
     if (!mounted) return;
     setState(() {
       items = (result?['items'] as List? ?? const [])
@@ -541,63 +556,62 @@ class _PropsScreenState extends State<PropsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(_settingsText(widget.state, 'props_title')),
-          actions: [
-            IconButton(
-              onPressed: () => Navigator.of(context)
-                  .push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          CosmeticsShopScreen(state: widget.state),
-                    ),
-                  )
-                  .then((_) => _load()),
-              icon: const Icon(Icons.storefront_rounded),
-              tooltip: _settingsText(widget.state, 'shop_title'),
-            ),
-          ],
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(
+      title: Text(_settingsText(widget.state, 'props_title')),
+      actions: [
+        IconButton(
+          onPressed: () => Navigator.of(context)
+              .push(
+                MaterialPageRoute<void>(
+                  builder: (_) => CosmeticsShopScreen(state: widget.state),
+                ),
+              )
+              .then((_) => _load()),
+          icon: const Icon(Icons.storefront_rounded),
+          tooltip: _settingsText(widget.state, 'shop_title'),
         ),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : owned.isEmpty
-                  ? Center(child: Text(_settingsText(widget.state, 'no_props')))
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                      itemCount: owned.length,
-                      itemBuilder: (context, index) {
-                        final row = owned[index];
-                        final id = row['item_id']?.toString() ?? '';
-                        final item = _item(id);
-                        final active = row['active'] == true ||
-                            row['active']?.toString() == '1';
-                        return Card(
-                          color: const Color(0xE60A0804),
-                          child: ListTile(
-                            leading: const TinniGlowIcon(
-                              icon: Icons.auto_awesome_rounded,
-                              size: 19,
-                              boxSize: 36,
-                            ),
-                            title: Text(item?['name']?.toString() ?? id),
-                            subtitle: Text(
-                              '${row['kind'] ?? item?['kind'] ?? _settingsText(widget.state, 'prop')}'
-                              '${row['expires_at'] == null ? '' : ' • ${_settingsText(widget.state, 'owned')}'}',
-                            ),
-                            trailing: active
-                                ? Chip(label: Text(_settingsText(widget.state, 'using')))
-                                : TextButton(
-                                    onPressed: id.isEmpty
-                                        ? null
-                                        : () => _equip(id),
-                                    child: Text(_settingsText(widget.state, 'use')),
-                                  ),
+      ],
+    ),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : owned.isEmpty
+          ? Center(child: Text(_settingsText(widget.state, 'no_props')))
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+              itemCount: owned.length,
+              itemBuilder: (context, index) {
+                final row = owned[index];
+                final id = row['item_id']?.toString() ?? '';
+                final item = _item(id);
+                final active =
+                    row['active'] == true || row['active']?.toString() == '1';
+                return Card(
+                  color: const Color(0xE60A0804),
+                  child: ListTile(
+                    leading: const TinniGlowIcon(
+                      icon: Icons.auto_awesome_rounded,
+                      size: 19,
+                      boxSize: 36,
+                    ),
+                    title: Text(item?['name']?.toString() ?? id),
+                    subtitle: Text(
+                      '${row['kind'] ?? item?['kind'] ?? _settingsText(widget.state, 'prop')}'
+                      '${row['expires_at'] == null ? '' : ' • ${_settingsText(widget.state, 'owned')}'}',
+                    ),
+                    trailing: active
+                        ? Chip(
+                            label: Text(_settingsText(widget.state, 'using')),
+                          )
+                        : TextButton(
+                            onPressed: id.isEmpty ? null : () => _equip(id),
+                            child: Text(_settingsText(widget.state, 'use')),
                           ),
-                        );
-                      },
-                    ),
-        ),
-      );
+                  ),
+                );
+              },
+            ),
+    ),
+  );
 }

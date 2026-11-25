@@ -138,7 +138,9 @@ class _CallSettingsScreenState extends State<CallSettingsScreen> {
                               padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
                               child: Text(
                                 'Nobody muted. Mute a person from their chat or profile.',
-                                style: TextStyle(color: TinniPalette.muted),
+                                style: TextStyle(
+                                  color: const Color(0xFFF0F2FF),
+                                ),
                               ),
                             )
                           else
@@ -158,9 +160,8 @@ class _CallSettingsScreenState extends State<CallSettingsScreen> {
                                   user['public_id']?.toString() ?? '',
                                 ),
                                 trailing: TextButton(
-                                  onPressed: () => _unmuteUser(
-                                    user['id']?.toString() ?? '',
-                                  ),
+                                  onPressed: () =>
+                                      _unmuteUser(user['id']?.toString() ?? ''),
                                   child: const Text('Unmute'),
                                 ),
                               ),

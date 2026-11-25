@@ -49,13 +49,11 @@ String _walletNumber(int value) {
 
 String _walletDateTime(int milliseconds) {
   if (milliseconds <= 0) return '—';
-  final value =
-      DateTime.fromMillisecondsSinceEpoch(milliseconds).toLocal();
+  final value = DateTime.fromMillisecondsSinceEpoch(milliseconds).toLocal();
   String two(int n) => n.toString().padLeft(2, '0');
   return '${two(value.day)}/${two(value.month)}/${value.year} '
       '${two(value.hour)}:${two(value.minute)}';
 }
-
 
 class CoinsHistoryScreen extends StatefulWidget {
   const CoinsHistoryScreen({super.key, required this.state});
@@ -160,7 +158,7 @@ class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
                                 const Text(
                                   'Current Coins',
                                   style: TextStyle(
-                                    color: TinniPalette.muted,
+                                    color: const Color(0xFFF0F2FF),
                                   ),
                                 ),
                                 Text(
@@ -212,9 +210,7 @@ class _CoinsHistoryScreenState extends State<CoinsHistoryScreen> {
                                 Icons.card_giftcard_rounded,
                                 color: TinniPalette.gold,
                               ),
-                              title: Text(
-                                row['gift_id']?.toString() ?? 'Gift',
-                              ),
+                              title: Text(row['gift_id']?.toString() ?? 'Gift'),
                               subtitle: Text(
                                 '${row['receiver_name'] ?? 'User'} • '
                                 'ID ${formatPublicUserId(row['receiver_public_id'])}\n'
@@ -247,8 +243,7 @@ class SellerReceivedCoinsScreen extends StatefulWidget {
       _SellerReceivedCoinsScreenState();
 }
 
-class _SellerReceivedCoinsScreenState
-    extends State<SellerReceivedCoinsScreen> {
+class _SellerReceivedCoinsScreenState extends State<SellerReceivedCoinsScreen> {
   bool loading = true;
   List<Map<String, dynamic>> rows = const [];
   Timer? _pollTimer;
@@ -300,54 +295,50 @@ class _SellerReceivedCoinsScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Coins Received')),
-        body: TinniBackground(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                  onRefresh: load,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(14),
-                    children: rows.isEmpty
-                        ? const [
-                            TinniPanel(
-                              child: Text('No seller transfers.'),
-                            ),
-                          ]
-                        : [
-                            for (final row in rows)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: TinniPanel(
-                                  child: ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(
-                                      row['wallet_type'] == 'merchant'
-                                          ? 'Merchant'
-                                          : 'Coin Seller',
-                                    ),
-                                    subtitle: Text(
-                                      _walletDateTime(
-                                        _walletInt(row['created_at']),
-                                      ),
-                                    ),
-                                    trailing: Text(
-                                      '+${_walletNumber(_walletInt(row['coins']))}',
-                                      style: const TextStyle(
-                                        color: TinniPalette.gold,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('Coins Received')),
+    body: TinniBackground(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(14),
+                children: rows.isEmpty
+                    ? const [TinniPanel(child: Text('No seller transfers.'))]
+                    : [
+                        for (final row in rows)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: TinniPanel(
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  row['wallet_type'] == 'merchant'
+                                      ? 'Merchant'
+                                      : 'Coin Seller',
+                                ),
+                                subtitle: Text(
+                                  _walletDateTime(
+                                    _walletInt(row['created_at']),
+                                  ),
+                                ),
+                                trailing: Text(
+                                  '+${_walletNumber(_walletInt(row['coins']))}',
+                                  style: const TextStyle(
+                                    color: TinniPalette.gold,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
                               ),
-                          ],
-                  ),
-                ),
-        ),
-      );
+                            ),
+                          ),
+                      ],
+              ),
+            ),
+    ),
+  );
 }
 
 class DiamondsWalletScreen extends StatefulWidget {
@@ -355,8 +346,7 @@ class DiamondsWalletScreen extends StatefulWidget {
   final AppState state;
 
   @override
-  State<DiamondsWalletScreen> createState() =>
-      _DiamondsWalletScreenState();
+  State<DiamondsWalletScreen> createState() => _DiamondsWalletScreenState();
 }
 
 class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
@@ -370,8 +360,7 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
   int get _exchangeAmount =>
       int.tryParse(_exchangeAmountController.text.trim()) ?? 0;
 
-  int get _exchangeCoins =>
-      DiamondExchange.coinsForDiamonds(_exchangeAmount);
+  int get _exchangeCoins => DiamondExchange.coinsForDiamonds(_exchangeAmount);
 
   bool get _canExchange {
     final available = _walletInt(data['current_diamonds']);
@@ -447,11 +436,9 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
       } else {
         data = <String, dynamic>{
           ...data,
-          'current_diamonds':
-              data['current_diamonds'] ?? widget.state.diamonds,
+          'current_diamonds': data['current_diamonds'] ?? widget.state.diamonds,
           'gifts': data['gifts'] ?? const <Map<String, dynamic>>[],
-          'conversions':
-              data['conversions'] ?? const <Map<String, dynamic>>[],
+          'conversions': data['conversions'] ?? const <Map<String, dynamic>>[],
         };
       }
       loading = false;
@@ -464,15 +451,17 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
     if (!DiamondExchange.isExactAmount(amount)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Enter a multiple of 5 diamonds for an exact 60% exchange.'),
+          content: Text(
+            'Enter a multiple of 5 diamonds for an exact 60% exchange.',
+          ),
         ),
       );
       return;
     }
     if (amount > available) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not enough diamonds.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not enough diamonds.')));
       return;
     }
     if (!_canExchange) return;
@@ -513,11 +502,11 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
     final message = error == 'insufficient_diamonds'
         ? 'Not enough diamonds.'
         : error == 'diamonds_must_be_multiple_of_5'
-            ? 'Exchange amount must be a multiple of 5 diamonds.'
-            : 'Diamond exchange failed. Check your connection and try again.';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+        ? 'Exchange amount must be a multiple of 5 diamonds.'
+        : 'Diamond exchange failed. Check your connection and try again.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -540,35 +529,33 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                   child: LinearProgressIndicator(),
                 ),
               TinniPanel(
-                      child: Row(
+                child: Row(
+                  children: [
+                    const CurrencyBadge(
+                      icon: Icons.diamond_rounded,
+                      isDiamond: true,
+                      size: 48,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const CurrencyBadge(
-                            icon: Icons.diamond_rounded,
-                            isDiamond: true,
-                            size: 48,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Total Diamonds'),
-                                Text(
-                                  _walletNumber(
-                                    _walletInt(data['current_diamonds']),
-                                  ),
-                                  style: const TextStyle(
-                                    color: Color(0xFF8DEBFF),
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
+                          const Text('Total Diamonds'),
+                          Text(
+                            _walletNumber(_walletInt(data['current_diamonds'])),
+                            style: const TextStyle(
+                              color: Color(0xFF8DEBFF),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                         ],
                       ),
                     ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
               TinniPanel(
                 key: const Key('diamond-exchange-panel'),
@@ -576,183 +563,177 @@ class _DiamondsWalletScreenState extends State<DiamondsWalletScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      children: [
+                        const TinniGlowIcon(
+                          icon: Icons.currency_exchange_rounded,
+                          size: 22,
+                          boxSize: 44,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const TinniGlowIcon(
-                                icon: Icons.currency_exchange_rounded,
-                                size: 22,
-                                boxSize: 44,
+                              const Text(
+                                'Exchange Diamonds to Coins',
+                                style: TextStyle(
+                                  color: TinniPalette.gold,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Exchange Diamonds to Coins',
-                                      style: TextStyle(
-                                        color: TinniPalette.gold,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      'Rate: 100 Diamonds = 60 Coins (60%)',
-                                      style: TextStyle(
-                                        color: TinniPalette.muted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
+                              const SizedBox(height: 3),
+                              Text(
+                                'Rate: 100 Diamonds = 60 Coins (60%)',
+                                style: TextStyle(
+                                  color: const Color(0xFFF0F2FF),
+                                  fontSize: 12,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 14),
-                          TextField(
-                            controller: _exchangeAmountController,
-                            keyboardType: TextInputType.number,
-                            textInputAction: TextInputAction.done,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(12),
-                            ],
-                            onChanged: (_) => setState(() {}),
-                            decoration: const InputDecoration(
-                              labelText: 'Diamonds to exchange',
-                              hintText: 'e.g. 100',
-                              helperText:
-                                  'Use multiples of 5 so the 60% rate converts to whole coins.',
-                              border: OutlineInputBorder(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _exchangeAmountController,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(12),
+                      ],
+                      onChanged: (_) => setState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Diamonds to exchange',
+                        hintText: 'e.g. 100',
+                        helperText:
+                            'Use multiples of 5 so the 60% rate converts to whole coins.',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: TinniPalette.gold.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: TinniPalette.gold.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'You will receive',
+                              style: TextStyle(color: const Color(0xFFF0F2FF)),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: TinniPalette.gold.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: TinniPalette.gold.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Expanded(
-                                  child: Text(
-                                    'You will receive',
-                                    style: TextStyle(
-                                      color: TinniPalette.muted,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  '${_walletNumber(_exchangeCoins)} Coins',
-                                  style: const TextStyle(
-                                    color: TinniPalette.gold,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: _canExchange ? convert : null,
-                              icon: converting
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.currency_exchange_rounded),
-                              label: Text(
-                                converting ? 'Exchanging...' : 'Exchange Now',
-                              ),
+                          Text(
+                            '${_walletNumber(_exchangeCoins)} Coins',
+                            style: const TextStyle(
+                              color: TinniPalette.gold,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Received from gifts',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontWeight: FontWeight.w900,
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _canExchange ? convert : null,
+                        icon: converting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.currency_exchange_rounded),
+                        label: Text(
+                          converting ? 'Exchanging...' : 'Exchange Now',
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    if (gifts.isEmpty)
-                      const TinniPanel(child: Text('No diamond gift history.'))
-                    else
-                      for (final row in gifts.take(50))
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: TinniPanel(
-                            child: ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                row['sender_name']?.toString() ?? 'User',
-                              ),
-                              subtitle: Text(
-                                'ID ${formatPublicUserId(row['sender_public_id'])} • '
-                                '${_walletDateTime(_walletInt(row['created_at']))}',
-                              ),
-                              trailing: Text(
-                                '+${_walletNumber(_walletInt(row['diamonds']))}',
-                                style: const TextStyle(
-                                  color: TinniPalette.gold,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 15),
+              const Text(
+                'Received from gifts',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 7),
+              if (gifts.isEmpty)
+                const TinniPanel(child: Text('No diamond gift history.'))
+              else
+                for (final row in gifts.take(50))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: TinniPanel(
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(row['sender_name']?.toString() ?? 'User'),
+                        subtitle: Text(
+                          'ID ${formatPublicUserId(row['sender_public_id'])} • '
+                          '${_walletDateTime(_walletInt(row['created_at']))}',
+                        ),
+                        trailing: Text(
+                          '+${_walletNumber(_walletInt(row['diamonds']))}',
+                          style: const TextStyle(
+                            color: TinniPalette.gold,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Conversion History',
-                      style: TextStyle(
-                        color: TinniPalette.gold,
-                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    if (conversions.isEmpty)
-                      const TinniPanel(child: Text('No conversions.'))
-                    else
-                      for (final row in conversions)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: TinniPanel(
-                            child: ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                '${_walletNumber(_walletInt(row['diamonds']))} Diamonds',
-                              ),
-                              subtitle: Text(
-                                _walletDateTime(
-                                  _walletInt(row['created_at']),
-                                ),
-                              ),
-                              trailing: Text(
-                                '+${_walletNumber(_walletInt(row['coins']))} Coins',
-                                style: const TextStyle(
-                                  color: TinniPalette.gold,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
+                  ),
+              const SizedBox(height: 15),
+              const Text(
+                'Conversion History',
+                style: TextStyle(
+                  color: TinniPalette.gold,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 7),
+              if (conversions.isEmpty)
+                const TinniPanel(child: Text('No conversions.'))
+              else
+                for (final row in conversions)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: TinniPanel(
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          '${_walletNumber(_walletInt(row['diamonds']))} Diamonds',
+                        ),
+                        subtitle: Text(
+                          _walletDateTime(_walletInt(row['created_at'])),
+                        ),
+                        trailing: Text(
+                          '+${_walletNumber(_walletInt(row['coins']))} Coins',
+                          style: const TextStyle(
+                            color: TinniPalette.gold,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
+                      ),
+                    ),
+                  ),
             ],
           ),
         ),
@@ -772,12 +753,10 @@ class RoleWalletDetailScreen extends StatefulWidget {
   final String walletType;
 
   @override
-  State<RoleWalletDetailScreen> createState() =>
-      _RoleWalletDetailScreenState();
+  State<RoleWalletDetailScreen> createState() => _RoleWalletDetailScreenState();
 }
 
-class _RoleWalletDetailScreenState
-    extends State<RoleWalletDetailScreen> {
+class _RoleWalletDetailScreenState extends State<RoleWalletDetailScreen> {
   bool loading = true;
   Map<String, dynamic> wallet = const {};
 
@@ -847,8 +826,9 @@ class _RoleWalletDetailScreenState
                     ? [FilteringTextInputFormatter.digitsOnly]
                     : null,
                 maxLength: widget.walletType == 'coin_seller' ? 4 : 32,
-                decoration:
-                    const InputDecoration(labelText: 'Confirm credential'),
+                decoration: const InputDecoration(
+                  labelText: 'Confirm credential',
+                ),
               ),
           ],
         ),
@@ -899,7 +879,7 @@ class _RoleWalletDetailScreenState
           result?['ok'] == true
               ? 'Wallet credential saved'
               : (result?['error']?.toString() ??
-                  'Credential could not be saved'),
+                    'Credential could not be saved'),
         ),
       ),
     );
@@ -946,17 +926,15 @@ class _RoleWalletDetailScreenState
                     ),
                   ],
                   selected: {receiverWallet},
-                  onSelectionChanged: (selection) => setDialogState(
-                    () => receiverWallet = selection.first,
-                  ),
+                  onSelectionChanged: (selection) =>
+                      setDialogState(() => receiverWallet = selection.first),
                 ),
               ],
               TextField(
                 controller: amount,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration:
-                    const InputDecoration(labelText: 'Coin amount'),
+                decoration: const InputDecoration(labelText: 'Coin amount'),
               ),
               TextField(
                 controller: credential,
@@ -980,15 +958,12 @@ class _RoleWalletDetailScreenState
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(
-                dialogContext,
-                [
-                  receiver.text.trim(),
-                  amount.text.trim(),
-                  credential.text,
-                  receiverWallet,
-                ],
-              ),
+              onPressed: () => Navigator.pop(dialogContext, [
+                receiver.text.trim(),
+                amount.text.trim(),
+                credential.text,
+                receiverWallet,
+              ]),
               child: const Text('Send'),
             ),
           ],
@@ -1004,8 +979,7 @@ class _RoleWalletDetailScreenState
       userId: widget.state.userId,
       walletType: widget.walletType,
       receiverUserId: data[0],
-      receiverWalletType:
-          widget.walletType == 'merchant' ? data[3] : null,
+      receiverWalletType: widget.walletType == 'merchant' ? data[3] : null,
       coins: coins,
       credential: data[2],
     );
@@ -1017,8 +991,8 @@ class _RoleWalletDetailScreenState
             widget.walletType == 'coin_seller'
                 ? 'Coins sent. Receiver VIP EXP was updated.'
                 : data[3] == 'coin_seller'
-                    ? 'Coins sent to the seller wallet.'
-                    : 'Coins sent from Merchant Wallet.',
+                ? 'Coins sent to the seller wallet.'
+                : 'Coins sent from Merchant Wallet.',
           ),
         ),
       );
@@ -1028,13 +1002,11 @@ class _RoleWalletDetailScreenState
       final message = error == 'invalid_receiver_wallet'
           ? 'Coins cannot go to that wallet from here.'
           : error == 'receiver_not_coin_seller'
-              ? 'That ID is not a Coin Seller.'
-              : error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-        ),
-      );
+          ? 'That ID is not a Coin Seller.'
+          : error;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -1161,23 +1133,20 @@ class _RoleAmount extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: TinniPalette.muted,
-              fontSize: 10,
-            ),
-          ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: TinniPalette.gold,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: const TextStyle(color: const Color(0xFF6E6880), fontSize: 10),
+      ),
+      Text(
+        value,
+        style: const TextStyle(
+          color: TinniPalette.gold,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    ],
+  );
 }

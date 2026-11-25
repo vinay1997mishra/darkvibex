@@ -6,11 +6,7 @@ import '../utils/public_user_id.dart';
 import '../widgets/gift_media_preview.dart';
 
 class GiftsScreen extends StatefulWidget {
-  const GiftsScreen({
-    super.key,
-    required this.state,
-    this.initialCategory,
-  });
+  const GiftsScreen({super.key, required this.state, this.initialCategory});
 
   final AppState state;
   final String? initialCategory;
@@ -91,10 +87,13 @@ class _GiftsScreenState extends State<GiftsScreen> {
     final selected = selectedLabel == 'gift box' ? 'gift_box' : selectedLabel;
     if (selected == 'popular') return gifts;
     if (selected == 'luxury') {
-      return gifts.where((gift) {
-        final price = int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
-        return _category(gift) == 'luxury' || price >= 1000000;
-      }).toList(growable: false);
+      return gifts
+          .where((gift) {
+            final price =
+                int.tryParse(gift['coin_cost']?.toString() ?? '') ?? 0;
+            return _category(gift) == 'luxury' || price >= 1000000;
+          })
+          .toList(growable: false);
     }
     return gifts
         .where((gift) => _category(gift) == selected)
@@ -138,7 +137,11 @@ class _GiftsScreenState extends State<GiftsScreen> {
                 ),
                 title: Text(room.name),
                 subtitle: Text(
-                  'ID ' + formatPublicUserId(room.roomNumber) + ' • ' + room.online.toString() + ' online',
+                  'ID ' +
+                      formatPublicUserId(room.roomNumber) +
+                      ' • ' +
+                      room.online.toString() +
+                      ' online',
                 ),
                 onTap: () => Navigator.pop(sheetContext, room),
               ),
@@ -152,9 +155,11 @@ class _GiftsScreenState extends State<GiftsScreen> {
     final rows = await state.backend.roomMembers(roomId: room.id);
     if (!mounted) return null;
     final recipients = rows
-        .where((row) =>
-            row['user_id']?.toString().isNotEmpty == true &&
-            row['user_id']?.toString() != state.userId)
+        .where(
+          (row) =>
+              row['user_id']?.toString().isNotEmpty == true &&
+              row['user_id']?.toString() != state.userId,
+        )
         .toList(growable: false);
     if (recipients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -183,7 +188,8 @@ class _GiftsScreenState extends State<GiftsScreen> {
             for (final row in recipients)
               ListTile(
                 leading: CircleAvatar(
-                  backgroundImage: row['avatar_key']?.toString().isNotEmpty == true
+                  backgroundImage:
+                      row['avatar_key']?.toString().isNotEmpty == true
                       ? NetworkImage(
                           state.backend.fileUrl(row['avatar_key'].toString()),
                           headers: state.backend.fileHeaders,
@@ -203,10 +209,13 @@ class _GiftsScreenState extends State<GiftsScreen> {
                       (row['seat_index'] == null
                           ? 'Audience'
                           : 'Seat ' +
-                              ((int.tryParse(row['seat_index']?.toString() ?? '') ??
-                                          0) +
-                                      1)
-                                  .toString()),
+                                ((int.tryParse(
+                                              row['seat_index']?.toString() ??
+                                                  '',
+                                            ) ??
+                                            0) +
+                                        1)
+                                    .toString()),
                 ),
                 onTap: () => Navigator.pop(sheetContext, row),
               ),
@@ -254,8 +263,9 @@ class _GiftsScreenState extends State<GiftsScreen> {
     }
     if (!mounted) return;
     if (result?['ok'] == true) {
-      final balance =
-          int.tryParse(result?['sender_coin_balance']?.toString() ?? '');
+      final balance = int.tryParse(
+        result?['sender_coin_balance']?.toString() ?? '',
+      );
       if (balance != null) state.setCoinBalance(balance);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -269,9 +279,9 @@ class _GiftsScreenState extends State<GiftsScreen> {
       );
     } else {
       final error = result?['error']?.toString() ?? 'Gift could not be sent.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.replaceAll('_', ' '))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.replaceAll('_', ' '))));
     }
   }
 
@@ -301,8 +311,10 @@ class _GiftsScreenState extends State<GiftsScreen> {
             SizedBox(
               height: 48,
               child: ListView.separated(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
                 scrollDirection: Axis.horizontal,
                 itemCount: categories.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 6),
@@ -317,84 +329,76 @@ class _GiftsScreenState extends State<GiftsScreen> {
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : rows.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No ' +
-                                categories[categoryIndex] +
-                                ' gifts available.',
-                            style:
-                                const TextStyle(color: TinniPalette.muted),
-                          ),
-                        )
-                      : GridView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
+                  ? Center(
+                      child: Text(
+                        'No ' + categories[categoryIndex] + ' gifts available.',
+                        style: const TextStyle(color: const Color(0xFF6E6880)),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,
                             childAspectRatio: .82,
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
-                          itemCount: rows.length,
-                          itemBuilder: (context, index) {
-                            final gift = rows[index];
-                            final cost = int.tryParse(
-                                  gift['coin_cost']?.toString() ?? '',
-                                ) ??
-                                0;
-                            return TinniPanel(
-                              onTap: sending ? null : () => _send(gift),
-                              padding: const EdgeInsets.all(8),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 58,
-                                    height: 58,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: GiftMediaPreview(
-                                        backend: state.backend,
-                                        videoKey:
-                                            gift['video_key']?.toString() ?? '',
-                                        assetKey:
-                                            gift['asset_key']?.toString() ?? '',
-                                        glbKey:
-                                            gift['glb_key']?.toString() ?? '',
-                                        localAsset: gift['local_asset']
-                                                ?.toString() ??
-                                            '',
-                                        emoji:
-                                            gift['emoji']?.toString() ?? '🎁',
-                                      ),
-                                    ),
+                      itemCount: rows.length,
+                      itemBuilder: (context, index) {
+                        final gift = rows[index];
+                        final cost =
+                            int.tryParse(gift['coin_cost']?.toString() ?? '') ??
+                            0;
+                        return TinniPanel(
+                          onTap: sending ? null : () => _send(gift),
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 58,
+                                height: 58,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: GiftMediaPreview(
+                                    backend: state.backend,
+                                    videoKey:
+                                        gift['video_key']?.toString() ?? '',
+                                    assetKey:
+                                        gift['asset_key']?.toString() ?? '',
+                                    glbKey: gift['glb_key']?.toString() ?? '',
+                                    localAsset:
+                                        gift['local_asset']?.toString() ?? '',
+                                    emoji: gift['emoji']?.toString() ?? '🎁',
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    gift['name']?.toString() ?? 'Gift',
-                                    maxLines: 2,
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: TinniPalette.cream,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    cost.toString() + ' coins',
-                                    style: const TextStyle(
-                                      color: TinniPalette.gold,
-                                      fontSize: 9,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            );
-                          },
-                        ),
+                              const SizedBox(height: 6),
+                              Text(
+                                gift['name']?.toString() ?? 'Gift',
+                                maxLines: 2,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: const Color(0xFFFFD700),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                cost.toString() + ' coins',
+                                style: const TextStyle(
+                                  color: TinniPalette.gold,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),

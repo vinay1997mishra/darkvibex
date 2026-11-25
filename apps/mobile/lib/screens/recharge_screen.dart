@@ -94,7 +94,9 @@ class _RechargeScreenState extends State<RechargeScreen> {
         builder: (_) => ConversationScreen(
           state: state,
           otherUserId: id,
-          otherName: name == null || name.isEmpty ? _roleLabel(row['role']?.toString() ?? '') : name,
+          otherName: name == null || name.isEmpty
+              ? _roleLabel(row['role']?.toString() ?? '')
+              : name,
         ),
       ),
     );
@@ -105,10 +107,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
     if (role != 'coin_seller' && role != 'merchant') return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => RoleWalletDetailScreen(
-          state: state,
-          walletType: role,
-        ),
+        builder: (_) => RoleWalletDetailScreen(state: state, walletType: role),
       ),
     );
     await state.refreshWallet();
@@ -116,15 +115,15 @@ class _RechargeScreenState extends State<RechargeScreen> {
 
   void _notice(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   static String _formatCoins(int value) => value.toString().replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-        (match) => '${match[1]},',
-      );
+    RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+    (match) => '${match[1]},',
+  );
 
   Future<void> _buyPack(PlayPack pack) async {
     if (_buyingProductId != null) return;
@@ -158,7 +157,9 @@ class _RechargeScreenState extends State<RechargeScreen> {
         case PurchaseStatus.pending:
           final purchaseId = purchase.purchaseID ?? purchase.productID;
           if (_pendingNotified.add(purchaseId)) {
-            _notice('Payment is pending. Your coins will arrive once it completes.');
+            _notice(
+              'Payment is pending. Your coins will arrive once it completes.',
+            );
           }
         case PurchaseStatus.error:
           if (purchase.pendingCompletePurchase) {
@@ -214,16 +215,19 @@ class _RechargeScreenState extends State<RechargeScreen> {
       if (!mounted) return;
       final credited =
           int.tryParse(result['coins_credited']?.toString() ?? '') ?? 0;
-      final bonus =
-          int.tryParse(result['bonus_coins']?.toString() ?? '') ?? 0;
+      final bonus = int.tryParse(result['bonus_coins']?.toString() ?? '') ?? 0;
       final firstRecharge = result['first_recharge'] == true;
       // Amounts show in dollars only, everywhere in the app (Vinay,
       // 2026-11-21): no rupee amount is ever shown here, even though
       // the Play sheet itself charges in rupees. The notice only
       // states the coins.
-      final message = StringBuffer('${_formatCoins(credited)} coins added to your wallet!');
+      final message = StringBuffer(
+        '${_formatCoins(credited)} coins added to your wallet!',
+      );
       if (bonus > 0) {
-        message.write(' Includes ${_formatCoins(bonus)} first-recharge bonus coins.');
+        message.write(
+          ' Includes ${_formatCoins(bonus)} first-recharge bonus coins.',
+        );
       }
       if (firstRecharge) {
         message.write(' VIP1 unlocked for 10 days!');
@@ -294,7 +298,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                 const Text(
                                   'Coins',
                                   style: TextStyle(
-                                    color: TinniPalette.muted,
+                                    color: const Color(0xFFF0F2FF),
                                     fontSize: 11,
                                   ),
                                 ),
@@ -338,7 +342,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                     const Text(
                                       'Diamonds',
                                       style: TextStyle(
-                                        color: TinniPalette.muted,
+                                        color: const Color(0xFFF0F2FF),
                                         fontSize: 11,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -364,7 +368,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                 const Text(
                                   'Tap to exchange',
                                   style: TextStyle(
-                                    color: TinniPalette.muted,
+                                    color: const Color(0xFFF0F2FF),
                                     fontSize: 9,
                                   ),
                                 ),
@@ -400,7 +404,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                                   const Text(
                                     'Open secured role wallet and coin transfers.',
                                     style: TextStyle(
-                                      color: TinniPalette.muted,
+                                      color: const Color(0xFFF0F2FF),
                                       fontSize: 10,
                                     ),
                                   ),
@@ -447,7 +451,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                       const TinniPanel(
                         child: Text(
                           'In-app purchases are not available on this device.',
-                          style: TextStyle(color: TinniPalette.muted),
+                          style: TextStyle(color: const Color(0xFFF0F2FF)),
                         ),
                       ),
                     for (final pack in PlayBillingService.packs)
@@ -473,7 +477,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                       const TinniPanel(
                         child: Text(
                           'No active Coin Seller is available right now.',
-                          style: TextStyle(color: TinniPalette.muted),
+                          style: TextStyle(color: const Color(0xFFF0F2FF)),
                         ),
                       )
                     else
@@ -498,7 +502,7 @@ class _RechargeScreenState extends State<RechargeScreen> {
                       const TinniPanel(
                         child: Text(
                           'No active Merchant is available right now.',
-                          style: TextStyle(color: TinniPalette.muted),
+                          style: TextStyle(color: const Color(0xFFF0F2FF)),
                         ),
                       )
                     else
@@ -558,7 +562,7 @@ class _PackTile extends StatelessWidget {
               child: Text(
                 '${_RechargeScreenState._formatCoins(pack.coins)} coins',
                 style: const TextStyle(
-                  color: TinniPalette.cream,
+                  color: const Color(0xFFFFD700),
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -610,9 +614,7 @@ class _ProviderTile extends StatelessWidget {
                       state.backend.fileUrl(avatar),
                       headers: state.backend.fileHeaders,
                     ),
-              child: avatar.isEmpty
-                  ? const Icon(Icons.person_rounded)
-                  : null,
+              child: avatar.isEmpty ? const Icon(Icons.person_rounded) : null,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -622,14 +624,14 @@ class _ProviderTile extends StatelessWidget {
                   Text(
                     name == null || name.isEmpty ? roleLabel : name,
                     style: const TextStyle(
-                      color: TinniPalette.cream,
+                      color: const Color(0xFFFFD700),
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                   Text(
                     roleLabel + ' • ID ' + formatPublicUserId(row['public_id']),
                     style: const TextStyle(
-                      color: TinniPalette.muted,
+                      color: const Color(0xFFF0F2FF),
                       fontSize: 10,
                     ),
                   ),

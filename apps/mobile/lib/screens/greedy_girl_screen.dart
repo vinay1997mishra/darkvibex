@@ -613,7 +613,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                         : 'Greedy Girl',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Color(0xFF50D8FF),
+                  color: Color(0xFF9D7BFF),
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                   letterSpacing: .4,
@@ -718,7 +718,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                               ],
                             ),
                             border: Border.all(
-                              color: const Color(0xFF50D8FF),
+                              color: const Color(0xFF9D7BFF),
                               width: 2.4,
                             ),
                             boxShadow: const <BoxShadow>[
@@ -738,7 +738,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                               '$seconds',
                               key: const Key('greedy-girl-countdown-number'),
                               style: TextStyle(
-                                color: const Color(0xFF50D8FF),
+                                color: const Color(0xFF9D7BFF),
                                 fontSize: timerSize * .44,
                                 fontWeight: FontWeight.w900,
                                 height: 1,
@@ -773,7 +773,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                       ? 'Choose amount  →  Choose food'
                       : 'Result time • next round in ${(remainingMs / 1000).ceil()}s',
                   style: const TextStyle(
-                    color: Color(0xFF50D8FF),
+                    color: Color(0xFF9D7BFF),
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
@@ -790,7 +790,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
                           child: ChoiceChip(
                             selected: selectedBet == amount,
                             showCheckmark: false,
-                            selectedColor: const Color(0xFF50D8FF),
+                            selectedColor: const Color(0xFF9D7BFF),
                             backgroundColor: const Color(0xFF5B2C85),
                             side: const BorderSide(color: Color(0xFFAA7EE5)),
                             label: Text(_compact(amount)),
@@ -915,7 +915,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
           ),
           border: Border.all(
             color: active
-                ? const Color(0xFF50D8FF)
+                ? const Color(0xFF9D7BFF)
                 : myAmount > 0
                     ? Colors.white
                     : const Color(0xFFB9D7FF),
@@ -924,7 +924,7 @@ class _GreedyGirlScreenState extends State<GreedyGirlScreen> {
           boxShadow: <BoxShadow>[
             BoxShadow(
               color: active
-                  ? const Color(0xFF50D8FF)
+                  ? const Color(0xFF9D7BFF)
                   : const Color(0xFF835BFF),
               blurRadius: active ? 18 : 10,
             ),

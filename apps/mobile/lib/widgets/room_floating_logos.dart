@@ -121,7 +121,7 @@ class _StealthRocketPainter extends CustomPainter {
     final stage = level.clamp(1, 10).toInt();
     const bodyColors = <Color>[
       Color(0xFF61758D),
-      Color(0xFF1768D2),
+      Color(0xFF5E35B1),
       Color(0xFF713BC0),
       Color(0xFF0A9479),
       Color(0xFFB8294B),
@@ -129,15 +129,15 @@ class _StealthRocketPainter extends CustomPainter {
       Color(0xFFB52FB3),
       Color(0xFF078DAE),
       Color(0xFF5842C8),
-      Color(0xFF50D8FF),
+      Color(0xFF9D7BFF),
     ];
     const accentColors = <Color>[
       Color(0xFF57E9FF),
-      Color(0xFF4BA8FF),
+      Color(0xFF7E57C2),
       Color(0xFFD06BFF),
       Color(0xFF62FFD1),
       Color(0xFFFF5B83),
-      Color(0xFF50D8FF),
+      Color(0xFF9D7BFF),
       Color(0xFFFF83E6),
       Color(0xFF54F4FF),
       Color(0xFFAFA0FF),
@@ -734,7 +734,7 @@ class _RocketExhaustPainter extends CustomPainter {
           colors: <Color>[
             Colors.white.withValues(alpha: .98 * ignition),
             color.withValues(alpha: .96 * ignition),
-            const Color(0xFF53D9FF).withValues(alpha: .96 * ignition),
+            const Color(0xFF9D7BFF).withValues(alpha: .96 * ignition),
             const Color(0xFF8B7CFF).withValues(alpha: .76 * ignition),
           ],
           stops: const <double>[0, .24, .64, 1],
@@ -755,7 +755,7 @@ class _RocketExhaustPainter extends CustomPainter {
           colors: <Color>[
             Colors.white.withValues(alpha: ignition),
             const Color(0xFFEAF5FF).withValues(alpha: ignition),
-            const Color(0xFF50D8FF).withValues(alpha: ignition),
+            const Color(0xFF9D7BFF).withValues(alpha: ignition),
           ],
         ).createShader(Offset.zero & size),
     );
@@ -931,11 +931,11 @@ class _RocketLaunchTrailPainter extends CustomPainter {
 Color accentColorForLevel(int level) {
   const colors = <Color>[
     Color(0xFF57E9FF),
-    Color(0xFF4BA8FF),
+    Color(0xFF7E57C2),
     Color(0xFFD06BFF),
     Color(0xFF62FFD1),
     Color(0xFFFF5B83),
-    Color(0xFF50D8FF),
+    Color(0xFF9D7BFF),
     Color(0xFFFF83E6),
     Color(0xFF54F4FF),
     Color(0xFFAFA0FF),
