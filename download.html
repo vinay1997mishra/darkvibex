@@ -18,40 +18,62 @@
   const universal = release + 'DarkVibeX-latest-release.apk';
   const link = document.getElementById('recommended-download');
   const status = document.getElementById('download-status');
-  const isAndroid = /Android/i.test(navigator.userAgent);
+  const uaString = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(uaString);
   document.getElementById('year').textContent = new Date().getFullYear();
   document.getElementById('universal-download').href = universal;
 
+  // Browser APIs do not expose Android's full SUPPORTED_ABIS list.
+  // Use exact Client Hints first, then a conservative known-device fallback.
+  const knownModels = [
+    { pattern: /CPH2239/i, asset: 'DarkVibeX-arm64-v8a-release.apk', label: 'OPPO A54 (CPH2239)' }
+  ];
+
+  function select(asset, message) {
+    link.href = release + asset;
+    status.textContent = message;
+  }
+
   async function choosePackage() {
     if (!isAndroid) {
-      status.textContent = 'Universal APK selected. For Android phones, open this page on the phone to try automatic selection.';
+      select('DarkVibeX-latest-release.apk', 'Universal APK selected. Open this page on an Android phone for device detection.');
       return;
     }
+
     const ua = navigator.userAgentData;
-    if (!ua || typeof ua.getHighEntropyValues !== 'function') {
-      status.textContent = 'Your browser does not expose CPU details. Universal APK selected for compatibility.';
+    let hintedModel = '';
+    if (ua && typeof ua.getHighEntropyValues === 'function') {
+      try {
+        const info = await ua.getHighEntropyValues(['architecture', 'bitness', 'model']);
+        hintedModel = String(info.model || '');
+        const arch = String(info.architecture || '').toLowerCase();
+        const bits = String(info.bitness || '');
+        if ((arch === 'arm' || arch === 'arm64') && bits === '64') {
+          select('DarkVibeX-arm64-v8a-release.apk', '64-bit ARM processor detected. ARM64 APK selected.');
+          return;
+        }
+        if ((arch === 'arm' || arch === 'arm32') && bits === '32') {
+          select('DarkVibeX-armeabi-v7a-release.apk', '32-bit ARM processor detected. ARM32 APK selected.');
+          return;
+        }
+        if ((arch === 'x86' || arch === 'x86_64') && bits === '64') {
+          select('DarkVibeX-x86_64-release.apk', '64-bit x86 processor detected. x86_64 APK selected.');
+          return;
+        }
+      } catch (_) { /* Continue with conservative fallbacks. */ }
+    }
+
+    const modelMatch = knownModels.find(item => item.pattern.test(uaString) || item.pattern.test(hintedModel));
+    if (modelMatch) {
+      select(modelMatch.asset, modelMatch.label + ' detected from browser device model. ARM64 APK selected.');
       return;
     }
-    try {
-      const info = await ua.getHighEntropyValues(['architecture', 'bitness']);
-      const arch = String(info.architecture || '').toLowerCase();
-      const bits = String(info.bitness || '');
-      let asset = '';
-      if (arch === 'arm' && bits === '64') asset = 'DarkVibeX-arm64-v8a-release.apk';
-      else if (arch === 'arm' && bits === '32') asset = 'DarkVibeX-armeabi-v7a-release.apk';
-      else if ((arch === 'x86' || arch === 'x86_64') && bits === '64') asset = 'DarkVibeX-x86_64-release.apk';
-      if (asset) {
-        link.href = release + asset;
-        status.textContent = 'Compatible APK detected for this phone. Tap Download DarkVibeX to get it.';
-      } else {
-        link.href = universal;
-        status.textContent = 'CPU type could not be matched safely. Universal APK selected.';
-      }
-    } catch (_) {
-      link.href = universal;
-      status.textContent = 'Could not detect this phone safely. Universal APK selected.';
-    }
+
+    // Never guess ARM32/ARM64 from Android version or GPU family: that can select
+    // an APK the device cannot install. Universal is the safe compatibility option.
+    select('DarkVibeX-latest-release.apk', 'This browser hides the processor architecture and the device model is not in our detection list. Universal APK selected to avoid an incompatible download.');
   }
+
   choosePackage();
 })();
 </script></body></html>
