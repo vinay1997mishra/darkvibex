@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Distinct, colorful wallet currency artwork for Coins and Diamonds.
 class CurrencyBadge extends StatelessWidget {

@@ -9,7 +9,7 @@ import 'package:darkvibex/utils/rocket_progress.dart';
 import 'package:darkvibex/utils/rocket_top_rewards.dart';
 import 'package:darkvibex/vip/vip_visual_assets.dart';
 import 'package:darkvibex/widgets/room_floating_logos.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Rocket Room Page — full-screen Rocket view for a room.
 ///

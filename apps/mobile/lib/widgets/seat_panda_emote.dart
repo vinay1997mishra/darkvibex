@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_vap_player/flutter_vap_player.dart';
 
 /// Plays one panda seat emote (a Tencent VAP alpha-video) ONCE on a mic

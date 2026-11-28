@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// In-app DarkVibeX policy text. Review and replace with the operator's
 /// jurisdiction-specific legal text before a public launch.

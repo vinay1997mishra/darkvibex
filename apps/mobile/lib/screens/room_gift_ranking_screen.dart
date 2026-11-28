@@ -8,7 +8,7 @@
 // month) when the Monthly tab is open.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../infra/backend_api.dart';
 import '../ui/tinni_style.dart';

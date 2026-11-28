@@ -13,7 +13,7 @@ import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/room/month_top_gifter.dart';
 import 'package:darkvibex/screens/rocket_room_screen.dart';
 import 'package:darkvibex/screens/room_gift_ranking_screen.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeRankingBackend extends BackendApi {

@@ -5,7 +5,7 @@
 // Level >= 30 or VIP Level >= 6 (same numbers as the worker).
 import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 

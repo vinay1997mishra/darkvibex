@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Party-page top front pill (Vinay, 2026-11-23): the two fronts Top Rooms
 /// (gold) and Top Family (purple), styled like the other apps' pill tabs —

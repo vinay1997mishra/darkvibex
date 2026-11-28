@@ -8,7 +8,7 @@ import 'dart:async';
 
 import 'package:darkvibex/app/app_state.dart';
 import 'package:darkvibex/infra/backend_api.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'family_common.dart';
 
 class FamilyMonthlyRankingScreen extends StatefulWidget {

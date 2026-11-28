@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
 import '../app/app_state.dart';

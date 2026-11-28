@@ -25,7 +25,7 @@
 // has no matching entry and is NOT shown.
 // Coins bonus is the real purchase bonus from the VIP policy: +5% at
 // VIP5, +10% at VIP11, +20% at VIP16 (coinsBonusForPurchase).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../vip/vip_policy.dart';
 import '../vip/vip_visual_assets.dart';
