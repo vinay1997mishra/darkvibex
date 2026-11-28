@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Golden "VIP N" text for a VIP level (VIP1-18) — no ribbon, no plaque
 /// (Vinay, 2026-11-23: "VIP gold me likha dikhna chahiye, ribbon tag nhi").

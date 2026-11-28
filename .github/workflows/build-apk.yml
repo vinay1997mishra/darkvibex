@@ -87,7 +87,7 @@ jobs:
         with:
           # Pin the SDK version from the last successful Android build so CI
           # does not stall while resolving the latest stable channel release.
-          flutter-version: '3.47.8'
+          flutter-version: '3.50.1'
           cache: true
 
       - name: Generate missing Android scaffold

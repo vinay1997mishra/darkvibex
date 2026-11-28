@@ -1,6 +1,6 @@
 // Tracks the top route name so problem reports and crash reports can
 // say which screen the user was on (Mr. Wrong, 2026-11-24).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class AppRouteObserver extends RouteObserver<ModalRoute<dynamic>> {
   static String currentRouteName = '';

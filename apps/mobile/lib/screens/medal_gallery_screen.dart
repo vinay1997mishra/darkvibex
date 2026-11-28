@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../widgets/level_medal.dart';
 import '../widgets/vip_badge_video.dart';

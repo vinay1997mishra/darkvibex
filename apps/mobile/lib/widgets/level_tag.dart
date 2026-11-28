@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 3D pill tags (Vinay, 2026-11-23): the gold "$" wealth tag (wealth IS
 /// the dollar level — one tag, not two) and the "Lv.N" ID level pill.

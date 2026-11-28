@@ -1,7 +1,7 @@
 import 'package:darkvibex/utils/rocket_reward_frames.dart';
 import 'package:darkvibex/widgets/rocket_reward_frame_preview.dart';
 import 'package:darkvibex/widgets/vip_animated_frame.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

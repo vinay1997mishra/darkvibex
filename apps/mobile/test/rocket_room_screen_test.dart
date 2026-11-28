@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/screens/rocket_room_screen.dart';
 import 'package:darkvibex/utils/rocket_top_rewards.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeRocketBackend extends BackendApi {

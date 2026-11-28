@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:darkvibex/screens/vip_section_screen.dart';
 import 'package:darkvibex/widgets/vip_tag_image.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

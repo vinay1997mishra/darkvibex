@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class RoomGameKeyboardLogo extends StatelessWidget {
   const RoomGameKeyboardLogo({super.key, required this.size});

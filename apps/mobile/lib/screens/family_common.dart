@@ -3,7 +3,7 @@
 // (family_bg_light.png) — NOT the other app's dark background.
 import 'package:darkvibex/infra/backend_api.dart';
 import 'package:darkvibex/infra/family_rules.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The v9 Family background: light glass purple+gold.
 ///

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'vip_animated_frame.dart';
 import 'vip_name_text.dart';
